@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/arjenschwarz/orbit/internal/config"
 	"github.com/arjenschwarz/orbit/internal/orbit"
 )
 
@@ -23,6 +24,9 @@ func main() {
 	verbose := flag.Bool("verbose", false, "Enable verbose output")
 	dryRun := flag.Bool("dry-run", false, "Show what would be executed without running")
 	showVersion := flag.Bool("version", false, "Show version and exit")
+	commandFlag := flag.String("command", "", "Custom prompt for Claude phases")
+	postCommandFlag := flag.String("post-command", "", "Command after all tasks complete")
+	noPostCommand := flag.Bool("no-post-command", false, "Skip post-completion command")
 
 	flag.Usage = func() {
 		fmt.Fprintf(os.Stderr, "Orbit - Claude Code Task Orchestrator\n\n")
@@ -80,8 +84,29 @@ func main() {
 		actualLogDir = filepath.Join(filepath.Dir(*tasksFile), ".orbit")
 	}
 
+	// Load configuration (Viper handles merging of home/project configs and env vars)
+	cfg := config.Load(workingDir)
+
+	// Resolve effective command (priority: flag > config/env > default)
+	command := cfg.Command // Already has default from Viper
+	if *commandFlag != "" {
+		command = *commandFlag
+	}
+
+	// Resolve effective post-command (priority: flag > config/env > default)
+	postCommand := cfg.PostCommand
+	if cfg.IsPostCommandDisabled() {
+		postCommand = "" // Config explicitly disabled
+	}
+	if *postCommandFlag != "" {
+		postCommand = *postCommandFlag
+	}
+	if *noPostCommand {
+		postCommand = "" // Flag disables
+	}
+
 	// Create and run orchestrator
-	config := orbit.Config{
+	orbitCfg := orbit.Config{
 		TasksFile:       *tasksFile,
 		LogDir:          actualLogDir,
 		BranchName:      branchName,
@@ -89,9 +114,11 @@ func main() {
 		Verbose:         *verbose,
 		DryRun:          *dryRun,
 		WorkingDir:      workingDir,
+		Command:         command,
+		PostCommand:     postCommand,
 	}
 
-	o, err := orbit.New(config)
+	o, err := orbit.New(orbitCfg)
 	if err != nil {
 		log.Fatalf("Failed to initialize Orbit: %v", err)
 	}

@@ -117,35 +117,35 @@ references:
 
 ## CLI Integration
 
-- [ ] 18. Add --command flag to main.go
+- [x] 18. Add --command flag to main.go
   - Update cmd/orbit/main.go
   - Add commandFlag := flag.String("command", "", "Custom prompt for Claude phases")
   - Requirements: [2.2](requirements.md#2.2)
 
-- [ ] 19. Add --post-command flag to main.go
+- [x] 19. Add --post-command flag to main.go
   - Add postCommandFlag := flag.String("post-command", "", "Command after all tasks complete")
   - Requirements: [3.2](requirements.md#3.2)
 
-- [ ] 20. Add --no-post-command flag to main.go
+- [x] 20. Add --no-post-command flag to main.go
   - Add noPostCommand := flag.Bool("no-post-command", false, "Skip post-completion command")
   - Requirements: [3.8](requirements.md#3.8)
 
-- [ ] 21. Integrate config.Load() in main.go
+- [x] 21. Integrate config.Load() in main.go
   - Import internal/config package
   - Call cfg := config.Load(workingDir) after determining working directory
 
-- [ ] 22. Implement priority resolution for command values
+- [x] 22. Implement priority resolution for command values
   - Resolve effective command: flag > config/env > default
   - Resolve effective post-command with IsPostCommandDisabled() check
   - Apply --no-post-command flag override
   - Pass resolved values to orbit.Config
   - Requirements: [4.1](requirements.md#4.1)
 
-- [ ] 23. Run linter and fix any issues
+- [x] 23. Run linter and fix any issues
   - Run make lint
   - Fix any linting issues
 
-- [ ] 24. Run all tests and verify pass
+- [x] 24. Run all tests and verify pass
   - Run make test
   - Ensure all tests pass
   - Run make test-coverage to verify coverage
