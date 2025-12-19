@@ -8,7 +8,7 @@ references:
 
 ## Setup
 
-- [ ] 1. Add Viper dependency to go.mod
+- [x] 1. Add Viper dependency to go.mod
   - Run: go get github.com/spf13/viper
   - Verify dependency is added to go.mod and go.sum
 
