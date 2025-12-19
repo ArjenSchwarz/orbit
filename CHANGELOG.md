@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Tests for post-completion session logging (SavePostCompletionSession and formatPostCompletionTranscript)
 - Viper dependency for configuration management (custom-commands feature)
 - Phase overview table at startup showing all phases with status and task counts
 - Full session transcript copying from `~/.claude/projects/{project-path}/{session-id}.jsonl`

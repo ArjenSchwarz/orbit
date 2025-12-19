@@ -97,20 +97,20 @@ references:
 
 ## Log Manager Updates
 
-- [ ] 15. Implement SavePostCompletionSession() method
+- [x] 15. Implement SavePostCompletionSession() method
   - Update internal/logs/manager.go
   - Add SavePostCompletionSession(result, startTime) error method
   - Save to post-completion-session.json and post-completion-session.txt
   - Copy and format transcript from ~/.claude/projects
   - Requirements: [5.1](requirements.md#5.1), [5.2](requirements.md#5.2)
 
-- [ ] 16. Implement formatPostCompletionTranscript()
+- [x] 16. Implement formatPostCompletionTranscript()
   - Add formatPostCompletionTranscript helper function
   - Header: Post-Completion Session Transcript
   - Include start time, duration, cost, turns, output
   - Requirements: [5.3](requirements.md#5.3)
 
-- [ ] 17. Add tests for post-completion logging
+- [x] 17. Add tests for post-completion logging
   - Update internal/logs/manager_test.go
   - Test SavePostCompletionSession creates correct files
   - Test formatPostCompletionTranscript output format
