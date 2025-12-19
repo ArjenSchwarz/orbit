@@ -14,10 +14,10 @@ references:
 
 ## Config Package
 
-- [ ] 2. Create internal/config package directory
+- [x] 2. Create internal/config package directory
   - Create internal/config/ directory structure
 
-- [ ] 3. Implement config.Load() using Viper
+- [x] 3. Implement config.Load() using Viper
   - Create internal/config/config.go
   - Define Config struct with Command and PostCommand fields
   - Define DefaultCommand and DefaultPostCommand constants
@@ -28,12 +28,12 @@ references:
   - Log warnings for parse errors, continue with remaining sources
   - Requirements: [1.1](requirements.md#1.1), [1.2](requirements.md#1.2), [1.3](requirements.md#1.3), [1.4](requirements.md#1.4), [1.5](requirements.md#1.5), [1.6](requirements.md#1.6), [4.1](requirements.md#4.1), [4.2](requirements.md#4.2), [4.4](requirements.md#4.4), [4.5](requirements.md#4.5)
 
-- [ ] 4. Implement IsPostCommandDisabled() helper
+- [x] 4. Implement IsPostCommandDisabled() helper
   - Add IsPostCommandDisabled() bool method to Config
   - Returns true when post-command was explicitly set to empty string
   - Requirements: [3.9](requirements.md#3.9), [4.3](requirements.md#4.3)
 
-- [ ] 5. Write tests for config package
+- [x] 5. Write tests for config package
   - Create internal/config/config_test.go
   - TestLoad_ProjectOnly - only project config exists
   - TestLoad_HomeOnly - only home config exists
