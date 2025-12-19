@@ -37,6 +37,7 @@ type SessionResult struct {
 type Config struct {
 	SkipPermissions bool
 	WorkingDir      string
+	Prompt          string // Prompt for phase execution
 }
 
 // Client wraps the Claude Code CLI for programmatic access.
@@ -53,8 +54,11 @@ func NewClient(config Config) *Client {
 
 // RunPhase executes a Claude session to run the next phase and commit.
 func (c *Client) RunPhase() (*SessionResult, error) {
-	// Prompt instructs Claude to run the phase workflow
-	prompt := "Run /next-task --phase and when complete run /commit"
+	// Use configured prompt or fallback to default
+	prompt := c.config.Prompt
+	if prompt == "" {
+		prompt = "Run /next-task --phase and when complete run /commit"
+	}
 
 	args := []string{"-p", prompt, "--output-format", "json"}
 	if c.config.SkipPermissions {

@@ -46,16 +46,16 @@ references:
 
 ## Claude Client Updates
 
-- [ ] 6. Add Prompt field to claude.Config
+- [x] 6. Add Prompt field to claude.Config
   - Update internal/claude/client.go
   - Add Prompt string field to Config struct
 
-- [ ] 7. Update RunPhase() to use configurable prompt
+- [x] 7. Update RunPhase() to use configurable prompt
   - Modify RunPhase() to use c.config.Prompt instead of hardcoded string
   - Keep fallback to default if Prompt is empty
   - Requirements: [2.3](requirements.md#2.3), [2.4](requirements.md#2.4)
 
-- [ ] 8. Add tests for Claude client prompt handling
+- [x] 8. Add tests for Claude client prompt handling
   - Update internal/claude/client_test.go
   - Test that custom Prompt is used when set
   - Test fallback to default when Prompt is empty
