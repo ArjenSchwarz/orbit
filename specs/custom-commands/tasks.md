@@ -62,34 +62,34 @@ references:
 
 ## Orbit Orchestrator Updates
 
-- [ ] 9. Add Command and PostCommand fields to orbit.Config
+- [x] 9. Add Command and PostCommand fields to orbit.Config
   - Update internal/orbit/orbit.go
   - Add Command string field for phase command
   - Add PostCommand string field for post-completion command
 
-- [ ] 10. Implement runPostCommand() method
+- [x] 10. Implement runPostCommand() method
   - Add runPostCommand() error method to Orbit
   - Use claudeClient.RunCustomPrompt() with PostCommand
   - Apply same error classification and retry logic as phases
   - Save session using logManager.SavePostCompletionSession()
   - Requirements: [3.3](requirements.md#3.3), [3.7](requirements.md#3.7)
 
-- [ ] 11. Update Run() to call post-command on completion
+- [x] 11. Update Run() to call post-command on completion
   - Modify Run() main loop exit points
   - Call runPostCommand() when PostCommand is not empty
   - Log start and completion of post-command
   - Skip post-command on orchestration failure
   - Requirements: [3.4](requirements.md#3.4), [3.6](requirements.md#3.6)
 
-- [ ] 12. Update dry-run output to show configured commands
+- [x] 12. Update dry-run output to show configured commands
   - Modify dry-run log output to show phase command
   - Show post-command or indicate if disabled
   - Requirements: [6.1](requirements.md#6.1), [6.2](requirements.md#6.2)
 
-- [ ] 13. Pass Command to claude.Config.Prompt
+- [x] 13. Pass Command to claude.Config.Prompt
   - Update New() to set claudeClient config Prompt from orbit.Config.Command
 
-- [ ] 14. Add tests for orbit post-command execution
+- [x] 14. Add tests for orbit post-command execution
   - Update internal/orbit/orbit_test.go
   - Test runPostCommand() success and failure paths
   - Test post-command skipped when empty
