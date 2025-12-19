@@ -117,9 +117,9 @@ func TestErrorType_IsRetryable(t *testing.T) {
 		errType ErrorType
 		want    bool
 	}{
-		"connection is retryable": {ErrConnection, true},
-		"rate_limit is retryable": {ErrRateLimit, true},
-		"overloaded is retryable": {ErrOverloaded, true},
+		"connection is retryable":  {ErrConnection, true},
+		"rate_limit is retryable":  {ErrRateLimit, true},
+		"overloaded is retryable":  {ErrOverloaded, true},
 		"unknown is not retryable": {ErrUnknown, false},
 	}
 
@@ -137,12 +137,12 @@ func TestBackoffDuration(t *testing.T) {
 		attempt int
 		want    time.Duration
 	}{
-		"attempt 0": {0, 1 * time.Second},
-		"attempt 1": {1, 2 * time.Second},
-		"attempt 2": {2, 4 * time.Second},
-		"attempt 3": {3, 8 * time.Second},
-		"attempt 4": {4, 16 * time.Second},
-		"attempt 5 capped": {5, 16 * time.Second},
+		"attempt 0":         {0, 1 * time.Second},
+		"attempt 1":         {1, 2 * time.Second},
+		"attempt 2":         {2, 4 * time.Second},
+		"attempt 3":         {3, 8 * time.Second},
+		"attempt 4":         {4, 16 * time.Second},
+		"attempt 5 capped":  {5, 16 * time.Second},
 		"attempt 10 capped": {10, 16 * time.Second},
 	}
 

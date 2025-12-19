@@ -42,7 +42,7 @@ internal/
 
 When `--tasks-file` is not specified, Orbit detects it from the git branch:
 1. Get current branch name
-2. Strip common prefixes (`feature/`, `hotfix/`, `bugfix/`, `fix/`, `feat/`)
+2. Strip everything before the first `/` (e.g., `feature/my-feature` → `my-feature`)
 3. Look for `specs/{name}/tasks.md` or `specs/{name}/TASKS.md`
 
 ## Resumption

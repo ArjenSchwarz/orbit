@@ -19,21 +19,57 @@ const (
 
 // Task represents a task from rune's JSON output.
 type Task struct {
-	ID       string `json:"id"`
-	Title    string `json:"title"`
-	Status   Status `json:"status"`
-	Details  string `json:"details,omitempty"`
-	Parent   string `json:"parent,omitempty"`
-	Phase    string `json:"phase,omitempty"`
-	Subtasks []Task `json:"subtasks,omitempty"`
+	ID         string   `json:"ID"`
+	Title      string   `json:"Title"`
+	Status     Status   `json:"Status"`
+	Details    []string `json:"Details,omitempty"`
+	References []string `json:"References,omitempty"`
+	Reqs       []string `json:"requirements,omitempty"`
+	Children   []Task   `json:"Children,omitempty"`
+	ParentID   string   `json:"ParentID,omitempty"`
+	Phase      string   `json:"Phase,omitempty"`
+}
+
+// ListResult represents the wrapper object from rune list --format json.
+type ListResult struct {
+	Title string `json:"Title"`
+	Tasks []Task `json:"Tasks"`
+}
+
+// PhaseTask represents a task from rune next --phase JSON output.
+// This uses different field names and status format than Task.
+type PhaseTask struct {
+	ID      string   `json:"id"`
+	Title   string   `json:"title"`
+	Status  string   `json:"status"`
+	Details []string `json:"details,omitempty"`
 }
 
 // NextPhaseResult represents the output of rune next --phase.
 type NextPhaseResult struct {
-	PhaseName             string   `json:"phase_name"`
-	Tasks                 []Task   `json:"tasks"`
-	FrontMatterReferences []string `json:"front_matter_references,omitempty"`
-	AllComplete           bool     `json:"all_complete,omitempty"`
+	PhaseName             string      `json:"phase_name"`
+	Tasks                 []PhaseTask `json:"tasks"`
+	FrontMatterReferences []string    `json:"front_matter_references,omitempty"`
+	AllComplete           bool        `json:"all_complete,omitempty"`
+}
+
+// PhaseStatus represents the overall status of a phase.
+type PhaseStatus string
+
+const (
+	PhaseStatusPending    PhaseStatus = ""
+	PhaseStatusInProgress PhaseStatus = "in progress"
+	PhaseStatusCompleted  PhaseStatus = "completed"
+)
+
+// PhaseSummary contains statistics about a phase.
+type PhaseSummary struct {
+	Name      string
+	Order     int
+	Total     int
+	Completed int
+	Pending   int
+	Status    PhaseStatus
 }
 
 // Client wraps the rune CLI for programmatic access.
@@ -72,12 +108,12 @@ func (c *Client) ListPending() ([]Task, error) {
 		return []Task{}, nil
 	}
 
-	var tasks []Task
-	if err := json.Unmarshal(output, &tasks); err != nil {
+	var result ListResult
+	if err := json.Unmarshal(output, &result); err != nil {
 		return nil, fmt.Errorf("failed to parse rune output: %w", err)
 	}
 
-	return tasks, nil
+	return result.Tasks, nil
 }
 
 // GetNextPhase returns the next incomplete phase with all its tasks.
@@ -143,4 +179,89 @@ func (c *Client) GetCurrentPhaseNumber() (int, error) {
 	}
 
 	return phaseNum, nil
+}
+
+// ListAll returns all tasks regardless of status.
+func (c *Client) ListAll() ([]Task, error) {
+	args := []string{"list", c.tasksFile, "--format", "json"}
+	cmd := exec.Command("rune", args...)
+
+	output, err := cmd.Output()
+	if err != nil {
+		if exitErr, ok := err.(*exec.ExitError); ok {
+			return nil, fmt.Errorf("rune list failed: %s", string(exitErr.Stderr))
+		}
+		return nil, fmt.Errorf("rune list failed: %w", err)
+	}
+
+	trimmed := strings.TrimSpace(string(output))
+	if trimmed == "" || trimmed == "[]" || trimmed == "null" {
+		return []Task{}, nil
+	}
+
+	var result ListResult
+	if err := json.Unmarshal(output, &result); err != nil {
+		return nil, fmt.Errorf("failed to parse rune output: %w", err)
+	}
+
+	return result.Tasks, nil
+}
+
+// GetPhaseSummaries returns a summary of all phases with their task counts and status.
+func (c *Client) GetPhaseSummaries() ([]PhaseSummary, error) {
+	tasks, err := c.ListAll()
+	if err != nil {
+		return nil, err
+	}
+
+	// Group tasks by phase, maintaining order
+	phaseOrder := []string{}
+	phaseTasks := make(map[string][]Task)
+
+	for _, task := range tasks {
+		phase := task.Phase
+		if phase == "" {
+			phase = "Uncategorized"
+		}
+		if _, exists := phaseTasks[phase]; !exists {
+			phaseOrder = append(phaseOrder, phase)
+		}
+		phaseTasks[phase] = append(phaseTasks[phase], task)
+	}
+
+	// Build summaries
+	summaries := make([]PhaseSummary, 0, len(phaseOrder))
+	for i, phaseName := range phaseOrder {
+		tasks := phaseTasks[phaseName]
+		completed := 0
+		inProgress := 0
+		for _, t := range tasks {
+			switch t.Status {
+			case StatusCompleted:
+				completed++
+			case StatusInProgress:
+				inProgress++
+			}
+		}
+
+		var status PhaseStatus
+		if completed == len(tasks) {
+			status = PhaseStatusCompleted
+		} else if inProgress > 0 || completed > 0 {
+			status = PhaseStatusInProgress
+		} else {
+			status = PhaseStatusPending
+		}
+
+		summaries = append(summaries, PhaseSummary{
+			Name:      phaseName,
+			Order:     i + 1,
+			Total:     len(tasks),
+			Completed: completed,
+			Pending:   len(tasks) - completed,
+			Status:    status,
+		})
+	}
+
+	return summaries, nil
 }

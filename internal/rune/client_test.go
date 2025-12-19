@@ -40,13 +40,13 @@ func TestStatus_Values(t *testing.T) {
 func TestTask_Struct(t *testing.T) {
 	// Verify Task struct can be created with all fields
 	task := Task{
-		ID:      "task-1",
-		Title:   "Test Task",
-		Status:  StatusPending,
-		Details: "Some details",
-		Parent:  "parent-1",
-		Phase:   "Phase 1",
-		Subtasks: []Task{
+		ID:       "task-1",
+		Title:    "Test Task",
+		Status:   StatusPending,
+		Details:  []string{"Some details"},
+		ParentID: "parent-1",
+		Phase:    "Phase 1",
+		Children: []Task{
 			{ID: "subtask-1", Title: "Subtask", Status: StatusCompleted},
 		},
 	}
@@ -60,8 +60,8 @@ func TestTask_Struct(t *testing.T) {
 	if task.Status != StatusPending {
 		t.Errorf("Status = %d, want %d", task.Status, StatusPending)
 	}
-	if len(task.Subtasks) != 1 {
-		t.Errorf("Subtasks length = %d, want 1", len(task.Subtasks))
+	if len(task.Children) != 1 {
+		t.Errorf("Children length = %d, want 1", len(task.Children))
 	}
 }
 
@@ -81,9 +81,9 @@ func TestNextPhaseResult_AllComplete(t *testing.T) {
 func TestNextPhaseResult_WithTasks(t *testing.T) {
 	result := NextPhaseResult{
 		PhaseName: "Phase 1: Setup",
-		Tasks: []Task{
-			{ID: "1", Title: "Task 1", Status: StatusPending},
-			{ID: "2", Title: "Task 2", Status: StatusPending},
+		Tasks: []PhaseTask{
+			{ID: "1", Title: "Task 1", Status: "Pending"},
+			{ID: "2", Title: "Task 2", Status: "Pending"},
 		},
 		FrontMatterReferences: []string{"requirements.md", "design.md"},
 		AllComplete:           false,
