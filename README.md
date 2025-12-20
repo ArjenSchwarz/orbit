@@ -39,6 +39,12 @@ orbit --verbose --log-dir ./logs
 
 # Preview without executing
 orbit --dry-run
+
+# With custom commands
+orbit --command "Run /next-task --phase" --post-command "Run all tests"
+
+# Skip the post-completion review
+orbit --no-post-command
 ```
 
 ## Options
@@ -46,11 +52,67 @@ orbit --dry-run
 | Flag | Default | Description |
 |------|---------|-------------|
 | `--tasks-file` | auto-detect | Path to rune tasks file |
-| `--log-dir` | `.claude/orchestration-logs` | Base directory for session logs |
+| `--log-dir` | `.orbit` next to tasks file | Base directory for session logs |
 | `--skip-permissions` | `true` | Run Claude with `--dangerously-skip-permissions` |
 | `--verbose` | `false` | Enable verbose output |
 | `--dry-run` | `false` | Show what would be executed without running |
+| `--command` | see below | Custom prompt for Claude phases |
+| `--post-command` | see below | Command to run after all tasks complete |
+| `--no-post-command` | `false` | Skip the post-completion command |
 | `--version` | - | Show version and exit |
+
+### Default Commands
+
+The default phase command is:
+```
+Run /next-task --phase and when complete run /commit
+```
+
+The default post-completion command is:
+```
+Review the implementation to verify it meets the requirements and all tests pass. If issues are found, fix them.
+```
+
+## Configuration
+
+Orbit supports configuration via YAML files and environment variables.
+
+### Configuration Files
+
+Orbit loads configuration from two locations (in order of priority):
+
+1. **Project config**: `.orbit.yaml` in the current directory
+2. **Home config**: `~/.orbit.yaml` in your home directory
+
+Example `.orbit.yaml`:
+
+```yaml
+command: "Run /next-task --phase and when complete run /commit"
+post-command: "Run tests and verify everything works"
+```
+
+To disable the post-completion command in config, set it to an empty string:
+
+```yaml
+post-command: ""
+```
+
+### Environment Variables
+
+| Variable | Description |
+|----------|-------------|
+| `ORBIT_COMMAND` | Override the phase command |
+| `ORBIT_POST_COMMAND` | Override the post-completion command (empty string disables) |
+
+### Priority Order
+
+Configuration is resolved in this order (highest priority first):
+
+1. CLI flags (`--command`, `--post-command`, `--no-post-command`)
+2. Environment variables (`ORBIT_COMMAND`, `ORBIT_POST_COMMAND`)
+3. Project config (`.orbit.yaml` in working directory)
+4. Home config (`~/.orbit.yaml`)
+5. Built-in defaults
 
 ## How It Works
 
@@ -66,15 +128,19 @@ orbit --dry-run
 
 ## Log Structure
 
+Logs are saved to `.orbit/` next to the tasks file (e.g., `specs/my-feature/.orbit/`):
+
 ```
-.claude/orchestration-logs/
+specs/my-feature/.orbit/
 └── 2025-01-15-143022-feature-branch/
-    ├── summary.json           # Overall run summary
-    ├── phase-1-session.json   # Full Claude output for phase 1
-    ├── phase-1-session.txt    # Human-readable transcript
+    ├── summary.json                    # Overall run summary
+    ├── phase-1-session.json            # Full Claude output for phase 1
+    ├── phase-1-session.txt             # Human-readable transcript
     ├── phase-2-session.json
     ├── phase-2-session.txt
-    └── ...
+    ├── ...
+    ├── post-completion-session.json    # Post-completion command output
+    └── post-completion-session.txt
 ```
 
 ## Resumption
