@@ -223,7 +223,7 @@ func (m *Manager) generatePostCompletionMarkdownTranscript(srcPath, dstPath, ses
 	if err != nil {
 		return fmt.Errorf("failed to open transcript: %w", err)
 	}
-	defer src.Close()
+	defer func() { _ = src.Close() }()
 
 	var sb strings.Builder
 	sb.WriteString("# Post-Completion Session Transcript\n\n")
@@ -393,13 +393,13 @@ func copyFile(src, dst string) error {
 	if err != nil {
 		return fmt.Errorf("failed to open source: %w", err)
 	}
-	defer srcFile.Close()
+	defer func() { _ = srcFile.Close() }()
 
 	dstFile, err := os.Create(dst)
 	if err != nil {
 		return fmt.Errorf("failed to create destination: %w", err)
 	}
-	defer dstFile.Close()
+	defer func() { _ = dstFile.Close() }()
 
 	if _, err := io.Copy(dstFile, srcFile); err != nil {
 		return fmt.Errorf("failed to copy: %w", err)
@@ -414,7 +414,7 @@ func (m *Manager) generateMarkdownTranscript(srcPath, dstPath string, phase int,
 	if err != nil {
 		return fmt.Errorf("failed to open transcript: %w", err)
 	}
-	defer src.Close()
+	defer func() { _ = src.Close() }()
 
 	var sb strings.Builder
 	sb.WriteString(fmt.Sprintf("# Phase %d Session Transcript\n\n", phase))

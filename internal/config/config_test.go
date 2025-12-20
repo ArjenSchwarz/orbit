@@ -36,10 +36,8 @@ func TestLoad_HomeOnly(t *testing.T) {
 	tmpDir := t.TempDir()
 	homeDir := t.TempDir()
 
-	// Set HOME to temp directory
-	originalHome := os.Getenv("HOME")
-	defer os.Setenv("HOME", originalHome)
-	os.Setenv("HOME", homeDir)
+	// Set HOME to temp directory (t.Setenv restores original after test)
+	t.Setenv("HOME", homeDir)
 
 	// Write home config
 	homeConfig := `command: "home command"
@@ -64,10 +62,8 @@ func TestLoad_MergesBoth(t *testing.T) {
 	tmpDir := t.TempDir()
 	homeDir := t.TempDir()
 
-	// Set HOME to temp directory
-	originalHome := os.Getenv("HOME")
-	defer os.Setenv("HOME", originalHome)
-	os.Setenv("HOME", homeDir)
+	// Set HOME to temp directory (t.Setenv restores original after test)
+	t.Setenv("HOME", homeDir)
 
 	// Write home config with both values
 	homeConfig := `command: "home command"
@@ -101,10 +97,8 @@ func TestLoad_NoFiles(t *testing.T) {
 	tmpDir := t.TempDir()
 	homeDir := t.TempDir()
 
-	// Set HOME to temp directory without config
-	originalHome := os.Getenv("HOME")
-	defer os.Setenv("HOME", originalHome)
-	os.Setenv("HOME", homeDir)
+	// Set HOME to temp directory without config (t.Setenv restores original after test)
+	t.Setenv("HOME", homeDir)
 
 	cfg := Load(tmpDir)
 
@@ -178,10 +172,8 @@ post-command: "config post command"
 		t.Fatalf("failed to write project config: %v", err)
 	}
 
-	// Set environment variable to override
-	originalEnv := os.Getenv("ORBIT_COMMAND")
-	defer os.Setenv("ORBIT_COMMAND", originalEnv)
-	os.Setenv("ORBIT_COMMAND", "env command")
+	// Set environment variable to override (t.Setenv restores original after test)
+	t.Setenv("ORBIT_COMMAND", "env command")
 
 	cfg := Load(tmpDir)
 
@@ -199,16 +191,8 @@ func TestLoad_EnvVarPostCommand(t *testing.T) {
 	// Create temp directory
 	tmpDir := t.TempDir()
 
-	// Set environment variable
-	originalEnv := os.Getenv("ORBIT_POST_COMMAND")
-	defer func() {
-		if originalEnv == "" {
-			os.Unsetenv("ORBIT_POST_COMMAND")
-		} else {
-			os.Setenv("ORBIT_POST_COMMAND", originalEnv)
-		}
-	}()
-	os.Setenv("ORBIT_POST_COMMAND", "env post command")
+	// Set environment variable (t.Setenv restores original after test)
+	t.Setenv("ORBIT_POST_COMMAND", "env post command")
 
 	cfg := Load(tmpDir)
 
@@ -222,15 +206,8 @@ func TestLoad_EnvVarEmptyPostCommand(t *testing.T) {
 	tmpDir := t.TempDir()
 
 	// Set environment variable to empty string (explicitly disable)
-	originalEnv := os.Getenv("ORBIT_POST_COMMAND")
-	defer func() {
-		if originalEnv == "" {
-			os.Unsetenv("ORBIT_POST_COMMAND")
-		} else {
-			os.Setenv("ORBIT_POST_COMMAND", originalEnv)
-		}
-	}()
-	os.Setenv("ORBIT_POST_COMMAND", "")
+	// t.Setenv restores original after test
+	t.Setenv("ORBIT_POST_COMMAND", "")
 
 	cfg := Load(tmpDir)
 
@@ -240,6 +217,72 @@ func TestLoad_EnvVarEmptyPostCommand(t *testing.T) {
 	}
 	if !cfg.IsPostCommandDisabled() {
 		t.Error("expected IsPostCommandDisabled() to return true when env var is explicitly empty")
+	}
+}
+
+func TestLoad_HomeEmptyPostCommand(t *testing.T) {
+	// Create temp directories
+	tmpDir := t.TempDir()
+	homeDir := t.TempDir()
+
+	// Set HOME to temp directory (t.Setenv restores original after test)
+	t.Setenv("HOME", homeDir)
+
+	// Write home config with explicitly empty post-command
+	homeConfig := `command: "home command"
+post-command: ""
+`
+	if err := os.WriteFile(filepath.Join(homeDir, ".orbit.yaml"), []byte(homeConfig), 0644); err != nil {
+		t.Fatalf("failed to write home config: %v", err)
+	}
+
+	cfg := Load(tmpDir)
+
+	if cfg.Command != "home command" {
+		t.Errorf("expected Command %q, got %q", "home command", cfg.Command)
+	}
+	// Home config explicitly disabled post-command
+	if cfg.PostCommand != "" {
+		t.Errorf("expected empty PostCommand, got %q", cfg.PostCommand)
+	}
+	if !cfg.IsPostCommandDisabled() {
+		t.Error("expected IsPostCommandDisabled() to return true when home config sets empty post-command")
+	}
+}
+
+func TestLoad_HomeEmptyPostCommand_ProjectOmits(t *testing.T) {
+	// Create temp directories
+	tmpDir := t.TempDir()
+	homeDir := t.TempDir()
+
+	// Set HOME to temp directory (t.Setenv restores original after test)
+	t.Setenv("HOME", homeDir)
+
+	// Write home config with explicitly empty post-command
+	homeConfig := `post-command: ""
+`
+	if err := os.WriteFile(filepath.Join(homeDir, ".orbit.yaml"), []byte(homeConfig), 0644); err != nil {
+		t.Fatalf("failed to write home config: %v", err)
+	}
+
+	// Project config omits post-command
+	projectConfig := `command: "project command"
+`
+	if err := os.WriteFile(filepath.Join(tmpDir, ".orbit.yaml"), []byte(projectConfig), 0644); err != nil {
+		t.Fatalf("failed to write project config: %v", err)
+	}
+
+	cfg := Load(tmpDir)
+
+	if cfg.Command != "project command" {
+		t.Errorf("expected Command %q, got %q", "project command", cfg.Command)
+	}
+	// Home config explicitly disabled post-command, project didn't override
+	if cfg.PostCommand != "" {
+		t.Errorf("expected empty PostCommand (disabled by home config), got %q", cfg.PostCommand)
+	}
+	if !cfg.IsPostCommandDisabled() {
+		t.Error("expected IsPostCommandDisabled() to return true when home config disabled and project omits")
 	}
 }
 

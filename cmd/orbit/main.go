@@ -87,23 +87,8 @@ func main() {
 	// Load configuration (Viper handles merging of home/project configs and env vars)
 	cfg := config.Load(workingDir)
 
-	// Resolve effective command (priority: flag > config/env > default)
-	command := cfg.Command // Already has default from Viper
-	if *commandFlag != "" {
-		command = *commandFlag
-	}
-
-	// Resolve effective post-command (priority: flag > config/env > default)
-	postCommand := cfg.PostCommand
-	if cfg.IsPostCommandDisabled() {
-		postCommand = "" // Config explicitly disabled
-	}
-	if *postCommandFlag != "" {
-		postCommand = *postCommandFlag
-	}
-	if *noPostCommand {
-		postCommand = "" // Flag disables
-	}
+	// Apply CLI flag overrides
+	command, postCommand := resolveCommands(cfg, *commandFlag, *postCommandFlag, *noPostCommand)
 
 	// Create and run orchestrator
 	orbitCfg := orbit.Config{
@@ -138,6 +123,30 @@ func getGitBranch() (string, error) {
 		return "", fmt.Errorf("not in a git repository or git not available: %w", err)
 	}
 	return strings.TrimSpace(string(output)), nil
+}
+
+// resolveCommands applies CLI flag overrides to config values.
+// Priority: CLI flags > config (which includes env vars > project > home > defaults).
+func resolveCommands(cfg *config.Config, commandFlag, postCommandFlag string, noPostCommand bool) (command, postCommand string) {
+	// Resolve effective command (priority: flag > config/env > default)
+	command = cfg.Command // Already has default from Viper
+	if commandFlag != "" {
+		command = commandFlag
+	}
+
+	// Resolve effective post-command (priority: flag > config/env > default)
+	postCommand = cfg.PostCommand
+	if cfg.IsPostCommandDisabled() {
+		postCommand = "" // Config explicitly disabled
+	}
+	if postCommandFlag != "" {
+		postCommand = postCommandFlag
+	}
+	if noPostCommand {
+		postCommand = "" // Flag disables
+	}
+
+	return command, postCommand
 }
 
 // detectTasksFile attempts to find a tasks file based on the branch name.

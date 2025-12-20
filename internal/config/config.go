@@ -46,19 +46,29 @@ func Load(workingDir string) *Config {
 	v.SetConfigName(".orbit")
 	v.SetConfigType("yaml")
 
+	// Track if post-command was explicitly set in either config file
+	postCommandExplicit := false
+
 	// Load home config first (lowest priority for files)
 	if homeDir, err := os.UserHomeDir(); err == nil {
 		homeConfigPath := filepath.Join(homeDir, ".orbit.yaml")
 		if _, statErr := os.Stat(homeConfigPath); statErr == nil {
-			v.SetConfigFile(homeConfigPath)
-			if err := v.ReadInConfig(); err != nil {
+			homeViper := viper.New()
+			homeViper.SetConfigFile(homeConfigPath)
+			if err := homeViper.ReadInConfig(); err != nil {
 				log.Printf("Warning: could not read %s: %v", homeConfigPath, err)
+			} else {
+				// Track if home config explicitly set post-command
+				if homeViper.IsSet("post-command") {
+					postCommandExplicit = true
+				}
+				// Merge home config into main viper
+				if err := v.MergeConfigMap(homeViper.AllSettings()); err != nil {
+					log.Printf("Warning: could not merge %s: %v", homeConfigPath, err)
+				}
 			}
 		}
 	}
-
-	// Track if post-command was explicitly set in project config
-	postCommandExplicit := false
 
 	// Load project config (higher priority, merges with home)
 	projectConfigPath := filepath.Join(workingDir, ".orbit.yaml")
@@ -70,11 +80,13 @@ func Load(workingDir string) *Config {
 			log.Printf("Warning: could not read %s: %v", projectConfigPath, err)
 		} else {
 			// Check if post-command was explicitly set in project config
-			postCommandExplicit = projectViper.IsSet("post-command")
+			if projectViper.IsSet("post-command") {
+				postCommandExplicit = true
+			}
 
 			// Merge project config into main viper
 			if err := v.MergeConfigMap(projectViper.AllSettings()); err != nil {
-				log.Printf("Warning: could not merge project config: %v", err)
+				log.Printf("Warning: could not merge %s: %v", projectConfigPath, err)
 			}
 		}
 	}

@@ -18,6 +18,13 @@ const (
 	maxRetries = 5
 )
 
+// claudeRunner is an interface for running Claude sessions.
+// This allows for mocking in tests.
+type claudeRunner interface {
+	RunPhase() (*claude.SessionResult, error)
+	RunCustomPrompt(prompt string) (*claude.SessionResult, error)
+}
+
 // Config holds the orchestrator configuration.
 type Config struct {
 	TasksFile       string
@@ -35,7 +42,7 @@ type Config struct {
 type Orbit struct {
 	config         Config
 	runeClient     *rune.Client
-	claudeClient   *claude.Client
+	claudeClient   claudeRunner
 	logManager     *logs.Manager
 	phaseSummaries []rune.PhaseSummary
 }
@@ -109,11 +116,7 @@ func (o *Orbit) Run() error {
 		if o.config.DryRun {
 			log.Printf("[DRY RUN] Would execute phase %d with %d pending tasks", phaseNum, len(pending))
 			log.Printf("[DRY RUN] Next phase: %s with %d tasks", nextPhase.PhaseName, len(nextPhase.Tasks))
-			if o.config.Command != "" {
-				log.Printf("[DRY RUN] Phase command: %s", o.config.Command)
-			} else {
-				log.Printf("[DRY RUN] Phase command: (default)")
-			}
+			log.Printf("[DRY RUN] Phase command: %s", o.config.Command)
 			if o.config.PostCommand != "" {
 				log.Printf("[DRY RUN] Post-command: %s", o.config.PostCommand)
 			} else {
