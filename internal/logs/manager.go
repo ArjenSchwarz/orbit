@@ -159,6 +159,140 @@ func (m *Manager) Complete() error {
 	return m.writeSummary()
 }
 
+// SavePostCompletionSession saves the post-command session with distinct naming.
+func (m *Manager) SavePostCompletionSession(result *claude.SessionResult, startTime time.Time) error {
+	endTime := time.Now()
+	baseName := "post-completion-session"
+
+	// Save JSON
+	jsonPath := filepath.Join(m.sessionDir, baseName+".json")
+	if err := os.WriteFile(jsonPath, result.RawJSON, 0644); err != nil {
+		return fmt.Errorf("failed to write post-completion JSON: %w", err)
+	}
+
+	// Save transcript
+	txtPath := filepath.Join(m.sessionDir, baseName+".txt")
+	transcript := formatPostCompletionTranscript(result, startTime, endTime)
+	if err := os.WriteFile(txtPath, []byte(transcript), 0644); err != nil {
+		return fmt.Errorf("failed to write post-completion transcript: %w", err)
+	}
+
+	// Copy full transcript from ~/.claude/projects if available
+	if result.SessionID != "" {
+		if err := m.copyPostCompletionTranscript(result.SessionID, baseName); err != nil {
+			fmt.Fprintf(os.Stderr, "Warning: could not copy post-completion transcript: %v\n", err)
+		}
+	}
+
+	return nil
+}
+
+// copyPostCompletionTranscript copies the full session transcript for post-completion.
+func (m *Manager) copyPostCompletionTranscript(sessionID, baseName string) error {
+	homeDir, err := os.UserHomeDir()
+	if err != nil {
+		return fmt.Errorf("failed to get home directory: %w", err)
+	}
+
+	projectPath := strings.ReplaceAll(m.workingDir, "/", "-")
+	claudeProjectsDir := filepath.Join(homeDir, ".claude", "projects", projectPath)
+	srcPath := filepath.Join(claudeProjectsDir, sessionID+".jsonl")
+
+	if _, err := os.Stat(srcPath); os.IsNotExist(err) {
+		return fmt.Errorf("session transcript not found: %s", srcPath)
+	}
+
+	// Copy raw JSONL
+	jsonlDstPath := filepath.Join(m.sessionDir, baseName+"-transcript.jsonl")
+	if err := copyFile(srcPath, jsonlDstPath); err != nil {
+		return err
+	}
+
+	// Parse and generate Markdown
+	mdDstPath := filepath.Join(m.sessionDir, baseName+"-transcript.md")
+	if err := m.generatePostCompletionMarkdownTranscript(srcPath, mdDstPath, sessionID); err != nil {
+		fmt.Fprintf(os.Stderr, "Warning: could not generate Markdown transcript: %v\n", err)
+	}
+
+	return nil
+}
+
+// generatePostCompletionMarkdownTranscript parses a JSONL transcript and writes Markdown for post-completion.
+func (m *Manager) generatePostCompletionMarkdownTranscript(srcPath, dstPath, sessionID string) error {
+	src, err := os.Open(srcPath)
+	if err != nil {
+		return fmt.Errorf("failed to open transcript: %w", err)
+	}
+	defer func() { _ = src.Close() }()
+
+	var sb strings.Builder
+	sb.WriteString("# Post-Completion Session Transcript\n\n")
+	sb.WriteString(fmt.Sprintf("**Session ID:** `%s`\n\n", sessionID))
+	sb.WriteString("---\n\n")
+
+	scanner := bufio.NewScanner(src)
+	buf := make([]byte, 0, 64*1024)
+	scanner.Buffer(buf, 10*1024*1024)
+
+	for scanner.Scan() {
+		line := scanner.Bytes()
+		if len(line) == 0 {
+			continue
+		}
+
+		var entry transcriptEntry
+		if err := json.Unmarshal(line, &entry); err != nil {
+			continue
+		}
+
+		switch entry.Type {
+		case "user":
+			sb.WriteString(formatUserMessage(&entry))
+		case "assistant":
+			sb.WriteString(formatAssistantMessage(&entry))
+		}
+	}
+
+	if err := scanner.Err(); err != nil {
+		return fmt.Errorf("failed to scan transcript: %w", err)
+	}
+
+	return os.WriteFile(dstPath, []byte(sb.String()), 0644)
+}
+
+// formatPostCompletionTranscript creates a human-readable post-completion transcript.
+func formatPostCompletionTranscript(result *claude.SessionResult, start, end time.Time) string {
+	return fmt.Sprintf(`Orbit Post-Completion Session Log
+========================================
+
+Session ID: %s
+Started:    %s
+Ended:      %s
+Duration:   %s
+Cost:       $%.4f
+Turns:      %d
+Error:      %v
+
+Output:
+----------------------------------------
+%s
+
+Stderr:
+----------------------------------------
+%s
+`,
+		result.SessionID,
+		start.Format(time.RFC3339),
+		end.Format(time.RFC3339),
+		result.Duration.String(),
+		result.Cost,
+		result.NumTurns,
+		result.IsError,
+		result.Output,
+		result.Stderr,
+	)
+}
+
 // Fail marks the orchestration run as failed with an error message.
 func (m *Manager) Fail(err error) error {
 	now := time.Now()
@@ -259,13 +393,13 @@ func copyFile(src, dst string) error {
 	if err != nil {
 		return fmt.Errorf("failed to open source: %w", err)
 	}
-	defer srcFile.Close()
+	defer func() { _ = srcFile.Close() }()
 
 	dstFile, err := os.Create(dst)
 	if err != nil {
 		return fmt.Errorf("failed to create destination: %w", err)
 	}
-	defer dstFile.Close()
+	defer func() { _ = dstFile.Close() }()
 
 	if _, err := io.Copy(dstFile, srcFile); err != nil {
 		return fmt.Errorf("failed to copy: %w", err)
@@ -280,7 +414,7 @@ func (m *Manager) generateMarkdownTranscript(srcPath, dstPath string, phase int,
 	if err != nil {
 		return fmt.Errorf("failed to open transcript: %w", err)
 	}
-	defer src.Close()
+	defer func() { _ = src.Close() }()
 
 	var sb strings.Builder
 	sb.WriteString(fmt.Sprintf("# Phase %d Session Transcript\n\n", phase))

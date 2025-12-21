@@ -327,3 +327,103 @@ func TestFormatAssistantMessage_ToolError(t *testing.T) {
 		t.Error("should contain error tool result header")
 	}
 }
+
+func TestManager_SavePostCompletionSession(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	m, err := NewManager(tmpDir, "test-branch", "/tmp/test-project")
+	if err != nil {
+		t.Fatalf("NewManager failed: %v", err)
+	}
+
+	result := &claude.SessionResult{
+		SessionID: "post-completion-session-456",
+		Cost:      0.25,
+		Duration:  60 * time.Second,
+		NumTurns:  8,
+		Output:    "Review complete. All tests pass.",
+		IsError:   false,
+		RawJSON:   []byte(`{"session_id": "post-completion-session-456"}`),
+		Stderr:    "",
+	}
+
+	startTime := time.Now().Add(-60 * time.Second)
+	if err := m.SavePostCompletionSession(result, startTime); err != nil {
+		t.Fatalf("SavePostCompletionSession failed: %v", err)
+	}
+
+	// Check post-completion JSON file was created
+	jsonPath := filepath.Join(m.SessionDir(), "post-completion-session.json")
+	if _, err := os.Stat(jsonPath); os.IsNotExist(err) {
+		t.Error("post-completion JSON file was not created")
+	}
+
+	// Verify JSON content
+	jsonData, err := os.ReadFile(jsonPath)
+	if err != nil {
+		t.Fatalf("failed to read JSON file: %v", err)
+	}
+	if string(jsonData) != `{"session_id": "post-completion-session-456"}` {
+		t.Errorf("unexpected JSON content: %s", string(jsonData))
+	}
+
+	// Check post-completion transcript file was created
+	txtPath := filepath.Join(m.SessionDir(), "post-completion-session.txt")
+	if _, err := os.Stat(txtPath); os.IsNotExist(err) {
+		t.Error("post-completion transcript file was not created")
+	}
+
+	// Verify transcript content
+	txtData, err := os.ReadFile(txtPath)
+	if err != nil {
+		t.Fatalf("failed to read transcript file: %v", err)
+	}
+
+	transcript := string(txtData)
+	if !containsString(transcript, "Post-Completion Session Log") {
+		t.Error("transcript should contain post-completion header")
+	}
+	if !containsString(transcript, "post-completion-session-456") {
+		t.Error("transcript should contain session ID")
+	}
+	if !containsString(transcript, "Review complete. All tests pass.") {
+		t.Error("transcript should contain output")
+	}
+}
+
+func TestFormatPostCompletionTranscript(t *testing.T) {
+	result := &claude.SessionResult{
+		SessionID: "post-123",
+		Cost:      0.30,
+		Duration:  45 * time.Second,
+		NumTurns:  5,
+		Output:    "Verification complete",
+		IsError:   false,
+		Stderr:    "warning: something",
+	}
+
+	start := time.Date(2025, 1, 15, 14, 30, 0, 0, time.UTC)
+	end := time.Date(2025, 1, 15, 14, 30, 45, 0, time.UTC)
+
+	transcript := formatPostCompletionTranscript(result, start, end)
+
+	// Check key elements are present
+	if !containsString(transcript, "Post-Completion Session Log") {
+		t.Error("transcript should contain post-completion header")
+	}
+	if !containsString(transcript, "post-123") {
+		t.Error("transcript should contain session ID")
+	}
+	if !containsString(transcript, "Verification complete") {
+		t.Error("transcript should contain output")
+	}
+	if !containsString(transcript, "warning: something") {
+		t.Error("transcript should contain stderr")
+	}
+	if !containsString(transcript, "$0.3000") {
+		t.Error("transcript should contain cost")
+	}
+	if !containsString(transcript, "Turns:      5") {
+		t.Error("transcript should contain turn count")
+	}
+}

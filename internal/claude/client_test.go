@@ -113,6 +113,7 @@ func TestConfig_Struct(t *testing.T) {
 	config := Config{
 		SkipPermissions: true,
 		WorkingDir:      "/path/to/project",
+		Prompt:          "Custom prompt for testing",
 	}
 
 	if !config.SkipPermissions {
@@ -120,5 +121,45 @@ func TestConfig_Struct(t *testing.T) {
 	}
 	if config.WorkingDir != "/path/to/project" {
 		t.Errorf("WorkingDir = %q, want %q", config.WorkingDir, "/path/to/project")
+	}
+	if config.Prompt != "Custom prompt for testing" {
+		t.Errorf("Prompt = %q, want %q", config.Prompt, "Custom prompt for testing")
+	}
+}
+
+func TestNewClient_WithPrompt(t *testing.T) {
+	customPrompt := "Run /custom-command and when complete run /commit"
+	config := Config{
+		SkipPermissions: true,
+		WorkingDir:      "/tmp/test",
+		Prompt:          customPrompt,
+	}
+
+	client := NewClient(config)
+
+	if client == nil {
+		t.Fatal("NewClient returned nil")
+	}
+
+	if client.config.Prompt != customPrompt {
+		t.Errorf("Prompt = %q, want %q", client.config.Prompt, customPrompt)
+	}
+}
+
+func TestNewClient_EmptyPrompt(t *testing.T) {
+	config := Config{
+		SkipPermissions: false,
+		WorkingDir:      "/tmp/test",
+		Prompt:          "",
+	}
+
+	client := NewClient(config)
+
+	if client == nil {
+		t.Fatal("NewClient returned nil")
+	}
+
+	if client.config.Prompt != "" {
+		t.Errorf("Prompt should be empty, got %q", client.config.Prompt)
 	}
 }
