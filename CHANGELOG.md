@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Tests for config priority chain (`TestLoad_FullPriorityChain`, `TestLoad_PartialPriorityChain`, `TestLoad_EnvOverridesAllConfigs`, `TestLoad_EmptyEnvOverridesNonEmptyConfig`)
 - Tests for CLI flag priority resolution (`TestResolveCommands`)
 - Tests for post-command retry logic (`TestRunPostCommandWithRetry_*`, `TestRunPhaseWithRetry_*`)
 - Tests for home config with empty post-command (`TestLoad_HomeEmptyPostCommand`, `TestLoad_HomeEmptyPostCommand_ProjectOmits`)
@@ -24,12 +25,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- Simplified config environment variable handling by removing Viper's AutomaticEnv() in favor of os.LookupEnv for proper empty string detection
+- Enhanced config.Load() documentation explaining the priority chain and design rationale
 - Log directory now defaults to `.orbit` folder next to the tasks file instead of `.claude/orchestration-logs`
 - Phase numbers now reflect actual phase order from tasks file instead of iteration counter
 - Updated rune client to handle wrapper object format from rune CLI JSON output
 
 ### Fixed
 
+- Fixed meaningless `errors.Is(err, err)` assertion in TestRunPostCommandWithRetry_MaxRetriesExceeded
 - Config priority bug: home config's explicit `post-command: ""` now correctly disables post-command
 - Dry-run output now shows actual command value instead of "(default)"
 - Linter errors (errcheck violations) in test files and logs/manager.go

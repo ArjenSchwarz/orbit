@@ -2,6 +2,7 @@ package orbit
 
 import (
 	"errors"
+	"strings"
 	"testing"
 	"time"
 
@@ -247,8 +248,12 @@ func TestRunPostCommandWithRetry_MaxRetriesExceeded(t *testing.T) {
 	if callCount != maxRetries {
 		t.Errorf("expected %d calls (max retries), got %d", maxRetries, callCount)
 	}
-	if !errors.Is(err, err) || err.Error() == "" {
-		t.Errorf("expected wrapped error, got: %v", err)
+	if !strings.Contains(err.Error(), "max retries exceeded") {
+		t.Errorf("expected 'max retries exceeded' in error message, got: %v", err)
+	}
+	var classified *orberrors.ClassifiedError
+	if !errors.As(err, &classified) {
+		t.Error("expected wrapped ClassifiedError")
 	}
 }
 

@@ -5,7 +5,6 @@ import (
 	"log"
 	"os"
 	"path/filepath"
-	"strings"
 
 	"github.com/spf13/viper"
 )
@@ -28,19 +27,24 @@ type Config struct {
 }
 
 // Load reads configuration from home and project directories using Viper.
-// Priority: environment variables > project config > home config > defaults.
-// Also reads ORBIT_COMMAND and ORBIT_POST_COMMAND environment variables.
+//
+// Priority (highest to lowest):
+//  1. Environment variables (ORBIT_COMMAND, ORBIT_POST_COMMAND)
+//  2. Project config (.orbit.yaml in working directory)
+//  3. Home config (~/.orbit.yaml)
+//  4. Built-in defaults
+//
+// Environment variables are checked using os.LookupEnv rather than Viper's
+// AutomaticEnv() because Viper cannot distinguish between "not set" and
+// "set to empty string". This distinction matters for post-command: setting
+// ORBIT_POST_COMMAND="" explicitly disables the post-command, while not
+// setting it uses the default.
 func Load(workingDir string) *Config {
 	v := viper.New()
 
 	// Set defaults
 	v.SetDefault("command", DefaultCommand)
 	v.SetDefault("post-command", DefaultPostCommand)
-
-	// Environment variables: ORBIT_COMMAND, ORBIT_POST_COMMAND
-	v.SetEnvPrefix("ORBIT")
-	v.SetEnvKeyReplacer(strings.NewReplacer("-", "_"))
-	v.AutomaticEnv()
 
 	// Config file name (without extension)
 	v.SetConfigName(".orbit")
@@ -91,11 +95,12 @@ func Load(workingDir string) *Config {
 		}
 	}
 
-	// Resolve final values, handling env var overrides
+	// Get values from config files (with defaults as fallback)
 	command := v.GetString("command")
 	postCommand := v.GetString("post-command")
 
-	// Check if environment variables are set (Viper doesn't handle empty string env vars well)
+	// Apply environment variable overrides (highest priority)
+	// Using os.LookupEnv to detect both set values and explicitly empty values
 	if envCmd, exists := os.LookupEnv("ORBIT_COMMAND"); exists {
 		command = envCmd
 	}

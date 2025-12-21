@@ -114,8 +114,12 @@ func TestLoad_NoFiles(t *testing.T) {
 }
 
 func TestLoad_InvalidYAML(t *testing.T) {
-	// Create temp directory with invalid YAML
+	// Create temp directories
 	tmpDir := t.TempDir()
+	homeDir := t.TempDir()
+
+	// Isolate from real home config
+	t.Setenv("HOME", homeDir)
 
 	invalidConfig := `command: [this is not valid yaml
 post-command: {broken
@@ -283,6 +287,156 @@ func TestLoad_HomeEmptyPostCommand_ProjectOmits(t *testing.T) {
 	}
 	if !cfg.IsPostCommandDisabled() {
 		t.Error("expected IsPostCommandDisabled() to return true when home config disabled and project omits")
+	}
+}
+
+func TestLoad_FullPriorityChain(t *testing.T) {
+	// This test verifies the complete priority chain:
+	// env vars > project config > home config > defaults
+	// All sources are set with different values to ensure correct precedence.
+
+	// Create temp directories
+	tmpDir := t.TempDir()
+	homeDir := t.TempDir()
+
+	// Set HOME to temp directory
+	t.Setenv("HOME", homeDir)
+
+	// Write home config (lowest priority among files)
+	homeConfig := `command: "home command"
+post-command: "home post command"
+`
+	if err := os.WriteFile(filepath.Join(homeDir, ".orbit.yaml"), []byte(homeConfig), 0644); err != nil {
+		t.Fatalf("failed to write home config: %v", err)
+	}
+
+	// Write project config (higher priority than home)
+	projectConfig := `command: "project command"
+post-command: "project post command"
+`
+	if err := os.WriteFile(filepath.Join(tmpDir, ".orbit.yaml"), []byte(projectConfig), 0644); err != nil {
+		t.Fatalf("failed to write project config: %v", err)
+	}
+
+	// Set environment variables (highest priority)
+	t.Setenv("ORBIT_COMMAND", "env command")
+	t.Setenv("ORBIT_POST_COMMAND", "env post command")
+
+	cfg := Load(tmpDir)
+
+	// Environment variables should win over both config files
+	if cfg.Command != "env command" {
+		t.Errorf("expected Command %q (from env), got %q", "env command", cfg.Command)
+	}
+	if cfg.PostCommand != "env post command" {
+		t.Errorf("expected PostCommand %q (from env), got %q", "env post command", cfg.PostCommand)
+	}
+}
+
+func TestLoad_PartialPriorityChain(t *testing.T) {
+	// Test that each level properly falls through to the next when not set.
+	// Sets: env command only, project post-command only, home has both as fallback.
+
+	tmpDir := t.TempDir()
+	homeDir := t.TempDir()
+
+	t.Setenv("HOME", homeDir)
+
+	// Home config provides fallback values
+	homeConfig := `command: "home command"
+post-command: "home post command"
+`
+	if err := os.WriteFile(filepath.Join(homeDir, ".orbit.yaml"), []byte(homeConfig), 0644); err != nil {
+		t.Fatalf("failed to write home config: %v", err)
+	}
+
+	// Project config only sets post-command
+	projectConfig := `post-command: "project post command"
+`
+	if err := os.WriteFile(filepath.Join(tmpDir, ".orbit.yaml"), []byte(projectConfig), 0644); err != nil {
+		t.Fatalf("failed to write project config: %v", err)
+	}
+
+	// Env var only sets command
+	t.Setenv("ORBIT_COMMAND", "env command")
+
+	cfg := Load(tmpDir)
+
+	// Command: env var wins
+	if cfg.Command != "env command" {
+		t.Errorf("expected Command %q (from env), got %q", "env command", cfg.Command)
+	}
+	// PostCommand: project config wins (no env var set)
+	if cfg.PostCommand != "project post command" {
+		t.Errorf("expected PostCommand %q (from project), got %q", "project post command", cfg.PostCommand)
+	}
+}
+
+func TestLoad_EnvOverridesAllConfigs(t *testing.T) {
+	// Verify that env vars override both home and project configs simultaneously.
+
+	tmpDir := t.TempDir()
+	homeDir := t.TempDir()
+
+	t.Setenv("HOME", homeDir)
+
+	// Both configs set values
+	homeConfig := `command: "home command"
+post-command: "home post command"
+`
+	if err := os.WriteFile(filepath.Join(homeDir, ".orbit.yaml"), []byte(homeConfig), 0644); err != nil {
+		t.Fatalf("failed to write home config: %v", err)
+	}
+
+	projectConfig := `command: "project command"
+post-command: "project post command"
+`
+	if err := os.WriteFile(filepath.Join(tmpDir, ".orbit.yaml"), []byte(projectConfig), 0644); err != nil {
+		t.Fatalf("failed to write project config: %v", err)
+	}
+
+	// Env vars override everything
+	t.Setenv("ORBIT_COMMAND", "env wins")
+	t.Setenv("ORBIT_POST_COMMAND", "env also wins")
+
+	cfg := Load(tmpDir)
+
+	if cfg.Command != "env wins" {
+		t.Errorf("expected env var to override all configs, got Command %q", cfg.Command)
+	}
+	if cfg.PostCommand != "env also wins" {
+		t.Errorf("expected env var to override all configs, got PostCommand %q", cfg.PostCommand)
+	}
+}
+
+func TestLoad_EmptyEnvOverridesNonEmptyConfig(t *testing.T) {
+	// Critical test: empty env var should override non-empty config values.
+	// This validates that os.LookupEnv correctly detects empty strings.
+
+	tmpDir := t.TempDir()
+
+	projectConfig := `command: "project command"
+post-command: "project post command"
+`
+	if err := os.WriteFile(filepath.Join(tmpDir, ".orbit.yaml"), []byte(projectConfig), 0644); err != nil {
+		t.Fatalf("failed to write project config: %v", err)
+	}
+
+	// Set env vars to empty strings
+	t.Setenv("ORBIT_COMMAND", "")
+	t.Setenv("ORBIT_POST_COMMAND", "")
+
+	cfg := Load(tmpDir)
+
+	// Empty env vars should override config file values
+	if cfg.Command != "" {
+		t.Errorf("expected empty Command from env var, got %q", cfg.Command)
+	}
+	if cfg.PostCommand != "" {
+		t.Errorf("expected empty PostCommand from env var, got %q", cfg.PostCommand)
+	}
+	if !cfg.IsPostCommandDisabled() {
+		t.Error("expected IsPostCommandDisabled() to return true when env var is empty")
 	}
 }
 

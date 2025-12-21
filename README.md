@@ -104,6 +104,16 @@ post-command: ""
 | `ORBIT_COMMAND` | Override the phase command |
 | `ORBIT_POST_COMMAND` | Override the post-completion command (empty string disables) |
 
+Setting an environment variable to an empty string explicitly overrides config file values:
+
+```bash
+# Disable post-command even if config files set one
+ORBIT_POST_COMMAND="" orbit
+
+# Use empty command (not recommended, but supported)
+ORBIT_COMMAND="" orbit
+```
+
 ### Priority Order
 
 Configuration is resolved in this order (highest priority first):
