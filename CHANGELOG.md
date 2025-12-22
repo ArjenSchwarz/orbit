@@ -20,6 +20,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `claudeRunner` interface in orbit package to support mocking in tests
 - `resolveCommands()` helper function in main.go for testable CLI flag resolution
 - Tests for post-completion session logging (SavePostCompletionSession and formatPostCompletionTranscript)
+- UUID dependency (`github.com/google/uuid`) for session ID generation
 - Viper dependency for configuration management (custom-commands feature)
 - Phase overview table at startup showing all phases with status and task counts
 - Full session transcript copying from `~/.claude/projects/{project-path}/{session-id}.jsonl`
