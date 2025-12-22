@@ -8,21 +8,21 @@ references:
 
 ## Pre-work
 
-- [ ] 1. Add UUID dependency to go.mod
+- [x] 1. Add UUID dependency to go.mod
   - Run: go get github.com/google/uuid
   - Verify import works in a test file
   - Requirements: [2.1](requirements.md#2.1)
 
 ## Log Manager Changes
 
-- [ ] 2. Add new types to logs package
+- [x] 2. Add new types to logs package
   - Add ManagerOptions struct
   - Add PhaseState struct
   - Add PostCompletionState struct
   - File: internal/logs/manager.go
   - Requirements: [1.5](requirements.md#1.5), [2.4](requirements.md#2.4)
 
-- [ ] 3. Update Summary struct with new fields
+- [x] 3. Update Summary struct with new fields
   - Add CurrentPhase *PhaseState field
   - Add PostCompletion *PostCompletionState field
   - Add RunNumber int field
@@ -30,18 +30,18 @@ references:
   - File: internal/logs/manager.go
   - Requirements: [1.3](requirements.md#1.3), [1.4](requirements.md#1.4), [2.3](requirements.md#2.3)
 
-- [ ] 4. Update SessionEntry struct
+- [x] 4. Update SessionEntry struct
   - Add RunNumber int field
   - File: internal/logs/manager.go
   - Requirements: [1.2](requirements.md#1.2)
 
-- [ ] 5. Update Manager struct
+- [x] 5. Update Manager struct
   - Add useSubdirs bool field
   - Add branchName string field
   - File: internal/logs/manager.go
   - Requirements: [1.1](requirements.md#1.1), [1.5](requirements.md#1.5)
 
-- [ ] 6. Write tests for NewManager with flat mode
+- [x] 6. Write tests for NewManager with flat mode
   - Test flat directory creation
   - Test loading existing summary
   - Test run number increment
@@ -50,7 +50,7 @@ references:
   - File: internal/logs/manager_test.go
   - Requirements: [1.1](requirements.md#1.1), [1.3](requirements.md#1.3), [1.4](requirements.md#1.4), [5.2](requirements.md#5.2)
 
-- [ ] 7. Implement NewManager with ManagerOptions
+- [x] 7. Implement NewManager with ManagerOptions
   - Support UseSubdirs option
   - Load existing summary in flat mode
   - Increment run number on resume
@@ -59,20 +59,20 @@ references:
   - File: internal/logs/manager.go
   - Requirements: [1.1](requirements.md#1.1), [1.3](requirements.md#1.3), [1.4](requirements.md#1.4), [1.5](requirements.md#1.5), [5.2](requirements.md#5.2)
 
-- [ ] 8. Write tests for loadExistingSummary
+- [x] 8. Write tests for loadExistingSummary
   - Test successful load
   - Test file not found
   - Test malformed JSON
   - File: internal/logs/manager_test.go
   - Requirements: [1.3](requirements.md#1.3), [5.2](requirements.md#5.2)
 
-- [ ] 9. Implement loadExistingSummary method
+- [x] 9. Implement loadExistingSummary method
   - Read and unmarshal summary.json
   - Return error if not found or malformed
   - File: internal/logs/manager.go
   - Requirements: [1.3](requirements.md#1.3), [5.2](requirements.md#5.2)
 
-- [ ] 10. Write tests for StartPhase
+- [x] 10. Write tests for StartPhase
   - Test new session ID generation
   - Test resume existing session
   - Test continueSession=false clears state
@@ -80,7 +80,7 @@ references:
   - File: internal/logs/manager_test.go
   - Requirements: [2.1](requirements.md#2.1), [2.3](requirements.md#2.3), [3.1](requirements.md#3.1), [3.3](requirements.md#3.3), [3.5](requirements.md#3.5), [5.1](requirements.md#5.1)
 
-- [ ] 11. Implement StartPhase method
+- [x] 11. Implement StartPhase method
   - Check for existing CurrentPhase
   - Return existing session ID if continuing
   - Generate new UUID if starting fresh
@@ -89,69 +89,69 @@ references:
   - File: internal/logs/manager.go
   - Requirements: [2.1](requirements.md#2.1), [2.3](requirements.md#2.3), [2.4](requirements.md#2.4), [3.1](requirements.md#3.1), [3.3](requirements.md#3.3), [3.5](requirements.md#3.5), [5.1](requirements.md#5.1)
 
-- [ ] 12. Write tests for SetCurrentPhaseSessionID
+- [x] 12. Write tests for SetCurrentPhaseSessionID
   - Test updates CurrentPhase.SessionID
   - Test writes summary to disk
   - File: internal/logs/manager_test.go
   - Requirements: [3.8](requirements.md#3.8)
 
-- [ ] 13. Implement SetCurrentPhaseSessionID method
+- [x] 13. Implement SetCurrentPhaseSessionID method
   - Update CurrentPhase.SessionID
   - Write summary to disk
   - File: internal/logs/manager.go
   - Requirements: [3.8](requirements.md#3.8)
 
-- [ ] 14. Write tests for ReconcileSessionID
+- [x] 14. Write tests for ReconcileSessionID
   - Test updates CurrentPhase.SessionID when different
   - Test no-op when IDs match
   - File: internal/logs/manager_test.go
   - Requirements: [2.5](requirements.md#2.5), [2.6](requirements.md#2.6)
 
-- [ ] 15. Implement ReconcileSessionID method
+- [x] 15. Implement ReconcileSessionID method
   - Compare returned ID with stored ID
   - Update if different
   - File: internal/logs/manager.go
   - Requirements: [2.5](requirements.md#2.5), [2.6](requirements.md#2.6)
 
-- [ ] 16. Write tests for CompletePhase
+- [x] 16. Write tests for CompletePhase
   - Test clears CurrentPhase
   - Test writes summary
   - File: internal/logs/manager_test.go
   - Requirements: [2.7](requirements.md#2.7)
 
-- [ ] 17. Implement CompletePhase method
+- [x] 17. Implement CompletePhase method
   - Set CurrentPhase to nil
   - Write summary to disk
   - File: internal/logs/manager.go
   - Requirements: [2.7](requirements.md#2.7)
 
-- [ ] 18. Write tests for post-completion session methods
+- [x] 18. Write tests for post-completion session methods
   - Test StartPostCompletion returns session info
   - Test CompletePostCompletion clears state
   - Test resume existing post-completion
   - File: internal/logs/manager_test.go
   - Requirements: [3.1](requirements.md#3.1)
 
-- [ ] 19. Implement StartPostCompletion and CompletePostCompletion
+- [x] 19. Implement StartPostCompletion and CompletePostCompletion
   - Similar logic to StartPhase but for PostCompletion state
   - Track in-progress post-completion command
   - File: internal/logs/manager.go
   - Requirements: [3.1](requirements.md#3.1)
 
-- [ ] 20. Write tests for phaseFileName helper
+- [x] 20. Write tests for phaseFileName helper
   - Test run-numbered filename when RunNumber > 1
   - Test standard filename when RunNumber = 1
   - Test behavior with UseSubdirs
   - File: internal/logs/manager_test.go
   - Requirements: [1.2](requirements.md#1.2)
 
-- [ ] 21. Implement phaseFileName helper method
+- [x] 21. Implement phaseFileName helper method
   - Return run-numbered filename when RunNumber > 1 in flat mode
   - Return standard filename otherwise
   - File: internal/logs/manager.go
   - Requirements: [1.2](requirements.md#1.2)
 
-- [ ] 22. Update SaveSession to use phaseFileName
+- [x] 22. Update SaveSession to use phaseFileName
   - Replace hardcoded filename format with phaseFileName
   - Include RunNumber in SessionEntry
   - File: internal/logs/manager.go
@@ -159,14 +159,14 @@ references:
 
 ## Claude Client Changes
 
-- [ ] 23. Write tests for RunPhase with session parameters
+- [x] 23. Write tests for RunPhase with session parameters
   - Test --session-id flag when resume=false
   - Test --resume flag when resume=true
   - Test command argument order
   - File: internal/claude/client_test.go
   - Requirements: [2.2](requirements.md#2.2), [3.2](requirements.md#3.2), [3.3](requirements.md#3.3)
 
-- [ ] 24. Update RunPhase signature and implementation
+- [x] 24. Update RunPhase signature and implementation
   - Change signature to RunPhase(sessionID string, resume bool)
   - Add --resume sessionID when resume=true
   - Add --session-id sessionID when resume=false

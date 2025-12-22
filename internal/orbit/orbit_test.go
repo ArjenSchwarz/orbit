@@ -12,13 +12,13 @@ import (
 
 // mockClaudeClient implements claudeRunner for testing.
 type mockClaudeClient struct {
-	runPhaseFunc        func() (*claude.SessionResult, error)
+	runPhaseFunc        func(sessionID string, resume bool) (*claude.SessionResult, error)
 	runCustomPromptFunc func(prompt string) (*claude.SessionResult, error)
 }
 
-func (m *mockClaudeClient) RunPhase() (*claude.SessionResult, error) {
+func (m *mockClaudeClient) RunPhase(sessionID string, resume bool) (*claude.SessionResult, error) {
 	if m.runPhaseFunc != nil {
-		return m.runPhaseFunc()
+		return m.runPhaseFunc(sessionID, resume)
 	}
 	return &claude.SessionResult{}, nil
 }
@@ -260,7 +260,7 @@ func TestRunPostCommandWithRetry_MaxRetriesExceeded(t *testing.T) {
 func TestRunPhaseWithRetry_RateLimitError(t *testing.T) {
 	callCount := 0
 	mock := &mockClaudeClient{
-		runPhaseFunc: func() (*claude.SessionResult, error) {
+		runPhaseFunc: func(sessionID string, resume bool) (*claude.SessionResult, error) {
 			callCount++
 			if callCount == 1 {
 				// Rate limit error on first attempt
@@ -295,7 +295,7 @@ func TestRunPhaseWithRetry_RateLimitError(t *testing.T) {
 func TestRunPhaseWithRetry_OverloadedError(t *testing.T) {
 	callCount := 0
 	mock := &mockClaudeClient{
-		runPhaseFunc: func() (*claude.SessionResult, error) {
+		runPhaseFunc: func(sessionID string, resume bool) (*claude.SessionResult, error) {
 			callCount++
 			if callCount == 1 {
 				// API overloaded on first attempt

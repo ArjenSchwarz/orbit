@@ -9,6 +9,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Session ID support in Claude client's `RunPhase` method with `--session-id` and `--resume` flags
+- `buildRunPhaseArgs` helper method for constructing Claude CLI arguments with session handling
+- Tests for Claude client session parameter handling (new session, resume, skip permissions, arg order)
 - Session management spec with requirements, design, decisions, and tasks for:
   - Flat log directory storage (default) with optional date-based subdirectories
   - Session ID generation and storage before Claude phase execution
@@ -30,6 +33,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- Updated `claudeRunner` interface signature: `RunPhase()` now requires `sessionID string` and `resume bool` parameters
+- Orbit now generates UUID session IDs for each phase execution
 - Simplified config environment variable handling by removing Viper's AutomaticEnv() in favor of os.LookupEnv for proper empty string detection
 - Enhanced config.Load() documentation explaining the priority chain and design rationale
 - Log directory now defaults to `.orbit` folder next to the tasks file instead of `.claude/orchestration-logs`

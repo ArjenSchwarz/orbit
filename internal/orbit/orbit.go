@@ -12,6 +12,7 @@ import (
 	orberrors "github.com/arjenschwarz/orbit/internal/errors"
 	"github.com/arjenschwarz/orbit/internal/logs"
 	"github.com/arjenschwarz/orbit/internal/rune"
+	"github.com/google/uuid"
 )
 
 const (
@@ -21,7 +22,7 @@ const (
 // claudeRunner is an interface for running Claude sessions.
 // This allows for mocking in tests.
 type claudeRunner interface {
-	RunPhase() (*claude.SessionResult, error)
+	RunPhase(sessionID string, resume bool) (*claude.SessionResult, error)
 	RunCustomPrompt(prompt string) (*claude.SessionResult, error)
 }
 
@@ -271,7 +272,12 @@ func (o *Orbit) runPhaseWithRetry(phase int) error {
 func (o *Orbit) runPhase(phase int) error {
 	startTime := time.Now()
 
-	result, err := o.claudeClient.RunPhase()
+	// Generate a new session ID for this phase
+	// TODO: In future, this will be handled by the log manager's StartPhase method
+	// which will support session continuation
+	sessionID := uuid.NewString()
+
+	result, err := o.claudeClient.RunPhase(sessionID, false)
 	if err != nil {
 		// Save the failed session for debugging
 		if o.logManager != nil && result != nil {
