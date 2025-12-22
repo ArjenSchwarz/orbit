@@ -327,6 +327,111 @@ func TestRunPhaseWithRetry_OverloadedError(t *testing.T) {
 	}
 }
 
+func TestIsSessionInvalidError(t *testing.T) {
+	tests := map[string]struct {
+		result *claude.SessionResult
+		want   bool
+	}{
+		"session not found in stderr": {
+			result: &claude.SessionResult{
+				Stderr: "error: session not found",
+				Output: "",
+			},
+			want: true,
+		},
+		"session not found in output": {
+			result: &claude.SessionResult{
+				Stderr: "",
+				Output: "Session not found for the given ID",
+			},
+			want: true,
+		},
+		"invalid session in stderr": {
+			result: &claude.SessionResult{
+				Stderr: "invalid session ID provided",
+				Output: "",
+			},
+			want: true,
+		},
+		"invalid session in output": {
+			result: &claude.SessionResult{
+				Stderr: "",
+				Output: "error: invalid session - cannot be resumed",
+			},
+			want: true,
+		},
+		"session expired in stderr": {
+			result: &claude.SessionResult{
+				Stderr: "session expired",
+				Output: "",
+			},
+			want: true,
+		},
+		"session expired in output": {
+			result: &claude.SessionResult{
+				Stderr: "",
+				Output: "error: session expired, please start a new one",
+			},
+			want: true,
+		},
+		"no such session": {
+			result: &claude.SessionResult{
+				Stderr: "no such session exists",
+				Output: "",
+			},
+			want: true,
+		},
+		"case insensitive matching": {
+			result: &claude.SessionResult{
+				Stderr: "SESSION NOT FOUND",
+				Output: "",
+			},
+			want: true,
+		},
+		"non-session error returns false": {
+			result: &claude.SessionResult{
+				Stderr: "rate limit exceeded",
+				Output: "",
+			},
+			want: false,
+		},
+		"connection error returns false": {
+			result: &claude.SessionResult{
+				Stderr: "connection timeout",
+				Output: "",
+			},
+			want: false,
+		},
+		"empty result returns false": {
+			result: &claude.SessionResult{
+				Stderr: "",
+				Output: "",
+			},
+			want: false,
+		},
+		"nil result returns false": {
+			result: nil,
+			want:   false,
+		},
+		"generic error returns false": {
+			result: &claude.SessionResult{
+				Stderr: "unknown error occurred",
+				Output: "Something went wrong",
+			},
+			want: false,
+		},
+	}
+
+	for name, tc := range tests {
+		t.Run(name, func(t *testing.T) {
+			got := isSessionInvalidError(tc.result)
+			if got != tc.want {
+				t.Errorf("isSessionInvalidError() = %v, want %v", got, tc.want)
+			}
+		})
+	}
+}
+
 func TestErrorClassification_IsUsedCorrectly(t *testing.T) {
 	tests := map[string]struct {
 		stderr        string

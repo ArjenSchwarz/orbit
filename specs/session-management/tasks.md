@@ -175,24 +175,24 @@ references:
 
 ## Orchestrator Changes
 
-- [ ] 25. Update claudeRunner interface
+- [x] 25. Update claudeRunner interface
   - Change RunPhase signature to (sessionID string, resume bool)
   - File: internal/orbit/orbit.go
   - Requirements: [3.2](requirements.md#3.2), [3.3](requirements.md#3.3)
 
-- [ ] 26. Update orbit.Config struct
+- [x] 26. Update orbit.Config struct
   - Add DateSubdirs bool field
   - Add ContinueSession bool field
   - File: internal/orbit/orbit.go
   - Requirements: [1.5](requirements.md#1.5), [1.6](requirements.md#1.6), [3.4](requirements.md#3.4), [3.6](requirements.md#3.6)
 
-- [ ] 27. Update orbit.New to pass ManagerOptions
+- [x] 27. Update orbit.New to pass ManagerOptions
   - Create logs.ManagerOptions with UseSubdirs
   - Pass to logs.NewManager
   - File: internal/orbit/orbit.go
   - Requirements: [1.1](requirements.md#1.1), [1.5](requirements.md#1.5)
 
-- [ ] 28. Write tests for isSessionInvalidError
+- [x] 28. Write tests for isSessionInvalidError
   - Test detection of session not found
   - Test detection of invalid session
   - Test detection of session expired
@@ -200,7 +200,7 @@ references:
   - File: internal/orbit/orbit_test.go
   - Requirements: [3.7](requirements.md#3.7)
 
-- [ ] 29. Implement isSessionInvalidError function
+- [x] 29. Implement isSessionInvalidError function
   - Check stderr and output for session error messages
   - Return true for session-related errors
   - File: internal/orbit/orbit.go

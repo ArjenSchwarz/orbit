@@ -5,6 +5,7 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"strings"
 	"time"
 
 	output "github.com/ArjenSchwarz/go-output/v2"
@@ -37,6 +38,8 @@ type Config struct {
 	WorkingDir      string
 	Command         string // Custom phase command
 	PostCommand     string // Post-completion command (empty = disabled)
+	DateSubdirs     bool   // If true, use timestamped subdirectories for logs
+	ContinueSession bool   // If true, continue existing Claude sessions when resuming
 }
 
 // Orbit orchestrates Claude Code sessions to implement spec phases.
@@ -61,7 +64,10 @@ func New(config Config) (*Orbit, error) {
 	var logManager *logs.Manager
 	if !config.DryRun {
 		var err error
-		logManager, err = logs.NewManager(config.LogDir, config.BranchName, config.WorkingDir)
+		opts := logs.ManagerOptions{
+			UseSubdirs: config.DateSubdirs,
+		}
+		logManager, err = logs.NewManagerWithOptions(config.LogDir, config.BranchName, config.WorkingDir, opts)
 		if err != nil {
 			return nil, fmt.Errorf("failed to create log manager: %w", err)
 		}
@@ -407,4 +413,31 @@ func (o *Orbit) fail(err error) error {
 		_ = o.logManager.Fail(err)
 	}
 	return err
+}
+
+// isSessionInvalidError checks if the result contains a session-related error.
+// This is used to detect when a session resume has failed and a fresh session
+// should be started instead.
+func isSessionInvalidError(result *claude.SessionResult) bool {
+	if result == nil {
+		return false
+	}
+
+	// Check for session-related error messages
+	combined := result.Stderr + result.Output
+	sessionErrors := []string{
+		"session not found",
+		"invalid session",
+		"session expired",
+		"no such session",
+	}
+
+	combinedLower := strings.ToLower(combined)
+	for _, msg := range sessionErrors {
+		if strings.Contains(combinedLower, msg) {
+			return true
+		}
+	}
+
+	return false
 }

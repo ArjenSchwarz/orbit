@@ -9,6 +9,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- `DateSubdirs` and `ContinueSession` configuration fields in `orbit.Config` for session management
+- `isSessionInvalidError` function to detect session-related errors (session not found, invalid session, session expired)
+- Tests for `isSessionInvalidError` covering detection of various session error messages
 - Session ID support in Claude client's `RunPhase` method with `--session-id` and `--resume` flags
 - `buildRunPhaseArgs` helper method for constructing Claude CLI arguments with session handling
 - Tests for Claude client session parameter handling (new session, resume, skip permissions, arg order)
@@ -33,6 +36,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- `orbit.New` now uses `logs.NewManagerWithOptions` to support configurable log directory modes
 - Updated `claudeRunner` interface signature: `RunPhase()` now requires `sessionID string` and `resume bool` parameters
 - Orbit now generates UUID session IDs for each phase execution
 - Simplified config environment variable handling by removing Viper's AutomaticEnv() in favor of os.LookupEnv for proper empty string detection
