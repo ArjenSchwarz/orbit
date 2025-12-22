@@ -9,6 +9,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Session management spec with requirements, design, decisions, and tasks for:
+  - Flat log directory storage (default) with optional date-based subdirectories
+  - Session ID generation and storage before Claude phase execution
+  - Session continuation using `--resume` flag when resuming unfinished phases
 - Tests for config priority chain (`TestLoad_FullPriorityChain`, `TestLoad_PartialPriorityChain`, `TestLoad_EnvOverridesAllConfigs`, `TestLoad_EmptyEnvOverridesNonEmptyConfig`)
 - Tests for CLI flag priority resolution (`TestResolveCommands`)
 - Tests for post-command retry logic (`TestRunPostCommandWithRetry_*`, `TestRunPhaseWithRetry_*`)
