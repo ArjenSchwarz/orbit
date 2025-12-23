@@ -9,6 +9,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- `internal/transcript` package with JSONL parsing and Markdown rendering:
+  - `ParseJSONL()` function to parse Claude session JSONL with warning collection for malformed lines
+  - `ParseFirstTimestamp()` function for efficient session timestamp extraction
+  - `RenderMarkdown()` function to convert parsed entries to readable Markdown
+  - UTF-8 safe string truncation at rune boundaries (fixes invalid UTF-8 from byte-based truncation)
+  - Configurable document title via `RenderOptions`
+  - 64KB initial buffer with 10MB max per line for large session files
+  - Exported `Entry`, `Message`, `ContentItem`, and `RenderOptions` types
 - Apsis feature spec with requirements, design, decisions, and tasks for:
   - Standalone CLI tool to convert Claude Code session transcripts to Markdown
   - Shared `internal/transcript` package for parsing and rendering

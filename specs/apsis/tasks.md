@@ -8,14 +8,14 @@ references:
 
 ## Phase 1: Shared Transcript Package
 
-- [ ] 1. Create internal/transcript/types.go with exported data structures
+- [x] 1. Create internal/transcript/types.go with exported data structures
   - Create Entry, Message, ContentItem structs (exported versions of existing types)
   - Create RenderOptions struct with Title and SessionID fields
   - Add JSON tags matching existing format
   - Add doc comments for all exported types
   - Requirements: [1.4](requirements.md#1.4), [1.5](requirements.md#1.5)
 
-- [ ] 2. Create internal/transcript/parser.go with JSONL parsing
+- [x] 2. Create internal/transcript/parser.go with JSONL parsing
   - Implement ParseJSONL(io.Reader) (*ParseResult, error)
   - Implement ParseFirstTimestamp(io.Reader) (time.Time, error)
   - Create ParseResult and ParseWarning structs
@@ -24,7 +24,7 @@ references:
   - Handle bufio.ErrTooLong with line number in warning
   - Requirements: [1.1](requirements.md#1.1), [1.6](requirements.md#1.6), [1.7](requirements.md#1.7), [1.8](requirements.md#1.8)
 
-- [ ] 3. Create internal/transcript/markdown.go with Markdown rendering
+- [x] 3. Create internal/transcript/markdown.go with Markdown rendering
   - Implement RenderMarkdown(entries []Entry, opts RenderOptions) string
   - Implement formatUserMessage with User heading
   - Implement formatAssistantMessage with thinking, text, tool_use, tool_result handling
@@ -33,7 +33,7 @@ references:
   - Add horizontal rules between messages
   - Requirements: [1.2](requirements.md#1.2), [1.3](requirements.md#1.3), [1.9](requirements.md#1.9)
 
-- [ ] 4. Create internal/transcript/parser_test.go
+- [x] 4. Create internal/transcript/parser_test.go
   - Test ParseJSONL with valid JSONL input
   - Test empty file returns empty slice
   - Test malformed lines generate warnings with line numbers
@@ -42,7 +42,7 @@ references:
   - Test ParseFirstTimestamp extracts first timestamp
   - Requirements: [1.1](requirements.md#1.1), [1.7](requirements.md#1.7), [1.8](requirements.md#1.8), [3.4](requirements.md#3.4), [4.1](requirements.md#4.1), [4.2](requirements.md#4.2), [4.7](requirements.md#4.7)
 
-- [ ] 5. Create internal/transcript/markdown_test.go
+- [x] 5. Create internal/transcript/markdown_test.go
   - Test user message rendering with User heading
   - Test assistant message with thinking block in details tag
   - Test tool_use rendering with JSON code block
@@ -53,7 +53,7 @@ references:
   - Test unknown content types are skipped silently
   - Requirements: [1.2](requirements.md#1.2), [1.3](requirements.md#1.3), [1.4](requirements.md#1.4), [1.9](requirements.md#1.9), [4.8](requirements.md#4.8), [5.1](requirements.md#5.1), [5.2](requirements.md#5.2), [5.3](requirements.md#5.3), [5.4](requirements.md#5.4), [5.5](requirements.md#5.5), [5.6](requirements.md#5.6), [5.7](requirements.md#5.7)
 
-- [ ] 6. Create internal/transcript/testdata/ fixtures
+- [x] 6. Create internal/transcript/testdata/ fixtures
   - Create valid.jsonl with user, assistant, tool_use, tool_result entries
   - Create malformed.jsonl with invalid JSON lines
   - Create empty.jsonl (empty file)

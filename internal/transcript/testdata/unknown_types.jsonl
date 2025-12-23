@@ -1,0 +1,5 @@
+{"type":"queue-operation","data":"some internal operation"}
+{"type":"user","timestamp":"2025-12-23T10:30:00+11:00","message":{"role":"user","content":[{"type":"text","text":"Valid user message"}]}}
+{"type":"system-event","event":"something happened"}
+{"type":"assistant","timestamp":"2025-12-23T10:30:05+11:00","message":{"role":"assistant","content":[{"type":"unknown_content_type","data":"should be skipped"},{"type":"text","text":"Valid assistant text"}]}}
+{"type":"unknown-entry-type","data":"completely unknown"}

@@ -1,0 +1,4 @@
+{"type":"user","timestamp":"2025-12-23T10:30:00+11:00","message":{"role":"user","content":[{"type":"text","text":"Hello! 你好！こんにちは！🎉🎊🎁"}]}}
+{"type":"assistant","timestamp":"2025-12-23T10:30:05+11:00","message":{"role":"assistant","content":[{"type":"tool_use","name":"Test","input":{"content":"Multi-byte UTF-8: 日本語テキスト, émojis: 🔧🔨🔩, symbols: ∞±≠≈"}}]}}
+{"type":"assistant","timestamp":"2025-12-23T10:30:06+11:00","message":{"role":"assistant","content":[{"type":"tool_result","content":"Result with unicode: Ελληνικά, العربية, עברית, 中文","is_error":false}]}}
+{"type":"assistant","timestamp":"2025-12-23T10:30:10+11:00","message":{"role":"assistant","content":[{"type":"text","text":"Response with various scripts: Кириллица, ไทย, 한국어"}]}}
