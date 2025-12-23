@@ -1,8 +1,15 @@
-.PHONY: build test lint clean install modernize
+.PHONY: build build-orbit build-apsis test lint clean install modernize
 
-# Build the binary
-build:
+# Build both binaries
+build: build-orbit build-apsis
+
+# Build orbit only
+build-orbit:
 	go build -o orbit ./cmd/orbit
+
+# Build apsis only
+build-apsis:
+	go build -o apsis ./cmd/apsis
 
 # Run all tests
 test:
@@ -23,11 +30,12 @@ lint:
 
 # Clean build artifacts
 clean:
-	rm -f orbit coverage.out coverage.html
+	rm -f orbit apsis coverage.out coverage.html
 
-# Install to GOPATH/bin
+# Install both binaries to GOPATH/bin
 install:
 	go install ./cmd/orbit
+	go install ./cmd/apsis
 
 # Run modernize to update code to modern Go idioms
 modernize:

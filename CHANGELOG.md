@@ -9,6 +9,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- `apsis` CLI tool for converting Claude Code session transcripts to Markdown:
+  - Flag parsing with `-l/--list`, `-o/--output`, `-p/--project`, `-v/--version`, `-h/--help`
+  - Input source resolution: file path, session ID, or stdin
+  - Session discovery via `--list` flag showing ID, creation date, and size
+  - Conversion using shared `internal/transcript` package
+  - Path normalization that correctly removes leading separator
+  - Human-readable file size formatting
+- Makefile targets for building apsis:
+  - `build-orbit` to build only orbit binary
+  - `build-apsis` to build only apsis binary
+  - `build` now builds both binaries
+  - `install` now installs both binaries
+  - `clean` now removes both binaries
 - `internal/transcript` package with JSONL parsing and Markdown rendering:
   - `ParseJSONL()` function to parse Claude session JSONL with warning collection for malformed lines
   - `ParseFirstTimestamp()` function for efficient session timestamp extraction
