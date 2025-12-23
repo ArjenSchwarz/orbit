@@ -5,6 +5,7 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"strings"
 	"time"
 
 	output "github.com/ArjenSchwarz/go-output/v2"
@@ -12,6 +13,7 @@ import (
 	orberrors "github.com/arjenschwarz/orbit/internal/errors"
 	"github.com/arjenschwarz/orbit/internal/logs"
 	"github.com/arjenschwarz/orbit/internal/rune"
+	"github.com/google/uuid"
 )
 
 const (
@@ -21,8 +23,9 @@ const (
 // claudeRunner is an interface for running Claude sessions.
 // This allows for mocking in tests.
 type claudeRunner interface {
-	RunPhase() (*claude.SessionResult, error)
+	RunPhase(sessionID string, resume bool) (*claude.SessionResult, error)
 	RunCustomPrompt(prompt string) (*claude.SessionResult, error)
+	RunCustomPromptWithSession(prompt, sessionID string, resume bool) (*claude.SessionResult, error)
 }
 
 // Config holds the orchestrator configuration.
@@ -36,6 +39,8 @@ type Config struct {
 	WorkingDir      string
 	Command         string // Custom phase command
 	PostCommand     string // Post-completion command (empty = disabled)
+	DateSubdirs     bool   // If true, use timestamped subdirectories for logs
+	ContinueSession bool   // If true, continue existing Claude sessions when resuming
 }
 
 // Orbit orchestrates Claude Code sessions to implement spec phases.
@@ -60,7 +65,10 @@ func New(config Config) (*Orbit, error) {
 	var logManager *logs.Manager
 	if !config.DryRun {
 		var err error
-		logManager, err = logs.NewManager(config.LogDir, config.BranchName, config.WorkingDir)
+		opts := logs.ManagerOptions{
+			UseSubdirs: config.DateSubdirs,
+		}
+		logManager, err = logs.NewManagerWithOptions(config.LogDir, config.BranchName, config.WorkingDir, opts)
 		if err != nil {
 			return nil, fmt.Errorf("failed to create log manager: %w", err)
 		}
@@ -271,7 +279,34 @@ func (o *Orbit) runPhaseWithRetry(phase int) error {
 func (o *Orbit) runPhase(phase int) error {
 	startTime := time.Now()
 
-	result, err := o.claudeClient.RunPhase()
+	// Get session ID and determine if resuming (req 3.1-3.3)
+	var sessionID string
+	var isResume bool
+	if o.logManager != nil {
+		var err error
+		sessionID, isResume, err = o.logManager.StartPhase(phase, o.config.ContinueSession)
+		if err != nil {
+			return fmt.Errorf("failed to start phase: %w", err)
+		}
+	} else {
+		sessionID = uuid.NewString()
+		isResume = false
+	}
+
+	result, err := o.claudeClient.RunPhase(sessionID, isResume)
+
+	// Handle resume failure (req 3.7-3.9)
+	if err != nil && isResume && isSessionInvalidError(result) {
+		log.Printf("Warning: Session resume failed, starting fresh session")
+		sessionID = uuid.NewString()
+		if o.logManager != nil {
+			if setErr := o.logManager.SetCurrentPhaseSessionID(sessionID); setErr != nil {
+				log.Printf("Warning: failed to update session ID: %v", setErr)
+			}
+		}
+		result, err = o.claudeClient.RunPhase(sessionID, false)
+	}
+
 	if err != nil {
 		// Save the failed session for debugging
 		if o.logManager != nil && result != nil {
@@ -281,6 +316,11 @@ func (o *Orbit) runPhase(phase int) error {
 		// Classify and return the error
 		classified := orberrors.Classify(1, result.Stderr, result.Output)
 		return classified
+	}
+
+	// Reconcile session ID if Claude returned a different one (req 2.5, 2.6)
+	if o.logManager != nil && result.SessionID != sessionID {
+		o.logManager.ReconcileSessionID(result.SessionID)
 	}
 
 	// Check if Claude reported an error in its output
@@ -297,6 +337,10 @@ func (o *Orbit) runPhase(phase int) error {
 		if err := o.logManager.SaveSession(phase, result, startTime); err != nil {
 			log.Printf("Warning: failed to save session log: %v", err)
 		}
+		// Complete phase (req 2.7)
+		if err := o.logManager.CompletePhase(); err != nil {
+			log.Printf("Warning: failed to complete phase: %v", err)
+		}
 	}
 
 	if o.config.Verbose {
@@ -311,7 +355,31 @@ func (o *Orbit) runPhase(phase int) error {
 func (o *Orbit) runPostCommand() error {
 	startTime := time.Now()
 
-	result, err := o.claudeClient.RunCustomPrompt(o.config.PostCommand)
+	// Get session ID and determine if resuming
+	var sessionID string
+	var isResume bool
+	if o.logManager != nil {
+		var err error
+		sessionID, isResume, err = o.logManager.StartPostCompletion(o.config.ContinueSession)
+		if err != nil {
+			return fmt.Errorf("failed to start post-completion: %w", err)
+		}
+	}
+
+	result, err := o.claudeClient.RunCustomPromptWithSession(o.config.PostCommand, sessionID, isResume)
+
+	// Handle resume failure
+	if err != nil && isResume && isSessionInvalidError(result) {
+		log.Printf("Warning: Post-completion session resume failed, starting fresh session")
+		sessionID = uuid.NewString()
+		if o.logManager != nil {
+			if setErr := o.logManager.SetPostCompletionSessionID(sessionID); setErr != nil {
+				log.Printf("Warning: failed to update post-completion session ID: %v", setErr)
+			}
+		}
+		result, err = o.claudeClient.RunCustomPromptWithSession(o.config.PostCommand, sessionID, false)
+	}
+
 	if err != nil {
 		// Save the failed session for debugging
 		if o.logManager != nil && result != nil {
@@ -319,6 +387,11 @@ func (o *Orbit) runPostCommand() error {
 		}
 		classified := orberrors.Classify(1, result.Stderr, result.Output)
 		return classified
+	}
+
+	// Reconcile session ID if Claude returned a different one
+	if o.logManager != nil && result.SessionID != sessionID {
+		o.logManager.ReconcilePostCompletionSessionID(result.SessionID)
 	}
 
 	// Check if Claude reported an error in its output
@@ -334,6 +407,10 @@ func (o *Orbit) runPostCommand() error {
 	if o.logManager != nil {
 		if err := o.logManager.SavePostCompletionSession(result, startTime); err != nil {
 			log.Printf("Warning: failed to save post-completion log: %v", err)
+		}
+		// Complete post-completion
+		if err := o.logManager.CompletePostCompletion(); err != nil {
+			log.Printf("Warning: failed to complete post-completion: %v", err)
 		}
 	}
 
@@ -401,4 +478,31 @@ func (o *Orbit) fail(err error) error {
 		_ = o.logManager.Fail(err)
 	}
 	return err
+}
+
+// isSessionInvalidError checks if the result contains a session-related error.
+// This is used to detect when a session resume has failed and a fresh session
+// should be started instead.
+func isSessionInvalidError(result *claude.SessionResult) bool {
+	if result == nil {
+		return false
+	}
+
+	// Check for session-related error messages
+	combined := result.Stderr + result.Output
+	sessionErrors := []string{
+		"session not found",
+		"invalid session",
+		"session expired",
+		"no such session",
+	}
+
+	combinedLower := strings.ToLower(combined)
+	for _, msg := range sessionErrors {
+		if strings.Contains(combinedLower, msg) {
+			return true
+		}
+	}
+
+	return false
 }

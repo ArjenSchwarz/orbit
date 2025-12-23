@@ -52,18 +52,38 @@ func NewClient(config Config) *Client {
 	}
 }
 
-// RunPhase executes a Claude session to run the next phase and commit.
-func (c *Client) RunPhase() (*SessionResult, error) {
-	// Use configured prompt or fallback to default
+// buildRunPhaseArgs constructs the command-line arguments for a Claude session.
+// - sessionID: UUID for this session (required)
+// - resume: if true, use --resume <id>; if false, use --session-id <id>
+func (c *Client) buildRunPhaseArgs(sessionID string, resume bool) []string {
 	prompt := c.config.Prompt
 	if prompt == "" {
 		prompt = "Run /next-task --phase and when complete run /commit"
 	}
 
-	args := []string{"-p", prompt, "--output-format", "json"}
+	args := []string{}
+
+	// Session handling: --resume for continuing, --session-id for new sessions
+	if resume {
+		args = append(args, "--resume", sessionID)
+	} else {
+		args = append(args, "--session-id", sessionID)
+	}
+
+	args = append(args, "-p", prompt, "--output-format", "json")
+
 	if c.config.SkipPermissions {
 		args = append(args, "--dangerously-skip-permissions")
 	}
+
+	return args
+}
+
+// RunPhase executes a Claude session to run the next phase and commit.
+// - sessionID: UUID for this session (required)
+// - resume: if true, use --resume <id>; if false, use --session-id <id>
+func (c *Client) RunPhase(sessionID string, resume bool) (*SessionResult, error) {
+	args := c.buildRunPhaseArgs(sessionID, resume)
 
 	cmd := exec.Command("claude", args...)
 	if c.config.WorkingDir != "" {
@@ -109,8 +129,27 @@ func (c *Client) RunPhase() (*SessionResult, error) {
 }
 
 // RunCustomPrompt executes a Claude session with a custom prompt.
+// This is a convenience wrapper that starts a new session without session tracking.
 func (c *Client) RunCustomPrompt(prompt string) (*SessionResult, error) {
-	args := []string{"-p", prompt, "--output-format", "json"}
+	return c.RunCustomPromptWithSession(prompt, "", false)
+}
+
+// RunCustomPromptWithSession executes a Claude session with a custom prompt and optional session tracking.
+// - sessionID: UUID for this session (empty string to let Claude generate one)
+// - resume: if true, use --resume <id>; if false, use --session-id <id> (ignored if sessionID is empty)
+func (c *Client) RunCustomPromptWithSession(prompt, sessionID string, resume bool) (*SessionResult, error) {
+	var args []string
+
+	// Session handling: --resume for continuing, --session-id for new sessions
+	if sessionID != "" {
+		if resume {
+			args = append(args, "--resume", sessionID)
+		} else {
+			args = append(args, "--session-id", sessionID)
+		}
+	}
+
+	args = append(args, "-p", prompt, "--output-format", "json")
 	if c.config.SkipPermissions {
 		args = append(args, "--dangerously-skip-permissions")
 	}

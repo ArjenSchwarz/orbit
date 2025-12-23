@@ -6,12 +6,14 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log"
 	"os"
 	"path/filepath"
 	"strings"
 	"time"
 
 	"github.com/arjenschwarz/orbit/internal/claude"
+	"github.com/google/uuid"
 )
 
 // transcriptEntry represents a line in the Claude session JSONL.
@@ -39,6 +41,24 @@ type contentItem struct {
 	IsError  bool   `json:"is_error,omitempty"`
 }
 
+// ManagerOptions configures the log manager behavior.
+type ManagerOptions struct {
+	UseSubdirs bool // If true, use timestamped subdirectories
+}
+
+// PhaseState tracks an in-progress phase for crash recovery.
+type PhaseState struct {
+	Phase     int       `json:"phase"`
+	SessionID string    `json:"session_id"`
+	StartedAt time.Time `json:"started_at"`
+}
+
+// PostCompletionState tracks in-progress post-completion command.
+type PostCompletionState struct {
+	SessionID string    `json:"session_id"`
+	StartedAt time.Time `json:"started_at"`
+}
+
 // SessionEntry records metadata about a completed Claude session.
 type SessionEntry struct {
 	Phase      int       `json:"phase"`
@@ -49,6 +69,7 @@ type SessionEntry struct {
 	StartedAt  time.Time `json:"started_at"`
 	EndedAt    time.Time `json:"ended_at"`
 	IsError    bool      `json:"is_error,omitempty"`
+	RunNumber  int       `json:"run_number"`
 }
 
 // Summary contains the overall orchestration run summary.
@@ -61,6 +82,11 @@ type Summary struct {
 	TotalDurationMS int64          `json:"total_duration_ms"`
 	Sessions        []SessionEntry `json:"sessions"`
 	Error           string         `json:"error,omitempty"`
+	// New fields for session management
+	CurrentPhase   *PhaseState          `json:"current_phase,omitempty"`
+	PostCompletion *PostCompletionState `json:"post_completion,omitempty"`
+	RunNumber      int                  `json:"run_number"`
+	BranchName     string               `json:"branch_name,omitempty"`
 }
 
 // Manager handles log storage and retrieval.
@@ -69,14 +95,28 @@ type Manager struct {
 	sessionDir string
 	workingDir string
 	summary    Summary
+	useSubdirs bool   // controls directory mode
+	branchName string // stored for branch mismatch warning
 }
 
 // NewManager creates a new log manager with a timestamped session directory.
 // workingDir is used to locate Claude session transcripts in ~/.claude/projects.
+// Deprecated: Use NewManagerWithOptions for new code.
 func NewManager(baseDir, branchName, workingDir string) (*Manager, error) {
-	// Create timestamped directory
-	timestamp := time.Now().Format("2006-01-02-150405")
-	sessionDir := filepath.Join(baseDir, fmt.Sprintf("%s-%s", timestamp, sanitizeName(branchName)))
+	return NewManagerWithOptions(baseDir, branchName, workingDir, ManagerOptions{UseSubdirs: true})
+}
+
+// NewManagerWithOptions creates a new log manager with configurable options.
+// In flat mode (UseSubdirs=false), logs are stored directly in baseDir.
+// In subdir mode (UseSubdirs=true), logs are stored in timestamped subdirectories.
+func NewManagerWithOptions(baseDir, branchName, workingDir string, opts ManagerOptions) (*Manager, error) {
+	sessionDir := baseDir
+
+	if opts.UseSubdirs {
+		// Timestamped subdirectory (existing behavior)
+		timestamp := time.Now().Format("2006-01-02-150405")
+		sessionDir = filepath.Join(baseDir, fmt.Sprintf("%s-%s", timestamp, sanitizeName(branchName)))
+	}
 
 	if err := os.MkdirAll(sessionDir, 0755); err != nil {
 		return nil, fmt.Errorf("failed to create log directory: %w", err)
@@ -86,14 +126,43 @@ func NewManager(baseDir, branchName, workingDir string) (*Manager, error) {
 		baseDir:    baseDir,
 		sessionDir: sessionDir,
 		workingDir: workingDir,
-		summary: Summary{
-			StartedAt: time.Now(),
-			Status:    "running",
-			Sessions:  []SessionEntry{},
-		},
+		useSubdirs: opts.UseSubdirs,
+		branchName: branchName,
 	}
 
-	// Write initial summary
+	// Try to load existing summary in flat mode
+	if !opts.UseSubdirs {
+		if err := m.loadExistingSummary(); err != nil {
+			// No existing summary or corrupt - start fresh
+			m.summary = Summary{
+				StartedAt:  time.Now(),
+				Status:     "running",
+				Sessions:   []SessionEntry{},
+				RunNumber:  1,
+				BranchName: branchName,
+			}
+		} else {
+			// Check for branch mismatch
+			if m.summary.BranchName != "" && m.summary.BranchName != branchName {
+				log.Printf("Warning: Branch changed from '%s' to '%s'. Session continuation may have unexpected results.",
+					m.summary.BranchName, branchName)
+			}
+			// Increment run number for new orchestration run
+			m.summary.RunNumber++
+			m.summary.Status = "running"
+			m.summary.BranchName = branchName // Update to current branch
+		}
+	} else {
+		// Fresh run with subdirectory
+		m.summary = Summary{
+			StartedAt:  time.Now(),
+			Status:     "running",
+			Sessions:   []SessionEntry{},
+			RunNumber:  1,
+			BranchName: branchName,
+		}
+	}
+
 	if err := m.writeSummary(); err != nil {
 		return nil, err
 	}
@@ -104,6 +173,155 @@ func NewManager(baseDir, branchName, workingDir string) (*Manager, error) {
 // SessionDir returns the current session directory path.
 func (m *Manager) SessionDir() string {
 	return m.sessionDir
+}
+
+// loadExistingSummary loads an existing summary.json from the session directory.
+func (m *Manager) loadExistingSummary() error {
+	path := filepath.Join(m.sessionDir, "summary.json")
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return fmt.Errorf("failed to read summary: %w", err)
+	}
+
+	if err := json.Unmarshal(data, &m.summary); err != nil {
+		return fmt.Errorf("failed to parse summary: %w", err)
+	}
+
+	return nil
+}
+
+// StartPhase begins a new phase or resumes an existing one.
+// Returns the session ID, whether this is a resume, and any error.
+func (m *Manager) StartPhase(phase int, continueSession bool) (string, bool, error) {
+	// Check for existing in-progress phase
+	if m.summary.CurrentPhase != nil && m.summary.CurrentPhase.Phase == phase {
+		if continueSession {
+			// Resume existing session
+			return m.summary.CurrentPhase.SessionID, true, nil
+		}
+		// Not continuing - clear old state
+		m.summary.CurrentPhase = nil
+	}
+
+	// Generate new session ID
+	sessionID := uuid.NewString()
+
+	// Record phase start BEFORE invoking Claude (req 5.1)
+	m.summary.CurrentPhase = &PhaseState{
+		Phase:     phase,
+		SessionID: sessionID,
+		StartedAt: time.Now(),
+	}
+
+	if err := m.writeSummary(); err != nil {
+		return "", false, err
+	}
+
+	return sessionID, false, nil
+}
+
+// SetCurrentPhaseSessionID updates the session ID for the current phase.
+// Used when resume fails and a new session ID is generated.
+func (m *Manager) SetCurrentPhaseSessionID(sessionID string) error {
+	if m.summary.CurrentPhase == nil {
+		return nil // No-op if no current phase
+	}
+
+	m.summary.CurrentPhase.SessionID = sessionID
+	return m.writeSummary()
+}
+
+// ReconcileSessionID updates the stored session ID if Claude returned a different one.
+func (m *Manager) ReconcileSessionID(returnedID string) {
+	if m.summary.CurrentPhase == nil {
+		return // No-op if no current phase
+	}
+
+	if m.summary.CurrentPhase.SessionID != returnedID {
+		m.summary.CurrentPhase.SessionID = returnedID
+		_ = m.writeSummary() // Best effort - don't fail the session
+	}
+}
+
+// CompletePhase clears the current phase state after successful completion.
+func (m *Manager) CompletePhase() error {
+	m.summary.CurrentPhase = nil
+	return m.writeSummary()
+}
+
+// StartPostCompletion begins a post-completion command or resumes an existing one.
+// Returns the session ID, whether this is a resume, and any error.
+func (m *Manager) StartPostCompletion(continueSession bool) (string, bool, error) {
+	// Check for existing in-progress post-completion
+	if m.summary.PostCompletion != nil {
+		if continueSession {
+			// Resume existing session
+			return m.summary.PostCompletion.SessionID, true, nil
+		}
+		// Not continuing - clear old state
+		m.summary.PostCompletion = nil
+	}
+
+	// Generate new session ID
+	sessionID := uuid.NewString()
+
+	// Record post-completion start BEFORE invoking Claude
+	m.summary.PostCompletion = &PostCompletionState{
+		SessionID: sessionID,
+		StartedAt: time.Now(),
+	}
+
+	if err := m.writeSummary(); err != nil {
+		return "", false, err
+	}
+
+	return sessionID, false, nil
+}
+
+// CompletePostCompletion clears the post-completion state after successful completion.
+func (m *Manager) CompletePostCompletion() error {
+	m.summary.PostCompletion = nil
+	return m.writeSummary()
+}
+
+// SetPostCompletionSessionID updates the session ID for the current post-completion.
+// This is called when a resume attempt fails and a new session is started.
+func (m *Manager) SetPostCompletionSessionID(sessionID string) error {
+	if m.summary.PostCompletion == nil {
+		return nil // No-op if no post-completion in progress
+	}
+	m.summary.PostCompletion.SessionID = sessionID
+	return m.writeSummary()
+}
+
+// ReconcilePostCompletionSessionID updates the stored session ID if Claude returned a different one.
+func (m *Manager) ReconcilePostCompletionSessionID(returnedID string) {
+	if m.summary.PostCompletion == nil {
+		return // No-op if no post-completion in progress
+	}
+
+	if m.summary.PostCompletion.SessionID != returnedID {
+		m.summary.PostCompletion.SessionID = returnedID
+		_ = m.writeSummary() // Best effort - don't fail the session
+	}
+}
+
+// phaseFileName generates the filename for phase files.
+// Returns run-numbered filename when RunNumber > 1 in flat mode.
+func (m *Manager) phaseFileName(phase int, suffix string) string {
+	if m.summary.RunNumber > 1 && !m.useSubdirs {
+		return fmt.Sprintf("phase-%d-run-%d-%s", phase, m.summary.RunNumber, suffix)
+	}
+	return fmt.Sprintf("phase-%d-%s", phase, suffix)
+}
+
+// postCompletionFileName generates the base filename for post-completion files.
+// Returns run-numbered filename when RunNumber > 1 in flat mode.
+func (m *Manager) postCompletionFileName() string {
+	if m.summary.RunNumber > 1 && !m.useSubdirs {
+		return fmt.Sprintf("post-completion-run-%d-session", m.summary.RunNumber)
+	}
+	return "post-completion-session"
 }
 
 // SaveSession records a completed Claude session.
@@ -119,6 +337,7 @@ func (m *Manager) SaveSession(phase int, result *claude.SessionResult, startTime
 		StartedAt:  startTime,
 		EndedAt:    endTime,
 		IsError:    result.IsError,
+		RunNumber:  m.summary.RunNumber,
 	}
 
 	m.summary.Sessions = append(m.summary.Sessions, entry)
@@ -127,7 +346,7 @@ func (m *Manager) SaveSession(phase int, result *claude.SessionResult, startTime
 	m.summary.TotalDurationMS += result.Duration.Milliseconds()
 
 	// Write session JSON (result only)
-	jsonPath := filepath.Join(m.sessionDir, fmt.Sprintf("phase-%d-session.json", phase))
+	jsonPath := filepath.Join(m.sessionDir, m.phaseFileName(phase, "session.json"))
 	if err := os.WriteFile(jsonPath, result.RawJSON, 0644); err != nil {
 		return fmt.Errorf("failed to write session JSON: %w", err)
 	}
@@ -141,7 +360,7 @@ func (m *Manager) SaveSession(phase int, result *claude.SessionResult, startTime
 	}
 
 	// Write human-readable summary
-	txtPath := filepath.Join(m.sessionDir, fmt.Sprintf("phase-%d-session.txt", phase))
+	txtPath := filepath.Join(m.sessionDir, m.phaseFileName(phase, "session.txt"))
 	transcript := formatTranscript(phase, result, startTime, endTime)
 	if err := os.WriteFile(txtPath, []byte(transcript), 0644); err != nil {
 		return fmt.Errorf("failed to write session transcript: %w", err)
@@ -162,7 +381,7 @@ func (m *Manager) Complete() error {
 // SavePostCompletionSession saves the post-command session with distinct naming.
 func (m *Manager) SavePostCompletionSession(result *claude.SessionResult, startTime time.Time) error {
 	endTime := time.Now()
-	baseName := "post-completion-session"
+	baseName := m.postCompletionFileName()
 
 	// Save JSON
 	jsonPath := filepath.Join(m.sessionDir, baseName+".json")
@@ -372,13 +591,13 @@ func (m *Manager) copySessionTranscript(phase int, sessionID string) error {
 	}
 
 	// Copy raw JSONL to destination
-	jsonlDstPath := filepath.Join(m.sessionDir, fmt.Sprintf("phase-%d-transcript.jsonl", phase))
+	jsonlDstPath := filepath.Join(m.sessionDir, m.phaseFileName(phase, "transcript.jsonl"))
 	if err := copyFile(srcPath, jsonlDstPath); err != nil {
 		return err
 	}
 
 	// Parse and generate Markdown
-	mdDstPath := filepath.Join(m.sessionDir, fmt.Sprintf("phase-%d-transcript.md", phase))
+	mdDstPath := filepath.Join(m.sessionDir, m.phaseFileName(phase, "transcript.md"))
 	if err := m.generateMarkdownTranscript(srcPath, mdDstPath, phase, sessionID); err != nil {
 		// Log but don't fail - Markdown is supplementary
 		fmt.Fprintf(os.Stderr, "Warning: could not generate Markdown transcript: %v\n", err)

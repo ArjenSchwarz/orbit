@@ -27,6 +27,8 @@ func main() {
 	commandFlag := flag.String("command", "", "Custom prompt for Claude phases")
 	postCommandFlag := flag.String("post-command", "", "Command after all tasks complete")
 	noPostCommand := flag.Bool("no-post-command", false, "Skip post-completion command")
+	dateSubdirs := flag.Bool("date-subdirs", false, "Use timestamped subdirectories for logs")
+	noContinueSession := flag.Bool("no-continue-session", false, "Start fresh sessions instead of resuming")
 
 	flag.Usage = func() {
 		fmt.Fprintf(os.Stderr, "Orbit - Claude Code Task Orchestrator\n\n")
@@ -90,6 +92,18 @@ func main() {
 	// Apply CLI flag overrides
 	command, postCommand := resolveCommands(cfg, *commandFlag, *postCommandFlag, *noPostCommand)
 
+	// Resolve date-subdirs: CLI flag can enable (overrides config)
+	dateSubdirsValue := cfg.DateSubdirs
+	if *dateSubdirs {
+		dateSubdirsValue = true
+	}
+
+	// Resolve continue-session: CLI flag can disable (overrides config)
+	continueSessionValue := cfg.ContinueSession
+	if *noContinueSession {
+		continueSessionValue = false
+	}
+
 	// Create and run orchestrator
 	orbitCfg := orbit.Config{
 		TasksFile:       *tasksFile,
@@ -101,6 +115,8 @@ func main() {
 		WorkingDir:      workingDir,
 		Command:         command,
 		PostCommand:     postCommand,
+		DateSubdirs:     dateSubdirsValue,
+		ContinueSession: continueSessionValue,
 	}
 
 	o, err := orbit.New(orbitCfg)

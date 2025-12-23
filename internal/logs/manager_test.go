@@ -427,3 +427,800 @@ func TestFormatPostCompletionTranscript(t *testing.T) {
 		t.Error("transcript should contain turn count")
 	}
 }
+
+func TestNewManagerWithOptions_FlatMode(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	m, err := NewManagerWithOptions(tmpDir, "feature/test-branch", "/tmp/test-project", ManagerOptions{UseSubdirs: false})
+	if err != nil {
+		t.Fatalf("NewManagerWithOptions failed: %v", err)
+	}
+
+	// In flat mode, session dir should be the same as base dir
+	if m.SessionDir() != tmpDir {
+		t.Errorf("session dir should equal base dir in flat mode, got %q, want %q", m.SessionDir(), tmpDir)
+	}
+
+	// Check summary.json was created directly in base dir
+	summaryPath := filepath.Join(tmpDir, "summary.json")
+	if _, err := os.Stat(summaryPath); os.IsNotExist(err) {
+		t.Error("summary.json was not created in base dir")
+	}
+
+	// Verify summary content
+	data, err := os.ReadFile(summaryPath)
+	if err != nil {
+		t.Fatalf("failed to read summary: %v", err)
+	}
+
+	var summary Summary
+	if err := json.Unmarshal(data, &summary); err != nil {
+		t.Fatalf("failed to parse summary: %v", err)
+	}
+
+	if summary.Status != "running" {
+		t.Errorf("got status %q, want %q", summary.Status, "running")
+	}
+	if summary.RunNumber != 1 {
+		t.Errorf("got run_number %d, want 1", summary.RunNumber)
+	}
+	if summary.BranchName != "feature/test-branch" {
+		t.Errorf("got branch_name %q, want %q", summary.BranchName, "feature/test-branch")
+	}
+}
+
+func TestNewManagerWithOptions_LoadExistingSummary(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	// Create existing summary
+	existingSummary := Summary{
+		StartedAt:       time.Now().Add(-time.Hour),
+		Status:          "success",
+		PhasesCompleted: 3,
+		TotalCostUSD:    1.5,
+		Sessions:        []SessionEntry{{Phase: 1, SessionID: "old-session"}},
+		RunNumber:       2,
+		BranchName:      "feature/test-branch",
+	}
+	data, _ := json.MarshalIndent(existingSummary, "", "  ")
+	if err := os.WriteFile(filepath.Join(tmpDir, "summary.json"), data, 0644); err != nil {
+		t.Fatalf("failed to write existing summary: %v", err)
+	}
+
+	m, err := NewManagerWithOptions(tmpDir, "feature/test-branch", "/tmp/test-project", ManagerOptions{UseSubdirs: false})
+	if err != nil {
+		t.Fatalf("NewManagerWithOptions failed: %v", err)
+	}
+
+	// Run number should be incremented
+	summaryPath := filepath.Join(tmpDir, "summary.json")
+	newData, _ := os.ReadFile(summaryPath)
+	var summary Summary
+	if err := json.Unmarshal(newData, &summary); err != nil {
+		t.Fatalf("failed to parse summary: %v", err)
+	}
+
+	if summary.RunNumber != 3 {
+		t.Errorf("got run_number %d, want 3 (incremented from 2)", summary.RunNumber)
+	}
+	if summary.Status != "running" {
+		t.Errorf("got status %q, want %q", summary.Status, "running")
+	}
+	// Sessions should be preserved
+	if len(summary.Sessions) != 1 {
+		t.Errorf("got %d sessions, want 1 (preserved)", len(summary.Sessions))
+	}
+
+	_ = m // use m to avoid unused variable error
+}
+
+func TestNewManagerWithOptions_BranchMismatchWarning(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	// Create existing summary with different branch
+	existingSummary := Summary{
+		StartedAt:  time.Now().Add(-time.Hour),
+		Status:     "success",
+		RunNumber:  1,
+		BranchName: "feature/old-branch",
+	}
+	data, _ := json.MarshalIndent(existingSummary, "", "  ")
+	if err := os.WriteFile(filepath.Join(tmpDir, "summary.json"), data, 0644); err != nil {
+		t.Fatalf("failed to write existing summary: %v", err)
+	}
+
+	// This should succeed but warn (we can't easily capture log output, but we verify it doesn't fail)
+	m, err := NewManagerWithOptions(tmpDir, "feature/new-branch", "/tmp/test-project", ManagerOptions{UseSubdirs: false})
+	if err != nil {
+		t.Fatalf("NewManagerWithOptions failed: %v", err)
+	}
+
+	// Branch name should be updated to current
+	summaryPath := filepath.Join(tmpDir, "summary.json")
+	newData, _ := os.ReadFile(summaryPath)
+	var summary Summary
+	if err := json.Unmarshal(newData, &summary); err != nil {
+		t.Fatalf("failed to parse summary: %v", err)
+	}
+
+	if summary.BranchName != "feature/new-branch" {
+		t.Errorf("got branch_name %q, want %q", summary.BranchName, "feature/new-branch")
+	}
+
+	_ = m
+}
+
+func TestNewManagerWithOptions_MalformedSummary(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	// Create malformed summary
+	if err := os.WriteFile(filepath.Join(tmpDir, "summary.json"), []byte("{invalid json"), 0644); err != nil {
+		t.Fatalf("failed to write malformed summary: %v", err)
+	}
+
+	// Should start fresh when summary is malformed
+	m, err := NewManagerWithOptions(tmpDir, "feature/test-branch", "/tmp/test-project", ManagerOptions{UseSubdirs: false})
+	if err != nil {
+		t.Fatalf("NewManagerWithOptions failed: %v", err)
+	}
+
+	summaryPath := filepath.Join(tmpDir, "summary.json")
+	newData, _ := os.ReadFile(summaryPath)
+	var summary Summary
+	if err := json.Unmarshal(newData, &summary); err != nil {
+		t.Fatalf("failed to parse summary: %v", err)
+	}
+
+	if summary.RunNumber != 1 {
+		t.Errorf("got run_number %d, want 1 (fresh start after malformed)", summary.RunNumber)
+	}
+
+	_ = m
+}
+
+func TestNewManagerWithOptions_SubdirMode(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	m, err := NewManagerWithOptions(tmpDir, "feature/test-branch", "/tmp/test-project", ManagerOptions{UseSubdirs: true})
+	if err != nil {
+		t.Fatalf("NewManagerWithOptions failed: %v", err)
+	}
+
+	// In subdir mode, session dir should be different from base dir
+	if m.SessionDir() == tmpDir {
+		t.Error("session dir should differ from base dir in subdir mode")
+	}
+
+	// Session dir should contain timestamp pattern
+	sessionDir := m.SessionDir()
+	if !containsString(sessionDir, "feature-test-branch") {
+		t.Error("session dir should contain sanitized branch name")
+	}
+
+	// Verify fresh start in subdir mode (always run_number 1)
+	summaryPath := filepath.Join(m.SessionDir(), "summary.json")
+	data, _ := os.ReadFile(summaryPath)
+	var summary Summary
+	if err := json.Unmarshal(data, &summary); err != nil {
+		t.Fatalf("failed to parse summary: %v", err)
+	}
+
+	if summary.RunNumber != 1 {
+		t.Errorf("got run_number %d, want 1 in subdir mode", summary.RunNumber)
+	}
+}
+
+func TestLoadExistingSummary_Success(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	// Create a valid summary file
+	existingSummary := Summary{
+		StartedAt:       time.Now().Add(-time.Hour),
+		Status:          "success",
+		PhasesCompleted: 2,
+		TotalCostUSD:    0.75,
+		Sessions:        []SessionEntry{{Phase: 1, SessionID: "session-1"}, {Phase: 2, SessionID: "session-2"}},
+		RunNumber:       1,
+		BranchName:      "test-branch",
+	}
+	data, _ := json.MarshalIndent(existingSummary, "", "  ")
+	if err := os.WriteFile(filepath.Join(tmpDir, "summary.json"), data, 0644); err != nil {
+		t.Fatalf("failed to write summary: %v", err)
+	}
+
+	m := &Manager{sessionDir: tmpDir}
+	err := m.loadExistingSummary()
+	if err != nil {
+		t.Fatalf("loadExistingSummary failed: %v", err)
+	}
+
+	if m.summary.RunNumber != 1 {
+		t.Errorf("got run_number %d, want 1", m.summary.RunNumber)
+	}
+	if len(m.summary.Sessions) != 2 {
+		t.Errorf("got %d sessions, want 2", len(m.summary.Sessions))
+	}
+}
+
+func TestLoadExistingSummary_FileNotFound(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	m := &Manager{sessionDir: tmpDir}
+	err := m.loadExistingSummary()
+	if err == nil {
+		t.Error("loadExistingSummary should return error for missing file")
+	}
+}
+
+func TestLoadExistingSummary_MalformedJSON(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	// Create a malformed summary file
+	if err := os.WriteFile(filepath.Join(tmpDir, "summary.json"), []byte("not valid json{"), 0644); err != nil {
+		t.Fatalf("failed to write malformed summary: %v", err)
+	}
+
+	m := &Manager{sessionDir: tmpDir}
+	err := m.loadExistingSummary()
+	if err == nil {
+		t.Error("loadExistingSummary should return error for malformed JSON")
+	}
+}
+
+func TestStartPhase_NewSession(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	m, err := NewManagerWithOptions(tmpDir, "test-branch", "/tmp/test-project", ManagerOptions{UseSubdirs: false})
+	if err != nil {
+		t.Fatalf("NewManagerWithOptions failed: %v", err)
+	}
+
+	sessionID, isResume, err := m.StartPhase(1, true)
+	if err != nil {
+		t.Fatalf("StartPhase failed: %v", err)
+	}
+
+	if sessionID == "" {
+		t.Error("session ID should not be empty")
+	}
+	if isResume {
+		t.Error("should not be a resume for new session")
+	}
+
+	// Verify current_phase was written
+	summaryPath := filepath.Join(tmpDir, "summary.json")
+	data, _ := os.ReadFile(summaryPath)
+	var summary Summary
+	if err := json.Unmarshal(data, &summary); err != nil {
+		t.Fatalf("failed to parse summary: %v", err)
+	}
+
+	if summary.CurrentPhase == nil {
+		t.Fatal("current_phase should be set")
+	}
+	if summary.CurrentPhase.Phase != 1 {
+		t.Errorf("got phase %d, want 1", summary.CurrentPhase.Phase)
+	}
+	if summary.CurrentPhase.SessionID != sessionID {
+		t.Errorf("session ID mismatch: got %q, want %q", summary.CurrentPhase.SessionID, sessionID)
+	}
+}
+
+func TestStartPhase_ResumeExistingSession(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	// Create a manager with existing current_phase
+	existingSummary := Summary{
+		StartedAt:  time.Now().Add(-time.Hour),
+		Status:     "running",
+		RunNumber:  1,
+		BranchName: "test-branch",
+		CurrentPhase: &PhaseState{
+			Phase:     1,
+			SessionID: "existing-session-123",
+			StartedAt: time.Now().Add(-10 * time.Minute),
+		},
+	}
+	data, _ := json.MarshalIndent(existingSummary, "", "  ")
+	if err := os.WriteFile(filepath.Join(tmpDir, "summary.json"), data, 0644); err != nil {
+		t.Fatalf("failed to write summary: %v", err)
+	}
+
+	m, err := NewManagerWithOptions(tmpDir, "test-branch", "/tmp/test-project", ManagerOptions{UseSubdirs: false})
+	if err != nil {
+		t.Fatalf("NewManagerWithOptions failed: %v", err)
+	}
+
+	sessionID, isResume, err := m.StartPhase(1, true)
+	if err != nil {
+		t.Fatalf("StartPhase failed: %v", err)
+	}
+
+	if sessionID != "existing-session-123" {
+		t.Errorf("got session ID %q, want 'existing-session-123'", sessionID)
+	}
+	if !isResume {
+		t.Error("should be a resume for existing session")
+	}
+}
+
+func TestStartPhase_ContinueSessionFalse(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	// Create a manager with existing current_phase
+	existingSummary := Summary{
+		StartedAt:  time.Now().Add(-time.Hour),
+		Status:     "running",
+		RunNumber:  1,
+		BranchName: "test-branch",
+		CurrentPhase: &PhaseState{
+			Phase:     1,
+			SessionID: "existing-session-123",
+			StartedAt: time.Now().Add(-10 * time.Minute),
+		},
+	}
+	data, _ := json.MarshalIndent(existingSummary, "", "  ")
+	if err := os.WriteFile(filepath.Join(tmpDir, "summary.json"), data, 0644); err != nil {
+		t.Fatalf("failed to write summary: %v", err)
+	}
+
+	m, err := NewManagerWithOptions(tmpDir, "test-branch", "/tmp/test-project", ManagerOptions{UseSubdirs: false})
+	if err != nil {
+		t.Fatalf("NewManagerWithOptions failed: %v", err)
+	}
+
+	// continueSession = false should start a fresh session
+	sessionID, isResume, err := m.StartPhase(1, false)
+	if err != nil {
+		t.Fatalf("StartPhase failed: %v", err)
+	}
+
+	if sessionID == "existing-session-123" {
+		t.Error("should have generated a new session ID when continueSession=false")
+	}
+	if isResume {
+		t.Error("should not be a resume when continueSession=false")
+	}
+}
+
+func TestStartPhase_SummaryWrittenBeforeReturn(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	m, err := NewManagerWithOptions(tmpDir, "test-branch", "/tmp/test-project", ManagerOptions{UseSubdirs: false})
+	if err != nil {
+		t.Fatalf("NewManagerWithOptions failed: %v", err)
+	}
+
+	sessionID, _, err := m.StartPhase(1, true)
+	if err != nil {
+		t.Fatalf("StartPhase failed: %v", err)
+	}
+
+	// Verify summary was written to disk (not just in memory)
+	summaryPath := filepath.Join(tmpDir, "summary.json")
+	data, err := os.ReadFile(summaryPath)
+	if err != nil {
+		t.Fatalf("failed to read summary: %v", err)
+	}
+
+	var summary Summary
+	if err := json.Unmarshal(data, &summary); err != nil {
+		t.Fatalf("failed to parse summary: %v", err)
+	}
+
+	if summary.CurrentPhase == nil || summary.CurrentPhase.SessionID != sessionID {
+		t.Error("summary on disk should have current_phase with session ID")
+	}
+}
+
+func TestSetCurrentPhaseSessionID_UpdatesSessionID(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	m, err := NewManagerWithOptions(tmpDir, "test-branch", "/tmp/test-project", ManagerOptions{UseSubdirs: false})
+	if err != nil {
+		t.Fatalf("NewManagerWithOptions failed: %v", err)
+	}
+
+	// Start a phase first
+	_, _, err = m.StartPhase(1, true)
+	if err != nil {
+		t.Fatalf("StartPhase failed: %v", err)
+	}
+
+	// Update the session ID
+	newSessionID := "new-session-456"
+	if err := m.SetCurrentPhaseSessionID(newSessionID); err != nil {
+		t.Fatalf("SetCurrentPhaseSessionID failed: %v", err)
+	}
+
+	// Verify it was updated in memory
+	if m.summary.CurrentPhase.SessionID != newSessionID {
+		t.Errorf("got session ID %q, want %q", m.summary.CurrentPhase.SessionID, newSessionID)
+	}
+
+	// Verify it was written to disk
+	summaryPath := filepath.Join(tmpDir, "summary.json")
+	data, _ := os.ReadFile(summaryPath)
+	var summary Summary
+	if err := json.Unmarshal(data, &summary); err != nil {
+		t.Fatalf("failed to parse summary: %v", err)
+	}
+
+	if summary.CurrentPhase.SessionID != newSessionID {
+		t.Errorf("disk session ID %q, want %q", summary.CurrentPhase.SessionID, newSessionID)
+	}
+}
+
+func TestSetCurrentPhaseSessionID_NoCurrentPhase(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	m, err := NewManagerWithOptions(tmpDir, "test-branch", "/tmp/test-project", ManagerOptions{UseSubdirs: false})
+	if err != nil {
+		t.Fatalf("NewManagerWithOptions failed: %v", err)
+	}
+
+	// Try to set session ID without starting a phase - should be a no-op
+	err = m.SetCurrentPhaseSessionID("some-session")
+	if err != nil {
+		t.Fatalf("SetCurrentPhaseSessionID should not error when no current phase: %v", err)
+	}
+}
+
+func TestReconcileSessionID_UpdatesWhenDifferent(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	m, err := NewManagerWithOptions(tmpDir, "test-branch", "/tmp/test-project", ManagerOptions{UseSubdirs: false})
+	if err != nil {
+		t.Fatalf("NewManagerWithOptions failed: %v", err)
+	}
+
+	// Start a phase
+	originalID, _, err := m.StartPhase(1, true)
+	if err != nil {
+		t.Fatalf("StartPhase failed: %v", err)
+	}
+
+	// Reconcile with a different ID
+	returnedID := "claude-returned-different-id"
+	m.ReconcileSessionID(returnedID)
+
+	// Verify it was updated
+	if m.summary.CurrentPhase.SessionID != returnedID {
+		t.Errorf("got session ID %q, want %q", m.summary.CurrentPhase.SessionID, returnedID)
+	}
+	if m.summary.CurrentPhase.SessionID == originalID {
+		t.Error("session ID should have been updated")
+	}
+}
+
+func TestReconcileSessionID_NoOpWhenSame(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	m, err := NewManagerWithOptions(tmpDir, "test-branch", "/tmp/test-project", ManagerOptions{UseSubdirs: false})
+	if err != nil {
+		t.Fatalf("NewManagerWithOptions failed: %v", err)
+	}
+
+	// Start a phase
+	originalID, _, err := m.StartPhase(1, true)
+	if err != nil {
+		t.Fatalf("StartPhase failed: %v", err)
+	}
+
+	// Reconcile with the same ID (should be a no-op)
+	m.ReconcileSessionID(originalID)
+
+	// Verify it's still the same
+	if m.summary.CurrentPhase.SessionID != originalID {
+		t.Errorf("session ID should not have changed, got %q, want %q", m.summary.CurrentPhase.SessionID, originalID)
+	}
+}
+
+func TestCompletePhase_ClearsCurrentPhase(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	m, err := NewManagerWithOptions(tmpDir, "test-branch", "/tmp/test-project", ManagerOptions{UseSubdirs: false})
+	if err != nil {
+		t.Fatalf("NewManagerWithOptions failed: %v", err)
+	}
+
+	// Start a phase
+	_, _, err = m.StartPhase(1, true)
+	if err != nil {
+		t.Fatalf("StartPhase failed: %v", err)
+	}
+
+	// Verify current_phase is set
+	if m.summary.CurrentPhase == nil {
+		t.Fatal("current_phase should be set before CompletePhase")
+	}
+
+	// Complete the phase
+	if err := m.CompletePhase(); err != nil {
+		t.Fatalf("CompletePhase failed: %v", err)
+	}
+
+	// Verify current_phase is cleared in memory
+	if m.summary.CurrentPhase != nil {
+		t.Error("current_phase should be nil after CompletePhase")
+	}
+
+	// Verify current_phase is cleared on disk
+	summaryPath := filepath.Join(tmpDir, "summary.json")
+	data, _ := os.ReadFile(summaryPath)
+	var summary Summary
+	if err := json.Unmarshal(data, &summary); err != nil {
+		t.Fatalf("failed to parse summary: %v", err)
+	}
+
+	if summary.CurrentPhase != nil {
+		t.Error("current_phase on disk should be nil after CompletePhase")
+	}
+}
+
+func TestCompletePhase_WritesSummary(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	m, err := NewManagerWithOptions(tmpDir, "test-branch", "/tmp/test-project", ManagerOptions{UseSubdirs: false})
+	if err != nil {
+		t.Fatalf("NewManagerWithOptions failed: %v", err)
+	}
+
+	// Start and complete a phase
+	_, _, _ = m.StartPhase(1, true)
+	if err := m.CompletePhase(); err != nil {
+		t.Fatalf("CompletePhase failed: %v", err)
+	}
+
+	// Read and verify summary was written
+	summaryPath := filepath.Join(tmpDir, "summary.json")
+	data, err := os.ReadFile(summaryPath)
+	if err != nil {
+		t.Fatalf("failed to read summary: %v", err)
+	}
+
+	var summary Summary
+	if err := json.Unmarshal(data, &summary); err != nil {
+		t.Fatalf("failed to parse summary: %v", err)
+	}
+
+	// Verify the summary was updated
+	if summary.Status != "running" {
+		t.Errorf("status should still be 'running', got %q", summary.Status)
+	}
+}
+
+func TestStartPostCompletion_NewSession(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	m, err := NewManagerWithOptions(tmpDir, "test-branch", "/tmp/test-project", ManagerOptions{UseSubdirs: false})
+	if err != nil {
+		t.Fatalf("NewManagerWithOptions failed: %v", err)
+	}
+
+	sessionID, isResume, err := m.StartPostCompletion(true)
+	if err != nil {
+		t.Fatalf("StartPostCompletion failed: %v", err)
+	}
+
+	if sessionID == "" {
+		t.Error("session ID should not be empty")
+	}
+	if isResume {
+		t.Error("should not be a resume for new post-completion session")
+	}
+
+	// Verify post_completion was written
+	summaryPath := filepath.Join(tmpDir, "summary.json")
+	data, _ := os.ReadFile(summaryPath)
+	var summary Summary
+	if err := json.Unmarshal(data, &summary); err != nil {
+		t.Fatalf("failed to parse summary: %v", err)
+	}
+
+	if summary.PostCompletion == nil {
+		t.Fatal("post_completion should be set")
+	}
+	if summary.PostCompletion.SessionID != sessionID {
+		t.Errorf("session ID mismatch: got %q, want %q", summary.PostCompletion.SessionID, sessionID)
+	}
+}
+
+func TestStartPostCompletion_ResumeExisting(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	// Create a manager with existing post_completion
+	existingSummary := Summary{
+		StartedAt:  time.Now().Add(-time.Hour),
+		Status:     "running",
+		RunNumber:  1,
+		BranchName: "test-branch",
+		PostCompletion: &PostCompletionState{
+			SessionID: "existing-post-completion-123",
+			StartedAt: time.Now().Add(-10 * time.Minute),
+		},
+	}
+	data, _ := json.MarshalIndent(existingSummary, "", "  ")
+	if err := os.WriteFile(filepath.Join(tmpDir, "summary.json"), data, 0644); err != nil {
+		t.Fatalf("failed to write summary: %v", err)
+	}
+
+	m, err := NewManagerWithOptions(tmpDir, "test-branch", "/tmp/test-project", ManagerOptions{UseSubdirs: false})
+	if err != nil {
+		t.Fatalf("NewManagerWithOptions failed: %v", err)
+	}
+
+	sessionID, isResume, err := m.StartPostCompletion(true)
+	if err != nil {
+		t.Fatalf("StartPostCompletion failed: %v", err)
+	}
+
+	if sessionID != "existing-post-completion-123" {
+		t.Errorf("got session ID %q, want 'existing-post-completion-123'", sessionID)
+	}
+	if !isResume {
+		t.Error("should be a resume for existing post-completion session")
+	}
+}
+
+func TestCompletePostCompletion_ClearsState(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	m, err := NewManagerWithOptions(tmpDir, "test-branch", "/tmp/test-project", ManagerOptions{UseSubdirs: false})
+	if err != nil {
+		t.Fatalf("NewManagerWithOptions failed: %v", err)
+	}
+
+	// Start a post-completion session
+	_, _, err = m.StartPostCompletion(true)
+	if err != nil {
+		t.Fatalf("StartPostCompletion failed: %v", err)
+	}
+
+	// Verify post_completion is set
+	if m.summary.PostCompletion == nil {
+		t.Fatal("post_completion should be set before CompletePostCompletion")
+	}
+
+	// Complete the post-completion
+	if err := m.CompletePostCompletion(); err != nil {
+		t.Fatalf("CompletePostCompletion failed: %v", err)
+	}
+
+	// Verify post_completion is cleared in memory
+	if m.summary.PostCompletion != nil {
+		t.Error("post_completion should be nil after CompletePostCompletion")
+	}
+
+	// Verify post_completion is cleared on disk
+	summaryPath := filepath.Join(tmpDir, "summary.json")
+	data, _ := os.ReadFile(summaryPath)
+	var summary Summary
+	if err := json.Unmarshal(data, &summary); err != nil {
+		t.Fatalf("failed to parse summary: %v", err)
+	}
+
+	if summary.PostCompletion != nil {
+		t.Error("post_completion on disk should be nil after CompletePostCompletion")
+	}
+}
+
+func TestPhaseFileName_RunNumberGreaterThanOne(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	// Create existing summary with run number 2
+	existingSummary := Summary{
+		StartedAt:  time.Now().Add(-time.Hour),
+		Status:     "success",
+		RunNumber:  2,
+		BranchName: "test-branch",
+	}
+	data, _ := json.MarshalIndent(existingSummary, "", "  ")
+	if err := os.WriteFile(filepath.Join(tmpDir, "summary.json"), data, 0644); err != nil {
+		t.Fatalf("failed to write summary: %v", err)
+	}
+
+	m, err := NewManagerWithOptions(tmpDir, "test-branch", "/tmp/test-project", ManagerOptions{UseSubdirs: false})
+	if err != nil {
+		t.Fatalf("NewManagerWithOptions failed: %v", err)
+	}
+
+	// Run number should now be 3
+	fileName := m.phaseFileName(1, "session.json")
+	expected := "phase-1-run-3-session.json"
+	if fileName != expected {
+		t.Errorf("got filename %q, want %q", fileName, expected)
+	}
+}
+
+func TestPhaseFileName_RunNumberOne(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	m, err := NewManagerWithOptions(tmpDir, "test-branch", "/tmp/test-project", ManagerOptions{UseSubdirs: false})
+	if err != nil {
+		t.Fatalf("NewManagerWithOptions failed: %v", err)
+	}
+
+	// Run number is 1, should use standard filename
+	fileName := m.phaseFileName(1, "session.json")
+	expected := "phase-1-session.json"
+	if fileName != expected {
+		t.Errorf("got filename %q, want %q", fileName, expected)
+	}
+}
+
+func TestPhaseFileName_WithSubdirs(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	m, err := NewManagerWithOptions(tmpDir, "test-branch", "/tmp/test-project", ManagerOptions{UseSubdirs: true})
+	if err != nil {
+		t.Fatalf("NewManagerWithOptions failed: %v", err)
+	}
+
+	// In subdir mode, always use standard filename
+	fileName := m.phaseFileName(1, "session.json")
+	expected := "phase-1-session.json"
+	if fileName != expected {
+		t.Errorf("got filename %q, want %q", fileName, expected)
+	}
+}
+
+func TestPostCompletionFileName_RunNumberGreaterThanOne(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	// Create existing summary with run number 2
+	existingSummary := Summary{
+		StartedAt:  time.Now().Add(-time.Hour),
+		Status:     "success",
+		RunNumber:  2,
+		BranchName: "test-branch",
+	}
+	data, _ := json.MarshalIndent(existingSummary, "", "  ")
+	if err := os.WriteFile(filepath.Join(tmpDir, "summary.json"), data, 0644); err != nil {
+		t.Fatalf("failed to write summary: %v", err)
+	}
+
+	m, err := NewManagerWithOptions(tmpDir, "test-branch", "/tmp/test-project", ManagerOptions{UseSubdirs: false})
+	if err != nil {
+		t.Fatalf("NewManagerWithOptions failed: %v", err)
+	}
+
+	// Run number should now be 3
+	fileName := m.postCompletionFileName()
+	expected := "post-completion-run-3-session"
+	if fileName != expected {
+		t.Errorf("got filename %q, want %q", fileName, expected)
+	}
+}
+
+func TestPostCompletionFileName_RunNumberOne(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	m, err := NewManagerWithOptions(tmpDir, "test-branch", "/tmp/test-project", ManagerOptions{UseSubdirs: false})
+	if err != nil {
+		t.Fatalf("NewManagerWithOptions failed: %v", err)
+	}
+
+	// Run number is 1, should use standard filename
+	fileName := m.postCompletionFileName()
+	expected := "post-completion-session"
+	if fileName != expected {
+		t.Errorf("got filename %q, want %q", fileName, expected)
+	}
+}
+
+func TestPostCompletionFileName_WithSubdirs(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	m, err := NewManagerWithOptions(tmpDir, "test-branch", "/tmp/test-project", ManagerOptions{UseSubdirs: true})
+	if err != nil {
+		t.Fatalf("NewManagerWithOptions failed: %v", err)
+	}
+
+	// In subdir mode, always use standard filename
+	fileName := m.postCompletionFileName()
+	expected := "post-completion-session"
+	if fileName != expected {
+		t.Errorf("got filename %q, want %q", fileName, expected)
+	}
+}

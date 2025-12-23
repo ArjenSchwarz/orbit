@@ -18,8 +18,10 @@ const (
 
 // Config holds the resolved configuration values.
 type Config struct {
-	Command     string
-	PostCommand string
+	Command         string
+	PostCommand     string
+	DateSubdirs     bool
+	ContinueSession bool
 
 	// postCommandExplicit tracks whether post-command was explicitly set in config.
 	// This allows distinguishing "not set" (use default) from "set to empty" (disabled).
@@ -45,6 +47,8 @@ func Load(workingDir string) *Config {
 	// Set defaults
 	v.SetDefault("command", DefaultCommand)
 	v.SetDefault("post-command", DefaultPostCommand)
+	v.SetDefault("date-subdirs", false)
+	v.SetDefault("continue-session", true)
 
 	// Config file name (without extension)
 	v.SetConfigName(".orbit")
@@ -98,6 +102,8 @@ func Load(workingDir string) *Config {
 	// Get values from config files (with defaults as fallback)
 	command := v.GetString("command")
 	postCommand := v.GetString("post-command")
+	dateSubdirs := v.GetBool("date-subdirs")
+	continueSession := v.GetBool("continue-session")
 
 	// Apply environment variable overrides (highest priority)
 	// Using os.LookupEnv to detect both set values and explicitly empty values
@@ -108,10 +114,18 @@ func Load(workingDir string) *Config {
 		postCommand = envPostCmd
 		postCommandExplicit = true
 	}
+	if envDateSubdirs, exists := os.LookupEnv("ORBIT_DATE_SUBDIRS"); exists {
+		dateSubdirs = envDateSubdirs == "true" || envDateSubdirs == "1"
+	}
+	if envContinueSession, exists := os.LookupEnv("ORBIT_CONTINUE_SESSION"); exists {
+		continueSession = envContinueSession == "true" || envContinueSession == "1"
+	}
 
 	return &Config{
 		Command:             command,
 		PostCommand:         postCommand,
+		DateSubdirs:         dateSubdirs,
+		ContinueSession:     continueSession,
 		postCommandExplicit: postCommandExplicit,
 	}
 }
