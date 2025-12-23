@@ -205,3 +205,92 @@ references:
   - Return true for session-related errors
   - File: internal/orbit/orbit.go
   - Requirements: [3.7](requirements.md#3.7)
+
+## Config Package Changes
+
+- [x] 30. Add session fields to config.Config struct
+  - Add DateSubdirs bool field
+  - Add ContinueSession bool field
+  - File: internal/config/config.go
+  - Requirements: [1.6](requirements.md#1.6), [3.6](requirements.md#3.6)
+
+- [x] 31. Add Viper defaults for new config fields
+  - Default date-subdirs to false
+  - Default continue-session to true
+  - File: internal/config/config.go
+  - Requirements: [4.2](requirements.md#4.2), [4.3](requirements.md#4.3)
+
+- [x] 32. Add environment variable support for new fields
+  - Support ORBIT_DATE_SUBDIRS
+  - Support ORBIT_CONTINUE_SESSION
+  - File: internal/config/config.go
+  - Requirements: [4.1](requirements.md#4.1)
+
+## CLI Changes
+
+- [x] 33. Add CLI flags for session options
+  - Add --date-subdirs flag (default: false)
+  - Add --no-continue-session flag (disables session continuation)
+  - File: cmd/orbit/main.go
+  - Requirements: [1.5](requirements.md#1.5), [3.4](requirements.md#3.4)
+
+- [x] 34. Wire CLI flags to orbit.Config
+  - Resolve date-subdirs with proper priority
+  - Resolve continue-session with proper priority
+  - File: cmd/orbit/main.go
+  - Requirements: [4.1](requirements.md#4.1)
+
+## Orchestrator Integration
+
+- [x] 35. Update runPhase to call log manager methods
+  - Call StartPhase to get sessionID and isResume
+  - Call ReconcileSessionID after Claude returns
+  - Call CompletePhase after successful completion
+  - File: internal/orbit/orbit.go
+  - Requirements: [2.1](requirements.md#2.1)-[2.7](requirements.md#2.7), [3.1](requirements.md#3.1)-[3.3](requirements.md#3.3), [5.1](requirements.md#5.1)
+
+- [x] 36. Implement resume failure handling in runPhase
+  - Detect session-invalid errors on resume
+  - Fall back to fresh session with new UUID
+  - Log warning when falling back
+  - File: internal/orbit/orbit.go
+  - Requirements: [3.7](requirements.md#3.7), [3.8](requirements.md#3.8), [3.9](requirements.md#3.9), [5.3](requirements.md#5.3)
+
+- [x] 37. Add post-completion session methods to log manager
+  - Implement SetPostCompletionSessionID
+  - Implement ReconcilePostCompletionSessionID
+  - File: internal/logs/manager.go
+  - Requirements: [3.8](requirements.md#3.8)
+
+- [x] 38. Update Claude client for post-completion sessions
+  - Add RunCustomPromptWithSession method
+  - Support sessionID and resume parameters
+  - File: internal/claude/client.go
+  - Requirements: [3.2](requirements.md#3.2), [3.3](requirements.md#3.3)
+
+- [x] 39. Update claudeRunner interface
+  - Add RunCustomPromptWithSession method
+  - File: internal/orbit/orbit.go
+  - Requirements: [3.2](requirements.md#3.2), [3.3](requirements.md#3.3)
+
+- [x] 40. Update runPostCommand with session tracking
+  - Call StartPostCompletion to get sessionID
+  - Handle resume failure with fallback
+  - Call ReconcilePostCompletionSessionID
+  - Call CompletePostCompletion after success
+  - File: internal/orbit/orbit.go
+  - Requirements: [3.1](requirements.md#3.1)-[3.3](requirements.md#3.3), [3.7](requirements.md#3.7)-[3.9](requirements.md#3.9)
+
+## Testing
+
+- [x] 41. Add integration tests for session continuation
+  - TestRunPhase_SessionContinuation
+  - TestRunPhase_ResumeFallback
+  - File: internal/orbit/orbit_test.go
+  - Requirements: [3.1](requirements.md#3.1)-[3.3](requirements.md#3.3), [3.7](requirements.md#3.7)-[3.9](requirements.md#3.9)
+
+- [x] 42. Verify all tests pass and lint clean
+  - Run make test
+  - Run make lint
+  - File: N/A
+  - Requirements: All

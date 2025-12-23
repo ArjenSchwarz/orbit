@@ -19,6 +19,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Flat log directory storage (default) with optional date-based subdirectories
   - Session ID generation and storage before Claude phase execution
   - Session continuation using `--resume` flag when resuming unfinished phases
+- CLI flags `--date-subdirs` and `--no-continue-session` for controlling session behavior
+- Environment variables `ORBIT_DATE_SUBDIRS` and `ORBIT_CONTINUE_SESSION` for session configuration
+- `RunCustomPromptWithSession` method in Claude client for post-completion session tracking
+- Log manager methods for session lifecycle: `StartPhase`, `CompletePhase`, `StartPostCompletion`, `CompletePostCompletion`
+- Log manager methods for session ID reconciliation: `SetCurrentPhaseSessionID`, `ReconcileSessionID`, `SetPostCompletionSessionID`, `ReconcilePostCompletionSessionID`
+- `PhaseState` and `PostCompletionState` types for tracking in-progress phases
+- `ManagerOptions` type and `NewManagerWithOptions` constructor for configurable log directory modes
+- Summary fields: `CurrentPhase`, `PostCompletion`, `RunNumber`, `BranchName` for crash recovery and session tracking
+- Resume failure fallback: automatic retry with fresh session when `--resume` fails
+- Branch mismatch warning when resuming in flat mode with a different branch
+- Tests for session continuation, resume fallback, and log manager options
 - Tests for config priority chain (`TestLoad_FullPriorityChain`, `TestLoad_PartialPriorityChain`, `TestLoad_EnvOverridesAllConfigs`, `TestLoad_EmptyEnvOverridesNonEmptyConfig`)
 - Tests for CLI flag priority resolution (`TestResolveCommands`)
 - Tests for post-command retry logic (`TestRunPostCommandWithRetry_*`, `TestRunPhaseWithRetry_*`)

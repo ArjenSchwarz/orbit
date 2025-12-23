@@ -8,12 +8,14 @@ import (
 
 	"github.com/arjenschwarz/orbit/internal/claude"
 	orberrors "github.com/arjenschwarz/orbit/internal/errors"
+	"github.com/arjenschwarz/orbit/internal/logs"
 )
 
 // mockClaudeClient implements claudeRunner for testing.
 type mockClaudeClient struct {
-	runPhaseFunc        func(sessionID string, resume bool) (*claude.SessionResult, error)
-	runCustomPromptFunc func(prompt string) (*claude.SessionResult, error)
+	runPhaseFunc                    func(sessionID string, resume bool) (*claude.SessionResult, error)
+	runCustomPromptFunc             func(prompt string) (*claude.SessionResult, error)
+	runCustomPromptWithSessionFunc  func(prompt, sessionID string, resume bool) (*claude.SessionResult, error)
 }
 
 func (m *mockClaudeClient) RunPhase(sessionID string, resume bool) (*claude.SessionResult, error) {
@@ -24,6 +26,17 @@ func (m *mockClaudeClient) RunPhase(sessionID string, resume bool) (*claude.Sess
 }
 
 func (m *mockClaudeClient) RunCustomPrompt(prompt string) (*claude.SessionResult, error) {
+	if m.runCustomPromptFunc != nil {
+		return m.runCustomPromptFunc(prompt)
+	}
+	return &claude.SessionResult{}, nil
+}
+
+func (m *mockClaudeClient) RunCustomPromptWithSession(prompt, sessionID string, resume bool) (*claude.SessionResult, error) {
+	if m.runCustomPromptWithSessionFunc != nil {
+		return m.runCustomPromptWithSessionFunc(prompt, sessionID, resume)
+	}
+	// Fall back to runCustomPromptFunc if not set
 	if m.runCustomPromptFunc != nil {
 		return m.runCustomPromptFunc(prompt)
 	}
@@ -470,5 +483,186 @@ func TestErrorClassification_IsUsedCorrectly(t *testing.T) {
 				t.Errorf("retryable: got %v, want %v", classified.Type.IsRetryable(), tc.wantRetryable)
 			}
 		})
+	}
+}
+
+func TestRunPhase_SessionContinuation_NewSession(t *testing.T) {
+	// Track what RunPhase was called with
+	var capturedSessionID string
+	var capturedResume bool
+
+	mock := &mockClaudeClient{
+		runPhaseFunc: func(sessionID string, resume bool) (*claude.SessionResult, error) {
+			capturedSessionID = sessionID
+			capturedResume = resume
+			return &claude.SessionResult{
+				SessionID: sessionID, // Return same session ID
+				Output:    "Success",
+				IsError:   false,
+			}, nil
+		},
+	}
+
+	// Create a temp dir for log manager
+	tempDir := t.TempDir()
+
+	o := &Orbit{
+		config: Config{
+			ContinueSession: true,
+		},
+		claudeClient: mock,
+		logManager:   nil, // No log manager - should generate fresh session
+	}
+
+	err := o.runPhase(1)
+	if err != nil {
+		t.Errorf("runPhase() returned error: %v", err)
+	}
+
+	// Without log manager, should always be a new session (resume=false)
+	if capturedResume {
+		t.Error("expected resume=false without log manager")
+	}
+
+	// Session ID should be non-empty (UUID generated)
+	if capturedSessionID == "" {
+		t.Error("expected non-empty session ID")
+	}
+
+	_ = tempDir // Silence unused warning
+}
+
+func TestRunPhase_SessionContinuation_WithLogManager(t *testing.T) {
+	// Track calls to RunPhase
+	var calls []struct {
+		sessionID string
+		resume    bool
+	}
+
+	mock := &mockClaudeClient{
+		runPhaseFunc: func(sessionID string, resume bool) (*claude.SessionResult, error) {
+			calls = append(calls, struct {
+				sessionID string
+				resume    bool
+			}{sessionID, resume})
+			return &claude.SessionResult{
+				SessionID: sessionID,
+				Output:    "Success",
+				IsError:   false,
+			}, nil
+		},
+	}
+
+	// Create log manager in temp directory
+	tempDir := t.TempDir()
+	logManager, err := logs.NewManagerWithOptions(tempDir, "test-branch", tempDir, logs.ManagerOptions{UseSubdirs: false})
+	if err != nil {
+		t.Fatalf("Failed to create log manager: %v", err)
+	}
+
+	o := &Orbit{
+		config: Config{
+			ContinueSession: true,
+		},
+		claudeClient: mock,
+		logManager:   logManager,
+	}
+
+	// First run - should start a new session
+	if err := o.runPhase(1); err != nil {
+		t.Fatalf("First runPhase() returned error: %v", err)
+	}
+
+	if len(calls) != 1 {
+		t.Fatalf("expected 1 call, got %d", len(calls))
+	}
+
+	// First call should be resume=false (new session)
+	if calls[0].resume {
+		t.Error("first call should have resume=false")
+	}
+	firstSessionID := calls[0].sessionID
+	if firstSessionID == "" {
+		t.Error("expected non-empty session ID")
+	}
+}
+
+func TestRunPhase_ResumeFallback(t *testing.T) {
+	// Track calls to RunPhase
+	var calls []struct {
+		sessionID string
+		resume    bool
+	}
+
+	mock := &mockClaudeClient{
+		runPhaseFunc: func(sessionID string, resume bool) (*claude.SessionResult, error) {
+			calls = append(calls, struct {
+				sessionID string
+				resume    bool
+			}{sessionID, resume})
+
+			// First call with resume=true should fail with session not found
+			if resume {
+				return &claude.SessionResult{
+					Stderr:  "session not found",
+					IsError: true,
+				}, errors.New("session not found")
+			}
+
+			// New session should succeed
+			return &claude.SessionResult{
+				SessionID: sessionID,
+				Output:    "Success",
+				IsError:   false,
+			}, nil
+		},
+	}
+
+	// Create log manager in temp directory
+	tempDir := t.TempDir()
+	logManager, err := logs.NewManagerWithOptions(tempDir, "test-branch", tempDir, logs.ManagerOptions{UseSubdirs: false})
+	if err != nil {
+		t.Fatalf("Failed to create log manager: %v", err)
+	}
+
+	// Manually set a CurrentPhase to simulate resuming
+	// We need to call StartPhase first, then simulate an interruption
+	sessionID, _, err := logManager.StartPhase(1, true)
+	if err != nil {
+		t.Fatalf("StartPhase() returned error: %v", err)
+	}
+
+	o := &Orbit{
+		config: Config{
+			ContinueSession: true,
+		},
+		claudeClient: mock,
+		logManager:   logManager,
+	}
+
+	// Run phase - should try resume first, then fall back
+	if err := o.runPhase(1); err != nil {
+		t.Fatalf("runPhase() returned error: %v", err)
+	}
+
+	// Should have 2 calls: first with resume=true (failed), second with resume=false
+	if len(calls) != 2 {
+		t.Fatalf("expected 2 calls, got %d", len(calls))
+	}
+
+	// First call should be resume=true with original session ID
+	if !calls[0].resume {
+		t.Error("first call should have resume=true")
+	}
+	if calls[0].sessionID != sessionID {
+		t.Errorf("first call session ID = %q, want %q", calls[0].sessionID, sessionID)
+	}
+
+	// Second call should be resume=false with a new session ID
+	if calls[1].resume {
+		t.Error("second call should have resume=false")
+	}
+	if calls[1].sessionID == sessionID {
+		t.Error("second call should have a different session ID")
 	}
 }
