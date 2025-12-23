@@ -288,7 +288,7 @@ func (m *Manager) CompletePostCompletion() error {
 // This is called when a resume attempt fails and a new session is started.
 func (m *Manager) SetPostCompletionSessionID(sessionID string) error {
 	if m.summary.PostCompletion == nil {
-		return fmt.Errorf("no post-completion in progress")
+		return nil // No-op if no post-completion in progress
 	}
 	m.summary.PostCompletion.SessionID = sessionID
 	return m.writeSummary()
@@ -313,6 +313,15 @@ func (m *Manager) phaseFileName(phase int, suffix string) string {
 		return fmt.Sprintf("phase-%d-run-%d-%s", phase, m.summary.RunNumber, suffix)
 	}
 	return fmt.Sprintf("phase-%d-%s", phase, suffix)
+}
+
+// postCompletionFileName generates the base filename for post-completion files.
+// Returns run-numbered filename when RunNumber > 1 in flat mode.
+func (m *Manager) postCompletionFileName() string {
+	if m.summary.RunNumber > 1 && !m.useSubdirs {
+		return fmt.Sprintf("post-completion-run-%d-session", m.summary.RunNumber)
+	}
+	return "post-completion-session"
 }
 
 // SaveSession records a completed Claude session.
@@ -372,7 +381,7 @@ func (m *Manager) Complete() error {
 // SavePostCompletionSession saves the post-command session with distinct naming.
 func (m *Manager) SavePostCompletionSession(result *claude.SessionResult, startTime time.Time) error {
 	endTime := time.Now()
-	baseName := "post-completion-session"
+	baseName := m.postCompletionFileName()
 
 	// Save JSON
 	jsonPath := filepath.Join(m.sessionDir, baseName+".json")

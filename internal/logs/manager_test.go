@@ -1164,3 +1164,63 @@ func TestPhaseFileName_WithSubdirs(t *testing.T) {
 		t.Errorf("got filename %q, want %q", fileName, expected)
 	}
 }
+
+func TestPostCompletionFileName_RunNumberGreaterThanOne(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	// Create existing summary with run number 2
+	existingSummary := Summary{
+		StartedAt:  time.Now().Add(-time.Hour),
+		Status:     "success",
+		RunNumber:  2,
+		BranchName: "test-branch",
+	}
+	data, _ := json.MarshalIndent(existingSummary, "", "  ")
+	if err := os.WriteFile(filepath.Join(tmpDir, "summary.json"), data, 0644); err != nil {
+		t.Fatalf("failed to write summary: %v", err)
+	}
+
+	m, err := NewManagerWithOptions(tmpDir, "test-branch", "/tmp/test-project", ManagerOptions{UseSubdirs: false})
+	if err != nil {
+		t.Fatalf("NewManagerWithOptions failed: %v", err)
+	}
+
+	// Run number should now be 3
+	fileName := m.postCompletionFileName()
+	expected := "post-completion-run-3-session"
+	if fileName != expected {
+		t.Errorf("got filename %q, want %q", fileName, expected)
+	}
+}
+
+func TestPostCompletionFileName_RunNumberOne(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	m, err := NewManagerWithOptions(tmpDir, "test-branch", "/tmp/test-project", ManagerOptions{UseSubdirs: false})
+	if err != nil {
+		t.Fatalf("NewManagerWithOptions failed: %v", err)
+	}
+
+	// Run number is 1, should use standard filename
+	fileName := m.postCompletionFileName()
+	expected := "post-completion-session"
+	if fileName != expected {
+		t.Errorf("got filename %q, want %q", fileName, expected)
+	}
+}
+
+func TestPostCompletionFileName_WithSubdirs(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	m, err := NewManagerWithOptions(tmpDir, "test-branch", "/tmp/test-project", ManagerOptions{UseSubdirs: true})
+	if err != nil {
+		t.Fatalf("NewManagerWithOptions failed: %v", err)
+	}
+
+	// In subdir mode, always use standard filename
+	fileName := m.postCompletionFileName()
+	expected := "post-completion-session"
+	if fileName != expected {
+		t.Errorf("got filename %q, want %q", fileName, expected)
+	}
+}
