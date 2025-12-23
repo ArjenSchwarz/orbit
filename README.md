@@ -59,6 +59,8 @@ orbit --no-post-command
 | `--command` | see below | Custom prompt for Claude phases |
 | `--post-command` | see below | Command to run after all tasks complete |
 | `--no-post-command` | `false` | Skip the post-completion command |
+| `--date-subdirs` | `false` | Use date-based subdirectories for logs |
+| `--continue-session` | `true` | Resume unfinished Claude sessions on restart |
 | `--version` | - | Show version and exit |
 
 ### Default Commands
@@ -89,6 +91,8 @@ Example `.orbit.yaml`:
 ```yaml
 command: "Run /next-task --phase and when complete run /commit"
 post-command: "Run tests and verify everything works"
+date_subdirs: false      # Use flat .orbit/ directory (default)
+continue_session: true   # Resume unfinished sessions (default)
 ```
 
 To disable the post-completion command in config, set it to an empty string:
@@ -97,12 +101,20 @@ To disable the post-completion command in config, set it to an empty string:
 post-command: ""
 ```
 
+To use date-based subdirectories (legacy mode):
+
+```yaml
+date_subdirs: true
+```
+
 ### Environment Variables
 
 | Variable | Description |
 |----------|-------------|
 | `ORBIT_COMMAND` | Override the phase command |
 | `ORBIT_POST_COMMAND` | Override the post-completion command (empty string disables) |
+| `ORBIT_DATE_SUBDIRS` | Use date-based subdirectories (`true`/`false`) |
+| `ORBIT_CONTINUE_SESSION` | Enable session continuation (`true`/`false`) |
 
 Setting an environment variable to an empty string explicitly overrides config file values:
 
@@ -138,19 +150,58 @@ Configuration is resolved in this order (highest priority first):
 
 ## Log Structure
 
-Logs are saved to `.orbit/` next to the tasks file (e.g., `specs/my-feature/.orbit/`):
+Logs are saved to `.orbit/` next to the tasks file (e.g., `specs/my-feature/.orbit/`).
+
+### Flat Mode (Default)
+
+```
+specs/my-feature/.orbit/
+├── summary.json                      # Persistent run summary with session tracking
+├── phase-1-run-1-session.json        # Full Claude output for phase 1, run 1
+├── phase-1-run-1-session.txt         # Human-readable transcript
+├── phase-2-run-1-session.json
+├── phase-2-run-1-session.txt
+├── ...
+├── post-completion-run-1-session.json
+└── post-completion-run-1-session.txt
+```
+
+When you run Orbit multiple times, files are numbered by run (e.g., `phase-1-run-2-session.json`).
+
+### Date Subdirectories Mode (`--date-subdirs`)
 
 ```
 specs/my-feature/.orbit/
 └── 2025-01-15-143022-feature-branch/
-    ├── summary.json                    # Overall run summary
-    ├── phase-1-session.json            # Full Claude output for phase 1
-    ├── phase-1-session.txt             # Human-readable transcript
-    ├── phase-2-session.json
-    ├── phase-2-session.txt
-    ├── ...
-    ├── post-completion-session.json    # Post-completion command output
-    └── post-completion-session.txt
+    ├── summary.json                    # Run summary for this session
+    ├── phase-1-session.json
+    ├── phase-1-session.txt
+    └── ...
+```
+
+## Session Management
+
+Orbit tracks Claude session IDs to enable crash recovery and session continuation.
+
+### How It Works
+
+1. **Session ID Generation**: Before each phase, Orbit generates a UUID session ID
+2. **Persistence**: The session ID is saved to `summary.json` before invoking Claude
+3. **Resume on Restart**: If Orbit is interrupted mid-phase, it detects the unfinished phase and resumes the same Claude session using `--resume`
+4. **Fallback**: If session resume fails (e.g., session expired), Orbit automatically starts a fresh session
+
+### Disabling Session Continuation
+
+To always start fresh sessions instead of resuming:
+
+```bash
+orbit --continue-session=false
+```
+
+Or in `.orbit.yaml`:
+
+```yaml
+continue_session: false
 ```
 
 ## Resumption
@@ -160,6 +211,8 @@ Orbit is inherently resumable. Since task state is tracked in the rune tasks fil
 - Stop Orbit at any time (Ctrl+C)
 - Complete tasks manually in Claude interactive mode
 - Run Orbit again to continue from where you left off
+
+With session continuation enabled (default), Orbit will also resume the Claude session context, allowing Claude to remember what it was working on.
 
 ## License
 
