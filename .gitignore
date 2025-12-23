@@ -1,2 +1,5 @@
 # Binary (at root level only)
 /orbit
+
+# Orbit orchestration log directories
+**/.orbit/

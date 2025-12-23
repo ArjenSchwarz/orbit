@@ -9,6 +9,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Apsis feature spec with requirements, design, decisions, and tasks for:
+  - Standalone CLI tool to convert Claude Code session transcripts to Markdown
+  - Shared `internal/transcript` package for parsing and rendering
+  - Session discovery via `--list` flag
+  - Input from file path, session ID, or stdin
+  - UTF-8 safe truncation and path normalization improvements
 - `DateSubdirs` and `ContinueSession` configuration fields in `orbit.Config` for session management
 - `isSessionInvalidError` function to detect session-related errors (session not found, invalid session, session expired)
 - Tests for `isSessionInvalidError` covering detection of various session error messages
