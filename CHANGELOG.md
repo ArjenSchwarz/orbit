@@ -61,6 +61,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- Refactored `internal/logs/manager.go` to use `internal/transcript` package for JSONL parsing and Markdown rendering
+- `generateMarkdownTranscript` and `generatePostCompletionMarkdownTranscript` now use `transcript.ParseJSONL` and `transcript.RenderMarkdown`
+- Phase transcripts now use `RenderOptions` with phase-specific titles ("Phase N Session Transcript" and "Post-Completion Session Transcript")
+- Removed duplicate type definitions (`transcriptEntry`, `transcriptMsg`, `contentItem`) and formatting functions from logs package
+- Moved format-related tests to `internal/transcript/markdown_test.go`
 - `orbit.New` now uses `logs.NewManagerWithOptions` to support configurable log directory modes
 - Updated `claudeRunner` interface signature: `RunPhase()` now requires `sessionID string` and `resume bool` parameters
 - Orbit now generates UUID session IDs for each phase execution
@@ -72,6 +77,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Path normalization bug in `copySessionTranscript` and `copyPostCompletionTranscript`: leading path separator is now correctly removed (e.g., `/Users/foo/project` becomes `Users-foo-project` instead of `-Users-foo-project`)
+- Added `buildClaudeProjectPath` helper function with proper Unix and Windows path handling
 - Fixed meaningless `errors.Is(err, err)` assertion in TestRunPostCommandWithRetry_MaxRetriesExceeded
 - Config priority bug: home config's explicit `post-command: ""` now correctly disables post-command
 - Dry-run output now shows actual command value instead of "(default)"

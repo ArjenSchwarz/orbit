@@ -2,7 +2,6 @@
 package logs
 
 import (
-	"bufio"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -13,33 +12,9 @@ import (
 	"time"
 
 	"github.com/arjenschwarz/orbit/internal/claude"
+	"github.com/arjenschwarz/orbit/internal/transcript"
 	"github.com/google/uuid"
 )
-
-// transcriptEntry represents a line in the Claude session JSONL.
-type transcriptEntry struct {
-	Type      string         `json:"type"`
-	Message   *transcriptMsg `json:"message,omitempty"`
-	Timestamp string         `json:"timestamp,omitempty"`
-	SessionID string         `json:"sessionId,omitempty"`
-}
-
-// transcriptMsg represents the message content.
-type transcriptMsg struct {
-	Role    string        `json:"role"`
-	Content []contentItem `json:"content"`
-}
-
-// contentItem represents a content block in a message.
-type contentItem struct {
-	Type     string `json:"type"`
-	Text     string `json:"text,omitempty"`
-	Thinking string `json:"thinking,omitempty"`
-	Name     string `json:"name,omitempty"`
-	Input    any    `json:"input,omitempty"`
-	Content  string `json:"content,omitempty"`
-	IsError  bool   `json:"is_error,omitempty"`
-}
 
 // ManagerOptions configures the log manager behavior.
 type ManagerOptions struct {
@@ -413,7 +388,7 @@ func (m *Manager) copyPostCompletionTranscript(sessionID, baseName string) error
 		return fmt.Errorf("failed to get home directory: %w", err)
 	}
 
-	projectPath := strings.ReplaceAll(m.workingDir, "/", "-")
+	projectPath := buildClaudeProjectPath(m.workingDir)
 	claudeProjectsDir := filepath.Join(homeDir, ".claude", "projects", projectPath)
 	srcPath := filepath.Join(claudeProjectsDir, sessionID+".jsonl")
 
@@ -444,39 +419,23 @@ func (m *Manager) generatePostCompletionMarkdownTranscript(srcPath, dstPath, ses
 	}
 	defer func() { _ = src.Close() }()
 
-	var sb strings.Builder
-	sb.WriteString("# Post-Completion Session Transcript\n\n")
-	sb.WriteString(fmt.Sprintf("**Session ID:** `%s`\n\n", sessionID))
-	sb.WriteString("---\n\n")
-
-	scanner := bufio.NewScanner(src)
-	buf := make([]byte, 0, 64*1024)
-	scanner.Buffer(buf, 10*1024*1024)
-
-	for scanner.Scan() {
-		line := scanner.Bytes()
-		if len(line) == 0 {
-			continue
-		}
-
-		var entry transcriptEntry
-		if err := json.Unmarshal(line, &entry); err != nil {
-			continue
-		}
-
-		switch entry.Type {
-		case "user":
-			sb.WriteString(formatUserMessage(&entry))
-		case "assistant":
-			sb.WriteString(formatAssistantMessage(&entry))
-		}
+	result, err := transcript.ParseJSONL(src)
+	if err != nil {
+		return err
 	}
 
-	if err := scanner.Err(); err != nil {
-		return fmt.Errorf("failed to scan transcript: %w", err)
+	// Log warnings to stderr
+	for _, w := range result.Warnings {
+		fmt.Fprintf(os.Stderr, "Warning: line %d: %s\n", w.Line, w.Message)
 	}
 
-	return os.WriteFile(dstPath, []byte(sb.String()), 0644)
+	opts := transcript.RenderOptions{
+		Title:     "Post-Completion Session Transcript",
+		SessionID: sessionID,
+	}
+	markdown := transcript.RenderMarkdown(result.Entries, opts)
+
+	return os.WriteFile(dstPath, []byte(markdown), 0644)
 }
 
 // formatPostCompletionTranscript creates a human-readable post-completion transcript.
@@ -575,13 +534,13 @@ Stderr:
 func (m *Manager) copySessionTranscript(phase int, sessionID string) error {
 	// Build the Claude projects path
 	// Claude stores sessions in ~/.claude/projects/{project-path}/{session-id}.jsonl
-	// where project-path has slashes replaced with dashes
+	// where project-path has the leading separator removed and remaining separators replaced with dashes
 	homeDir, err := os.UserHomeDir()
 	if err != nil {
 		return fmt.Errorf("failed to get home directory: %w", err)
 	}
 
-	projectPath := strings.ReplaceAll(m.workingDir, "/", "-")
+	projectPath := buildClaudeProjectPath(m.workingDir)
 	claudeProjectsDir := filepath.Join(homeDir, ".claude", "projects", projectPath)
 	srcPath := filepath.Join(claudeProjectsDir, sessionID+".jsonl")
 
@@ -635,131 +594,37 @@ func (m *Manager) generateMarkdownTranscript(srcPath, dstPath string, phase int,
 	}
 	defer func() { _ = src.Close() }()
 
-	var sb strings.Builder
-	sb.WriteString(fmt.Sprintf("# Phase %d Session Transcript\n\n", phase))
-	sb.WriteString(fmt.Sprintf("**Session ID:** `%s`\n\n", sessionID))
-	sb.WriteString("---\n\n")
-
-	scanner := bufio.NewScanner(src)
-	// Increase buffer size for long lines
-	buf := make([]byte, 0, 64*1024)
-	scanner.Buffer(buf, 10*1024*1024)
-
-	for scanner.Scan() {
-		line := scanner.Bytes()
-		if len(line) == 0 {
-			continue
-		}
-
-		var entry transcriptEntry
-		if err := json.Unmarshal(line, &entry); err != nil {
-			continue // Skip malformed lines
-		}
-
-		switch entry.Type {
-		case "user":
-			sb.WriteString(formatUserMessage(&entry))
-		case "assistant":
-			sb.WriteString(formatAssistantMessage(&entry))
-		}
+	result, err := transcript.ParseJSONL(src)
+	if err != nil {
+		return err
 	}
 
-	if err := scanner.Err(); err != nil {
-		return fmt.Errorf("failed to scan transcript: %w", err)
+	// Log warnings to stderr
+	for _, w := range result.Warnings {
+		fmt.Fprintf(os.Stderr, "Warning: line %d: %s\n", w.Line, w.Message)
 	}
 
-	return os.WriteFile(dstPath, []byte(sb.String()), 0644)
+	opts := transcript.RenderOptions{
+		Title:     fmt.Sprintf("Phase %d Session Transcript", phase),
+		SessionID: sessionID,
+	}
+	markdown := transcript.RenderMarkdown(result.Entries, opts)
+
+	return os.WriteFile(dstPath, []byte(markdown), 0644)
 }
 
-// formatUserMessage formats a user message as Markdown.
-func formatUserMessage(entry *transcriptEntry) string {
-	if entry.Message == nil || len(entry.Message.Content) == 0 {
-		return ""
-	}
-
-	// Collect text content first to check if there's anything to output
-	var texts []string
-	for _, item := range entry.Message.Content {
-		if item.Text != "" {
-			texts = append(texts, item.Text)
-		}
-	}
-
-	// Skip if no actual text content
-	if len(texts) == 0 {
-		return ""
-	}
-
-	var sb strings.Builder
-	sb.WriteString("## 👤 User\n\n")
-
-	for _, text := range texts {
-		sb.WriteString(text)
-		sb.WriteString("\n\n")
-	}
-
-	sb.WriteString("---\n\n")
-	return sb.String()
-}
-
-// formatAssistantMessage formats an assistant message as Markdown.
-func formatAssistantMessage(entry *transcriptEntry) string {
-	if entry.Message == nil {
-		return ""
-	}
-
-	var sb strings.Builder
-	sb.WriteString("## 🤖 Assistant\n\n")
-
-	for _, item := range entry.Message.Content {
-		switch item.Type {
-		case "thinking":
-			if item.Thinking != "" {
-				sb.WriteString("<details>\n<summary>💭 Thinking</summary>\n\n")
-				sb.WriteString(item.Thinking)
-				sb.WriteString("\n\n</details>\n\n")
-			}
-
-		case "text":
-			if item.Text != "" {
-				sb.WriteString(item.Text)
-				sb.WriteString("\n\n")
-			}
-
-		case "tool_use":
-			sb.WriteString(fmt.Sprintf("### 🔧 Tool: `%s`\n\n", item.Name))
-			if item.Input != nil {
-				inputJSON, err := json.MarshalIndent(item.Input, "", "  ")
-				if err == nil {
-					sb.WriteString("```json\n")
-					// Truncate very long inputs
-					inputStr := string(inputJSON)
-					if len(inputStr) > 2000 {
-						inputStr = inputStr[:2000] + "\n... (truncated)"
-					}
-					sb.WriteString(inputStr)
-					sb.WriteString("\n```\n\n")
-				}
-			}
-
-		case "tool_result":
-			content := item.Content
-			if len(content) > 3000 {
-				content = content[:3000] + "\n... (truncated)"
-			}
-			if item.IsError {
-				sb.WriteString("#### ❌ Tool Error\n\n")
-			} else {
-				sb.WriteString("#### ✅ Tool Result\n\n")
-			}
-			sb.WriteString("```\n")
-			sb.WriteString(content)
-			sb.WriteString("\n```\n\n")
-		}
-	}
-
-	sb.WriteString("---\n\n")
-	return sb.String()
+// buildClaudeProjectPath converts a project path to Claude's projects directory format.
+// Example: /Users/foo/project -> Users-foo-project
+// This removes the leading separator and replaces remaining separators with dashes.
+func buildClaudeProjectPath(projectPath string) string {
+	// Remove leading separator (fixes existing bug per Decision 11)
+	p := strings.TrimPrefix(projectPath, "/")
+	// Handle Windows paths
+	p = strings.TrimPrefix(p, "\\")
+	// Replace remaining separators with dashes
+	p = strings.ReplaceAll(p, "/", "-")
+	p = strings.ReplaceAll(p, "\\", "-")
+	return p
 }
 
 // sanitizeName replaces characters that are invalid in filenames.

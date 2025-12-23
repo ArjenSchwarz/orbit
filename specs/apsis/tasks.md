@@ -62,7 +62,7 @@ references:
 
 ## Phase 2: Orbit Integration
 
-- [ ] 7. Refactor internal/logs/manager.go to use transcript package
+- [x] 7. Refactor internal/logs/manager.go to use transcript package
   - Add import for internal/transcript
   - Remove local transcriptEntry, transcriptMsg, contentItem types
   - Update generateMarkdownTranscript to use transcript.ParseJSONL and transcript.RenderMarkdown
@@ -71,13 +71,13 @@ references:
   - Log warnings from ParseResult to stderr
   - Requirements: [6.1](requirements.md#6.1), [6.4](requirements.md#6.4), [6.5](requirements.md#6.5)
 
-- [ ] 8. Fix path normalization in copySessionTranscript
+- [x] 8. Fix path normalization in copySessionTranscript
   - Update projectPath conversion to remove leading separator (Decision 11)
   - Use strings.TrimPrefix before replacing separators
   - Handle both Unix and Windows path separators
   - Requirements: [2.10](requirements.md#2.10)
 
-- [ ] 9. Verify existing Orbit tests pass
+- [x] 9. Verify existing Orbit tests pass
   - Run make test to ensure all existing tests pass
   - Manually verify Markdown output is visually similar (Decision 13)
   - Fix any regressions identified
