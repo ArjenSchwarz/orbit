@@ -17,8 +17,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Path normalization that correctly removes leading separator
   - Human-readable file size formatting
 - Makefile targets for building apsis:
+  - `VERSION` variable from `git describe --tags --always` for version injection
   - `build-orbit` to build only orbit binary
-  - `build-apsis` to build only apsis binary
+  - `build-apsis` to build only apsis binary with ldflags for version injection
   - `build` now builds both binaries
   - `install` now installs both binaries
   - `clean` now removes both binaries

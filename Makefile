@@ -1,5 +1,8 @@
 .PHONY: build build-orbit build-apsis test lint clean install modernize
 
+# Version from git describe
+VERSION := $(shell git describe --tags --always 2>/dev/null || echo "dev")
+
 # Build both binaries
 build: build-orbit build-apsis
 
@@ -7,9 +10,9 @@ build: build-orbit build-apsis
 build-orbit:
 	go build -o orbit ./cmd/orbit
 
-# Build apsis only
+# Build apsis only (with version injection)
 build-apsis:
-	go build -o apsis ./cmd/apsis
+	go build -ldflags="-X main.version=$(VERSION)" -o apsis ./cmd/apsis
 
 # Run all tests
 test:

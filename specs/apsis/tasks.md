@@ -85,7 +85,7 @@ references:
 
 ## Phase 3: Apsis CLI
 
-- [ ] 10. Create cmd/apsis/main.go with flag parsing and version
+- [x] 10. Create cmd/apsis/main.go with flag parsing and version
   - Create Config struct with List, Output, Project, Version, Help, Input fields
   - Implement flag parsing with -l/--list, -o/--output, -p/--project, -v/--version, -h/--help
   - Add version variable for build-time injection
@@ -93,7 +93,7 @@ references:
   - Handle --version flag to print version and exit
   - Requirements: [2.7](requirements.md#2.7), [2.9](requirements.md#2.9), [2.11](requirements.md#2.11), [2.12](requirements.md#2.12)
 
-- [ ] 11. Implement input source resolution (file path vs session ID vs stdin)
+- [x] 11. Implement input source resolution (file path vs session ID vs stdin)
   - Implement isFilePath(arg) checking for path separators, .jsonl extension, or file existence
   - Implement isInputFromPipe() using os.Stdin.Stat()
   - Implement resolveInput returning io.ReadCloser and session ID
@@ -101,7 +101,7 @@ references:
   - Build Claude project path using buildClaudePath with leading separator fix
   - Requirements: [2.1](requirements.md#2.1), [2.2](requirements.md#2.2), [2.3](requirements.md#2.3), [2.4](requirements.md#2.4), [2.5](requirements.md#2.5), [2.8](requirements.md#2.8), [2.10](requirements.md#2.10)
 
-- [ ] 12. Implement session discovery (--list flag)
+- [x] 12. Implement session discovery (--list flag)
   - Implement ListSessions reading .jsonl files from Claude projects directory
   - Use ParseFirstTimestamp for creation date, file mtime as fallback
   - Create SessionInfo struct with ID, CreatedAt, Size
@@ -111,7 +111,7 @@ references:
   - Handle project directory not found with error message
   - Requirements: [3.1](requirements.md#3.1), [3.2](requirements.md#3.2), [3.3](requirements.md#3.3), [3.4](requirements.md#3.4), [3.5](requirements.md#3.5), [3.6](requirements.md#3.6), [3.7](requirements.md#3.7), [3.8](requirements.md#3.8), [3.9](requirements.md#3.9), [3.10](requirements.md#3.10)
 
-- [ ] 13. Implement conversion logic
+- [x] 13. Implement conversion logic
   - Implement convert(input io.Reader, output io.Writer, sessionID string) error
   - Use transcript.ParseJSONL to parse input
   - Use transcript.RenderMarkdown with Session Transcript title
@@ -121,7 +121,7 @@ references:
   - Exit 0 on success, 1 on error
   - Requirements: [2.6](requirements.md#2.6), [4.3](requirements.md#4.3), [4.4](requirements.md#4.4), [4.5](requirements.md#4.5), [4.6](requirements.md#4.6), [5.1](requirements.md#5.1)
 
-- [ ] 14. Create cmd/apsis/main_test.go
+- [x] 14. Create cmd/apsis/main_test.go
   - Test isFilePath returns true for paths with /
   - Test isFilePath returns true for paths ending in .jsonl
   - Test isFilePath returns true for existing files
@@ -133,7 +133,7 @@ references:
 
 ## Phase 4: Build System
 
-- [ ] 15. Update Makefile with apsis build targets
+- [x] 15. Update Makefile with apsis build targets
   - Add VERSION variable from git describe
   - Add build-orbit target for orbit binary only
   - Add build-apsis target with ldflags for version injection
@@ -142,7 +142,7 @@ references:
   - Update clean target to remove both binaries
   - Requirements: [7.1](requirements.md#7.1), [7.2](requirements.md#7.2), [7.3](requirements.md#7.3), [7.4](requirements.md#7.4)
 
-- [ ] 16. Verify build and test targets
+- [x] 16. Verify build and test targets
   - Run make build and verify both binaries are created
   - Run make test and verify all tests pass including transcript package
   - Run make lint and fix any linting issues
