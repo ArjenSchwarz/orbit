@@ -14,7 +14,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Input source resolution: file path, session ID, or stdin
   - Session discovery via `--list` flag showing ID, creation date, and size
   - Conversion using shared `internal/transcript` package
-  - Path normalization that correctly removes leading separator
+  - Path normalization that preserves leading separator to match Claude's directory structure
   - Human-readable file size formatting
 - Makefile targets for building apsis:
   - `VERSION` variable from `git describe --tags --always` for version injection
@@ -91,8 +91,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
-- Path normalization bug in `copySessionTranscript` and `copyPostCompletionTranscript`: leading path separator is now correctly removed (e.g., `/Users/foo/project` becomes `Users-foo-project` instead of `-Users-foo-project`)
-- Added `buildClaudeProjectPath` helper function with proper Unix and Windows path handling
+- Path normalization in `copySessionTranscript` and `copyPostCompletionTranscript`: leading path separator is now correctly preserved to match Claude's directory structure (e.g., `/Users/foo/project` becomes `-Users-foo-project`)
+- Added `BuildProjectPath` helper function in `internal/claude/paths.go` with proper Unix and Windows path handling
 - Fixed meaningless `errors.Is(err, err)` assertion in TestRunPostCommandWithRetry_MaxRetriesExceeded
 - Config priority bug: home config's explicit `post-command: ""` now correctly disables post-command
 - Dry-run output now shows actual command value instead of "(default)"
