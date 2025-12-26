@@ -21,8 +21,7 @@ Apsis is a standalone CLI tool for converting Claude Code session transcripts fr
 
 Per design decisions, the new implementation will include these improvements:
 1. **UTF-8 safe truncation**: Truncate at rune boundaries instead of byte boundaries
-2. **Path normalization**: Correctly remove leading path separator (fix existing bug)
-3. **Warning collection**: Report malformed entries with line numbers (was silent before)
+2. **Warning collection**: Report malformed entries with line numbers (was silent before)
 
 ---
 
@@ -258,18 +257,15 @@ func buildClaudePath(projectPath string) string
 
 #### 2.3 Path Normalization
 
-Convert project paths to Claude's format (fixes existing bug per Decision 11):
+Convert project paths to Claude's format (per Decision 11, preserves leading dash):
 
 ```go
 // buildClaudePath converts a project path to Claude's projects directory format.
-// Example: /Users/foo/project -> Users-foo-project
+// Example: /Users/foo/project -> -Users-foo-project
+// The leading dash is preserved to match Claude's directory structure.
 func buildClaudePath(projectPath string) string {
-    // Remove leading separator (fixes existing bug)
-    p := strings.TrimPrefix(projectPath, "/")
-    // Handle Windows paths
-    p = strings.TrimPrefix(p, "\\")
-    // Replace remaining separators with dashes
-    p = strings.ReplaceAll(p, "/", "-")
+    // Replace path separators with dashes (leading separator becomes leading dash)
+    p := strings.ReplaceAll(projectPath, "/", "-")
     p = strings.ReplaceAll(p, "\\", "-")
     return p
 }
@@ -609,7 +605,7 @@ apsis --help
 | 2.1-2.3 | `isFilePath()` disambiguation logic |
 | 2.4-2.5 | `isInputFromPipe()` TTY detection |
 | 2.6-2.7 | Output to stdout/file handling |
-| 2.8-2.10 | `buildClaudePath()` with leading separator fix (Decision 11) |
+| 2.8-2.10 | `buildClaudePath()` preserving leading dash (Decision 11) |
 | 2.11-2.12 | Flag parsing with version injection |
 | 3.1-3.10 | `ListSessions()`, `FormatSessionList()` |
 | 4.1-4.8 | `ParseWarning`, error handling throughout |

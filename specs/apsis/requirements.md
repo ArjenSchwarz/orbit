@@ -49,7 +49,7 @@ The tool extracts the session log parsing and Markdown rendering functionality c
 7. <a name="2.7"></a>The system SHALL support `-o, --output <file>` flag to write to a specific file
 8. <a name="2.8"></a>WHEN given a session ID, the system SHALL locate the JSONL file in `~/.claude/projects/{project-path}/{session-id}.jsonl`
 9. <a name="2.9"></a>The system SHALL support `-p, --project <path>` flag to specify the project directory (defaults to current working directory)
-10. <a name="2.10"></a>The system SHALL convert project paths to Claude's format by replacing path separators with dashes and removing the leading separator
+10. <a name="2.10"></a>The system SHALL convert project paths to Claude's format by replacing path separators with dashes (preserving the leading separator as a dash, e.g., `/Users/foo/project` → `-Users-foo-project`)
 11. <a name="2.11"></a>The system SHALL support `-h, --help` flag to display usage information
 12. <a name="2.12"></a>The system SHALL support `-v, --version` flag to display the version number
 

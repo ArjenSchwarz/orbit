@@ -225,14 +225,11 @@ func resolveInput(arg string, projectPath string) (io.ReadCloser, string, error)
 }
 
 // buildClaudePath converts a project path to Claude's projects directory format.
-// Example: /Users/foo/project -> Users-foo-project
+// Example: /Users/foo/project -> -Users-foo-project
+// The leading dash is preserved to match Claude's directory structure (Decision 11).
 func buildClaudePath(projectPath string) string {
-	// Remove leading separator (fixes existing bug per Decision 11)
-	p := strings.TrimPrefix(projectPath, "/")
-	// Handle Windows paths
-	p = strings.TrimPrefix(p, "\\")
-	// Replace remaining separators with dashes
-	p = strings.ReplaceAll(p, "/", "-")
+	// Replace path separators with dashes (leading separator becomes leading dash)
+	p := strings.ReplaceAll(projectPath, "/", "-")
 	p = strings.ReplaceAll(p, "\\", "-")
 	return p
 }
@@ -299,9 +296,9 @@ func listSessions(projectPath string) error {
 		return nil
 	}
 
-	// Sort by creation date (most recent first)
+	// Sort by creation date (oldest first, newest last)
 	sort.Slice(sessions, func(i, j int) bool {
-		return sessions[i].CreatedAt.After(sessions[j].CreatedAt)
+		return sessions[i].CreatedAt.Before(sessions[j].CreatedAt)
 	})
 
 	// Print sessions

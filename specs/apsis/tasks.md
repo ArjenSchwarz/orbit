@@ -71,9 +71,9 @@ references:
   - Log warnings from ParseResult to stderr
   - Requirements: [6.1](requirements.md#6.1), [6.4](requirements.md#6.4), [6.5](requirements.md#6.5)
 
-- [x] 8. Fix path normalization in copySessionTranscript
-  - Update projectPath conversion to remove leading separator (Decision 11)
-  - Use strings.TrimPrefix before replacing separators
+- [x] 8. Verify path normalization in copySessionTranscript
+  - Confirm projectPath conversion preserves leading dash (Decision 11)
+  - The format `-Users-foo-project` matches Claude's directory structure
   - Handle both Unix and Windows path separators
   - Requirements: [2.10](requirements.md#2.10)
 
@@ -98,7 +98,7 @@ references:
   - Implement isInputFromPipe() using os.Stdin.Stat()
   - Implement resolveInput returning io.ReadCloser and session ID
   - Show help and exit 1 when TTY with no args
-  - Build Claude project path using buildClaudePath with leading separator fix
+  - Build Claude project path using buildClaudePath (preserves leading dash per Decision 11)
   - Requirements: [2.1](requirements.md#2.1), [2.2](requirements.md#2.2), [2.3](requirements.md#2.3), [2.4](requirements.md#2.4), [2.5](requirements.md#2.5), [2.8](requirements.md#2.8), [2.10](requirements.md#2.10)
 
 - [x] 12. Implement session discovery (--list flag)
@@ -126,7 +126,7 @@ references:
   - Test isFilePath returns true for paths ending in .jsonl
   - Test isFilePath returns true for existing files
   - Test isFilePath returns false for session ID format
-  - Test buildClaudePath removes leading separator and replaces / with -
+  - Test buildClaudePath preserves leading dash and replaces / with -
   - Test listSessions returns sorted sessions
   - Test convert writes to output correctly
   - Requirements: [2.2](requirements.md#2.2), [2.3](requirements.md#2.3), [2.10](requirements.md#2.10)

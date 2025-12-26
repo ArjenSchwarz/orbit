@@ -614,15 +614,11 @@ func (m *Manager) generateMarkdownTranscript(srcPath, dstPath string, phase int,
 }
 
 // buildClaudeProjectPath converts a project path to Claude's projects directory format.
-// Example: /Users/foo/project -> Users-foo-project
-// This removes the leading separator and replaces remaining separators with dashes.
+// Example: /Users/foo/project -> -Users-foo-project
+// The leading dash is preserved to match Claude's directory structure (Decision 11).
 func buildClaudeProjectPath(projectPath string) string {
-	// Remove leading separator (fixes existing bug per Decision 11)
-	p := strings.TrimPrefix(projectPath, "/")
-	// Handle Windows paths
-	p = strings.TrimPrefix(p, "\\")
-	// Replace remaining separators with dashes
-	p = strings.ReplaceAll(p, "/", "-")
+	// Replace path separators with dashes (leading separator becomes leading dash)
+	p := strings.ReplaceAll(projectPath, "/", "-")
 	p = strings.ReplaceAll(p, "\\", "-")
 	return p
 }

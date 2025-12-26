@@ -74,12 +74,12 @@ func TestBuildClaudePath(t *testing.T) {
 		{
 			name:     "unix path with leading slash",
 			path:     "/Users/foo/project",
-			expected: "Users-foo-project",
+			expected: "-Users-foo-project",
 		},
 		{
 			name:     "unix path nested",
 			path:     "/home/user/dev/my-app",
-			expected: "home-user-dev-my-app",
+			expected: "-home-user-dev-my-app",
 		},
 		{
 			name:     "path without leading slash",
@@ -89,7 +89,7 @@ func TestBuildClaudePath(t *testing.T) {
 		{
 			name:     "windows path with backslash prefix",
 			path:     "\\Users\\foo\\project",
-			expected: "Users-foo-project",
+			expected: "-Users-foo-project",
 		},
 	}
 
@@ -107,7 +107,8 @@ func TestListSessions(t *testing.T) {
 	// Create a temporary directory structure
 	tmpDir := t.TempDir()
 	homeDir := filepath.Join(tmpDir, "home")
-	projectsDir := filepath.Join(homeDir, ".claude", "projects", "test-project")
+	// Claude stores project paths with leading dash: /test/project -> -test-project
+	projectsDir := filepath.Join(homeDir, ".claude", "projects", "-test-project")
 
 	if err := os.MkdirAll(projectsDir, 0755); err != nil {
 		t.Fatal(err)

@@ -344,37 +344,37 @@ The first entry timestamp is more accurate (represents when the session actually
 
 ---
 
-## Decision 11: Fix Path Separator Bug
+## Decision 11: Preserve Leading Dash in Path Conversion
 
 **Date**: 2025-12-23
-**Status**: accepted
+**Status**: accepted (revised 2025-12-26)
 
 ### Context
 
-The current implementation in `internal/logs/manager.go` converts project paths by replacing `/` with `-`, but does not remove the leading separator. This means `/Users/foo/project` becomes `-Users-foo-project` instead of `Users-foo-project`.
+The implementation in `internal/logs/manager.go` converts project paths by replacing `/` with `-`. This results in `/Users/foo/project` becoming `-Users-foo-project`.
 
-Requirement 2.10 states the leading separator should be removed.
+Initially this was considered a bug that needed fixing. However, investigation revealed that Claude's actual project path format includes the leading dash. The `-Users-foo-project` format matches how Claude stores sessions in `~/.claude/projects/`.
 
 ### Decision
 
-Fix the bug in the shared transcript package. The correct behavior is to remove the leading separator before replacing remaining separators with dashes.
+Preserve the current behavior. The leading dash is an integral part of Claude's path format and must be kept for session lookup to work correctly.
 
 ### Rationale
 
-The requirement explicitly states to remove the leading separator. Preserving the bug for backward compatibility would perpetuate incorrect behavior.
+Claude stores project sessions using paths with leading dashes. Removing the leading dash would break session lookup because the paths wouldn't match Claude's directory structure.
 
 ### Alternatives Considered
 
-- **Preserve current behavior**: Keep the bug for backward compatibility - Rejected because correctness matters more
+- **Remove leading separator**: Would produce "cleaner" paths like `Users-foo-project` - Rejected because it would break compatibility with Claude's actual directory structure
 
 ### Consequences
 
 **Positive:**
-- Correct path conversion as per requirement
-- Cleaner path strings
+- Session lookup works correctly with Claude's directory structure
+- No behavioral change needed in existing code
 
 **Negative:**
-- Slight behavioral change from existing Orbit implementation
+- Path strings have a leading dash (matches Claude's convention)
 
 ---
 
