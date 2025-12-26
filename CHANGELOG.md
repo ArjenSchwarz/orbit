@@ -9,6 +9,34 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- `apsis` CLI tool for converting Claude Code session transcripts to Markdown:
+  - Flag parsing with `-l/--list`, `-o/--output`, `-p/--project`, `-v/--version`, `-h/--help`
+  - Input source resolution: file path, session ID, or stdin
+  - Session discovery via `--list` flag showing ID, creation date, and size
+  - Conversion using shared `internal/transcript` package
+  - Path normalization that preserves leading separator to match Claude's directory structure
+  - Human-readable file size formatting
+- Makefile targets for building apsis:
+  - `VERSION` variable from `git describe --tags --always` for version injection
+  - `build-orbit` to build only orbit binary
+  - `build-apsis` to build only apsis binary with ldflags for version injection
+  - `build` now builds both binaries
+  - `install` now installs both binaries
+  - `clean` now removes both binaries
+- `internal/transcript` package with JSONL parsing and Markdown rendering:
+  - `ParseJSONL()` function to parse Claude session JSONL with warning collection for malformed lines
+  - `ParseFirstTimestamp()` function for efficient session timestamp extraction
+  - `RenderMarkdown()` function to convert parsed entries to readable Markdown
+  - UTF-8 safe string truncation at rune boundaries (fixes invalid UTF-8 from byte-based truncation)
+  - Configurable document title via `RenderOptions`
+  - 64KB initial buffer with 10MB max per line for large session files
+  - Exported `Entry`, `Message`, `ContentItem`, and `RenderOptions` types
+- Apsis feature spec with requirements, design, decisions, and tasks for:
+  - Standalone CLI tool to convert Claude Code session transcripts to Markdown
+  - Shared `internal/transcript` package for parsing and rendering
+  - Session discovery via `--list` flag
+  - Input from file path, session ID, or stdin
+  - UTF-8 safe truncation and path normalization improvements
 - `DateSubdirs` and `ContinueSession` configuration fields in `orbit.Config` for session management
 - `isSessionInvalidError` function to detect session-related errors (session not found, invalid session, session expired)
 - Tests for `isSessionInvalidError` covering detection of various session error messages
@@ -47,6 +75,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- Refactored `internal/logs/manager.go` to use `internal/transcript` package for JSONL parsing and Markdown rendering
+- `generateMarkdownTranscript` and `generatePostCompletionMarkdownTranscript` now use `transcript.ParseJSONL` and `transcript.RenderMarkdown`
+- Phase transcripts now use `RenderOptions` with phase-specific titles ("Phase N Session Transcript" and "Post-Completion Session Transcript")
+- Removed duplicate type definitions (`transcriptEntry`, `transcriptMsg`, `contentItem`) and formatting functions from logs package
+- Moved format-related tests to `internal/transcript/markdown_test.go`
 - `orbit.New` now uses `logs.NewManagerWithOptions` to support configurable log directory modes
 - Updated `claudeRunner` interface signature: `RunPhase()` now requires `sessionID string` and `resume bool` parameters
 - Orbit now generates UUID session IDs for each phase execution
@@ -58,6 +91,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Path normalization in `copySessionTranscript` and `copyPostCompletionTranscript`: leading path separator is now correctly preserved to match Claude's directory structure (e.g., `/Users/foo/project` becomes `-Users-foo-project`)
+- Added `BuildProjectPath` helper function in `internal/claude/paths.go` with proper Unix and Windows path handling
 - Fixed meaningless `errors.Is(err, err)` assertion in TestRunPostCommandWithRetry_MaxRetriesExceeded
 - Config priority bug: home config's explicit `post-command: ""` now correctly disables post-command
 - Dry-run output now shows actual command value instead of "(default)"

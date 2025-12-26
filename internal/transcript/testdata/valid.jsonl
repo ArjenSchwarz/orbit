@@ -1,0 +1,6 @@
+{"type":"user","timestamp":"2025-12-23T10:30:00+11:00","message":{"role":"user","content":[{"type":"text","text":"Hello, Claude! Can you help me with a coding task?"}]}}
+{"type":"assistant","timestamp":"2025-12-23T10:30:05+11:00","message":{"role":"assistant","content":[{"type":"thinking","thinking":"The user is asking for help with a coding task. I should ask for more details."},{"type":"text","text":"Of course! I'd be happy to help you with a coding task. What would you like to work on?"}]}}
+{"type":"user","timestamp":"2025-12-23T10:30:30+11:00","message":{"role":"user","content":[{"type":"text","text":"I need to read a file."}]}}
+{"type":"assistant","timestamp":"2025-12-23T10:30:35+11:00","message":{"role":"assistant","content":[{"type":"tool_use","name":"Read","input":{"file_path":"/tmp/example.txt"}}]}}
+{"type":"assistant","timestamp":"2025-12-23T10:30:36+11:00","message":{"role":"assistant","content":[{"type":"tool_result","content":"Hello from the file!","is_error":false}]}}
+{"type":"assistant","timestamp":"2025-12-23T10:30:40+11:00","message":{"role":"assistant","content":[{"type":"text","text":"I've read the file. It contains: \"Hello from the file!\""}]}}

@@ -1,0 +1,5 @@
+{"type":"user","timestamp":"2025-12-23T10:30:00+11:00","message":{"role":"user","content":[{"type":"text","text":"Valid line"}]}}
+{invalid json here
+{"type":"assistant","timestamp":"2025-12-23T10:30:05+11:00","message":{"role":"assistant","content":[{"type":"text","text":"Valid assistant response"}]}}
+{"type":"user" incomplete
+{"type":"user","timestamp":"2025-12-23T10:30:30+11:00","message":{"role":"user","content":[{"type":"text","text":"Another valid line"}]}}
