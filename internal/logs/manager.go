@@ -388,7 +388,7 @@ func (m *Manager) copyPostCompletionTranscript(sessionID, baseName string) error
 		return fmt.Errorf("failed to get home directory: %w", err)
 	}
 
-	projectPath := buildClaudeProjectPath(m.workingDir)
+	projectPath := claude.BuildProjectPath(m.workingDir)
 	claudeProjectsDir := filepath.Join(homeDir, ".claude", "projects", projectPath)
 	srcPath := filepath.Join(claudeProjectsDir, sessionID+".jsonl")
 
@@ -540,7 +540,7 @@ func (m *Manager) copySessionTranscript(phase int, sessionID string) error {
 		return fmt.Errorf("failed to get home directory: %w", err)
 	}
 
-	projectPath := buildClaudeProjectPath(m.workingDir)
+	projectPath := claude.BuildProjectPath(m.workingDir)
 	claudeProjectsDir := filepath.Join(homeDir, ".claude", "projects", projectPath)
 	srcPath := filepath.Join(claudeProjectsDir, sessionID+".jsonl")
 
@@ -613,15 +613,6 @@ func (m *Manager) generateMarkdownTranscript(srcPath, dstPath string, phase int,
 	return os.WriteFile(dstPath, []byte(markdown), 0644)
 }
 
-// buildClaudeProjectPath converts a project path to Claude's projects directory format.
-// Example: /Users/foo/project -> -Users-foo-project
-// The leading dash is preserved to match Claude's directory structure (Decision 11).
-func buildClaudeProjectPath(projectPath string) string {
-	// Replace path separators with dashes (leading separator becomes leading dash)
-	p := strings.ReplaceAll(projectPath, "/", "-")
-	p = strings.ReplaceAll(p, "\\", "-")
-	return p
-}
 
 // sanitizeName replaces characters that are invalid in filenames.
 func sanitizeName(name string) string {

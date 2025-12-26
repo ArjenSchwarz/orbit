@@ -12,6 +12,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/arjenschwarz/orbit/internal/claude"
 	"github.com/arjenschwarz/orbit/internal/transcript"
 )
 
@@ -124,6 +125,10 @@ func run(cfg *Config) error {
 
 	// Handle --list
 	if cfg.List {
+		// Validate that no positional argument was provided with --list
+		if cfg.Input != "" {
+			return fmt.Errorf("cannot specify both --list and a positional argument")
+		}
 		return listSessions(absProjectPath)
 	}
 
@@ -206,7 +211,7 @@ func resolveInput(arg string, projectPath string) (io.ReadCloser, string, error)
 	}
 
 	// Treat as session ID - look up in Claude projects directory
-	claudeProjectPath := buildClaudePath(projectPath)
+	claudeProjectPath := claude.BuildProjectPath(projectPath)
 	homeDir, err := os.UserHomeDir()
 	if err != nil {
 		return nil, "", fmt.Errorf("failed to get home directory: %w", err)
@@ -224,19 +229,9 @@ func resolveInput(arg string, projectPath string) (io.ReadCloser, string, error)
 	return f, arg, nil
 }
 
-// buildClaudePath converts a project path to Claude's projects directory format.
-// Example: /Users/foo/project -> -Users-foo-project
-// The leading dash is preserved to match Claude's directory structure (Decision 11).
-func buildClaudePath(projectPath string) string {
-	// Replace path separators with dashes (leading separator becomes leading dash)
-	p := strings.ReplaceAll(projectPath, "/", "-")
-	p = strings.ReplaceAll(p, "\\", "-")
-	return p
-}
-
 // listSessions lists all sessions for a project.
 func listSessions(projectPath string) error {
-	claudeProjectPath := buildClaudePath(projectPath)
+	claudeProjectPath := claude.BuildProjectPath(projectPath)
 	homeDir, err := os.UserHomeDir()
 	if err != nil {
 		return fmt.Errorf("failed to get home directory: %w", err)

@@ -6,6 +6,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/arjenschwarz/orbit/internal/claude"
 )
 
 func TestIsFilePath(t *testing.T) {
@@ -95,9 +97,9 @@ func TestBuildClaudePath(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			result := buildClaudePath(tt.path)
+			result := claude.BuildProjectPath(tt.path)
 			if result != tt.expected {
-				t.Errorf("buildClaudePath(%q) = %q, want %q", tt.path, result, tt.expected)
+				t.Errorf("claude.BuildProjectPath(%q) = %q, want %q", tt.path, result, tt.expected)
 			}
 		})
 	}
@@ -247,5 +249,23 @@ func TestResolveInput_FilePath(t *testing.T) {
 
 	if sessionID != "test-session" {
 		t.Errorf("expected session ID 'test-session', got %q", sessionID)
+	}
+}
+
+func TestRun_ListWithPositionalArg(t *testing.T) {
+	// Test that providing both --list and a positional argument returns an error
+	cfg := &Config{
+		List:  true,
+		Input: "some-session-id",
+	}
+
+	err := run(cfg)
+	if err == nil {
+		t.Fatal("expected error when both --list and positional argument provided")
+	}
+
+	expectedMsg := "cannot specify both --list and a positional argument"
+	if !strings.Contains(err.Error(), expectedMsg) {
+		t.Errorf("expected error message to contain %q, got: %v", expectedMsg, err)
 	}
 }
