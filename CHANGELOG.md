@@ -9,6 +9,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- `ID` and `ToolUseID` fields to `ContentItem` struct for tool_use/tool_result linking:
+  - `ID` field with JSON tag `id` for tool_use blocks
+  - `ToolUseID` field with JSON tag `tool_use_id` for tool_result blocks
+  - Updated `UnmarshalJSON` to parse new fields
+  - Parser tests for ID field extraction and backward compatibility with older JSONL files
 - Custom `UnmarshalJSON` methods for polymorphic content handling in transcript parser:
   - `Message.UnmarshalJSON` handles content as either string (user messages) or array (assistant messages)
   - `ContentItem.UnmarshalJSON` handles tool result content as either string or array of content blocks

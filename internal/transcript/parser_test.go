@@ -316,3 +316,118 @@ func TestParseJSONL_MixedContentFormats(t *testing.T) {
 		})
 	}
 }
+
+func TestParseJSONL_IDField(t *testing.T) {
+	// tool_use content blocks include an "id" field
+	jsonl := `{"type":"assistant","timestamp":"2025-12-23T10:30:00+11:00","message":{"role":"assistant","content":[{"type":"tool_use","id":"toolu_123abc","name":"Read","input":{"file_path":"/test.txt"}}]}}`
+
+	result, err := ParseJSONL(strings.NewReader(jsonl))
+	if err != nil {
+		t.Fatalf("ParseJSONL returned error: %v", err)
+	}
+
+	if len(result.Warnings) != 0 {
+		t.Errorf("expected no warnings, got %d: %v", len(result.Warnings), result.Warnings)
+	}
+
+	if len(result.Entries) != 1 {
+		t.Fatalf("expected 1 entry, got %d", len(result.Entries))
+	}
+
+	entry := result.Entries[0]
+	if len(entry.Message.Content) != 1 {
+		t.Fatalf("expected 1 content item, got %d", len(entry.Message.Content))
+	}
+
+	content := entry.Message.Content[0]
+	if content.Type != "tool_use" {
+		t.Errorf("expected content type 'tool_use', got %q", content.Type)
+	}
+
+	if content.ID != "toolu_123abc" {
+		t.Errorf("expected ID 'toolu_123abc', got %q", content.ID)
+	}
+
+	if content.Name != "Read" {
+		t.Errorf("expected Name 'Read', got %q", content.Name)
+	}
+}
+
+func TestParseJSONL_ToolUseIDField(t *testing.T) {
+	// tool_result content blocks include a "tool_use_id" field
+	jsonl := `{"type":"user","timestamp":"2025-12-23T10:30:00+11:00","message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"toolu_123abc","content":"file contents here","is_error":false}]}}`
+
+	result, err := ParseJSONL(strings.NewReader(jsonl))
+	if err != nil {
+		t.Fatalf("ParseJSONL returned error: %v", err)
+	}
+
+	if len(result.Warnings) != 0 {
+		t.Errorf("expected no warnings, got %d: %v", len(result.Warnings), result.Warnings)
+	}
+
+	if len(result.Entries) != 1 {
+		t.Fatalf("expected 1 entry, got %d", len(result.Entries))
+	}
+
+	entry := result.Entries[0]
+	if len(entry.Message.Content) != 1 {
+		t.Fatalf("expected 1 content item, got %d", len(entry.Message.Content))
+	}
+
+	content := entry.Message.Content[0]
+	if content.Type != "tool_result" {
+		t.Errorf("expected content type 'tool_result', got %q", content.Type)
+	}
+
+	if content.ToolUseID != "toolu_123abc" {
+		t.Errorf("expected ToolUseID 'toolu_123abc', got %q", content.ToolUseID)
+	}
+
+	if content.Content != "file contents here" {
+		t.Errorf("expected Content 'file contents here', got %q", content.Content)
+	}
+}
+
+func TestParseJSONL_MissingIDFields(t *testing.T) {
+	// Old JSONL without id/tool_use_id fields should parse correctly (backward compatibility)
+	jsonl := `{"type":"assistant","timestamp":"2025-12-23T10:30:00+11:00","message":{"role":"assistant","content":[{"type":"tool_use","name":"Read","input":{"file_path":"/test.txt"}}]}}
+{"type":"user","timestamp":"2025-12-23T10:30:01+11:00","message":{"role":"user","content":[{"type":"tool_result","content":"file contents here","is_error":false}]}}`
+
+	result, err := ParseJSONL(strings.NewReader(jsonl))
+	if err != nil {
+		t.Fatalf("ParseJSONL returned error: %v", err)
+	}
+
+	if len(result.Warnings) != 0 {
+		t.Errorf("expected no warnings, got %d: %v", len(result.Warnings), result.Warnings)
+	}
+
+	if len(result.Entries) != 2 {
+		t.Fatalf("expected 2 entries, got %d", len(result.Entries))
+	}
+
+	// First entry: tool_use without ID
+	toolUse := result.Entries[0].Message.Content[0]
+	if toolUse.Type != "tool_use" {
+		t.Errorf("expected content type 'tool_use', got %q", toolUse.Type)
+	}
+	if toolUse.ID != "" {
+		t.Errorf("expected empty ID, got %q", toolUse.ID)
+	}
+	if toolUse.Name != "Read" {
+		t.Errorf("expected Name 'Read', got %q", toolUse.Name)
+	}
+
+	// Second entry: tool_result without ToolUseID
+	toolResult := result.Entries[1].Message.Content[0]
+	if toolResult.Type != "tool_result" {
+		t.Errorf("expected content type 'tool_result', got %q", toolResult.Type)
+	}
+	if toolResult.ToolUseID != "" {
+		t.Errorf("expected empty ToolUseID, got %q", toolResult.ToolUseID)
+	}
+	if toolResult.Content != "file contents here" {
+		t.Errorf("expected Content 'file contents here', got %q", toolResult.Content)
+	}
+}
