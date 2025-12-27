@@ -1,0 +1,45 @@
+# Session Transcript
+
+---
+
+## 🤖 Assistant
+
+<details>
+<summary>🔧 Tool: Read</summary>
+
+```json
+{
+  "another_long_parameter": "this is additional content to ensure we exceed 500 runes",
+  "encoding": "utf-8",
+  "extra_param_one": "value_one",
+  "extra_param_three": "value_three",
+  "extra_param_two": "value_two",
+  "file_path": "/path/to/very/long/file/that/has/many/nested/directories/and/a/really/long/path/name/that/exceeds/the/threshold/of/five/hundred/runes/when/serialized/as/json/so/it/should/definitely/trigger/the/collapse/behavior/for/non/task/skill/tools/test.txt",
+  "include_line_numbers": true,
+  "limit": 1000,
+  "offset": 0
+}
+```
+
+</details>
+
+---
+
+<details>
+<summary>✅ Tool: Read</summary>
+
+```
+Line 1: This is a very long file content that exceeds the threshold.
+Line 2: More content here to make sure we go over 500 runes.
+Line 3: Even more content to pad out the output.
+Line 4: The quick brown fox jumps over the lazy dog.
+Line 5: Lorem ipsum dolor sit amet, consectetur adipiscing elit.
+Line 6: Sed do eiusmod tempor incididunt ut labore et dolore magna aliqua.
+Line 7: Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris.
+Line 8: Duis aute irure dolor in reprehenderit in voluptate velit esse cillum.
+Line 9: Excepteur sint occaecat cupidatat non proident, sunt in culpa qui officia.
+Line 10: Deserunt mollit anim id est laborum.
+```
+
+</details>
+

@@ -453,12 +453,12 @@ func TestEscapeSummary_XSS(t *testing.T) {
 		input    string
 		expected string
 	}{
-		"script tag":       {"<script>alert(1)</script>", "&lt;script&gt;alert(1)&lt;/script&gt;"},
-		"closing summary":  {"</summary>", "&lt;/summary&gt;"},
-		"ampersand":        {"foo & bar", "foo &amp; bar"},
-		"html entities":    {"<div class=\"x\">", "&lt;div class=&#34;x&#34;&gt;"},
-		"normal text":      {"Explore: Search files", "Explore: Search files"},
-		"unicode safe":     {"🔧 Tool", "🔧 Tool"},
+		"script tag":      {"<script>alert(1)</script>", "&lt;script&gt;alert(1)&lt;/script&gt;"},
+		"closing summary": {"</summary>", "&lt;/summary&gt;"},
+		"ampersand":       {"foo & bar", "foo &amp; bar"},
+		"html entities":   {"<div class=\"x\">", "&lt;div class=&#34;x&#34;&gt;"},
+		"normal text":     {"Explore: Search files", "Explore: Search files"},
+		"unicode safe":    {"🔧 Tool", "🔧 Tool"},
 	}
 
 	for name, tc := range tests {
@@ -511,11 +511,11 @@ func TestRenderMarkdown_TaskToolFallback(t *testing.T) {
 	tests := map[string]struct {
 		input any
 	}{
-		"nil input":            {nil},
-		"not a map":            {"invalid"},
-		"empty map":            {map[string]any{}},
-		"missing subagent":     {map[string]any{"description": "test"}},
-		"empty subagent":       {map[string]any{"subagent_type": ""}},
+		"nil input":        {nil},
+		"not a map":        {"invalid"},
+		"empty map":        {map[string]any{}},
+		"missing subagent": {map[string]any{"description": "test"}},
+		"empty subagent":   {map[string]any{"subagent_type": ""}},
 	}
 
 	for name, tc := range tests {
@@ -583,10 +583,10 @@ func TestRenderMarkdown_SkillToolFallback(t *testing.T) {
 	tests := map[string]struct {
 		input any
 	}{
-		"nil input":      {nil},
-		"not a map":      {"invalid"},
-		"empty map":      {map[string]any{}},
-		"empty skill":    {map[string]any{"skill": ""}},
+		"nil input":   {nil},
+		"not a map":   {"invalid"},
+		"empty map":   {map[string]any{}},
+		"empty skill": {map[string]any{"skill": ""}},
 	}
 
 	for name, tc := range tests {
@@ -754,8 +754,8 @@ func TestRenderMarkdown_ExactThresholdNoCollapse(t *testing.T) {
 
 func TestRenderMarkdown_ZeroLengthNoCollapse(t *testing.T) {
 	tests := map[string]any{
-		"nil input":   nil,
-		"empty map":   map[string]any{},
+		"nil input": nil,
+		"empty map": map[string]any{},
 	}
 
 	for name, input := range tests {
@@ -1184,13 +1184,224 @@ func TestRenderMarkdown_UncollapsedFormat(t *testing.T) {
 
 	// Should NOT have details tags for these short items
 	// (Note: we need to check carefully since thinking blocks also use <details>)
-	lines := strings.Split(result, "\n")
-	for _, line := range lines {
+	lines := strings.SplitSeq(result, "\n")
+	for line := range lines {
 		if strings.Contains(line, "<details>") && !strings.Contains(result, "💭 Thinking") {
 			// If we find a details tag and there's no thinking block, it's an error
 			if strings.Contains(line, "Tool") || strings.Contains(line, "Read") {
 				t.Error("short tool should not use details tag")
 			}
 		}
+	}
+}
+
+// Golden file integration tests for collapsible blocks
+
+func TestRenderMarkdown_GoldenCollapsible_TaskTool(t *testing.T) {
+	testGoldenCollapsible(t, "task_tool")
+}
+
+func TestRenderMarkdown_GoldenCollapsible_SkillTool(t *testing.T) {
+	testGoldenCollapsible(t, "skill_tool")
+}
+
+func TestRenderMarkdown_GoldenCollapsible_LongOutput(t *testing.T) {
+	testGoldenCollapsible(t, "long_output")
+}
+
+func TestRenderMarkdown_GoldenCollapsible_ShortOutput(t *testing.T) {
+	testGoldenCollapsible(t, "short_output")
+}
+
+func testGoldenCollapsible(t *testing.T, name string) {
+	t.Helper()
+
+	// Read JSONL input
+	jsonlPath := filepath.Join("testdata", "collapsible", name+".jsonl")
+	f, err := os.Open(jsonlPath)
+	if err != nil {
+		t.Fatalf("failed to open test file %s: %v", jsonlPath, err)
+	}
+	defer func() { _ = f.Close() }()
+
+	parseResult, err := ParseJSONL(f)
+	if err != nil {
+		t.Fatalf("ParseJSONL returned error: %v", err)
+	}
+
+	// Render to Markdown
+	actual := RenderMarkdown(parseResult.Entries, RenderOptions{})
+
+	// Read golden file
+	goldenPath := filepath.Join("testdata", "collapsible", name+".md.golden")
+	goldenBytes, err := os.ReadFile(goldenPath)
+	if err != nil {
+		t.Fatalf("failed to read golden file %s: %v", goldenPath, err)
+	}
+	expected := string(goldenBytes)
+
+	// Compare
+	if actual != expected {
+		t.Errorf("output does not match golden file\n--- expected ---\n%s\n--- actual ---\n%s", expected, actual)
+	}
+}
+
+// Backward compatibility tests (Task 25)
+
+func TestBackwardCompat_NoIDFields(t *testing.T) {
+	// Test that old JSONL without id/tool_use_id fields renders correctly
+	// This simulates transcripts from before the ID fields were added
+	entries := []Entry{
+		{
+			Type: "assistant",
+			Message: &Message{
+				Role: "assistant",
+				Content: []ContentItem{
+					{
+						Type:  "tool_use",
+						Name:  "Read",
+						ID:    "", // Empty ID (old format)
+						Input: map[string]any{"file_path": "/tmp/test.txt"},
+					},
+				},
+			},
+		},
+		{
+			Type: "user",
+			Message: &Message{
+				Role: "user",
+				Content: []ContentItem{
+					{
+						Type:      "tool_result",
+						ToolUseID: "", // Empty ToolUseID (old format)
+						Content:   "File contents here",
+						IsError:   false,
+					},
+				},
+			},
+		},
+	}
+
+	// Should render without panicking
+	result := RenderMarkdown(entries, RenderOptions{})
+
+	// Tool use should render normally (uncollapsed since it's short)
+	if !strings.Contains(result, "### 🔧 Tool: `Read`") {
+		t.Error("expected tool_use to render with heading format")
+	}
+
+	// Tool result should render normally (uncollapsed since unmatched and short)
+	if !strings.Contains(result, "#### ✅ Tool Result") {
+		t.Error("expected tool_result to render with heading format")
+	}
+
+	// Content should be present
+	if !strings.Contains(result, "file_path") {
+		t.Error("expected tool input to be rendered")
+	}
+	if !strings.Contains(result, "File contents here") {
+		t.Error("expected tool result content to be rendered")
+	}
+}
+
+func TestBackwardCompat_TruncationPreserved(t *testing.T) {
+	// Test that MaxToolInputRunes and MaxToolResultRunes truncation still works
+	// within collapsed blocks
+	longInput := strings.Repeat("x", MaxToolInputRunes+500)
+	longResult := strings.Repeat("y", MaxToolResultRunes+500)
+
+	entries := []Entry{
+		{
+			Type: "assistant",
+			Message: &Message{
+				Role: "assistant",
+				Content: []ContentItem{
+					{
+						Type:  "tool_use",
+						Name:  "Write",
+						ID:    "trunc_001",
+						Input: map[string]any{"content": longInput},
+					},
+				},
+			},
+		},
+		{
+			Type: "user",
+			Message: &Message{
+				Role: "user",
+				Content: []ContentItem{
+					{
+						Type:      "tool_result",
+						ToolUseID: "trunc_001",
+						Content:   longResult,
+						IsError:   false,
+					},
+				},
+			},
+		},
+	}
+
+	result := RenderMarkdown(entries, RenderOptions{})
+
+	// Should be collapsed (long input exceeds threshold)
+	if !strings.Contains(result, "<details>") {
+		t.Error("long tool should be collapsed")
+	}
+
+	// Should be truncated (contains truncation marker)
+	// The truncation marker should appear at least twice (once for input, once for result)
+	truncationCount := strings.Count(result, "... (truncated)")
+	if truncationCount < 2 {
+		t.Errorf("expected at least 2 truncation markers, got %d", truncationCount)
+	}
+
+	// Verify the FULL content is NOT present (truncation actually happened)
+	// The full input would have MaxToolInputRunes+500 x's
+	if strings.Contains(result, longInput) {
+		t.Error("full input should be truncated, but it appears in result")
+	}
+	if strings.Contains(result, longResult) {
+		t.Error("full result should be truncated, but it appears in result")
+	}
+}
+
+func TestBackwardCompat_PreTruncationDecision(t *testing.T) {
+	// Test that collapse decision is made BEFORE truncation
+	// A 600-rune result should collapse even though after truncation it might be shorter
+	// (This matters for results that are > threshold but < MaxToolResultRunes)
+
+	// Create content that exceeds collapse threshold but is under truncation limit
+	content := strings.Repeat("z", CollapseThresholdRunes+100) // 600 runes
+
+	entries := []Entry{
+		{
+			Type: "user",
+			Message: &Message{
+				Role: "user",
+				Content: []ContentItem{
+					{
+						Type:      "tool_result",
+						ToolUseID: "unmatched_id",
+						Content:   content,
+						IsError:   false,
+					},
+				},
+			},
+		},
+	}
+
+	result := RenderMarkdown(entries, RenderOptions{})
+
+	// Should be collapsed because original content exceeds threshold
+	if !strings.Contains(result, "<details>") {
+		t.Error("result exceeding threshold should be collapsed")
+	}
+	if !strings.Contains(result, "<summary>✅ Tool Result</summary>") {
+		t.Error("expected collapsed result summary")
+	}
+
+	// Content should NOT be truncated (it's under MaxToolResultRunes)
+	if strings.Contains(result, "... (truncated)") {
+		t.Error("content under MaxToolResultRunes should not be truncated")
 	}
 }

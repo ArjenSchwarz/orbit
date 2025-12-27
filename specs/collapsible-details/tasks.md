@@ -185,7 +185,7 @@ references:
 
 ## Phase 5: Integration Tests
 
-- [ ] 22. Create test data for collapsible blocks
+- [x] 22. Create test data for collapsible blocks
   - Create testdata/collapsible/ directory
   - Add JSONL sample with Task tool_use and tool_result in separate entries
   - Add JSONL sample with Skill tool
@@ -194,28 +194,28 @@ references:
   - Requirements: [1.1](requirements.md#1.1), [1.2](requirements.md#1.2), [2.2](requirements.md#2.2), [2.3](requirements.md#2.3), [3.4](requirements.md#3.4)
   - References: internal/transcript/testdata/collapsible/
 
-- [ ] 23. Create golden files for expected output
+- [x] 23. Create golden files for expected output
   - Create .golden files for Markdown output
   - Create .golden files for HTML output
   - Include both collapsed and uncollapsed tool examples
   - Requirements: [4.1](requirements.md#4.1), [4.2](requirements.md#4.2), [5.2](requirements.md#5.2), [5.3](requirements.md#5.3)
   - References: internal/transcript/testdata/collapsible/
 
-- [ ] 24. Write golden file integration tests
+- [x] 24. Write golden file integration tests
   - TestRenderMarkdown_GoldenCollapsible
   - TestRenderHTML_GoldenCollapsible
   - Compare rendered output against golden files
   - Requirements: [4.1](requirements.md#4.1), [4.2](requirements.md#4.2), [5.2](requirements.md#5.2), [5.3](requirements.md#5.3)
   - References: internal/transcript/markdown_test.go, internal/transcript/html_test.go
 
-- [ ] 25. Write backward compatibility tests
+- [x] 25. Write backward compatibility tests
   - TestBackwardCompat_NoIDFields - verify old JSONL without id/tool_use_id renders
   - TestBackwardCompat_TruncationPreserved - verify MaxToolInputRunes still applies
   - TestBackwardCompat_PreTruncationDecision - verify collapse based on original length
   - Requirements: [7.2](requirements.md#7.2), [7.4](requirements.md#7.4), [7.5](requirements.md#7.5)
   - References: internal/transcript/markdown_test.go, internal/transcript/html_test.go
 
-- [ ] 26. Run linter and fix any issues
+- [x] 26. Run linter and fix any issues
   - Run make lint to check for issues
   - Fix any golangci-lint warnings
   - Run make modernize to apply modern Go idioms

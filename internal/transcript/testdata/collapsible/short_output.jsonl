@@ -1,0 +1,2 @@
+{"type":"assistant","timestamp":"2025-12-28T10:00:00+11:00","message":{"role":"assistant","content":[{"type":"tool_use","id":"read_002","name":"Read","input":{"file_path":"/tmp/test.txt"}}]}}
+{"type":"user","timestamp":"2025-12-28T10:00:05+11:00","message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"read_002","content":"Hello, World!","is_error":false}]}}

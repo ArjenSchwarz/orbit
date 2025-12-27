@@ -794,3 +794,208 @@ func TestRenderHTML_ResultErrorWithCollapse(t *testing.T) {
 		t.Error("expected error icon in result")
 	}
 }
+
+// Golden file integration tests for collapsible blocks (HTML)
+
+func TestRenderHTML_GoldenCollapsible_TaskTool(t *testing.T) {
+	testGoldenCollapsibleHTML(t, "task_tool", []string{
+		`<details class="tool-collapsible">`,
+		`<summary><span class="icon">🔧</span> Explore: Search for config files</summary>`,
+		`<summary><span class="icon">✅</span> Explore: Search for config files</summary>`,
+		"subagent_type",
+		"Found 3 config files",
+	})
+}
+
+func TestRenderHTML_GoldenCollapsible_SkillTool(t *testing.T) {
+	testGoldenCollapsibleHTML(t, "skill_tool", []string{
+		`<details class="tool-collapsible">`,
+		`<summary><span class="icon">🔧</span> Skill: next-task</summary>`,
+		`<summary><span class="icon">✅</span> Skill: next-task</summary>`,
+		"Task completed: Updated to next phase",
+	})
+}
+
+func TestRenderHTML_GoldenCollapsible_LongOutput(t *testing.T) {
+	testGoldenCollapsibleHTML(t, "long_output", []string{
+		`<details class="tool-collapsible">`,
+		`<summary><span class="icon">🔧</span> Tool: Read</summary>`,
+		`<summary><span class="icon">✅</span> Tool: Read</summary>`,
+		"Line 1: This is a very long file content",
+	})
+}
+
+func TestRenderHTML_GoldenCollapsible_ShortOutput(t *testing.T) {
+	testGoldenCollapsibleHTML(t, "short_output", []string{
+		`class="tool-use"`,
+		`<code>Read</code>`,
+		`class="tool-result"`,
+		`class="tool-result-header success"`,
+		"Hello, World!",
+	})
+}
+
+func testGoldenCollapsibleHTML(t *testing.T, name string, expectedPatterns []string) {
+	t.Helper()
+
+	// Read JSONL input
+	jsonlPath := filepath.Join("testdata", "collapsible", name+".jsonl")
+	f, err := os.Open(jsonlPath)
+	if err != nil {
+		t.Fatalf("failed to open test file %s: %v", jsonlPath, err)
+	}
+	defer func() { _ = f.Close() }()
+
+	parseResult, err := ParseJSONL(f)
+	if err != nil {
+		t.Fatalf("ParseJSONL returned error: %v", err)
+	}
+
+	// Render to HTML
+	result := RenderHTML(parseResult.Entries, RenderOptions{})
+
+	// Verify expected patterns are present
+	for _, pattern := range expectedPatterns {
+		if !strings.Contains(result, pattern) {
+			t.Errorf("expected pattern not found: %q\nIn output:\n%s", pattern, result)
+		}
+	}
+}
+
+// Backward compatibility tests (Task 25) for HTML
+
+func TestBackwardCompat_NoIDFields_HTML(t *testing.T) {
+	// Test that old JSONL without id/tool_use_id fields renders correctly
+	entries := []Entry{
+		{
+			Type: "assistant",
+			Message: &Message{
+				Role: "assistant",
+				Content: []ContentItem{
+					{
+						Type:  "tool_use",
+						Name:  "Read",
+						ID:    "", // Empty ID (old format)
+						Input: map[string]any{"file_path": "/tmp/test.txt"},
+					},
+				},
+			},
+		},
+		{
+			Type: "user",
+			Message: &Message{
+				Role: "user",
+				Content: []ContentItem{
+					{
+						Type:      "tool_result",
+						ToolUseID: "", // Empty ToolUseID (old format)
+						Content:   "File contents here",
+						IsError:   false,
+					},
+				},
+			},
+		},
+	}
+
+	// Should render without panicking
+	result := RenderHTML(entries, RenderOptions{})
+
+	// Tool use should render with div.tool-use (short input)
+	if !strings.Contains(result, `class="tool-use"`) {
+		t.Error("expected tool_use with div.tool-use")
+	}
+	if !strings.Contains(result, `<code>Read</code>`) {
+		t.Error("expected tool name in code tag")
+	}
+
+	// Tool result should render with div.tool-result (short unmatched)
+	if !strings.Contains(result, `class="tool-result"`) {
+		t.Error("expected tool_result with div.tool-result")
+	}
+	if !strings.Contains(result, "File contents here") {
+		t.Error("expected tool result content to be rendered")
+	}
+}
+
+func TestBackwardCompat_TruncationPreserved_HTML(t *testing.T) {
+	// Test that truncation still works within collapsed blocks
+	longInput := strings.Repeat("x", MaxToolInputRunes+500)
+	longResult := strings.Repeat("y", MaxToolResultRunes+500)
+
+	entries := []Entry{
+		{
+			Type: "assistant",
+			Message: &Message{
+				Role: "assistant",
+				Content: []ContentItem{
+					{
+						Type:  "tool_use",
+						Name:  "Write",
+						ID:    "trunc_001",
+						Input: map[string]any{"content": longInput},
+					},
+				},
+			},
+		},
+		{
+			Type: "user",
+			Message: &Message{
+				Role: "user",
+				Content: []ContentItem{
+					{
+						Type:      "tool_result",
+						ToolUseID: "trunc_001",
+						Content:   longResult,
+						IsError:   false,
+					},
+				},
+			},
+		},
+	}
+
+	result := RenderHTML(entries, RenderOptions{})
+
+	// Should be collapsed
+	if !strings.Contains(result, `<details class="tool-collapsible">`) {
+		t.Error("long tool should be collapsed")
+	}
+
+	// Should be truncated
+	if !strings.Contains(result, "... (truncated)") {
+		t.Error("long content should be truncated")
+	}
+}
+
+func TestBackwardCompat_PreTruncationDecision_HTML(t *testing.T) {
+	// Test that collapse decision is made BEFORE truncation
+	content := strings.Repeat("z", CollapseThresholdRunes+100) // 600 runes
+
+	entries := []Entry{
+		{
+			Type: "user",
+			Message: &Message{
+				Role: "user",
+				Content: []ContentItem{
+					{
+						Type:      "tool_result",
+						ToolUseID: "unmatched_id",
+						Content:   content,
+						IsError:   false,
+					},
+				},
+			},
+		},
+	}
+
+	result := RenderHTML(entries, RenderOptions{})
+
+	// Should be collapsed because original content exceeds threshold
+	if !strings.Contains(result, `<details class="tool-collapsible">`) {
+		t.Error("result exceeding threshold should be collapsed")
+	}
+
+	// Content should NOT be truncated (it's under MaxToolResultRunes)
+	if strings.Contains(result, "... (truncated)") {
+		t.Error("content under MaxToolResultRunes should not be truncated")
+	}
+}

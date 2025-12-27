@@ -26,9 +26,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Cross-entry tool result matching
   - Error results with `.error` class
   - CSS inclusion verification
+  - Golden file integration tests for Task, Skill, long output, and short output scenarios
+  - Backward compatibility tests for old JSONL without ID fields, truncation preservation, and pre-truncation collapse decisions
 - Threshold-based collapsing for non-Task/Skill tools exceeding 500 runes (JSON-serialized)
   - Zero-length and nil inputs never collapse
   - Tools at or below threshold use standard heading format
+- Test data for collapsible blocks in `internal/transcript/testdata/collapsible/`:
+  - JSONL samples for Task tool, Skill tool, long output, and short output scenarios
+  - Golden files (.md.golden) for expected Markdown output
 - Tests for collapsible Markdown rendering:
   - Task/Skill always-collapse behavior
   - Fallback summary generation
@@ -36,6 +41,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Threshold boundary conditions
   - Cross-entry tool result matching
   - Output format verification (details structure and heading format)
+  - Golden file integration tests for Task, Skill, long output, and short output scenarios
+  - Backward compatibility tests for old JSONL without ID fields, truncation preservation, and pre-truncation collapse decisions
 - Helper functions for collapsible tool blocks in transcript renderer:
   - `CollapseThresholdRunes` constant (500 runes) for threshold-based collapsing
   - `toolMetadata` struct to store tool name and summary for result matching
