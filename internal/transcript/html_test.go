@@ -465,3 +465,332 @@ func TestRenderHTML_MultipleMessages(t *testing.T) {
 		t.Errorf("expected 1 assistant message, got %d", assistantCount)
 	}
 }
+
+func TestRenderHTML_TaskToolCollapses(t *testing.T) {
+	entries := []Entry{
+		{
+			Type: "assistant",
+			Message: &Message{
+				Role: "assistant",
+				Content: []ContentItem{
+					{
+						Type: "tool_use",
+						Name: "Task",
+						ID:   "task-123",
+						Input: map[string]any{
+							"subagent_type": "Explore",
+							"description":   "Search for config files",
+						},
+					},
+				},
+			},
+		},
+	}
+
+	result := RenderHTML(entries, RenderOptions{})
+
+	if !strings.Contains(result, `<details class="tool-collapsible">`) {
+		t.Error("expected Task tool to use details.tool-collapsible")
+	}
+	if !strings.Contains(result, "Explore: Search for config files") {
+		t.Error("expected summary to contain subagent_type and description")
+	}
+	if !strings.Contains(result, "🔧") {
+		t.Error("expected tool icon in summary")
+	}
+}
+
+func TestRenderHTML_SkillToolCollapses(t *testing.T) {
+	entries := []Entry{
+		{
+			Type: "assistant",
+			Message: &Message{
+				Role: "assistant",
+				Content: []ContentItem{
+					{
+						Type:  "tool_use",
+						Name:  "Skill",
+						ID:    "skill-123",
+						Input: map[string]any{"skill": "next-task"},
+					},
+				},
+			},
+		},
+	}
+
+	result := RenderHTML(entries, RenderOptions{})
+
+	if !strings.Contains(result, `<details class="tool-collapsible">`) {
+		t.Error("expected Skill tool to use details.tool-collapsible")
+	}
+	if !strings.Contains(result, "Skill: next-task") {
+		t.Error("expected summary to contain skill name")
+	}
+}
+
+func TestRenderHTML_ShortToolNoCollapse(t *testing.T) {
+	entries := []Entry{
+		{
+			Type: "assistant",
+			Message: &Message{
+				Role: "assistant",
+				Content: []ContentItem{
+					{
+						Type:  "tool_use",
+						Name:  "Read",
+						ID:    "read-123",
+						Input: map[string]any{"file_path": "/tmp/test.txt"},
+					},
+				},
+			},
+		},
+	}
+
+	result := RenderHTML(entries, RenderOptions{})
+
+	// Short tool input should use div.tool-use, not details
+	if strings.Contains(result, `<details class="tool-collapsible">`) {
+		t.Error("short tool input should not use details.tool-collapsible")
+	}
+	if !strings.Contains(result, `class="tool-use"`) {
+		t.Error("expected div.tool-use for short tool input")
+	}
+}
+
+func TestRenderHTML_LongToolCollapses(t *testing.T) {
+	// Create input exceeding 500 runes threshold
+	longContent := strings.Repeat("a", 600)
+	entries := []Entry{
+		{
+			Type: "assistant",
+			Message: &Message{
+				Role: "assistant",
+				Content: []ContentItem{
+					{
+						Type:  "tool_use",
+						Name:  "Write",
+						ID:    "write-123",
+						Input: map[string]any{"content": longContent},
+					},
+				},
+			},
+		},
+	}
+
+	result := RenderHTML(entries, RenderOptions{})
+
+	if !strings.Contains(result, `<details class="tool-collapsible">`) {
+		t.Error("long tool input should use details.tool-collapsible")
+	}
+	if !strings.Contains(result, "Tool: Write") {
+		t.Error("expected summary to contain tool name")
+	}
+}
+
+func TestRenderHTML_CSSIncluded(t *testing.T) {
+	entries := []Entry{}
+	result := RenderHTML(entries, RenderOptions{})
+
+	if !strings.Contains(result, "details.tool-collapsible") {
+		t.Error("expected CSS for details.tool-collapsible")
+	}
+	if !strings.Contains(result, ".tool-content") {
+		t.Error("expected CSS for .tool-content")
+	}
+	if !strings.Contains(result, "details.tool-collapsible.error") {
+		t.Error("expected CSS for .error variant")
+	}
+}
+
+func TestRenderHTML_ResultCollapses(t *testing.T) {
+	// Tool result for a Task tool should collapse
+	entries := []Entry{
+		{
+			Type: "assistant",
+			Message: &Message{
+				Role: "assistant",
+				Content: []ContentItem{
+					{
+						Type: "tool_use",
+						Name: "Task",
+						ID:   "task-456",
+						Input: map[string]any{
+							"subagent_type": "Explore",
+							"description":   "Find files",
+						},
+					},
+				},
+			},
+		},
+		{
+			Type: "user",
+			Message: &Message{
+				Role: "user",
+				Content: []ContentItem{
+					{
+						Type:      "tool_result",
+						ToolUseID: "task-456",
+						Content:   "Found 10 files matching the pattern",
+						IsError:   false,
+					},
+				},
+			},
+		},
+	}
+
+	result := RenderHTML(entries, RenderOptions{})
+
+	// Count details.tool-collapsible occurrences (should be 2: one for tool_use, one for tool_result)
+	detailsCount := strings.Count(result, `<details class="tool-collapsible">`)
+	if detailsCount != 2 {
+		t.Errorf("expected 2 collapsible blocks, got %d", detailsCount)
+	}
+	if !strings.Contains(result, "✅") {
+		t.Error("expected success icon in result")
+	}
+}
+
+func TestRenderHTML_ShortResultNoCollapse(t *testing.T) {
+	// Short tool result for non-Task/Skill tool should not collapse
+	entries := []Entry{
+		{
+			Type: "assistant",
+			Message: &Message{
+				Role: "assistant",
+				Content: []ContentItem{
+					{
+						Type:  "tool_use",
+						Name:  "Read",
+						ID:    "read-456",
+						Input: map[string]any{"file_path": "/tmp/test.txt"},
+					},
+				},
+			},
+		},
+		{
+			Type: "user",
+			Message: &Message{
+				Role: "user",
+				Content: []ContentItem{
+					{
+						Type:      "tool_result",
+						ToolUseID: "read-456",
+						Content:   "Short content",
+						IsError:   false,
+					},
+				},
+			},
+		},
+	}
+
+	result := RenderHTML(entries, RenderOptions{})
+
+	// The tool_result should use div.tool-result, not details
+	if !strings.Contains(result, `class="tool-result"`) {
+		t.Error("expected div.tool-result for short result")
+	}
+	// Should have exactly 0 collapsible blocks (Read tool is short, result is short)
+	detailsCount := strings.Count(result, `<details class="tool-collapsible">`)
+	if detailsCount != 0 {
+		t.Errorf("expected 0 collapsible blocks for short content, got %d", detailsCount)
+	}
+}
+
+func TestRenderHTML_CrossEntryToolMatching(t *testing.T) {
+	// Verify that tool_result in user entry matches tool_use in assistant entry
+	entries := []Entry{
+		{
+			Type: "assistant",
+			Message: &Message{
+				Role: "assistant",
+				Content: []ContentItem{
+					{
+						Type: "tool_use",
+						Name: "Skill",
+						ID:   "skill-789",
+						Input: map[string]any{
+							"skill": "commit",
+						},
+					},
+				},
+			},
+		},
+		{
+			Type: "user",
+			Message: &Message{
+				Role: "user",
+				Content: []ContentItem{
+					{
+						Type:      "tool_result",
+						ToolUseID: "skill-789",
+						Content:   "Commit successful",
+						IsError:   false,
+					},
+				},
+			},
+		},
+	}
+
+	result := RenderHTML(entries, RenderOptions{})
+
+	// Both should be collapsed and show proper summaries
+	if !strings.Contains(result, "Skill: commit") {
+		t.Error("expected Skill summary in tool_use")
+	}
+	// Result should inherit the summary from tool_use
+	if !strings.Contains(result, "✅") {
+		t.Error("expected success icon in matched result")
+	}
+	// Both should be in details blocks
+	detailsCount := strings.Count(result, `<details class="tool-collapsible">`)
+	if detailsCount != 2 {
+		t.Errorf("expected 2 collapsible blocks for Skill tool and result, got %d", detailsCount)
+	}
+}
+
+func TestRenderHTML_ResultErrorWithCollapse(t *testing.T) {
+	// Error result for Task tool should collapse with error class
+	entries := []Entry{
+		{
+			Type: "assistant",
+			Message: &Message{
+				Role: "assistant",
+				Content: []ContentItem{
+					{
+						Type: "tool_use",
+						Name: "Task",
+						ID:   "task-error",
+						Input: map[string]any{
+							"subagent_type": "Explore",
+							"description":   "Find missing files",
+						},
+					},
+				},
+			},
+		},
+		{
+			Type: "user",
+			Message: &Message{
+				Role: "user",
+				Content: []ContentItem{
+					{
+						Type:      "tool_result",
+						ToolUseID: "task-error",
+						Content:   "Error: No files found",
+						IsError:   true,
+					},
+				},
+			},
+		},
+	}
+
+	result := RenderHTML(entries, RenderOptions{})
+
+	// Error result should have error class
+	if !strings.Contains(result, `<details class="tool-collapsible error">`) {
+		t.Error("expected error class on collapsible result")
+	}
+	if !strings.Contains(result, "❌") {
+		t.Error("expected error icon in result")
+	}
+}

@@ -9,12 +9,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- Collapsible `<details>` blocks for Task and Skill tools in Markdown transcript renderer:
+- Collapsible `<details>` blocks for Task and Skill tools in Markdown and HTML transcript renderers:
   - Task tools always collapse with summary format "🔧 {subagent_type}: {description}"
   - Skill tools always collapse with summary format "🔧 Skill: {skill_name}"
   - Fallback summaries ("🔧 Task" or "🔧 Skill") when input fields are missing
   - Tool results inherit collapse behavior and summary from matching tool_use via ID linking
   - Cross-entry tool matching: tool_use in assistant entries links to tool_result in user entries
+- CSS styles for `details.tool-collapsible` class in HTML renderer:
+  - Styled summary with cursor pointer and flex layout
+  - Error variant with distinct icon color for failed tool results
+  - Consistent styling with existing theme variables
+- Tests for collapsible HTML rendering:
+  - Task/Skill tool collapsing with proper summaries
+  - Short tools use uncollapsed `div.tool-use` format
+  - Long tools (>500 runes) collapse automatically
+  - Cross-entry tool result matching
+  - Error results with `.error` class
+  - CSS inclusion verification
 - Threshold-based collapsing for non-Task/Skill tools exceeding 500 runes (JSON-serialized)
   - Zero-length and nil inputs never collapse
   - Tools at or below threshold use standard heading format
@@ -121,6 +132,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- Modified `formatAssistantMessageHTML` and `formatUserMessageHTML` signatures to accept `toolMeta map[string]toolMetadata` for cross-entry tool matching
+- `formatUserMessageHTML` now handles `tool_result` blocks (previously only handled text)
+- Extracted `formatToolUseHTML` and `formatToolResultHTML` functions from `formatAssistantMessageHTML` for cleaner separation of concerns
+- `RenderHTML` now initializes and passes a render-level tool metadata map to enable tool_use/tool_result linking
 - Modified `formatAssistantMessage` and `formatUserMessage` signatures to accept `toolMeta map[string]toolMetadata` for cross-entry tool matching
 - `formatUserMessage` now handles `tool_result` blocks (previously only handled text)
 - Extracted `formatToolUse` and `formatToolResult` functions from `formatAssistantMessage` for cleaner separation of concerns

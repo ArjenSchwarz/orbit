@@ -134,7 +134,7 @@ references:
 
 ## Phase 4: HTML Renderer
 
-- [ ] 16. Add CSS styles for tool-collapsible class
+- [x] 16. Add CSS styles for tool-collapsible class
   - Add details.tool-collapsible styles to htmlCSS constant
   - Style summary with cursor pointer and flex layout
   - Add .tool-content styles for collapsed content
@@ -143,7 +143,7 @@ references:
   - Requirements: [5.1](requirements.md#5.1), [5.4](requirements.md#5.4)
   - References: internal/transcript/html.go
 
-- [ ] 17. Write HTML renderer tests for collapsible tools
+- [x] 17. Write HTML renderer tests for collapsible tools
   - TestRenderHTML_TaskToolCollapses
   - TestRenderHTML_SkillToolCollapses
   - TestRenderHTML_ShortToolNoCollapse
@@ -152,21 +152,21 @@ references:
   - Requirements: [5.1](requirements.md#5.1), [5.2](requirements.md#5.2), [5.4](requirements.md#5.4), [5.5](requirements.md#5.5)
   - References: internal/transcript/html_test.go
 
-- [ ] 18. Write HTML renderer tests for tool results
+- [x] 18. Write HTML renderer tests for tool results
   - TestRenderHTML_ResultCollapses
   - TestRenderHTML_ShortResultNoCollapse
   - TestRenderHTML_CrossEntryToolMatching
   - Requirements: [5.3](requirements.md#5.3), [5.6](requirements.md#5.6)
   - References: internal/transcript/html_test.go
 
-- [ ] 19. Modify RenderHTML to initialize and pass toolMetadata map
+- [x] 19. Modify RenderHTML to initialize and pass toolMetadata map
   - Initialize toolMetadata map before entry loop
   - Pass map to formatAssistantMessageHTML
   - Pass map to formatUserMessageHTML
   - Requirements: [3.3](requirements.md#3.3)
   - References: internal/transcript/html.go
 
-- [ ] 20. Modify formatAssistantMessageHTML to handle collapsible tool_use
+- [x] 20. Modify formatAssistantMessageHTML to handle collapsible tool_use
   - Update function signature to accept toolMeta map
   - For tool_use: check shouldCollapse and render with details.tool-collapsible if needed
   - Store metadata in map keyed by ID
@@ -174,7 +174,7 @@ references:
   - Requirements: [5.2](requirements.md#5.2), [5.5](requirements.md#5.5)
   - References: internal/transcript/html.go
 
-- [ ] 21. Modify formatUserMessageHTML to handle tool_result blocks
+- [x] 21. Modify formatUserMessageHTML to handle tool_result blocks
   - Update function signature to accept toolMeta map
   - Handle tool_result content items
   - Lookup ToolUseID to inherit collapse behavior
