@@ -411,7 +411,7 @@ func (m *Manager) copyPostCompletionTranscript(sessionID, baseName string) error
 	return nil
 }
 
-// generatePostCompletionMarkdownTranscript parses a JSONL transcript and writes Markdown for post-completion.
+// generatePostCompletionMarkdownTranscript parses a JSONL transcript and writes Markdown and HTML for post-completion.
 func (m *Manager) generatePostCompletionMarkdownTranscript(srcPath, dstPath, sessionID string) error {
 	src, err := os.Open(srcPath)
 	if err != nil {
@@ -433,9 +433,21 @@ func (m *Manager) generatePostCompletionMarkdownTranscript(srcPath, dstPath, ses
 		Title:     "Post-Completion Session Transcript",
 		SessionID: sessionID,
 	}
-	markdown := transcript.RenderMarkdown(result.Entries, opts)
 
-	return os.WriteFile(dstPath, []byte(markdown), 0644)
+	// Write Markdown
+	markdown := transcript.RenderMarkdown(result.Entries, opts)
+	if err := os.WriteFile(dstPath, []byte(markdown), 0644); err != nil {
+		return err
+	}
+
+	// Write HTML (replace .md extension with .html)
+	htmlPath := strings.TrimSuffix(dstPath, ".md") + ".html"
+	htmlContent := transcript.RenderHTML(result.Entries, opts)
+	if err := os.WriteFile(htmlPath, []byte(htmlContent), 0644); err != nil {
+		fmt.Fprintf(os.Stderr, "Warning: could not write HTML transcript: %v\n", err)
+	}
+
+	return nil
 }
 
 // formatPostCompletionTranscript creates a human-readable post-completion transcript.
@@ -586,7 +598,7 @@ func copyFile(src, dst string) error {
 	return nil
 }
 
-// generateMarkdownTranscript parses a JSONL transcript and writes a Markdown file.
+// generateMarkdownTranscript parses a JSONL transcript and writes Markdown and HTML files.
 func (m *Manager) generateMarkdownTranscript(srcPath, dstPath string, phase int, sessionID string) error {
 	src, err := os.Open(srcPath)
 	if err != nil {
@@ -608,9 +620,21 @@ func (m *Manager) generateMarkdownTranscript(srcPath, dstPath string, phase int,
 		Title:     fmt.Sprintf("Phase %d Session Transcript", phase),
 		SessionID: sessionID,
 	}
-	markdown := transcript.RenderMarkdown(result.Entries, opts)
 
-	return os.WriteFile(dstPath, []byte(markdown), 0644)
+	// Write Markdown
+	markdown := transcript.RenderMarkdown(result.Entries, opts)
+	if err := os.WriteFile(dstPath, []byte(markdown), 0644); err != nil {
+		return err
+	}
+
+	// Write HTML (replace .md extension with .html)
+	htmlPath := strings.TrimSuffix(dstPath, ".md") + ".html"
+	htmlContent := transcript.RenderHTML(result.Entries, opts)
+	if err := os.WriteFile(htmlPath, []byte(htmlContent), 0644); err != nil {
+		fmt.Fprintf(os.Stderr, "Warning: could not write HTML transcript: %v\n", err)
+	}
+
+	return nil
 }
 
 

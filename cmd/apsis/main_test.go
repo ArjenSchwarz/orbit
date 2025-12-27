@@ -146,7 +146,7 @@ func TestConvert(t *testing.T) {
 {"type":"assistant","timestamp":"2025-12-23T10:00:01Z","message":{"role":"assistant","content":[{"type":"text","text":"Hello! How can I help?"}]}}`
 
 	var output bytes.Buffer
-	err := convert(strings.NewReader(input), &output, "test-session-id")
+	err := convert(strings.NewReader(input), &output, "test-session-id", "md")
 	if err != nil {
 		t.Fatalf("convert failed: %v", err)
 	}
@@ -182,7 +182,7 @@ func TestConvert(t *testing.T) {
 
 func TestConvert_EmptyFile(t *testing.T) {
 	var output bytes.Buffer
-	err := convert(strings.NewReader(""), &output, "empty-session")
+	err := convert(strings.NewReader(""), &output, "empty-session", "md")
 	if err != nil {
 		t.Fatalf("convert failed on empty file: %v", err)
 	}
@@ -249,6 +249,62 @@ func TestResolveInput_FilePath(t *testing.T) {
 
 	if sessionID != "test-session" {
 		t.Errorf("expected session ID 'test-session', got %q", sessionID)
+	}
+}
+
+func TestConvert_HTMLFormat(t *testing.T) {
+	input := `{"type":"user","timestamp":"2025-12-23T10:00:00Z","message":{"role":"user","content":[{"type":"text","text":"Hello, Claude!"}]}}
+{"type":"assistant","timestamp":"2025-12-23T10:00:01Z","message":{"role":"assistant","content":[{"type":"text","text":"Hello! How can I help?"}]}}`
+
+	var output bytes.Buffer
+	err := convert(strings.NewReader(input), &output, "test-session-id", "html")
+	if err != nil {
+		t.Fatalf("convert failed: %v", err)
+	}
+
+	result := output.String()
+
+	// Check HTML structure
+	if !strings.Contains(result, "<!DOCTYPE html>") {
+		t.Error("output should contain DOCTYPE")
+	}
+	if !strings.Contains(result, "<title>Session Transcript</title>") {
+		t.Error("output should contain title")
+	}
+	if !strings.Contains(result, `<code>test-session-id</code>`) {
+		t.Error("output should contain session ID")
+	}
+
+	// Check user message
+	if !strings.Contains(result, `class="message user"`) {
+		t.Error("output should contain user message class")
+	}
+	if !strings.Contains(result, "Hello, Claude!") {
+		t.Error("output should contain user message text")
+	}
+
+	// Check assistant message
+	if !strings.Contains(result, `class="message assistant"`) {
+		t.Error("output should contain assistant message class")
+	}
+	if !strings.Contains(result, "Hello! How can I help?") {
+		t.Error("output should contain assistant message text")
+	}
+}
+
+func TestConvert_UnsupportedFormat(t *testing.T) {
+	input := `{"type":"user","message":{"role":"user","content":[{"type":"text","text":"test"}]}}`
+
+	var output bytes.Buffer
+	err := convert(strings.NewReader(input), &output, "test-session", "xml")
+
+	if err == nil {
+		t.Fatal("expected error for unsupported format")
+	}
+
+	expectedMsg := "unsupported format: xml"
+	if !strings.Contains(err.Error(), expectedMsg) {
+		t.Errorf("expected error message to contain %q, got: %v", expectedMsg, err)
 	}
 }
 

@@ -214,6 +214,76 @@ Orbit is inherently resumable. Since task state is tracked in the rune tasks fil
 
 With session continuation enabled (default), Orbit will also resume the Claude session context, allowing Claude to remember what it was working on.
 
+---
+
+# Apsis
+
+Apsis is a CLI tool for converting Claude Code session transcripts from JSONL format to readable Markdown or HTML.
+
+## Installation
+
+```bash
+go install github.com/arjenschwarz/orbit/cmd/apsis@latest
+```
+
+## Usage
+
+```bash
+# Convert session by ID (looks in ~/.claude/projects)
+apsis 550e8400-e29b-41d4-a716-446655440000
+
+# Convert from file path
+apsis /path/to/session.jsonl
+
+# Convert from stdin
+cat session.jsonl | apsis
+
+# Save to file
+apsis -o transcript.md session-id
+
+# Export as HTML
+apsis -f html -o transcript.html session-id
+
+# List available sessions for current project
+apsis --list
+
+# List sessions for a different project
+apsis --list -p /path/to/project
+```
+
+## Options
+
+| Flag | Description |
+|------|-------------|
+| `-l, --list` | List available sessions for the project |
+| `-o, --output <file>` | Write output to file (default: stdout) |
+| `-p, --project <path>` | Project directory (default: current directory) |
+| `-f, --format <format>` | Output format: `md`, `markdown`, `html` (default: `md`) |
+| `-v, --version` | Show version |
+| `-h, --help` | Show help |
+
+## Output Formats
+
+### Markdown (default)
+
+Generates a Markdown document with:
+- Session header with ID
+- User messages with 👤 icon
+- Assistant messages with 🤖 icon
+- Collapsible thinking blocks using `<details>` tags
+- Tool usage with JSON input
+- Tool results with success/error indicators
+
+### HTML
+
+Generates a styled HTML document with:
+- Embedded CSS (no external dependencies)
+- Dark mode support (follows system preference)
+- Responsive layout for mobile viewing
+- Collapsible thinking blocks
+- Syntax-highlighted code blocks
+- Color-coded success/error indicators
+
 ## License
 
 MIT

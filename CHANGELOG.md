@@ -9,6 +9,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- HTML export format for session transcripts:
+  - `RenderHTML()` function in `internal/transcript/html.go` with embedded CSS
+  - Dark mode support via `prefers-color-scheme` media query
+  - Responsive layout with mobile-friendly viewport settings
+  - Collapsible thinking blocks using `<details>/<summary>` elements
+  - Styled tool use and result blocks with success/error indicators
+  - Proper HTML escaping to prevent XSS vulnerabilities
+- `--format`/`-f` flag for apsis CLI to select output format (`md`, `markdown`, or `html`)
+- Automatic HTML transcript generation in Orbit's log manager alongside Markdown files
 - `apsis` CLI tool for converting Claude Code session transcripts to Markdown:
   - Flag parsing with `-l/--list`, `-o/--output`, `-p/--project`, `-v/--version`, `-h/--help`
   - Input source resolution: file path, session ID, or stdin
