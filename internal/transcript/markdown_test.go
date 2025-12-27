@@ -326,3 +326,147 @@ func TestTruncateString_MixedUTF8(t *testing.T) {
 		t.Errorf("expected 'a🎉b' prefix, got %q", result)
 	}
 }
+
+func TestGetToolSummary_Task(t *testing.T) {
+	input := map[string]any{
+		"subagent_type": "Explore",
+		"description":   "Search for config files",
+	}
+	result := getToolSummary("Task", input)
+	expected := "Explore: Search for config files"
+	if result != expected {
+		t.Errorf("expected %q, got %q", expected, result)
+	}
+}
+
+func TestGetToolSummary_TaskPartialFields(t *testing.T) {
+	// Only subagent_type present, no description
+	input := map[string]any{
+		"subagent_type": "Explore",
+	}
+	result := getToolSummary("Task", input)
+	// Should return "Explore" without trailing colon
+	expected := "Explore"
+	if result != expected {
+		t.Errorf("expected %q, got %q", expected, result)
+	}
+}
+
+func TestGetToolSummary_TaskFallback(t *testing.T) {
+	tests := map[string]struct {
+		input any
+	}{
+		"nil input":          {nil},
+		"not a map":          {"invalid"},
+		"empty map":          {map[string]any{}},
+		"empty subagent":     {map[string]any{"subagent_type": ""}},
+		"wrong type for key": {map[string]any{"subagent_type": 123}},
+	}
+
+	for name, tc := range tests {
+		t.Run(name, func(t *testing.T) {
+			result := getToolSummary("Task", tc.input)
+			if result != "" {
+				t.Errorf("expected empty string, got %q", result)
+			}
+		})
+	}
+}
+
+func TestGetToolSummary_Skill(t *testing.T) {
+	input := map[string]any{
+		"skill": "next-task",
+	}
+	result := getToolSummary("Skill", input)
+	expected := "Skill: next-task"
+	if result != expected {
+		t.Errorf("expected %q, got %q", expected, result)
+	}
+}
+
+func TestGetToolSummary_OtherTool(t *testing.T) {
+	tests := map[string]struct {
+		toolName string
+		input    any
+	}{
+		"Read tool":      {"Read", map[string]any{"file_path": "/tmp/test"}},
+		"Bash tool":      {"Bash", map[string]any{"command": "ls"}},
+		"lowercase task": {"task", map[string]any{"subagent_type": "Explore"}},
+		"uppercase TASK": {"TASK", map[string]any{"subagent_type": "Explore"}},
+	}
+
+	for name, tc := range tests {
+		t.Run(name, func(t *testing.T) {
+			result := getToolSummary(tc.toolName, tc.input)
+			if result != "" {
+				t.Errorf("expected empty string for non-Task/Skill tool, got %q", result)
+			}
+		})
+	}
+}
+
+func TestShouldCollapse_AlwaysTools(t *testing.T) {
+	tests := map[string]struct {
+		toolName  string
+		runeCount int
+	}{
+		"Task zero":     {"Task", 0},
+		"Task small":    {"Task", 100},
+		"Task at limit": {"Task", 500},
+		"Task large":    {"Task", 1000},
+		"Skill zero":    {"Skill", 0},
+		"Skill small":   {"Skill", 100},
+		"Skill large":   {"Skill", 5000},
+	}
+
+	for name, tc := range tests {
+		t.Run(name, func(t *testing.T) {
+			if !shouldCollapse(tc.toolName, tc.runeCount) {
+				t.Errorf("%s with %d runes should always collapse", tc.toolName, tc.runeCount)
+			}
+		})
+	}
+}
+
+func TestShouldCollapse_Threshold(t *testing.T) {
+	tests := map[string]struct {
+		runeCount int
+		expected  bool
+	}{
+		"499 runes - should not collapse": {499, false},
+		"500 runes - should not collapse": {500, false},
+		"501 runes - should collapse":     {501, true},
+	}
+
+	for name, tc := range tests {
+		t.Run(name, func(t *testing.T) {
+			result := shouldCollapse("Read", tc.runeCount)
+			if result != tc.expected {
+				t.Errorf("shouldCollapse(Read, %d) = %v, want %v", tc.runeCount, result, tc.expected)
+			}
+		})
+	}
+}
+
+func TestEscapeSummary_XSS(t *testing.T) {
+	tests := map[string]struct {
+		input    string
+		expected string
+	}{
+		"script tag":       {"<script>alert(1)</script>", "&lt;script&gt;alert(1)&lt;/script&gt;"},
+		"closing summary":  {"</summary>", "&lt;/summary&gt;"},
+		"ampersand":        {"foo & bar", "foo &amp; bar"},
+		"html entities":    {"<div class=\"x\">", "&lt;div class=&#34;x&#34;&gt;"},
+		"normal text":      {"Explore: Search files", "Explore: Search files"},
+		"unicode safe":     {"🔧 Tool", "🔧 Tool"},
+	}
+
+	for name, tc := range tests {
+		t.Run(name, func(t *testing.T) {
+			result := escapeSummary(tc.input)
+			if result != tc.expected {
+				t.Errorf("escapeSummary(%q) = %q, want %q", tc.input, result, tc.expected)
+			}
+		})
+	}
+}

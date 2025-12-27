@@ -9,6 +9,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Helper functions for collapsible tool blocks in transcript renderer:
+  - `CollapseThresholdRunes` constant (500 runes) for threshold-based collapsing
+  - `toolMetadata` struct to store tool name and summary for result matching
+  - `getToolSummary()` to extract readable summaries from Task and Skill tool inputs
+  - `shouldCollapse()` to determine if a tool should be wrapped in `<details>` element
+  - `escapeSummary()` to escape summary text for safe HTML inclusion
+- Tests for collapsible helper functions:
+  - Task tool summary extraction with full and partial fields
+  - Skill tool summary extraction
+  - Case-sensitive tool name matching (Task/Skill vs task/TASK)
+  - Threshold boundary tests (499, 500, 501 runes)
+  - XSS prevention through HTML escaping
 - `ID` and `ToolUseID` fields to `ContentItem` struct for tool_use/tool_result linking:
   - `ID` field with JSON tag `id` for tool_use blocks
   - `ToolUseID` field with JSON tag `tool_use_id` for tool_result blocks

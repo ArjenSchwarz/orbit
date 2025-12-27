@@ -3,6 +3,7 @@ package transcript
 import (
 	"encoding/json"
 	"fmt"
+	"html"
 	"strings"
 	"unicode/utf8"
 )
@@ -12,7 +13,15 @@ const (
 	MaxToolInputRunes = 2000
 	// MaxToolResultRunes is the maximum number of runes for tool result truncation.
 	MaxToolResultRunes = 3000
+	// CollapseThresholdRunes is the threshold for collapsing non-Task/Skill tools.
+	CollapseThresholdRunes = 500
 )
+
+// toolMetadata stores information about a tool_use for result matching.
+type toolMetadata struct {
+	Name    string // Tool name (e.g., "Task", "Read")
+	Summary string // Summary text for collapsed display
+}
 
 // RenderMarkdown converts parsed entries to Markdown format.
 func RenderMarkdown(entries []Entry, opts RenderOptions) string {
@@ -148,4 +157,53 @@ func truncateString(s string, maxRunes int) string {
 		n++
 	}
 	return b.String() + "\n... (truncated)"
+}
+
+// getToolSummary extracts a readable summary for Task and Skill tools.
+// Returns empty string for other tools or if extraction fails.
+// Uses defensive type assertions with comma-ok idiom.
+func getToolSummary(name string, input any) string {
+	switch name {
+	case "Task":
+		inputMap, ok := input.(map[string]any)
+		if !ok {
+			return ""
+		}
+		subType, _ := inputMap["subagent_type"].(string)
+		desc, _ := inputMap["description"].(string)
+		// Handle partial fields gracefully (no trailing colon)
+		if subType != "" && desc != "" {
+			return subType + ": " + desc
+		}
+		if subType != "" {
+			return subType
+		}
+		return ""
+	case "Skill":
+		inputMap, ok := input.(map[string]any)
+		if !ok {
+			return ""
+		}
+		skill, _ := inputMap["skill"].(string)
+		if skill != "" {
+			return "Skill: " + skill
+		}
+		return ""
+	}
+	return ""
+}
+
+// shouldCollapse determines if a tool_use or tool_result should be wrapped
+// in a <details> element based on tool name and content rune count.
+func shouldCollapse(name string, runeCount int) bool {
+	if name == "Task" || name == "Skill" {
+		return true
+	}
+	return runeCount > CollapseThresholdRunes
+}
+
+// escapeSummary escapes summary text for safe inclusion in HTML/Markdown.
+// Applies html.EscapeString to prevent XSS and structural corruption.
+func escapeSummary(s string) string {
+	return html.EscapeString(s)
 }
