@@ -9,6 +9,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Custom `UnmarshalJSON` methods for polymorphic content handling in transcript parser:
+  - `Message.UnmarshalJSON` handles content as either string (user messages) or array (assistant messages)
+  - `ContentItem.UnmarshalJSON` handles tool result content as either string or array of content blocks
+- Tests for polymorphic content parsing: string content in user messages, array content in tool results, mixed formats
 - HTML export format for session transcripts:
   - `RenderHTML()` function in `internal/transcript/html.go` with embedded CSS
   - Dark mode support via `prefers-color-scheme` media query
@@ -84,6 +88,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- Updated CLAUDE.md to document both Orbit and Apsis tools, including architecture details and Apsis workflow
+- Added `/apsis` binary to `.gitignore`
 - Refactored `internal/logs/manager.go` to use `internal/transcript` package for JSONL parsing and Markdown rendering
 - `generateMarkdownTranscript` and `generatePostCompletionMarkdownTranscript` now use `transcript.ParseJSONL` and `transcript.RenderMarkdown`
 - Phase transcripts now use `RenderOptions` with phase-specific titles ("Phase N Session Transcript" and "Post-Completion Session Transcript")

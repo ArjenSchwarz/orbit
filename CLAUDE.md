@@ -4,18 +4,23 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-Orbit is a CLI tool that orchestrates Claude Code sessions to implement spec phases sequentially. It handles session lifecycle, error recovery, and log management. The tool automates running Claude Code through multiple implementation phases without manual intervention.
+This repository contains two related CLI tools for working with Claude Code:
+
+- **Orbit** - Orchestrates Claude Code sessions to implement spec phases sequentially. Handles session lifecycle, error recovery, and log management.
+- **Apsis** - Converts Claude Code session transcripts from JSONL format to readable Markdown. Lists and transforms session files stored in `~/.claude/projects/`.
 
 ## Build and Development Commands
 
 ```bash
-make build          # Build binary
+make build          # Build both binaries (orbit and apsis)
+make build-orbit    # Build orbit only
+make build-apsis    # Build apsis only (with version injection)
 make test           # Run all tests
 make test-verbose   # Run tests with verbose output
 make test-coverage  # Run tests with coverage report
 make lint           # Run golangci-lint
 make modernize      # Update code to modern Go idioms
-make install        # Install to GOPATH/bin
+make install        # Install both binaries to GOPATH/bin
 make clean          # Remove build artifacts
 
 # Run single test
@@ -27,35 +32,55 @@ go test ./internal/orbit -run TestName
 The codebase follows a clean internal package structure:
 
 ```
-cmd/orbit/main.go    - CLI entry point, flag parsing, branch detection
+cmd/
+  orbit/main.go      - Orbit CLI entry point, flag parsing, branch detection
+  apsis/main.go      - Apsis CLI entry point, session listing and conversion
 internal/
   orbit/orbit.go     - Main orchestration loop with retry logic
   claude/client.go   - Wrapper for Claude Code CLI execution
+  claude/paths.go    - Claude project path utilities (shared by orbit and apsis)
   rune/client.go     - Wrapper for rune CLI task management
   errors/errors.go   - Error classification (rate limits, connection, overload)
   logs/manager.go    - Session log storage and summary management
+  config/config.go   - Configuration loading via Viper (files, env vars, defaults)
+  transcript/        - JSONL parsing and Markdown rendering for apsis
 ```
 
-**Key flow**: `main.go` parses flags and detects tasks file from git branch → `Orbit.Run()` loops through phases → `claudeClient.RunPhase()` executes Claude with `/next-task --phase` → errors are classified and retried or propagated → logs are saved per phase.
+### Orbit Flow
 
-## Tasks File Auto-Detection
+`main.go` parses flags and detects tasks file from git branch → `Orbit.Run()` loops through phases → `claudeClient.RunPhase()` executes Claude with `/next-task --phase` → errors are classified and retried or propagated → logs are saved per phase.
+
+### Apsis Flow
+
+Resolves input (session ID, file path, or stdin) → parses JSONL via `transcript.ParseJSONL()` → renders to Markdown via `transcript.RenderMarkdown()` → outputs to stdout or file.
+
+## Tasks File Auto-Detection (Orbit)
 
 When `--tasks-file` is not specified, Orbit detects it from the git branch:
 1. Get current branch name
 2. Strip everything before the first `/` (e.g., `feature/my-feature` → `my-feature`)
 3. Look for `specs/{name}/tasks.md` or `specs/{name}/TASKS.md`
 
-## Resumption
+## Configuration (Orbit)
 
-Orbit is inherently resumable - no explicit resume flag needed. Each iteration checks `rune list --filter pending` for remaining tasks. If tasks were completed manually or by a previous run, they're skipped automatically. You can stop Orbit (Ctrl+C), work in Claude interactive mode, then run Orbit again to continue.
+Configuration priority (highest to lowest):
+1. CLI flags
+2. Environment variables (`ORBIT_COMMAND`, `ORBIT_POST_COMMAND`, `ORBIT_DATE_SUBDIRS`, `ORBIT_CONTINUE_SESSION`)
+3. Project config (`.orbit.yaml` in working directory)
+4. Home config (`~/.orbit.yaml`)
+5. Built-in defaults
+
+Empty string environment variables explicitly disable features (e.g., `ORBIT_POST_COMMAND=""` disables post-command).
 
 ## External Dependencies
 
-Orbit requires two external CLIs to function:
+Orbit requires two external CLIs:
 - **Claude Code CLI** (`claude`) - must be installed and authenticated
 - **rune** - task management CLI for reading/tracking task phases
 
-## Error Handling
+Apsis has no external dependencies beyond access to `~/.claude/projects/`.
+
+## Error Handling (Orbit)
 
 The `errors` package classifies CLI output into retryable categories:
 - `ErrRateLimit` - waits for retry-after duration (default 60s)
@@ -64,9 +89,11 @@ The `errors` package classifies CLI output into retryable categories:
 
 Non-retryable errors stop orchestration and preserve state for manual intervention.
 
-## Log Structure
+## Log Structure (Orbit)
 
-Sessions are saved to `.claude/orchestration-logs/{timestamp}-{branch}/`:
-- `summary.json` - overall run metadata and session entries
-- `phase-N-session.json` - raw Claude JSON output
-- `phase-N-session.txt` - human-readable transcript
+Sessions are saved to `.orbit/` next to the tasks file (e.g., `specs/my-feature/.orbit/`):
+- `summary.json` - persistent run summary with session tracking
+- `phase-N-run-M-session.json` - full Claude output for phase N, run M
+- `phase-N-run-M-session.txt` - human-readable transcript
+
+With `--date-subdirs`, logs are organized by timestamp subdirectories instead.

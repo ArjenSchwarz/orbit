@@ -1,5 +1,6 @@
 # Binary (at root level only)
 /orbit
+/apsis
 
 # Orbit orchestration log directories
 **/.orbit/

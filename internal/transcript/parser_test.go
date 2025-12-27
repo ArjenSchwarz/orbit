@@ -185,3 +185,134 @@ func TestParseFirstTimestamp_RFC3339Nano(t *testing.T) {
 		t.Errorf("expected nanoseconds 123456789, got %d", ts.Nanosecond())
 	}
 }
+
+func TestParseJSONL_UserMessageStringContent(t *testing.T) {
+	// User messages can have content as a plain string (not array)
+	jsonl := `{"type":"user","timestamp":"2025-12-23T10:30:00+11:00","message":{"role":"user","content":"Hello, this is a plain string message"}}`
+
+	result, err := ParseJSONL(strings.NewReader(jsonl))
+	if err != nil {
+		t.Fatalf("ParseJSONL returned error: %v", err)
+	}
+
+	if len(result.Warnings) != 0 {
+		t.Errorf("expected no warnings, got %d: %v", len(result.Warnings), result.Warnings)
+	}
+
+	if len(result.Entries) != 1 {
+		t.Fatalf("expected 1 entry, got %d", len(result.Entries))
+	}
+
+	entry := result.Entries[0]
+	if entry.Type != "user" {
+		t.Errorf("expected type 'user', got %q", entry.Type)
+	}
+
+	if len(entry.Message.Content) != 1 {
+		t.Fatalf("expected 1 content item, got %d", len(entry.Message.Content))
+	}
+
+	content := entry.Message.Content[0]
+	if content.Type != "text" {
+		t.Errorf("expected content type 'text', got %q", content.Type)
+	}
+
+	if content.Text != "Hello, this is a plain string message" {
+		t.Errorf("expected text 'Hello, this is a plain string message', got %q", content.Text)
+	}
+}
+
+func TestParseJSONL_ToolResultArrayContent(t *testing.T) {
+	// Tool results can have content as an array of content blocks
+	jsonl := `{"type":"assistant","timestamp":"2025-12-23T10:30:00+11:00","message":{"role":"assistant","content":[{"type":"tool_result","content":[{"type":"text","text":"Result item 1"},{"type":"text","text":"Result item 2"}],"is_error":false}]}}`
+
+	result, err := ParseJSONL(strings.NewReader(jsonl))
+	if err != nil {
+		t.Fatalf("ParseJSONL returned error: %v", err)
+	}
+
+	if len(result.Warnings) != 0 {
+		t.Errorf("expected no warnings, got %d: %v", len(result.Warnings), result.Warnings)
+	}
+
+	if len(result.Entries) != 1 {
+		t.Fatalf("expected 1 entry, got %d", len(result.Entries))
+	}
+
+	entry := result.Entries[0]
+	if len(entry.Message.Content) != 1 {
+		t.Fatalf("expected 1 content item, got %d", len(entry.Message.Content))
+	}
+
+	content := entry.Message.Content[0]
+	if content.Type != "tool_result" {
+		t.Errorf("expected content type 'tool_result', got %q", content.Type)
+	}
+
+	// Array content should be serialized to JSON string
+	if content.Content == "" {
+		t.Error("expected content to be non-empty (array serialized to JSON)")
+	}
+
+	// Verify the content contains our expected text
+	if !strings.Contains(content.Content, "Result item 1") {
+		t.Errorf("expected content to contain 'Result item 1', got %q", content.Content)
+	}
+}
+
+func TestParseJSONL_MixedContentFormats(t *testing.T) {
+	// Mix of string and array content formats in same session
+	jsonl := `{"type":"user","timestamp":"2025-12-23T10:30:00+11:00","message":{"role":"user","content":"User message as string"}}
+{"type":"assistant","timestamp":"2025-12-23T10:30:05+11:00","message":{"role":"assistant","content":[{"type":"text","text":"Assistant message as array"}]}}
+{"type":"user","timestamp":"2025-12-23T10:30:10+11:00","message":{"role":"user","content":"Another string message"}}`
+
+	result, err := ParseJSONL(strings.NewReader(jsonl))
+	if err != nil {
+		t.Fatalf("ParseJSONL returned error: %v", err)
+	}
+
+	if len(result.Warnings) != 0 {
+		t.Errorf("expected no warnings, got %d: %v", len(result.Warnings), result.Warnings)
+	}
+
+	if len(result.Entries) != 3 {
+		t.Fatalf("expected 3 entries, got %d", len(result.Entries))
+	}
+
+	// Verify each entry was parsed correctly
+	tests := map[string]struct {
+		entryType   string
+		expectedTxt string
+	}{
+		"entry 0": {"user", "User message as string"},
+		"entry 1": {"assistant", "Assistant message as array"},
+		"entry 2": {"user", "Another string message"},
+	}
+
+	for name, tc := range tests {
+		var idx int
+		switch name {
+		case "entry 0":
+			idx = 0
+		case "entry 1":
+			idx = 1
+		case "entry 2":
+			idx = 2
+		}
+
+		t.Run(name, func(t *testing.T) {
+			entry := result.Entries[idx]
+			if entry.Type != tc.entryType {
+				t.Errorf("expected type %q, got %q", tc.entryType, entry.Type)
+			}
+
+			if len(entry.Message.Content) != 1 {
+				t.Fatalf("expected 1 content item, got %d", len(entry.Message.Content))
+			}
+
+			if entry.Message.Content[0].Text != tc.expectedTxt {
+				t.Errorf("expected text %q, got %q", tc.expectedTxt, entry.Message.Content[0].Text)
+			}
+		})
+	}
+}
