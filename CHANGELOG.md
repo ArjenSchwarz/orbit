@@ -9,6 +9,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Collapsible `<details>` blocks for Task and Skill tools in Markdown transcript renderer:
+  - Task tools always collapse with summary format "🔧 {subagent_type}: {description}"
+  - Skill tools always collapse with summary format "🔧 Skill: {skill_name}"
+  - Fallback summaries ("🔧 Task" or "🔧 Skill") when input fields are missing
+  - Tool results inherit collapse behavior and summary from matching tool_use via ID linking
+  - Cross-entry tool matching: tool_use in assistant entries links to tool_result in user entries
+- Threshold-based collapsing for non-Task/Skill tools exceeding 500 runes (JSON-serialized)
+  - Zero-length and nil inputs never collapse
+  - Tools at or below threshold use standard heading format
+- Tests for collapsible Markdown rendering:
+  - Task/Skill always-collapse behavior
+  - Fallback summary generation
+  - Case-sensitive tool name matching
+  - Threshold boundary conditions
+  - Cross-entry tool result matching
+  - Output format verification (details structure and heading format)
 - Helper functions for collapsible tool blocks in transcript renderer:
   - `CollapseThresholdRunes` constant (500 runes) for threshold-based collapsing
   - `toolMetadata` struct to store tool name and summary for result matching
@@ -105,6 +121,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- Modified `formatAssistantMessage` and `formatUserMessage` signatures to accept `toolMeta map[string]toolMetadata` for cross-entry tool matching
+- `formatUserMessage` now handles `tool_result` blocks (previously only handled text)
+- Extracted `formatToolUse` and `formatToolResult` functions from `formatAssistantMessage` for cleaner separation of concerns
+- `RenderMarkdown` now initializes and passes a render-level tool metadata map to enable tool_use/tool_result linking
 - Updated CLAUDE.md to document both Orbit and Apsis tools, including architecture details and Apsis workflow
 - Added `/apsis` binary to `.gitignore`
 - Refactored `internal/logs/manager.go` to use `internal/transcript` package for JSONL parsing and Markdown rendering

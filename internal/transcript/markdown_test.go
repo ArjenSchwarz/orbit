@@ -470,3 +470,727 @@ func TestEscapeSummary_XSS(t *testing.T) {
 		})
 	}
 }
+
+// Tests for collapsible tool_use blocks (Task 9)
+
+func TestRenderMarkdown_TaskToolAlwaysCollapses(t *testing.T) {
+	entries := []Entry{
+		{
+			Type: "assistant",
+			Message: &Message{
+				Role: "assistant",
+				Content: []ContentItem{
+					{
+						Type: "tool_use",
+						Name: "Task",
+						ID:   "tool_123",
+						Input: map[string]any{
+							"subagent_type": "Explore",
+							"description":   "Search for config files",
+						},
+					},
+				},
+			},
+		},
+	}
+
+	result := RenderMarkdown(entries, RenderOptions{})
+
+	if !strings.Contains(result, "<details>") {
+		t.Error("Task tool should always be wrapped in details")
+	}
+	if !strings.Contains(result, "<summary>🔧 Explore: Search for config files</summary>") {
+		t.Error("expected Task tool summary with subagent_type and description")
+	}
+	if !strings.Contains(result, "</details>") {
+		t.Error("expected closing details tag")
+	}
+}
+
+func TestRenderMarkdown_TaskToolFallback(t *testing.T) {
+	tests := map[string]struct {
+		input any
+	}{
+		"nil input":            {nil},
+		"not a map":            {"invalid"},
+		"empty map":            {map[string]any{}},
+		"missing subagent":     {map[string]any{"description": "test"}},
+		"empty subagent":       {map[string]any{"subagent_type": ""}},
+	}
+
+	for name, tc := range tests {
+		t.Run(name, func(t *testing.T) {
+			entries := []Entry{
+				{
+					Type: "assistant",
+					Message: &Message{
+						Role: "assistant",
+						Content: []ContentItem{
+							{
+								Type:  "tool_use",
+								Name:  "Task",
+								ID:    "tool_123",
+								Input: tc.input,
+							},
+						},
+					},
+				},
+			}
+
+			result := RenderMarkdown(entries, RenderOptions{})
+
+			if !strings.Contains(result, "<details>") {
+				t.Error("Task tool should still be wrapped in details")
+			}
+			if !strings.Contains(result, "<summary>🔧 Task</summary>") {
+				t.Errorf("expected fallback summary '🔧 Task' for case %s", name)
+			}
+		})
+	}
+}
+
+func TestRenderMarkdown_SkillToolAlwaysCollapses(t *testing.T) {
+	entries := []Entry{
+		{
+			Type: "assistant",
+			Message: &Message{
+				Role: "assistant",
+				Content: []ContentItem{
+					{
+						Type: "tool_use",
+						Name: "Skill",
+						ID:   "tool_456",
+						Input: map[string]any{
+							"skill": "next-task",
+						},
+					},
+				},
+			},
+		},
+	}
+
+	result := RenderMarkdown(entries, RenderOptions{})
+
+	if !strings.Contains(result, "<details>") {
+		t.Error("Skill tool should always be wrapped in details")
+	}
+	if !strings.Contains(result, "<summary>🔧 Skill: next-task</summary>") {
+		t.Error("expected Skill tool summary with skill name")
+	}
+}
+
+func TestRenderMarkdown_SkillToolFallback(t *testing.T) {
+	tests := map[string]struct {
+		input any
+	}{
+		"nil input":      {nil},
+		"not a map":      {"invalid"},
+		"empty map":      {map[string]any{}},
+		"empty skill":    {map[string]any{"skill": ""}},
+	}
+
+	for name, tc := range tests {
+		t.Run(name, func(t *testing.T) {
+			entries := []Entry{
+				{
+					Type: "assistant",
+					Message: &Message{
+						Role: "assistant",
+						Content: []ContentItem{
+							{
+								Type:  "tool_use",
+								Name:  "Skill",
+								ID:    "tool_456",
+								Input: tc.input,
+							},
+						},
+					},
+				},
+			}
+
+			result := RenderMarkdown(entries, RenderOptions{})
+
+			if !strings.Contains(result, "<details>") {
+				t.Error("Skill tool should still be wrapped in details")
+			}
+			if !strings.Contains(result, "<summary>🔧 Skill</summary>") {
+				t.Errorf("expected fallback summary '🔧 Skill' for case %s", name)
+			}
+		})
+	}
+}
+
+func TestRenderMarkdown_ToolNameCaseSensitive(t *testing.T) {
+	tests := map[string]string{
+		"task":  "task",
+		"TASK":  "TASK",
+		"skill": "skill",
+		"SKILL": "SKILL",
+	}
+
+	for name, toolName := range tests {
+		t.Run(name, func(t *testing.T) {
+			// Create input small enough that threshold won't trigger collapse
+			entries := []Entry{
+				{
+					Type: "assistant",
+					Message: &Message{
+						Role: "assistant",
+						Content: []ContentItem{
+							{
+								Type:  "tool_use",
+								Name:  toolName,
+								ID:    "tool_789",
+								Input: map[string]any{"small": "input"},
+							},
+						},
+					},
+				},
+			}
+
+			result := RenderMarkdown(entries, RenderOptions{})
+
+			// Case-insensitive variants should NOT collapse (they use heading format)
+			if strings.Contains(result, "<details>") {
+				t.Errorf("tool %q should not collapse (case-sensitive matching)", toolName)
+			}
+			if !strings.Contains(result, "### 🔧 Tool:") {
+				t.Errorf("tool %q should use uncollapsed heading format", toolName)
+			}
+		})
+	}
+}
+
+func TestRenderMarkdown_ShortToolNoCollapse(t *testing.T) {
+	// Create input that is less than 500 runes when serialized
+	entries := []Entry{
+		{
+			Type: "assistant",
+			Message: &Message{
+				Role: "assistant",
+				Content: []ContentItem{
+					{
+						Type:  "tool_use",
+						Name:  "Read",
+						ID:    "tool_short",
+						Input: map[string]any{"file_path": "/tmp/test.txt"},
+					},
+				},
+			},
+		},
+	}
+
+	result := RenderMarkdown(entries, RenderOptions{})
+
+	// Short tool should NOT be collapsed
+	if strings.Contains(result, "<details>") && !strings.Contains(result, "💭 Thinking") {
+		t.Error("short tool should not be wrapped in details")
+	}
+	if !strings.Contains(result, "### 🔧 Tool: `Read`") {
+		t.Error("short tool should use heading format")
+	}
+}
+
+func TestRenderMarkdown_LongToolCollapses(t *testing.T) {
+	// Create input that exceeds 500 runes when serialized
+	longContent := strings.Repeat("x", 600)
+	entries := []Entry{
+		{
+			Type: "assistant",
+			Message: &Message{
+				Role: "assistant",
+				Content: []ContentItem{
+					{
+						Type:  "tool_use",
+						Name:  "Read",
+						ID:    "tool_long",
+						Input: map[string]any{"file_path": longContent},
+					},
+				},
+			},
+		},
+	}
+
+	result := RenderMarkdown(entries, RenderOptions{})
+
+	if !strings.Contains(result, "<details>") {
+		t.Error("long tool should be wrapped in details")
+	}
+	if !strings.Contains(result, "<summary>🔧 Tool: Read</summary>") {
+		t.Error("expected collapsed tool summary")
+	}
+}
+
+func TestRenderMarkdown_ExactThresholdNoCollapse(t *testing.T) {
+	// Create input that is exactly 500 runes when JSON-serialized
+	// JSON format: {"data":"xxx..."} = 11 chars overhead + content
+	// We need total serialized length to be exactly 500 runes
+	// {"data":"..."} has 11 chars of overhead, so we need 489 chars of content
+	content := strings.Repeat("a", 489)
+	entries := []Entry{
+		{
+			Type: "assistant",
+			Message: &Message{
+				Role: "assistant",
+				Content: []ContentItem{
+					{
+						Type:  "tool_use",
+						Name:  "Bash",
+						ID:    "tool_exact",
+						Input: map[string]any{"data": content},
+					},
+				},
+			},
+		},
+	}
+
+	result := RenderMarkdown(entries, RenderOptions{})
+
+	// At exactly 500 runes, should NOT collapse (threshold is > 500)
+	if strings.Contains(result, "<details>") && strings.Contains(result, "🔧 Tool: Bash") {
+		t.Error("tool at exactly 500 runes should not collapse")
+	}
+}
+
+func TestRenderMarkdown_ZeroLengthNoCollapse(t *testing.T) {
+	tests := map[string]any{
+		"nil input":   nil,
+		"empty map":   map[string]any{},
+	}
+
+	for name, input := range tests {
+		t.Run(name, func(t *testing.T) {
+			entries := []Entry{
+				{
+					Type: "assistant",
+					Message: &Message{
+						Role: "assistant",
+						Content: []ContentItem{
+							{
+								Type:  "tool_use",
+								Name:  "Write",
+								ID:    "tool_zero",
+								Input: input,
+							},
+						},
+					},
+				},
+			}
+
+			result := RenderMarkdown(entries, RenderOptions{})
+
+			// Zero-length input should NOT collapse
+			if strings.Contains(result, "<details>") && strings.Contains(result, "🔧 Tool: Write") {
+				t.Errorf("zero-length input (%s) should not collapse", name)
+			}
+		})
+	}
+}
+
+// Tests for tool_result blocks (Task 10)
+
+func TestRenderMarkdown_ResultMatchesToolUse(t *testing.T) {
+	// Tool use in assistant entry, result in user entry
+	entries := []Entry{
+		{
+			Type: "assistant",
+			Message: &Message{
+				Role: "assistant",
+				Content: []ContentItem{
+					{
+						Type: "tool_use",
+						Name: "Task",
+						ID:   "task_001",
+						Input: map[string]any{
+							"subagent_type": "Explore",
+							"description":   "Search for files",
+						},
+					},
+				},
+			},
+		},
+		{
+			Type: "user",
+			Message: &Message{
+				Role: "user",
+				Content: []ContentItem{
+					{
+						Type:      "tool_result",
+						ToolUseID: "task_001",
+						Content:   "Found 5 files",
+						IsError:   false,
+					},
+				},
+			},
+		},
+	}
+
+	result := RenderMarkdown(entries, RenderOptions{})
+
+	// Result should be collapsed and use the same summary as the tool_use
+	if !strings.Contains(result, "<summary>✅ Explore: Search for files</summary>") {
+		t.Error("expected tool result to inherit summary from tool_use")
+	}
+}
+
+func TestRenderMarkdown_UnmatchedResultThreshold(t *testing.T) {
+	// Result without matching tool_use, long content should collapse
+	longContent := strings.Repeat("x", 600)
+	entries := []Entry{
+		{
+			Type: "user",
+			Message: &Message{
+				Role: "user",
+				Content: []ContentItem{
+					{
+						Type:      "tool_result",
+						ToolUseID: "unknown_id",
+						Content:   longContent,
+						IsError:   false,
+					},
+				},
+			},
+		},
+	}
+
+	result := RenderMarkdown(entries, RenderOptions{})
+
+	if !strings.Contains(result, "<details>") {
+		t.Error("long unmatched result should be collapsed")
+	}
+	if !strings.Contains(result, "<summary>✅ Tool Result</summary>") {
+		t.Error("unmatched result should use generic 'Tool Result' summary")
+	}
+}
+
+func TestRenderMarkdown_ResultErrorIcon(t *testing.T) {
+	// Error result matching a Task tool
+	entries := []Entry{
+		{
+			Type: "assistant",
+			Message: &Message{
+				Role: "assistant",
+				Content: []ContentItem{
+					{
+						Type: "tool_use",
+						Name: "Task",
+						ID:   "task_err",
+						Input: map[string]any{
+							"subagent_type": "Explore",
+							"description":   "Search files",
+						},
+					},
+				},
+			},
+		},
+		{
+			Type: "user",
+			Message: &Message{
+				Role: "user",
+				Content: []ContentItem{
+					{
+						Type:      "tool_result",
+						ToolUseID: "task_err",
+						Content:   "Error: something went wrong",
+						IsError:   true,
+					},
+				},
+			},
+		},
+	}
+
+	result := RenderMarkdown(entries, RenderOptions{})
+
+	// Error result should use ❌ icon
+	if !strings.Contains(result, "<summary>❌ Explore: Search files</summary>") {
+		t.Error("error result should use ❌ icon in summary")
+	}
+}
+
+func TestRenderMarkdown_ZeroLengthResultNoCollapse(t *testing.T) {
+	entries := []Entry{
+		{
+			Type: "user",
+			Message: &Message{
+				Role: "user",
+				Content: []ContentItem{
+					{
+						Type:      "tool_result",
+						ToolUseID: "some_id",
+						Content:   "",
+						IsError:   false,
+					},
+				},
+			},
+		},
+	}
+
+	result := RenderMarkdown(entries, RenderOptions{})
+
+	// Zero-length result should NOT collapse
+	// Should use the uncollapsed format
+	if strings.Contains(result, "<details>") && strings.Contains(result, "Tool Result</summary>") {
+		t.Error("zero-length result should not collapse")
+	}
+}
+
+// Cross-entry tool matching tests (Task 11)
+
+func TestRenderMarkdown_CrossEntryToolMatching(t *testing.T) {
+	// This is the critical test: tool_use appears in "assistant" entry,
+	// but tool_result appears in "user" entry. The map must persist across entries.
+	entries := []Entry{
+		{
+			Type: "assistant",
+			Message: &Message{
+				Role: "assistant",
+				Content: []ContentItem{
+					{
+						Type: "tool_use",
+						Name: "Task",
+						ID:   "cross_entry_001",
+						Input: map[string]any{
+							"subagent_type": "Explore",
+							"description":   "Find config",
+						},
+					},
+				},
+			},
+		},
+		{
+			Type: "user",
+			Message: &Message{
+				Role: "user",
+				Content: []ContentItem{
+					{
+						Type:      "tool_result",
+						ToolUseID: "cross_entry_001",
+						Content:   "Config found at /etc/app.conf",
+						IsError:   false,
+					},
+				},
+			},
+		},
+	}
+
+	result := RenderMarkdown(entries, RenderOptions{})
+
+	// The tool_use should be collapsed with Task summary
+	if !strings.Contains(result, "<summary>🔧 Explore: Find config</summary>") {
+		t.Error("tool_use should be collapsed with Task summary")
+	}
+
+	// The tool_result should inherit the collapse and summary from tool_use
+	if !strings.Contains(result, "<summary>✅ Explore: Find config</summary>") {
+		t.Error("tool_result should inherit summary from tool_use across entries")
+	}
+}
+
+func TestRenderMarkdown_ToolResultInUserEntry(t *testing.T) {
+	// Verify that tool_result is properly handled in user entries (not assistant)
+	entries := []Entry{
+		{
+			Type: "assistant",
+			Message: &Message{
+				Role: "assistant",
+				Content: []ContentItem{
+					{
+						Type: "tool_use",
+						Name: "Skill",
+						ID:   "skill_user_entry",
+						Input: map[string]any{
+							"skill": "commit",
+						},
+					},
+				},
+			},
+		},
+		{
+			Type: "user",
+			Message: &Message{
+				Role: "user",
+				Content: []ContentItem{
+					{
+						Type:      "tool_result",
+						ToolUseID: "skill_user_entry",
+						Content:   "Commit created successfully",
+						IsError:   false,
+					},
+				},
+			},
+		},
+	}
+
+	result := RenderMarkdown(entries, RenderOptions{})
+
+	// Verify the user entry contains the collapsed tool_result
+	if !strings.Contains(result, "<summary>✅ Skill: commit</summary>") {
+		t.Error("tool_result in user entry should be collapsed with inherited summary")
+	}
+}
+
+func TestRenderMarkdown_MultipleToolsMatching(t *testing.T) {
+	// Multiple tool_use/result pairs should match correctly
+	entries := []Entry{
+		{
+			Type: "assistant",
+			Message: &Message{
+				Role: "assistant",
+				Content: []ContentItem{
+					{
+						Type: "tool_use",
+						Name: "Task",
+						ID:   "task_a",
+						Input: map[string]any{
+							"subagent_type": "Plan",
+							"description":   "Create plan",
+						},
+					},
+					{
+						Type: "tool_use",
+						Name: "Skill",
+						ID:   "skill_b",
+						Input: map[string]any{
+							"skill": "rune",
+						},
+					},
+				},
+			},
+		},
+		{
+			Type: "user",
+			Message: &Message{
+				Role: "user",
+				Content: []ContentItem{
+					{
+						Type:      "tool_result",
+						ToolUseID: "task_a",
+						Content:   "Plan created",
+						IsError:   false,
+					},
+					{
+						Type:      "tool_result",
+						ToolUseID: "skill_b",
+						Content:   "Rune executed",
+						IsError:   false,
+					},
+				},
+			},
+		},
+	}
+
+	result := RenderMarkdown(entries, RenderOptions{})
+
+	// Each result should match its corresponding tool_use
+	if !strings.Contains(result, "<summary>✅ Plan: Create plan</summary>") {
+		t.Error("first tool_result should match first tool_use")
+	}
+	if !strings.Contains(result, "<summary>✅ Skill: rune</summary>") {
+		t.Error("second tool_result should match second tool_use")
+	}
+}
+
+// Tests for Markdown output format (Task 15)
+
+func TestRenderMarkdown_DetailsFormat(t *testing.T) {
+	// Verify the <details>/<summary> structure is correct
+	entries := []Entry{
+		{
+			Type: "assistant",
+			Message: &Message{
+				Role: "assistant",
+				Content: []ContentItem{
+					{
+						Type: "tool_use",
+						Name: "Task",
+						ID:   "format_test",
+						Input: map[string]any{
+							"subagent_type": "Explore",
+							"description":   "Test format",
+						},
+					},
+				},
+			},
+		},
+	}
+
+	result := RenderMarkdown(entries, RenderOptions{})
+
+	// Verify structure: <details>\n<summary>...</summary>\n\n...content...\n</details>
+	expectedStructure := `<details>
+<summary>🔧 Explore: Test format</summary>
+
+` + "```json"
+
+	if !strings.Contains(result, expectedStructure) {
+		t.Errorf("expected details structure:\n%s\n\ngot:\n%s", expectedStructure, result)
+	}
+
+	// Verify closing tag
+	if !strings.Contains(result, "</details>") {
+		t.Error("expected closing </details> tag")
+	}
+
+	// Verify JSON code block inside details
+	if !strings.Contains(result, "```json") || !strings.Contains(result, "```\n\n</details>") {
+		t.Error("expected JSON code block inside details")
+	}
+}
+
+func TestRenderMarkdown_UncollapsedFormat(t *testing.T) {
+	// Verify that uncollapsed tools use the heading format
+	entries := []Entry{
+		{
+			Type: "assistant",
+			Message: &Message{
+				Role: "assistant",
+				Content: []ContentItem{
+					{
+						Type:  "tool_use",
+						Name:  "Read",
+						ID:    "uncollapsed_test",
+						Input: map[string]any{"file_path": "/tmp/test.txt"},
+					},
+				},
+			},
+		},
+		{
+			Type: "user",
+			Message: &Message{
+				Role: "user",
+				Content: []ContentItem{
+					{
+						Type:      "tool_result",
+						ToolUseID: "uncollapsed_test",
+						Content:   "Short result",
+						IsError:   false,
+					},
+				},
+			},
+		},
+	}
+
+	result := RenderMarkdown(entries, RenderOptions{})
+
+	// Verify tool_use uses heading format (not details)
+	if !strings.Contains(result, "### 🔧 Tool: `Read`") {
+		t.Error("uncollapsed tool_use should use heading format")
+	}
+
+	// Verify tool_result uses heading format (not details)
+	if !strings.Contains(result, "#### ✅ Tool Result") {
+		t.Error("uncollapsed tool_result should use heading format")
+	}
+
+	// Should NOT have details tags for these short items
+	// (Note: we need to check carefully since thinking blocks also use <details>)
+	lines := strings.Split(result, "\n")
+	for _, line := range lines {
+		if strings.Contains(line, "<details>") && !strings.Contains(result, "💭 Thinking") {
+			// If we find a details tag and there's no thinking block, it's an error
+			if strings.Contains(line, "Tool") || strings.Contains(line, "Read") {
+				t.Error("short tool should not use details tag")
+			}
+		}
+	}
+}
