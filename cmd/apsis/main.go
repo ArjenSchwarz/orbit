@@ -24,6 +24,7 @@ type Config struct {
 	List    bool   // -l, --list
 	Output  string // -o, --output
 	Project string // -p, --project
+	Format  string // -f, --format
 	Version bool   // -v, --version
 	Help    bool   // -h, --help
 	Input   string // positional argument (session ID or file path)
@@ -53,6 +54,8 @@ func parseFlags() *Config {
 	flag.StringVar(&cfg.Output, "output", "", "Output file (default: stdout)")
 	flag.StringVar(&cfg.Project, "p", "", "Project directory (default: current directory)")
 	flag.StringVar(&cfg.Project, "project", "", "Project directory (default: current directory)")
+	flag.StringVar(&cfg.Format, "f", "md", "Output format: md, markdown, html (default: md)")
+	flag.StringVar(&cfg.Format, "format", "md", "Output format: md, markdown, html (default: md)")
 	flag.BoolVar(&cfg.Version, "v", false, "Show version")
 	flag.BoolVar(&cfg.Version, "version", false, "Show version")
 	flag.BoolVar(&cfg.Help, "h", false, "Show help")
@@ -70,7 +73,7 @@ func parseFlags() *Config {
 }
 
 func printUsage() {
-	fmt.Fprintf(os.Stderr, `apsis - Convert Claude Code session transcripts to Markdown
+	fmt.Fprintf(os.Stderr, `apsis - Convert Claude Code session transcripts to Markdown or HTML
 
 Usage:
   apsis [options] [session-id | file-path]
@@ -80,6 +83,7 @@ Options:
   -l, --list              List available sessions for the project
   -o, --output <file>     Write output to file (default: stdout)
   -p, --project <path>    Project directory (default: current directory)
+  -f, --format <format>   Output format: md, markdown, html (default: md)
   -v, --version           Show version
   -h, --help              Show this help
 
@@ -89,6 +93,7 @@ Examples:
   apsis /path/to/session.jsonl                   Convert from file path
   cat session.jsonl | apsis                      Convert from stdin
   apsis -o transcript.md session-id              Save to file
+  apsis -f html -o transcript.html session-id    Save as HTML
   apsis --list                                   List sessions for current project
   apsis --list -p /path/to/project               List sessions for different project
 `)
@@ -157,7 +162,7 @@ func run(cfg *Config) error {
 		output = f
 	}
 
-	return convert(input, output, sessionID)
+	return convert(input, output, sessionID, cfg.Format)
 }
 
 // isFilePath returns true if the argument appears to be a file path rather than a session ID.
@@ -318,8 +323,8 @@ func formatSize(bytes int64) string {
 	return fmt.Sprintf("%.1f %cB", float64(bytes)/float64(div), "KMGTPE"[exp])
 }
 
-// convert reads JSONL from input and writes Markdown to output.
-func convert(input io.Reader, output io.Writer, sessionID string) error {
+// convert reads JSONL from input and writes formatted output (Markdown or HTML).
+func convert(input io.Reader, output io.Writer, sessionID string, format string) error {
 	result, err := transcript.ParseJSONL(input)
 	if err != nil {
 		return fmt.Errorf("failed to parse transcript: %w", err)
@@ -340,9 +345,18 @@ func convert(input io.Reader, output io.Writer, sessionID string) error {
 		Title:     "Session Transcript",
 		SessionID: sessionID,
 	}
-	markdown := transcript.RenderMarkdown(result.Entries, opts)
 
-	_, err = output.Write([]byte(markdown))
+	var rendered string
+	switch strings.ToLower(format) {
+	case "html":
+		rendered = transcript.RenderHTML(result.Entries, opts)
+	case "md", "markdown", "":
+		rendered = transcript.RenderMarkdown(result.Entries, opts)
+	default:
+		return fmt.Errorf("unsupported format: %s (use md, markdown, or html)", format)
+	}
+
+	_, err = output.Write([]byte(rendered))
 	if err != nil {
 		return fmt.Errorf("failed to write output: %w", err)
 	}
