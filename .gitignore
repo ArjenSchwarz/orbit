@@ -4,3 +4,6 @@
 
 # Orbit orchestration log directories
 **/.orbit/
+coverage.html
+coverage.out
+testlog.html

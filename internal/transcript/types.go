@@ -54,13 +54,15 @@ func (m *Message) UnmarshalJSON(data []byte) error {
 
 // ContentItem represents a content block in a message.
 type ContentItem struct {
-	Type     string `json:"type"`
-	Text     string `json:"text,omitempty"`
-	Thinking string `json:"thinking,omitempty"`
-	Name     string `json:"name,omitempty"`
-	Input    any    `json:"input,omitempty"`
-	Content  string `json:"content,omitempty"`
-	IsError  bool   `json:"is_error,omitempty"`
+	Type      string `json:"type"`
+	Text      string `json:"text,omitempty"`
+	Thinking  string `json:"thinking,omitempty"`
+	Name      string `json:"name,omitempty"`
+	Input     any    `json:"input,omitempty"`
+	Content   string `json:"content,omitempty"`
+	IsError   bool   `json:"is_error,omitempty"`
+	ID        string `json:"id,omitempty"`          // tool_use ID for linking to tool_result
+	ToolUseID string `json:"tool_use_id,omitempty"` // links tool_result to tool_use
 }
 
 // UnmarshalJSON handles polymorphic content field (string or array).
@@ -68,13 +70,15 @@ type ContentItem struct {
 func (c *ContentItem) UnmarshalJSON(data []byte) error {
 	// Use an alias to avoid infinite recursion
 	type contentItemAlias struct {
-		Type     string `json:"type"`
-		Text     string `json:"text,omitempty"`
-		Thinking string `json:"thinking,omitempty"`
-		Name     string `json:"name,omitempty"`
-		Input    any    `json:"input,omitempty"`
-		Content  any    `json:"content,omitempty"`
-		IsError  bool   `json:"is_error,omitempty"`
+		Type      string `json:"type"`
+		Text      string `json:"text,omitempty"`
+		Thinking  string `json:"thinking,omitempty"`
+		Name      string `json:"name,omitempty"`
+		Input     any    `json:"input,omitempty"`
+		Content   any    `json:"content,omitempty"`
+		IsError   bool   `json:"is_error,omitempty"`
+		ID        string `json:"id,omitempty"`
+		ToolUseID string `json:"tool_use_id,omitempty"`
 	}
 
 	var alias contentItemAlias
@@ -88,6 +92,8 @@ func (c *ContentItem) UnmarshalJSON(data []byte) error {
 	c.Name = alias.Name
 	c.Input = alias.Input
 	c.IsError = alias.IsError
+	c.ID = alias.ID
+	c.ToolUseID = alias.ToolUseID
 
 	// Handle content field which can be string or array
 	switch v := alias.Content.(type) {

@@ -1,6 +1,7 @@
 package claude
 
 import (
+	"slices"
 	"testing"
 	"time"
 )
@@ -261,13 +262,7 @@ func TestRunPhase_BuildsCorrectArgs_WithSkipPermissions(t *testing.T) {
 	client := NewClient(config)
 	args := client.buildRunPhaseArgs("test-session", false)
 
-	foundSkipPerms := false
-	for _, arg := range args {
-		if arg == "--dangerously-skip-permissions" {
-			foundSkipPerms = true
-			break
-		}
-	}
+	foundSkipPerms := slices.Contains(args, "--dangerously-skip-permissions")
 	if !foundSkipPerms {
 		t.Errorf("Expected --dangerously-skip-permissions in args, got %v", args)
 	}

@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"html"
 	"strings"
+	"unicode/utf8"
 )
 
 // htmlCSS contains the embedded stylesheet for HTML transcripts.
@@ -230,6 +231,49 @@ details.thinking .thinking-content {
     color: var(--text-secondary);
     font-style: italic;
 }
+
+details.tool-collapsible {
+    margin: 1rem 0;
+    background-color: var(--bg-primary);
+    border: 1px solid var(--border-color);
+    border-radius: 6px;
+}
+
+details.tool-collapsible summary {
+    cursor: pointer;
+    padding: 0.5rem 0.75rem;
+    background-color: var(--bg-code);
+    font-weight: 500;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+details.tool-collapsible summary .icon {
+    color: var(--tool-accent);
+}
+
+details.tool-collapsible.error summary .icon {
+    color: var(--error-color);
+}
+
+details.tool-collapsible .tool-content {
+    padding: 0.75rem;
+    border-top: 1px solid var(--border-color);
+}
+
+details.tool-collapsible .tool-content pre {
+    margin: 0;
+    overflow-x: auto;
+    white-space: pre-wrap;
+    word-wrap: break-word;
+}
+
+details.tool-collapsible .tool-content code {
+    font-family: "SF Mono", Monaco, "Cascadia Code", monospace;
+    font-size: 0.85rem;
+    line-height: 1.5;
+}
 `
 
 // RenderHTML converts parsed entries to a styled HTML document.
@@ -266,12 +310,17 @@ func RenderHTML(entries []Entry, opts RenderOptions) string {
 	// Main content
 	sb.WriteString("    <main>\n")
 
+	// Initialize tool metadata map at render level (shared across entries)
+	// This is critical because tool_use appears in assistant entries but
+	// tool_result appears in user entries - the map must persist across both.
+	toolMeta := make(map[string]toolMetadata)
+
 	for _, entry := range entries {
 		switch entry.Type {
 		case "user":
-			sb.WriteString(formatUserMessageHTML(&entry))
+			sb.WriteString(formatUserMessageHTML(&entry, toolMeta))
 		case "assistant":
-			sb.WriteString(formatAssistantMessageHTML(&entry))
+			sb.WriteString(formatAssistantMessageHTML(&entry, toolMeta))
 		}
 		// Unknown entry types are skipped silently
 	}
@@ -284,46 +333,67 @@ func RenderHTML(entries []Entry, opts RenderOptions) string {
 }
 
 // formatUserMessageHTML formats a user message as HTML.
-func formatUserMessageHTML(entry *Entry) string {
+func formatUserMessageHTML(entry *Entry, toolMeta map[string]toolMetadata) string {
 	if entry.Message == nil || len(entry.Message.Content) == 0 {
 		return ""
 	}
 
-	// Collect text content first to check if there's anything to output
-	var texts []string
+	// Check if there's any content to render (text or tool_result)
+	hasContent := false
 	for _, item := range entry.Message.Content {
-		if item.Text != "" {
-			texts = append(texts, item.Text)
+		if item.Text != "" || item.Type == "tool_result" {
+			hasContent = true
+			break
 		}
 	}
 
-	// Skip if no actual text content
-	if len(texts) == 0 {
+	if !hasContent {
 		return ""
 	}
 
 	var sb strings.Builder
-	sb.WriteString("        <section class=\"message user\">\n")
-	sb.WriteString("            <div class=\"message-header\">\n")
-	sb.WriteString("                <span class=\"icon\">👤</span>\n")
-	sb.WriteString("                <span>User</span>\n")
-	sb.WriteString("            </div>\n")
-	sb.WriteString("            <div class=\"message-content\">\n")
 
-	for _, text := range texts {
-		sb.WriteString("                <p>")
-		sb.WriteString(html.EscapeString(text))
-		sb.WriteString("</p>\n")
+	// Check if there's text content to determine header
+	hasText := false
+	for _, item := range entry.Message.Content {
+		if item.Text != "" {
+			hasText = true
+			break
+		}
 	}
 
-	sb.WriteString("            </div>\n")
-	sb.WriteString("        </section>\n")
+	if hasText {
+		sb.WriteString("        <section class=\"message user\">\n")
+		sb.WriteString("            <div class=\"message-header\">\n")
+		sb.WriteString("                <span class=\"icon\">👤</span>\n")
+		sb.WriteString("                <span>User</span>\n")
+		sb.WriteString("            </div>\n")
+		sb.WriteString("            <div class=\"message-content\">\n")
+	}
+
+	for _, item := range entry.Message.Content {
+		switch item.Type {
+		case "text":
+			if item.Text != "" {
+				sb.WriteString("                <p>")
+				sb.WriteString(html.EscapeString(item.Text))
+				sb.WriteString("</p>\n")
+			}
+		case "tool_result":
+			sb.WriteString(formatToolResultHTML(&item, toolMeta))
+		}
+	}
+
+	if hasText {
+		sb.WriteString("            </div>\n")
+		sb.WriteString("        </section>\n")
+	}
 
 	return sb.String()
 }
 
 // formatAssistantMessageHTML formats an assistant message as HTML.
-func formatAssistantMessageHTML(entry *Entry) string {
+func formatAssistantMessageHTML(entry *Entry, toolMeta map[string]toolMetadata) string {
 	if entry.Message == nil {
 		return ""
 	}
@@ -356,45 +426,11 @@ func formatAssistantMessageHTML(entry *Entry) string {
 			}
 
 		case "tool_use":
-			sb.WriteString("                <div class=\"tool-use\">\n")
-			sb.WriteString("                    <div class=\"tool-use-header\">\n")
-			sb.WriteString("                        <span class=\"icon\">🔧</span>\n")
-			sb.WriteString(fmt.Sprintf("                        <span>Tool: <code>%s</code></span>\n",
-				html.EscapeString(item.Name)))
-			sb.WriteString("                    </div>\n")
-			if item.Input != nil {
-				inputJSON, err := json.MarshalIndent(item.Input, "", "  ")
-				if err == nil {
-					inputStr := truncateString(string(inputJSON), MaxToolInputRunes)
-					sb.WriteString("                    <div class=\"tool-input\">\n")
-					sb.WriteString("                        <pre><code>")
-					sb.WriteString(html.EscapeString(inputStr))
-					sb.WriteString("</code></pre>\n")
-					sb.WriteString("                    </div>\n")
-				}
-			}
-			sb.WriteString("                </div>\n")
+			sb.WriteString(formatToolUseHTML(&item, toolMeta))
 
 		case "tool_result":
-			content := truncateString(item.Content, MaxToolResultRunes)
-			headerClass := "success"
-			headerIcon := "✅"
-			headerText := "Tool Result"
-			if item.IsError {
-				headerClass = "error"
-				headerIcon = "❌"
-				headerText = "Tool Error"
-			}
-			sb.WriteString("                <div class=\"tool-result\">\n")
-			sb.WriteString(fmt.Sprintf("                    <div class=\"tool-result-header %s\">\n", headerClass))
-			sb.WriteString(fmt.Sprintf("                        <span>%s %s</span>\n", headerIcon, headerText))
-			sb.WriteString("                    </div>\n")
-			sb.WriteString("                    <div class=\"tool-result-content\">\n")
-			sb.WriteString("                        <pre><code>")
-			sb.WriteString(html.EscapeString(content))
-			sb.WriteString("</code></pre>\n")
-			sb.WriteString("                    </div>\n")
-			sb.WriteString("                </div>\n")
+			// tool_result in assistant entries (legacy handling)
+			sb.WriteString(formatToolResultHTML(&item, toolMeta))
 
 		// Unknown content types are skipped silently
 		}
@@ -402,6 +438,166 @@ func formatAssistantMessageHTML(entry *Entry) string {
 
 	sb.WriteString("            </div>\n")
 	sb.WriteString("        </section>\n")
+
+	return sb.String()
+}
+
+// formatToolUseHTML formats a tool_use content item as HTML, potentially wrapping it in <details>.
+func formatToolUseHTML(item *ContentItem, toolMeta map[string]toolMetadata) string {
+	var sb strings.Builder
+
+	// Serialize input with json.Marshal (compact) for threshold measurement
+	var compactJSON []byte
+	var inputJSON []byte
+	var runeLen int
+
+	if item.Input != nil {
+		var err error
+		compactJSON, err = json.Marshal(item.Input)
+		if err == nil {
+			runeLen = utf8.RuneCountInString(string(compactJSON))
+		}
+		// Use indented JSON for display
+		inputJSON, _ = json.MarshalIndent(item.Input, "", "  ")
+	}
+
+	// Determine if we should collapse
+	collapse := shouldCollapse(item.Name, runeLen)
+
+	// Get summary text
+	summary := getToolSummary(item.Name, item.Input)
+	if summary == "" {
+		// Fallback summaries
+		switch item.Name {
+		case "Task":
+			summary = "Task"
+		case "Skill":
+			summary = "Skill"
+		default:
+			summary = "Tool: " + item.Name
+		}
+	}
+
+	// Store metadata for result matching (if ID is present)
+	if item.ID != "" {
+		toolMeta[item.ID] = toolMetadata{
+			Name:    item.Name,
+			Summary: summary,
+		}
+	}
+
+	if collapse {
+		// Collapsed format with <details>
+		sb.WriteString("                <details class=\"tool-collapsible\">\n")
+		sb.WriteString(fmt.Sprintf("                    <summary><span class=\"icon\">🔧</span> %s</summary>\n",
+			html.EscapeString(summary)))
+		sb.WriteString("                    <div class=\"tool-content\">\n")
+		if len(inputJSON) > 0 {
+			inputStr := truncateString(string(inputJSON), MaxToolInputRunes)
+			sb.WriteString("                        <pre><code>")
+			sb.WriteString(html.EscapeString(inputStr))
+			sb.WriteString("</code></pre>\n")
+		}
+		sb.WriteString("                    </div>\n")
+		sb.WriteString("                </details>\n")
+	} else {
+		// Uncollapsed format with div.tool-use
+		sb.WriteString("                <div class=\"tool-use\">\n")
+		sb.WriteString("                    <div class=\"tool-use-header\">\n")
+		sb.WriteString("                        <span class=\"icon\">🔧</span>\n")
+		sb.WriteString(fmt.Sprintf("                        <span>Tool: <code>%s</code></span>\n",
+			html.EscapeString(item.Name)))
+		sb.WriteString("                    </div>\n")
+		if len(inputJSON) > 0 {
+			inputStr := truncateString(string(inputJSON), MaxToolInputRunes)
+			sb.WriteString("                    <div class=\"tool-input\">\n")
+			sb.WriteString("                        <pre><code>")
+			sb.WriteString(html.EscapeString(inputStr))
+			sb.WriteString("</code></pre>\n")
+			sb.WriteString("                    </div>\n")
+		}
+		sb.WriteString("                </div>\n")
+	}
+
+	return sb.String()
+}
+
+// formatToolResultHTML formats a tool_result content item as HTML, potentially wrapping it in <details>.
+func formatToolResultHTML(item *ContentItem, toolMeta map[string]toolMetadata) string {
+	var sb strings.Builder
+
+	content := item.Content
+	runeLen := utf8.RuneCountInString(content)
+
+	// Determine icon
+	icon := "✅"
+	if item.IsError {
+		icon = "❌"
+	}
+
+	// Look up tool metadata for summary inheritance
+	var summary string
+	var collapse bool
+
+	if meta, found := toolMeta[item.ToolUseID]; found {
+		// Inherit collapse behavior from tool_use
+		summary = meta.Summary
+		collapse = shouldCollapse(meta.Name, runeLen)
+		// For Task/Skill, always collapse
+		if meta.Name == "Task" || meta.Name == "Skill" {
+			collapse = true
+		}
+	} else {
+		// Unmatched result: apply threshold-based collapsing
+		collapse = runeLen > CollapseThresholdRunes
+		if item.IsError {
+			summary = "Tool Error"
+		} else {
+			summary = "Tool Result"
+		}
+	}
+
+	// Zero-length content should not collapse
+	if runeLen == 0 {
+		collapse = false
+	}
+
+	truncatedContent := truncateString(content, MaxToolResultRunes)
+
+	if collapse {
+		// Collapsed format with <details>
+		errorClass := ""
+		if item.IsError {
+			errorClass = " error"
+		}
+		sb.WriteString(fmt.Sprintf("                <details class=\"tool-collapsible%s\">\n", errorClass))
+		sb.WriteString(fmt.Sprintf("                    <summary><span class=\"icon\">%s</span> %s</summary>\n",
+			icon, html.EscapeString(summary)))
+		sb.WriteString("                    <div class=\"tool-content\">\n")
+		sb.WriteString("                        <pre><code>")
+		sb.WriteString(html.EscapeString(truncatedContent))
+		sb.WriteString("</code></pre>\n")
+		sb.WriteString("                    </div>\n")
+		sb.WriteString("                </details>\n")
+	} else {
+		// Uncollapsed format with div.tool-result
+		headerClass := "success"
+		headerText := "Tool Result"
+		if item.IsError {
+			headerClass = "error"
+			headerText = "Tool Error"
+		}
+		sb.WriteString("                <div class=\"tool-result\">\n")
+		sb.WriteString(fmt.Sprintf("                    <div class=\"tool-result-header %s\">\n", headerClass))
+		sb.WriteString(fmt.Sprintf("                        <span>%s %s</span>\n", icon, headerText))
+		sb.WriteString("                    </div>\n")
+		sb.WriteString("                    <div class=\"tool-result-content\">\n")
+		sb.WriteString("                        <pre><code>")
+		sb.WriteString(html.EscapeString(truncatedContent))
+		sb.WriteString("</code></pre>\n")
+		sb.WriteString("                    </div>\n")
+		sb.WriteString("                </div>\n")
+	}
 
 	return sb.String()
 }

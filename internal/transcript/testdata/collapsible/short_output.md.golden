@@ -1,0 +1,22 @@
+# Session Transcript
+
+---
+
+## 🤖 Assistant
+
+### 🔧 Tool: `Read`
+
+```json
+{
+  "file_path": "/tmp/test.txt"
+}
+```
+
+---
+
+#### ✅ Tool Result
+
+```
+Hello, World!
+```
+

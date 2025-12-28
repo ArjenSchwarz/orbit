@@ -9,6 +9,57 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Collapsible `<details>` blocks for Task and Skill tools in Markdown and HTML transcript renderers:
+  - Task tools always collapse with summary format "🔧 {subagent_type}: {description}"
+  - Skill tools always collapse with summary format "🔧 Skill: {skill_name}"
+  - Fallback summaries ("🔧 Task" or "🔧 Skill") when input fields are missing
+  - Tool results inherit collapse behavior and summary from matching tool_use via ID linking
+  - Cross-entry tool matching: tool_use in assistant entries links to tool_result in user entries
+- CSS styles for `details.tool-collapsible` class in HTML renderer:
+  - Styled summary with cursor pointer and flex layout
+  - Error variant with distinct icon color for failed tool results
+  - Consistent styling with existing theme variables
+- Tests for collapsible HTML rendering:
+  - Task/Skill tool collapsing with proper summaries
+  - Short tools use uncollapsed `div.tool-use` format
+  - Long tools (>500 runes) collapse automatically
+  - Cross-entry tool result matching
+  - Error results with `.error` class
+  - CSS inclusion verification
+  - Golden file integration tests for Task, Skill, long output, and short output scenarios
+  - Backward compatibility tests for old JSONL without ID fields, truncation preservation, and pre-truncation collapse decisions
+- Threshold-based collapsing for non-Task/Skill tools exceeding 500 runes (JSON-serialized)
+  - Zero-length and nil inputs never collapse
+  - Tools at or below threshold use standard heading format
+- Test data for collapsible blocks in `internal/transcript/testdata/collapsible/`:
+  - JSONL samples for Task tool, Skill tool, long output, and short output scenarios
+  - Golden files (.md.golden) for expected Markdown output
+- Tests for collapsible Markdown rendering:
+  - Task/Skill always-collapse behavior
+  - Fallback summary generation
+  - Case-sensitive tool name matching
+  - Threshold boundary conditions
+  - Cross-entry tool result matching
+  - Output format verification (details structure and heading format)
+  - Golden file integration tests for Task, Skill, long output, and short output scenarios
+  - Backward compatibility tests for old JSONL without ID fields, truncation preservation, and pre-truncation collapse decisions
+- Helper functions for collapsible tool blocks in transcript renderer:
+  - `CollapseThresholdRunes` constant (500 runes) for threshold-based collapsing
+  - `toolMetadata` struct to store tool name and summary for result matching
+  - `getToolSummary()` to extract readable summaries from Task and Skill tool inputs
+  - `shouldCollapse()` to determine if a tool should be wrapped in `<details>` element
+  - `escapeSummary()` to escape summary text for safe HTML inclusion
+- Tests for collapsible helper functions:
+  - Task tool summary extraction with full and partial fields
+  - Skill tool summary extraction
+  - Case-sensitive tool name matching (Task/Skill vs task/TASK)
+  - Threshold boundary tests (499, 500, 501 runes)
+  - XSS prevention through HTML escaping
+- `ID` and `ToolUseID` fields to `ContentItem` struct for tool_use/tool_result linking:
+  - `ID` field with JSON tag `id` for tool_use blocks
+  - `ToolUseID` field with JSON tag `tool_use_id` for tool_result blocks
+  - Updated `UnmarshalJSON` to parse new fields
+  - Parser tests for ID field extraction and backward compatibility with older JSONL files
 - Custom `UnmarshalJSON` methods for polymorphic content handling in transcript parser:
   - `Message.UnmarshalJSON` handles content as either string (user messages) or array (assistant messages)
   - `ContentItem.UnmarshalJSON` handles tool result content as either string or array of content blocks
@@ -88,6 +139,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- Modified `formatAssistantMessageHTML` and `formatUserMessageHTML` signatures to accept `toolMeta map[string]toolMetadata` for cross-entry tool matching
+- `formatUserMessageHTML` now handles `tool_result` blocks (previously only handled text)
+- Extracted `formatToolUseHTML` and `formatToolResultHTML` functions from `formatAssistantMessageHTML` for cleaner separation of concerns
+- `RenderHTML` now initializes and passes a render-level tool metadata map to enable tool_use/tool_result linking
+- Modified `formatAssistantMessage` and `formatUserMessage` signatures to accept `toolMeta map[string]toolMetadata` for cross-entry tool matching
+- `formatUserMessage` now handles `tool_result` blocks (previously only handled text)
+- Extracted `formatToolUse` and `formatToolResult` functions from `formatAssistantMessage` for cleaner separation of concerns
+- `RenderMarkdown` now initializes and passes a render-level tool metadata map to enable tool_use/tool_result linking
 - Updated CLAUDE.md to document both Orbit and Apsis tools, including architecture details and Apsis workflow
 - Added `/apsis` binary to `.gitignore`
 - Refactored `internal/logs/manager.go` to use `internal/transcript` package for JSONL parsing and Markdown rendering

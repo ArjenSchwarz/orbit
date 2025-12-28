@@ -1,0 +1,2 @@
+{"type":"assistant","timestamp":"2025-12-28T10:00:00+11:00","message":{"role":"assistant","content":[{"type":"tool_use","id":"task_001","name":"Task","input":{"subagent_type":"Explore","description":"Search for config files","prompt":"Find all configuration files in the project"}}]}}
+{"type":"user","timestamp":"2025-12-28T10:00:05+11:00","message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"task_001","content":"Found 3 config files:\n- config.yaml\n- .env\n- settings.json","is_error":false}]}}

@@ -1,0 +1,2 @@
+{"type":"assistant","timestamp":"2025-12-28T10:00:00+11:00","message":{"role":"assistant","content":[{"type":"tool_use","id":"skill_001","name":"Skill","input":{"skill":"next-task","args":"--phase"}}]}}
+{"type":"user","timestamp":"2025-12-28T10:00:05+11:00","message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"skill_001","content":"Task completed: Updated to next phase","is_error":false}]}}
