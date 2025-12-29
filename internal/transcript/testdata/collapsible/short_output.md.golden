@@ -4,19 +4,20 @@
 
 ## 🤖 Assistant
 
-### 🔧 Tool: `Read`
-
-```json
-{
-  "file_path": "/tmp/test.txt"
-}
-```
-
 ---
 
-#### ✅ Tool Result
+<details>
+<summary>✅ 🔧 Bash</summary>
 
+**Command:**
+```bash
+ls
+```
+
+**Result:**
 ```
 Hello, World!
 ```
+
+</details>
 

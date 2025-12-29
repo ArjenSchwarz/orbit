@@ -1,11 +1,15 @@
 package transcript
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
-	"html"
+	stdhtml "html"
 	"strings"
-	"unicode/utf8"
+
+	"github.com/yuin/goldmark"
+	"github.com/yuin/goldmark/extension"
+	gmhtml "github.com/yuin/goldmark/renderer/html"
 )
 
 // htmlCSS contains the embedded stylesheet for HTML transcripts.
@@ -14,11 +18,15 @@ const htmlCSS = `
     --bg-primary: #ffffff;
     --bg-secondary: #f8f9fa;
     --bg-code: #f4f4f4;
+    --bg-user: #e7f1ff;
+    --bg-assistant: #f3e8ff;
+    --bg-thinking: #fff8e6;
     --text-primary: #212529;
     --text-secondary: #6c757d;
     --border-color: #dee2e6;
     --user-accent: #0d6efd;
     --assistant-accent: #6f42c1;
+    --thinking-accent: #d97706;
     --success-color: #198754;
     --error-color: #dc3545;
     --tool-accent: #fd7e14;
@@ -29,6 +37,9 @@ const htmlCSS = `
         --bg-primary: #1a1a1a;
         --bg-secondary: #2d2d2d;
         --bg-code: #2d2d2d;
+        --bg-user: #1e3a5f;
+        --bg-assistant: #2d1f3d;
+        --bg-thinking: #3d2e1a;
         --text-primary: #e9ecef;
         --text-secondary: #adb5bd;
         --border-color: #495057;
@@ -74,8 +85,8 @@ header h1 {
 }
 
 .message {
-    margin-bottom: 1.5rem;
-    padding: 1rem;
+    margin-bottom: 0.75rem;
+    padding: 0.75rem;
     border-radius: 8px;
     border-left: 4px solid var(--border-color);
     background-color: var(--bg-secondary);
@@ -83,17 +94,19 @@ header h1 {
 
 .message.user {
     border-left-color: var(--user-accent);
+    background-color: var(--bg-user);
 }
 
 .message.assistant {
     border-left-color: var(--assistant-accent);
+    background-color: var(--bg-assistant);
 }
 
 .message-header {
     display: flex;
     align-items: center;
     gap: 0.5rem;
-    margin-bottom: 0.75rem;
+    margin-bottom: 4px;
     font-weight: 600;
     font-size: 1.1rem;
 }
@@ -103,44 +116,40 @@ header h1 {
 }
 
 .message-content {
-    white-space: pre-wrap;
     word-wrap: break-word;
 }
 
 .message-content p {
-    margin: 0 0 1rem 0;
+    margin: 0 0 0.5rem 0;
 }
 
 .message-content p:last-child {
     margin-bottom: 0;
 }
 
-details.thinking {
-    margin: 0.75rem 0;
-    background-color: var(--bg-primary);
-    border: 1px solid var(--border-color);
-    border-radius: 6px;
-    padding: 0.5rem;
+.thinking-block {
+    margin: 0.5rem 0;
+    padding: 0.75rem;
+    background-color: var(--bg-thinking);
+    border-left: 3px solid var(--thinking-accent);
+    border-radius: 4px;
 }
 
-details.thinking summary {
-    cursor: pointer;
+.thinking-block .thinking-header {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
     font-weight: 500;
     color: var(--text-secondary);
-    padding: 0.25rem;
+    margin-bottom: 0.5rem;
 }
 
-details.thinking .thinking-content {
-    margin-top: 0.75rem;
-    padding: 0.75rem;
-    background-color: var(--bg-code);
-    border-radius: 4px;
-    white-space: pre-wrap;
-    font-size: 0.9rem;
+.thinking-block .thinking-content {
+    color: var(--text-primary);
 }
 
 .tool-use {
-    margin: 1rem 0;
+    margin: 0.25rem 0;
     background-color: var(--bg-primary);
     border: 1px solid var(--border-color);
     border-radius: 6px;
@@ -184,7 +193,7 @@ details.thinking .thinking-content {
 }
 
 .tool-result {
-    margin: 0.75rem 0;
+    margin: 0.25rem 0;
     border-radius: 6px;
     overflow: hidden;
     border: 1px solid var(--border-color);
@@ -233,7 +242,7 @@ details.thinking .thinking-content {
 }
 
 details.tool-collapsible {
-    margin: 1rem 0;
+    margin: 0.25rem 0;
     background-color: var(--bg-primary);
     border: 1px solid var(--border-color);
     border-radius: 6px;
@@ -274,7 +283,136 @@ details.tool-collapsible .tool-content code {
     font-size: 0.85rem;
     line-height: 1.5;
 }
+
+details.read-item {
+    margin: 2px 0;
+}
+
+details.read-item:first-child {
+    margin-top: 0;
+}
+
+details.read-item:last-child {
+    margin-bottom: 0;
+}
+
+.tool-input-section,
+.tool-result-section {
+    margin-bottom: 0.5rem;
+}
+
+.tool-input-section:last-child,
+.tool-result-section:last-child {
+    margin-bottom: 0;
+}
+
+.tool-input-section strong,
+.tool-result-section strong {
+    display: block;
+    margin-bottom: 0.25rem;
+    color: var(--text-secondary);
+}
+
+.markdown-content {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    font-size: 0.9rem;
+    line-height: 1.6;
+}
+
+.markdown-content h1,
+.markdown-content h2,
+.markdown-content h3,
+.markdown-content h4 {
+    margin-top: 1rem;
+    margin-bottom: 0.5rem;
+    font-weight: 600;
+}
+
+.markdown-content h1 { font-size: 1.5rem; }
+.markdown-content h2 { font-size: 1.3rem; }
+.markdown-content h3 { font-size: 1.1rem; }
+.markdown-content h4 { font-size: 1rem; }
+
+.markdown-content p {
+    margin: 0.5rem 0;
+}
+
+.markdown-content ul,
+.markdown-content ol {
+    margin: 0.5rem 0;
+    padding-left: 1.5rem;
+}
+
+.markdown-content li {
+    margin: 0.25rem 0;
+}
+
+.markdown-content code {
+    font-family: "SF Mono", Monaco, "Cascadia Code", monospace;
+    background-color: var(--bg-code);
+    padding: 0.15rem 0.3rem;
+    border-radius: 3px;
+    font-size: 0.85em;
+}
+
+.markdown-content pre {
+    margin: 0.5rem 0;
+    padding: 0.75rem;
+    background-color: var(--bg-code);
+    border-radius: 4px;
+    overflow-x: auto;
+}
+
+.markdown-content pre code {
+    background: none;
+    padding: 0;
+    font-size: 0.85rem;
+    line-height: 1.5;
+}
+
+.markdown-content blockquote {
+    margin: 0.5rem 0;
+    padding: 0.5rem 1rem;
+    border-left: 3px solid var(--border-color);
+    background-color: var(--bg-code);
+}
+
+.markdown-content a {
+    color: var(--user-accent);
+    text-decoration: none;
+}
+
+.markdown-content a:hover {
+    text-decoration: underline;
+}
+
+.markdown-content strong {
+    font-weight: 600;
+}
+
+.markdown-content em {
+    font-style: italic;
+}
 `
+
+// mdConverter is the shared goldmark markdown converter instance.
+var mdConverter = goldmark.New(
+	goldmark.WithExtensions(extension.GFM),
+	goldmark.WithRendererOptions(
+		gmhtml.WithUnsafe(),
+	),
+)
+
+// markdownToHTML converts markdown text to HTML.
+// Returns the HTML string without wrapper tags.
+func markdownToHTML(markdown string) string {
+	var buf bytes.Buffer
+	if err := mdConverter.Convert([]byte(markdown), &buf); err != nil {
+		// On error, fall back to escaped text
+		return stdhtml.EscapeString(markdown)
+	}
+	return buf.String()
+}
 
 // RenderHTML converts parsed entries to a styled HTML document.
 func RenderHTML(entries []Entry, opts RenderOptions) string {
@@ -291,7 +429,7 @@ func RenderHTML(entries []Entry, opts RenderOptions) string {
 	sb.WriteString("<head>\n")
 	sb.WriteString("    <meta charset=\"UTF-8\">\n")
 	sb.WriteString("    <meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\">\n")
-	sb.WriteString(fmt.Sprintf("    <title>%s</title>\n", html.EscapeString(title)))
+	sb.WriteString(fmt.Sprintf("    <title>%s</title>\n", stdhtml.EscapeString(title)))
 	sb.WriteString("    <style>\n")
 	sb.WriteString(htmlCSS)
 	sb.WriteString("    </style>\n")
@@ -300,34 +438,83 @@ func RenderHTML(entries []Entry, opts RenderOptions) string {
 
 	// Header
 	sb.WriteString("    <header>\n")
-	sb.WriteString(fmt.Sprintf("        <h1>%s</h1>\n", html.EscapeString(title)))
+	sb.WriteString(fmt.Sprintf("        <h1>%s</h1>\n", stdhtml.EscapeString(title)))
 	if opts.SessionID != "" {
 		sb.WriteString(fmt.Sprintf("        <p class=\"session-id\">Session ID: <code>%s</code></p>\n",
-			html.EscapeString(opts.SessionID)))
+			stdhtml.EscapeString(opts.SessionID)))
 	}
 	sb.WriteString("    </header>\n")
 
 	// Main content
 	sb.WriteString("    <main>\n")
 
+	// Pre-process entries to group consecutive Read calls
+	groups := preprocessEntries(entries)
+
 	// Initialize tool metadata map at render level (shared across entries)
 	// This is critical because tool_use appears in assistant entries but
 	// tool_result appears in user entries - the map must persist across both.
 	toolMeta := make(map[string]toolMetadata)
 
-	for _, entry := range entries {
-		switch entry.Type {
+	for _, group := range groups {
+		switch group.Type {
 		case "user":
-			sb.WriteString(formatUserMessageHTML(&entry, toolMeta))
+			for i := range group.Entries {
+				sb.WriteString(formatUserMessageHTML(&group.Entries[i], toolMeta))
+			}
 		case "assistant":
-			sb.WriteString(formatAssistantMessageHTML(&entry, toolMeta))
+			for i := range group.Entries {
+				sb.WriteString(formatAssistantMessageHTML(&group.Entries[i], toolMeta))
+			}
+		case "read_group":
+			sb.WriteString(formatReadGroupHTML(group.Reads))
 		}
-		// Unknown entry types are skipped silently
 	}
 
 	sb.WriteString("    </main>\n")
 	sb.WriteString("</body>\n")
 	sb.WriteString("</html>\n")
+
+	return sb.String()
+}
+
+// formatReadGroupHTML formats a group of consecutive Read tool calls as HTML.
+func formatReadGroupHTML(reads []readItem) string {
+	if len(reads) == 0 {
+		return ""
+	}
+
+	var sb strings.Builder
+	sb.WriteString("        <section class=\"message assistant\">\n")
+	sb.WriteString("            <div class=\"message-header\">\n")
+	sb.WriteString("                <span class=\"icon\">🤖</span>\n")
+	sb.WriteString("                <span>Assistant</span>\n")
+	sb.WriteString("            </div>\n")
+	sb.WriteString("            <div class=\"message-content\">\n")
+
+	for _, read := range reads {
+		icon := "✅"
+		if read.IsError {
+			icon = "❌"
+		}
+
+		sb.WriteString("                <details class=\"tool-collapsible read-item\">\n")
+		sb.WriteString(fmt.Sprintf("                    <summary><span class=\"icon\">%s</span> 🔧 Read: <code>%s</code></summary>\n",
+			icon, stdhtml.EscapeString(read.FilePath)))
+		sb.WriteString("                    <div class=\"tool-content\">\n")
+
+		if read.Content != "" {
+			sb.WriteString("                        <pre><code>")
+			sb.WriteString(stdhtml.EscapeString(read.Content))
+			sb.WriteString("</code></pre>\n")
+		}
+
+		sb.WriteString("                    </div>\n")
+		sb.WriteString("                </details>\n")
+	}
+
+	sb.WriteString("            </div>\n")
+	sb.WriteString("        </section>\n")
 
 	return sb.String()
 }
@@ -376,7 +563,7 @@ func formatUserMessageHTML(entry *Entry, toolMeta map[string]toolMetadata) strin
 		case "text":
 			if item.Text != "" {
 				sb.WriteString("                <p>")
-				sb.WriteString(html.EscapeString(item.Text))
+				sb.WriteString(stdhtml.EscapeString(item.Text))
 				sb.WriteString("</p>\n")
 			}
 		case "tool_result":
@@ -398,6 +585,68 @@ func formatAssistantMessageHTML(entry *Entry, toolMeta map[string]toolMetadata) 
 		return ""
 	}
 
+	// First pass: check if there will be any content to render in the section
+	// (non-Task/Skill and subagent Task tool_use items don't render in the section - they render with their results)
+	hasContent := false
+	for _, item := range entry.Message.Content {
+		switch item.Type {
+		case "thinking":
+			if item.Thinking != "" {
+				hasContent = true
+			}
+		case "text":
+			if item.Text != "" {
+				hasContent = true
+			}
+		case "tool_use":
+			// Only Skill and non-subagent Task render in the assistant section
+			if item.Name == "Skill" {
+				hasContent = true
+			} else if item.Name == "Task" && !isSubagent(item.Input) {
+				hasContent = true
+			}
+		case "tool_result":
+			hasContent = true
+		}
+		if hasContent {
+			break
+		}
+	}
+
+	// Always store tool metadata even if we don't render the section
+	// This covers other tools and subagent Tasks (which defer rendering)
+	for _, item := range entry.Message.Content {
+		if item.Type == "tool_use" {
+			// Skip Skill and non-subagent Task (they render immediately in formatToolUseHTML)
+			if item.Name == "Skill" {
+				continue
+			}
+			if item.Name == "Task" && !isSubagent(item.Input) {
+				continue
+			}
+			summary := getToolSummary(item.Name, item.Input)
+			description := getToolDescription(item.Input)
+			if summary == "" {
+				summary = "Tool: " + item.Name
+			}
+			subagent := item.Name == "Task" && isSubagent(item.Input)
+			if item.ID != "" {
+				toolMeta[item.ID] = toolMetadata{
+					Name:        item.Name,
+					Summary:     summary,
+					Description: description,
+					Input:       item.Input,
+					Prompt:      getSubagentPrompt(item.Input),
+					IsSubagent:  subagent,
+				}
+			}
+		}
+	}
+
+	if !hasContent {
+		return ""
+	}
+
 	var sb strings.Builder
 	sb.WriteString("        <section class=\"message assistant\">\n")
 	sb.WriteString("            <div class=\"message-header\">\n")
@@ -410,19 +659,19 @@ func formatAssistantMessageHTML(entry *Entry, toolMeta map[string]toolMetadata) 
 		switch item.Type {
 		case "thinking":
 			if item.Thinking != "" {
-				sb.WriteString("                <details class=\"thinking\">\n")
-				sb.WriteString("                    <summary>💭 Thinking</summary>\n")
-				sb.WriteString("                    <div class=\"thinking-content\">")
-				sb.WriteString(html.EscapeString(item.Thinking))
-				sb.WriteString("</div>\n")
-				sb.WriteString("                </details>\n")
+				sb.WriteString("                <div class=\"thinking-block\">\n")
+				sb.WriteString("                    <div class=\"thinking-header\">💭 Thinking</div>\n")
+				sb.WriteString("                    <div class=\"thinking-content markdown-content\">\n")
+				sb.WriteString(markdownToHTML(item.Thinking))
+				sb.WriteString("                    </div>\n")
+				sb.WriteString("                </div>\n")
 			}
 
 		case "text":
 			if item.Text != "" {
-				sb.WriteString("                <p>")
-				sb.WriteString(html.EscapeString(item.Text))
-				sb.WriteString("</p>\n")
+				sb.WriteString("                <div class=\"markdown-content\">\n")
+				sb.WriteString(markdownToHTML(item.Text))
+				sb.WriteString("                </div>\n")
 			}
 
 		case "tool_use":
@@ -442,32 +691,15 @@ func formatAssistantMessageHTML(entry *Entry, toolMeta map[string]toolMetadata) 
 	return sb.String()
 }
 
-// formatToolUseHTML formats a tool_use content item as HTML, potentially wrapping it in <details>.
+// formatToolUseHTML formats a tool_use content item as HTML.
+// For Skill and non-subagent Task: renders collapsed details block.
+// For subagent Task and other tools: stores metadata and defers rendering to formatToolResultHTML.
 func formatToolUseHTML(item *ContentItem, toolMeta map[string]toolMetadata) string {
-	var sb strings.Builder
-
-	// Serialize input with json.Marshal (compact) for threshold measurement
-	var compactJSON []byte
-	var inputJSON []byte
-	var runeLen int
-
-	if item.Input != nil {
-		var err error
-		compactJSON, err = json.Marshal(item.Input)
-		if err == nil {
-			runeLen = utf8.RuneCountInString(string(compactJSON))
-		}
-		// Use indented JSON for display
-		inputJSON, _ = json.MarshalIndent(item.Input, "", "  ")
-	}
-
-	// Determine if we should collapse
-	collapse := shouldCollapse(item.Name, runeLen)
-
-	// Get summary text
+	// Get summary text and description
 	summary := getToolSummary(item.Name, item.Input)
+	description := getToolDescription(item.Input)
+
 	if summary == "" {
-		// Fallback summaries
 		switch item.Name {
 		case "Task":
 			summary = "Task"
@@ -478,56 +710,60 @@ func formatToolUseHTML(item *ContentItem, toolMeta map[string]toolMetadata) stri
 		}
 	}
 
+	// Check if this is a subagent Task
+	subagent := item.Name == "Task" && isSubagent(item.Input)
+
 	// Store metadata for result matching (if ID is present)
 	if item.ID != "" {
 		toolMeta[item.ID] = toolMetadata{
-			Name:    item.Name,
-			Summary: summary,
+			Name:        item.Name,
+			Summary:     summary,
+			Description: description,
+			Input:       item.Input,
+			Prompt:      getSubagentPrompt(item.Input),
+			IsSubagent:  subagent,
 		}
 	}
 
-	if collapse {
-		// Collapsed format with <details>
+	// For subagent Task, defer rendering to formatToolResultHTML
+	if subagent {
+		return ""
+	}
+
+	// For Skill or non-subagent Task, render collapsed block now
+	if item.Name == "Task" || item.Name == "Skill" {
+		var sb strings.Builder
+		var inputJSON []byte
+		if item.Input != nil {
+			inputJSON, _ = json.MarshalIndent(item.Input, "", "  ")
+		}
+
 		sb.WriteString("                <details class=\"tool-collapsible\">\n")
 		sb.WriteString(fmt.Sprintf("                    <summary><span class=\"icon\">🔧</span> %s</summary>\n",
-			html.EscapeString(summary)))
+			stdhtml.EscapeString(summary)))
 		sb.WriteString("                    <div class=\"tool-content\">\n")
 		if len(inputJSON) > 0 {
-			inputStr := truncateString(string(inputJSON), MaxToolInputRunes)
 			sb.WriteString("                        <pre><code>")
-			sb.WriteString(html.EscapeString(inputStr))
+			sb.WriteString(stdhtml.EscapeString(string(inputJSON)))
 			sb.WriteString("</code></pre>\n")
 		}
 		sb.WriteString("                    </div>\n")
 		sb.WriteString("                </details>\n")
-	} else {
-		// Uncollapsed format with div.tool-use
-		sb.WriteString("                <div class=\"tool-use\">\n")
-		sb.WriteString("                    <div class=\"tool-use-header\">\n")
-		sb.WriteString("                        <span class=\"icon\">🔧</span>\n")
-		sb.WriteString(fmt.Sprintf("                        <span>Tool: <code>%s</code></span>\n",
-			html.EscapeString(item.Name)))
-		sb.WriteString("                    </div>\n")
-		if len(inputJSON) > 0 {
-			inputStr := truncateString(string(inputJSON), MaxToolInputRunes)
-			sb.WriteString("                    <div class=\"tool-input\">\n")
-			sb.WriteString("                        <pre><code>")
-			sb.WriteString(html.EscapeString(inputStr))
-			sb.WriteString("</code></pre>\n")
-			sb.WriteString("                    </div>\n")
-		}
-		sb.WriteString("                </div>\n")
+		return sb.String()
 	}
 
-	return sb.String()
+	// For other tools, don't render here - will be rendered with tool_result
+	return ""
 }
 
-// formatToolResultHTML formats a tool_result content item as HTML, potentially wrapping it in <details>.
+// formatToolResultHTML formats a tool_result content item as HTML.
+// For subagent Task: renders combined Prompt/Result with 🤖 emoji in assistant section.
+// For Skill and non-subagent Task: renders just the result in a collapsed block.
+// For other tools: renders the combined tool call + result in a single details block.
 func formatToolResultHTML(item *ContentItem, toolMeta map[string]toolMetadata) string {
 	var sb strings.Builder
 
 	content := item.Content
-	runeLen := utf8.RuneCountInString(content)
 
 	// Determine icon
 	icon := "✅"
@@ -535,68 +771,200 @@ func formatToolResultHTML(item *ContentItem, toolMeta map[string]toolMetadata) s
 		icon = "❌"
 	}
 
-	// Look up tool metadata for summary inheritance
-	var summary string
-	var collapse bool
+	// Look up tool metadata
+	meta, found := toolMeta[item.ToolUseID]
 
-	if meta, found := toolMeta[item.ToolUseID]; found {
-		// Inherit collapse behavior from tool_use
-		summary = meta.Summary
-		collapse = shouldCollapse(meta.Name, runeLen)
-		// For Task/Skill, always collapse
-		if meta.Name == "Task" || meta.Name == "Skill" {
-			collapse = true
-		}
-	} else {
-		// Unmatched result: apply threshold-based collapsing
-		collapse = runeLen > CollapseThresholdRunes
+	// For subagent Task, render combined Prompt/Result with robot emoji in assistant section
+	if found && meta.IsSubagent {
+		errorClass := ""
 		if item.IsError {
-			summary = "Tool Error"
-		} else {
-			summary = "Tool Result"
+			errorClass = " error"
 		}
+
+		// Wrap in assistant section since tool calls come from assistant
+		sb.WriteString("        <section class=\"message assistant\">\n")
+		sb.WriteString("            <div class=\"message-header\">\n")
+		sb.WriteString("                <span class=\"icon\">🤖</span>\n")
+		sb.WriteString("                <span>Assistant</span>\n")
+		sb.WriteString("            </div>\n")
+		sb.WriteString("            <div class=\"message-content\">\n")
+
+		sb.WriteString(fmt.Sprintf("                <details class=\"tool-collapsible%s\">\n", errorClass))
+		sb.WriteString(fmt.Sprintf("                    <summary><span class=\"icon\">%s</span> 🤖🔧 %s</summary>\n",
+			icon, stdhtml.EscapeString(meta.Summary)))
+		sb.WriteString("                    <div class=\"tool-content\">\n")
+
+		// Render prompt
+		if meta.Prompt != "" {
+			sb.WriteString("                        <div class=\"tool-input-section\">\n")
+			sb.WriteString("                            <strong>Prompt:</strong>\n")
+			sb.WriteString("                            <pre><code>")
+			sb.WriteString(stdhtml.EscapeString(meta.Prompt))
+			sb.WriteString("</code></pre>\n")
+			sb.WriteString("                        </div>\n")
+		}
+
+		// Render result - extract text from JSON array and render as markdown
+		resultText := extractSubagentResultText(content)
+		sb.WriteString("                        <div class=\"tool-result-section\">\n")
+		sb.WriteString("                            <strong>Result:</strong>\n")
+		sb.WriteString("                            <div class=\"markdown-content\">\n")
+		sb.WriteString(markdownToHTML(resultText))
+		sb.WriteString("                            </div>\n")
+		sb.WriteString("                        </div>\n")
+
+		sb.WriteString("                    </div>\n")
+		sb.WriteString("                </details>\n")
+
+		sb.WriteString("            </div>\n")
+		sb.WriteString("        </section>\n")
+		return sb.String()
 	}
 
-	// Zero-length content should not collapse
-	if runeLen == 0 {
-		collapse = false
-	}
-
-	truncatedContent := truncateString(content, MaxToolResultRunes)
-
-	if collapse {
-		// Collapsed format with <details>
+	// For Skill or non-subagent Task, render just the result
+	if found && (meta.Name == "Task" || meta.Name == "Skill") {
 		errorClass := ""
 		if item.IsError {
 			errorClass = " error"
 		}
 		sb.WriteString(fmt.Sprintf("                <details class=\"tool-collapsible%s\">\n", errorClass))
 		sb.WriteString(fmt.Sprintf("                    <summary><span class=\"icon\">%s</span> %s</summary>\n",
-			icon, html.EscapeString(summary)))
+			icon, stdhtml.EscapeString(meta.Summary)))
 		sb.WriteString("                    <div class=\"tool-content\">\n")
 		sb.WriteString("                        <pre><code>")
-		sb.WriteString(html.EscapeString(truncatedContent))
+		sb.WriteString(stdhtml.EscapeString(content))
 		sb.WriteString("</code></pre>\n")
 		sb.WriteString("                    </div>\n")
 		sb.WriteString("                </details>\n")
-	} else {
-		// Uncollapsed format with div.tool-result
-		headerClass := "success"
-		headerText := "Tool Result"
+		return sb.String()
+	}
+
+	// For other tools, render combined tool call + result in its own assistant section
+	if found {
+		errorClass := ""
 		if item.IsError {
-			headerClass = "error"
-			headerText = "Tool Error"
+			errorClass = " error"
 		}
-		sb.WriteString("                <div class=\"tool-result\">\n")
-		sb.WriteString(fmt.Sprintf("                    <div class=\"tool-result-header %s\">\n", headerClass))
-		sb.WriteString(fmt.Sprintf("                        <span>%s %s</span>\n", icon, headerText))
+
+		// Build summary: tool name + description
+		summaryText := meta.Name
+		if meta.Description != "" {
+			summaryText += ": " + meta.Description
+		}
+
+		// Wrap in assistant section since tool calls come from assistant
+		sb.WriteString("        <section class=\"message assistant\">\n")
+		sb.WriteString("            <div class=\"message-header\">\n")
+		sb.WriteString("                <span class=\"icon\">🤖</span>\n")
+		sb.WriteString("                <span>Assistant</span>\n")
+		sb.WriteString("            </div>\n")
+		sb.WriteString("            <div class=\"message-content\">\n")
+
+		sb.WriteString(fmt.Sprintf("                <details class=\"tool-collapsible%s\">\n", errorClass))
+		sb.WriteString(fmt.Sprintf("                    <summary><span class=\"icon\">%s</span> 🔧 %s</summary>\n",
+			icon, stdhtml.EscapeString(summaryText)))
+		sb.WriteString("                    <div class=\"tool-content\">\n")
+
+		// Render tool-specific input
+		sb.WriteString(formatToolInputHTML(meta.Name, meta.Input))
+
+		// Render result
+		sb.WriteString("                        <div class=\"tool-result-section\">\n")
+		sb.WriteString("                            <strong>Result:</strong>\n")
+		sb.WriteString("                            <pre><code>")
+		sb.WriteString(stdhtml.EscapeString(content))
+		sb.WriteString("</code></pre>\n")
+		sb.WriteString("                        </div>\n")
+
 		sb.WriteString("                    </div>\n")
-		sb.WriteString("                    <div class=\"tool-result-content\">\n")
+		sb.WriteString("                </details>\n")
+
+		sb.WriteString("            </div>\n")
+		sb.WriteString("        </section>\n")
+	} else {
+		// Unmatched result: render standalone
+		errorClass := ""
+		if item.IsError {
+			errorClass = " error"
+		}
+		summaryText := "Tool Result"
+		if item.IsError {
+			summaryText = "Tool Error"
+		}
+		sb.WriteString(fmt.Sprintf("                <details class=\"tool-collapsible%s\">\n", errorClass))
+		sb.WriteString(fmt.Sprintf("                    <summary><span class=\"icon\">%s</span> %s</summary>\n",
+			icon, summaryText))
+		sb.WriteString("                    <div class=\"tool-content\">\n")
 		sb.WriteString("                        <pre><code>")
-		sb.WriteString(html.EscapeString(truncatedContent))
+		sb.WriteString(stdhtml.EscapeString(content))
 		sb.WriteString("</code></pre>\n")
 		sb.WriteString("                    </div>\n")
-		sb.WriteString("                </div>\n")
+		sb.WriteString("                </details>\n")
+	}
+
+	return sb.String()
+}
+
+// formatToolInputHTML formats tool-specific input for HTML display.
+func formatToolInputHTML(name string, input any) string {
+	inputMap, ok := input.(map[string]any)
+	if !ok {
+		return ""
+	}
+
+	var sb strings.Builder
+
+	switch name {
+	case "Bash":
+		if cmd, ok := inputMap["command"].(string); ok {
+			sb.WriteString("                        <div class=\"tool-input-section\">\n")
+			sb.WriteString("                            <strong>Command:</strong>\n")
+			sb.WriteString("                            <pre><code>")
+			sb.WriteString(stdhtml.EscapeString(cmd))
+			sb.WriteString("</code></pre>\n")
+			sb.WriteString("                        </div>\n")
+		}
+	case "Write":
+		if path, ok := inputMap["file_path"].(string); ok {
+			sb.WriteString("                        <div class=\"tool-input-section\">\n")
+			sb.WriteString(fmt.Sprintf("                            <strong>File:</strong> <code>%s</code>\n",
+				stdhtml.EscapeString(path)))
+			sb.WriteString("                        </div>\n")
+		}
+	case "Edit":
+		if path, ok := inputMap["file_path"].(string); ok {
+			sb.WriteString("                        <div class=\"tool-input-section\">\n")
+			sb.WriteString(fmt.Sprintf("                            <strong>File:</strong> <code>%s</code>\n",
+				stdhtml.EscapeString(path)))
+			sb.WriteString("                        </div>\n")
+		}
+	case "Glob":
+		if pattern, ok := inputMap["pattern"].(string); ok {
+			sb.WriteString("                        <div class=\"tool-input-section\">\n")
+			sb.WriteString(fmt.Sprintf("                            <strong>Pattern:</strong> <code>%s</code>\n",
+				stdhtml.EscapeString(pattern)))
+			sb.WriteString("                        </div>\n")
+		}
+	case "Grep":
+		if pattern, ok := inputMap["pattern"].(string); ok {
+			sb.WriteString("                        <div class=\"tool-input-section\">\n")
+			sb.WriteString(fmt.Sprintf("                            <strong>Pattern:</strong> <code>%s</code>\n",
+				stdhtml.EscapeString(pattern)))
+			sb.WriteString("                        </div>\n")
+		}
+	default:
+		// For unknown tools, show JSON input
+		if input != nil {
+			inputJSON, err := json.MarshalIndent(input, "", "  ")
+			if err == nil {
+				sb.WriteString("                        <div class=\"tool-input-section\">\n")
+				sb.WriteString("                            <strong>Input:</strong>\n")
+				sb.WriteString("                            <pre><code>")
+				sb.WriteString(stdhtml.EscapeString(string(inputJSON)))
+				sb.WriteString("</code></pre>\n")
+				sb.WriteString("                        </div>\n")
+			}
+		}
 	}
 
 	return sb.String()

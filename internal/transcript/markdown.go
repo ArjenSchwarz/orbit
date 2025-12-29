@@ -19,8 +19,12 @@ const (
 
 // toolMetadata stores information about a tool_use for result matching.
 type toolMetadata struct {
-	Name    string // Tool name (e.g., "Task", "Read")
-	Summary string // Summary text for collapsed display
+	Name        string // Tool name (e.g., "Task", "Read")
+	Summary     string // Summary text for collapsed display
+	Description string // Description field from input (for Bash, etc.)
+	Input       any    // Full input for rendering
+	Prompt      string // Prompt text for subagent Task calls
+	IsSubagent  bool   // True if Task has subagent_type
 }
 
 // RenderMarkdown converts parsed entries to Markdown format.
@@ -40,22 +44,62 @@ func RenderMarkdown(entries []Entry, opts RenderOptions) string {
 
 	sb.WriteString("---\n\n")
 
+	// Pre-process entries to group consecutive Read calls
+	groups := preprocessEntries(entries)
+
 	// Initialize tool metadata map at render level (shared across entries)
 	// This is critical because tool_use appears in assistant entries but
 	// tool_result appears in user entries - the map must persist across both.
 	toolMeta := make(map[string]toolMetadata)
 
-	// Render each entry
-	for _, entry := range entries {
-		switch entry.Type {
+	// Render each group
+	for _, group := range groups {
+		switch group.Type {
 		case "user":
-			sb.WriteString(formatUserMessage(&entry, toolMeta))
+			for i := range group.Entries {
+				sb.WriteString(formatUserMessage(&group.Entries[i], toolMeta))
+			}
 		case "assistant":
-			sb.WriteString(formatAssistantMessage(&entry, toolMeta))
+			for i := range group.Entries {
+				sb.WriteString(formatAssistantMessage(&group.Entries[i], toolMeta))
+			}
+		case "read_group":
+			sb.WriteString(formatReadGroup(group.Reads))
 		}
-		// Unknown entry types are skipped silently per requirement 4.7
 	}
 
+	return sb.String()
+}
+
+// formatReadGroup formats a group of consecutive Read tool calls as a single block.
+func formatReadGroup(reads []readItem) string {
+	if len(reads) == 0 {
+		return ""
+	}
+
+	var sb strings.Builder
+	sb.WriteString("## 🤖 Assistant\n\n")
+
+	for _, read := range reads {
+		icon := "✅"
+		if read.IsError {
+			icon = "❌"
+		}
+
+		sb.WriteString("<details>\n")
+		sb.WriteString(fmt.Sprintf("<summary>%s 🔧 Read: <code>%s</code></summary>\n\n",
+			icon, html.EscapeString(read.FilePath)))
+
+		if read.Content != "" {
+			sb.WriteString("```\n")
+			sb.WriteString(read.Content)
+			sb.WriteString("\n```\n\n")
+		}
+
+		sb.WriteString("</details>\n\n")
+	}
+
+	sb.WriteString("---\n\n")
 	return sb.String()
 }
 
@@ -151,32 +195,15 @@ func formatAssistantMessage(entry *Entry, toolMeta map[string]toolMetadata) stri
 	return sb.String()
 }
 
-// formatToolUse formats a tool_use content item, potentially wrapping it in <details>.
+// formatToolUse formats a tool_use content item.
+// For Skill and non-subagent Task: renders collapsed details block.
+// For subagent Task and other tools: stores metadata and defers rendering to formatToolResult.
 func formatToolUse(item *ContentItem, toolMeta map[string]toolMetadata) string {
-	var sb strings.Builder
-
-	// Serialize input with json.Marshal (compact) for threshold measurement
-	var compactJSON []byte
-	var inputJSON []byte
-	var runeLen int
-
-	if item.Input != nil {
-		var err error
-		compactJSON, err = json.Marshal(item.Input)
-		if err == nil {
-			runeLen = utf8.RuneCountInString(string(compactJSON))
-		}
-		// Use indented JSON for display
-		inputJSON, _ = json.MarshalIndent(item.Input, "", "  ")
-	}
-
-	// Determine if we should collapse
-	collapse := shouldCollapse(item.Name, runeLen)
-
-	// Get summary text
+	// Get summary text and description
 	summary := getToolSummary(item.Name, item.Input)
+	description := getToolDescription(item.Input)
+
 	if summary == "" {
-		// Fallback summaries
 		switch item.Name {
 		case "Task":
 			summary = "Task"
@@ -187,45 +214,57 @@ func formatToolUse(item *ContentItem, toolMeta map[string]toolMetadata) string {
 		}
 	}
 
+	// Check if this is a subagent Task
+	subagent := item.Name == "Task" && isSubagent(item.Input)
+
 	// Store metadata for result matching (if ID is present)
 	if item.ID != "" {
 		toolMeta[item.ID] = toolMetadata{
-			Name:    item.Name,
-			Summary: summary,
+			Name:        item.Name,
+			Summary:     summary,
+			Description: description,
+			Input:       item.Input,
+			Prompt:      getSubagentPrompt(item.Input),
+			IsSubagent:  subagent,
 		}
 	}
 
-	if collapse {
-		// Collapsed format with <details>
+	// For subagent Task, defer rendering to formatToolResult
+	if subagent {
+		return ""
+	}
+
+	// For Skill or non-subagent Task, render collapsed block now
+	if item.Name == "Task" || item.Name == "Skill" {
+		var sb strings.Builder
+		var inputJSON []byte
+		if item.Input != nil {
+			inputJSON, _ = json.MarshalIndent(item.Input, "", "  ")
+		}
+
 		sb.WriteString("<details>\n")
 		sb.WriteString(fmt.Sprintf("<summary>🔧 %s</summary>\n\n", escapeSummary(summary)))
 		if len(inputJSON) > 0 {
 			sb.WriteString("```json\n")
-			inputStr := truncateString(string(inputJSON), MaxToolInputRunes)
-			sb.WriteString(inputStr)
+			sb.WriteString(string(inputJSON))
 			sb.WriteString("\n```\n\n")
 		}
 		sb.WriteString("</details>\n\n")
-	} else {
-		// Uncollapsed format with heading
-		sb.WriteString(fmt.Sprintf("### 🔧 Tool: `%s`\n\n", item.Name))
-		if len(inputJSON) > 0 {
-			sb.WriteString("```json\n")
-			inputStr := truncateString(string(inputJSON), MaxToolInputRunes)
-			sb.WriteString(inputStr)
-			sb.WriteString("\n```\n\n")
-		}
+		return sb.String()
 	}
 
-	return sb.String()
+	// For other tools, don't render here - will be rendered with tool_result
+	return ""
 }
 
-// formatToolResult formats a tool_result content item, potentially wrapping it in <details>.
+// formatToolResult formats a tool_result content item.
+// For subagent Task: renders combined Prompt/Result with 🤖 emoji.
+// For Skill and non-subagent Task: renders just the result in a collapsed block.
+// For other tools: renders the combined tool call + result in a single details block.
 func formatToolResult(item *ContentItem, toolMeta map[string]toolMetadata) string {
 	var sb strings.Builder
 
 	content := item.Content
-	runeLen := utf8.RuneCountInString(content)
 
 	// Determine icon
 	icon := "✅"
@@ -233,53 +272,72 @@ func formatToolResult(item *ContentItem, toolMeta map[string]toolMetadata) strin
 		icon = "❌"
 	}
 
-	// Look up tool metadata for summary inheritance
-	var summary string
-	var collapse bool
+	// Look up tool metadata
+	meta, found := toolMeta[item.ToolUseID]
 
-	if meta, found := toolMeta[item.ToolUseID]; found {
-		// Inherit collapse behavior from tool_use
-		summary = meta.Summary
-		collapse = shouldCollapse(meta.Name, runeLen)
-		// For Task/Skill, always collapse
-		if meta.Name == "Task" || meta.Name == "Skill" {
-			collapse = true
-		}
-	} else {
-		// Unmatched result: apply threshold-based collapsing
-		collapse = runeLen > CollapseThresholdRunes
-		if item.IsError {
-			summary = "Tool Error"
-		} else {
-			summary = "Tool Result"
-		}
-	}
-
-	// Zero-length content should not collapse
-	if runeLen == 0 {
-		collapse = false
-	}
-
-	truncatedContent := truncateString(content, MaxToolResultRunes)
-
-	if collapse {
-		// Collapsed format with <details>
+	// For subagent Task, render combined Prompt/Result with robot emoji
+	if found && meta.IsSubagent {
 		sb.WriteString("<details>\n")
-		sb.WriteString(fmt.Sprintf("<summary>%s %s</summary>\n\n", icon, escapeSummary(summary)))
+		sb.WriteString(fmt.Sprintf("<summary>%s 🤖🔧 %s</summary>\n\n", icon, escapeSummary(meta.Summary)))
+
+		// Render prompt
+		if meta.Prompt != "" {
+			sb.WriteString("**Prompt:**\n")
+			sb.WriteString(meta.Prompt)
+			sb.WriteString("\n\n")
+		}
+
+		// Render result - extract text from JSON array and render as markdown
+		resultText := extractSubagentResultText(content)
+		sb.WriteString("**Result:**\n\n")
+		sb.WriteString(resultText)
+		sb.WriteString("\n\n")
+		sb.WriteString("</details>\n\n")
+		return sb.String()
+	}
+
+	// For Skill or non-subagent Task, render just the result
+	if found && (meta.Name == "Task" || meta.Name == "Skill") {
+		sb.WriteString("<details>\n")
+		sb.WriteString(fmt.Sprintf("<summary>%s %s</summary>\n\n", icon, escapeSummary(meta.Summary)))
 		sb.WriteString("```\n")
-		sb.WriteString(truncatedContent)
+		sb.WriteString(content)
+		sb.WriteString("\n```\n\n")
+		sb.WriteString("</details>\n\n")
+		return sb.String()
+	}
+
+	// For other tools, render combined tool call + result
+	if found {
+		// Build summary: icon + tool name + description
+		summaryText := fmt.Sprintf("🔧 %s", meta.Name)
+		if meta.Description != "" {
+			summaryText += ": " + meta.Description
+		}
+
+		sb.WriteString("<details>\n")
+		sb.WriteString(fmt.Sprintf("<summary>%s %s</summary>\n\n", icon, escapeSummary(summaryText)))
+
+		// Render tool-specific input
+		sb.WriteString(formatToolInput(meta.Name, meta.Input))
+
+		// Render result
+		sb.WriteString("**Result:**\n```\n")
+		sb.WriteString(content)
 		sb.WriteString("\n```\n\n")
 		sb.WriteString("</details>\n\n")
 	} else {
-		// Uncollapsed format with heading
+		// Unmatched result: render standalone
+		sb.WriteString("<details>\n")
 		if item.IsError {
-			sb.WriteString("#### ❌ Tool Error\n\n")
+			sb.WriteString("<summary>❌ Tool Error</summary>\n\n")
 		} else {
-			sb.WriteString("#### ✅ Tool Result\n\n")
+			sb.WriteString("<summary>✅ Tool Result</summary>\n\n")
 		}
 		sb.WriteString("```\n")
-		sb.WriteString(truncatedContent)
+		sb.WriteString(content)
 		sb.WriteString("\n```\n\n")
+		sb.WriteString("</details>\n\n")
 	}
 
 	return sb.String()
@@ -336,6 +394,110 @@ func getToolSummary(name string, input any) string {
 		return ""
 	}
 	return ""
+}
+
+// getToolDescription extracts the description field from tool input.
+func getToolDescription(input any) string {
+	inputMap, ok := input.(map[string]any)
+	if !ok {
+		return ""
+	}
+	desc, _ := inputMap["description"].(string)
+	return desc
+}
+
+// isSubagent checks if a Task tool input has a subagent_type field.
+func isSubagent(input any) bool {
+	inputMap, ok := input.(map[string]any)
+	if !ok {
+		return false
+	}
+	subType, ok := inputMap["subagent_type"].(string)
+	return ok && subType != ""
+}
+
+// getSubagentPrompt extracts the prompt field from a Task tool input.
+func getSubagentPrompt(input any) string {
+	inputMap, ok := input.(map[string]any)
+	if !ok {
+		return ""
+	}
+	prompt, _ := inputMap["prompt"].(string)
+	return prompt
+}
+
+// extractSubagentResultText parses subagent result content and extracts text.
+// Subagent results come as JSON array: [{"text":"..."},{"text":"..."}]
+// This function extracts and concatenates all text fields.
+func extractSubagentResultText(content string) string {
+	// Try to parse as JSON array
+	var items []map[string]any
+	if err := json.Unmarshal([]byte(content), &items); err != nil {
+		// Not valid JSON array, return as-is
+		return content
+	}
+
+	// Extract text fields from each item
+	var texts []string
+	for _, item := range items {
+		if text, ok := item["text"].(string); ok && text != "" {
+			texts = append(texts, text)
+		}
+	}
+
+	if len(texts) == 0 {
+		// No text fields found, return original
+		return content
+	}
+
+	return strings.Join(texts, "\n\n")
+}
+
+// formatToolInput formats tool-specific input for display in the combined block.
+func formatToolInput(name string, input any) string {
+	inputMap, ok := input.(map[string]any)
+	if !ok {
+		return ""
+	}
+
+	var sb strings.Builder
+
+	switch name {
+	case "Bash":
+		if cmd, ok := inputMap["command"].(string); ok {
+			sb.WriteString("**Command:**\n```bash\n")
+			sb.WriteString(cmd)
+			sb.WriteString("\n```\n\n")
+		}
+	case "Write":
+		if path, ok := inputMap["file_path"].(string); ok {
+			sb.WriteString(fmt.Sprintf("**File:** `%s`\n\n", path))
+		}
+	case "Edit":
+		if path, ok := inputMap["file_path"].(string); ok {
+			sb.WriteString(fmt.Sprintf("**File:** `%s`\n\n", path))
+		}
+	case "Glob":
+		if pattern, ok := inputMap["pattern"].(string); ok {
+			sb.WriteString(fmt.Sprintf("**Pattern:** `%s`\n\n", pattern))
+		}
+	case "Grep":
+		if pattern, ok := inputMap["pattern"].(string); ok {
+			sb.WriteString(fmt.Sprintf("**Pattern:** `%s`\n\n", pattern))
+		}
+	default:
+		// For unknown tools, show JSON input
+		if input != nil {
+			inputJSON, err := json.MarshalIndent(input, "", "  ")
+			if err == nil {
+				sb.WriteString("**Input:**\n```json\n")
+				sb.WriteString(string(inputJSON))
+				sb.WriteString("\n```\n\n")
+			}
+		}
+	}
+
+	return sb.String()
 }
 
 // shouldCollapse determines if a tool_use or tool_result should be wrapped

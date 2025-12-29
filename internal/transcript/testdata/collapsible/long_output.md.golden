@@ -4,30 +4,17 @@
 
 ## 🤖 Assistant
 
-<details>
-<summary>🔧 Tool: Read</summary>
-
-```json
-{
-  "another_long_parameter": "this is additional content to ensure we exceed 500 runes",
-  "encoding": "utf-8",
-  "extra_param_one": "value_one",
-  "extra_param_three": "value_three",
-  "extra_param_two": "value_two",
-  "file_path": "/path/to/very/long/file/that/has/many/nested/directories/and/a/really/long/path/name/that/exceeds/the/threshold/of/five/hundred/runes/when/serialized/as/json/so/it/should/definitely/trigger/the/collapse/behavior/for/non/task/skill/tools/test.txt",
-  "include_line_numbers": true,
-  "limit": 1000,
-  "offset": 0
-}
-```
-
-</details>
-
 ---
 
 <details>
-<summary>✅ Tool: Read</summary>
+<summary>✅ 🔧 Bash: Search for all text files in the deeply nested directory structure and output their contents with detailed formatting</summary>
 
+**Command:**
+```bash
+find /path/to/very/long/directory/that/has/many/nested/directories/and/a/really/long/path/name/that/exceeds/the/threshold/of/five/hundred/runes/when/serialized/as/json/so/it/should/definitely/trigger/the/collapse/behavior/for/non/task/skill/tools -type f -name '*.txt' -exec cat {} \;
+```
+
+**Result:**
 ```
 Line 1: This is a very long file content that exceeds the threshold.
 Line 2: More content here to make sure we go over 500 runes.

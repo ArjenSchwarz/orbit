@@ -7,10 +7,13 @@ import (
 
 // Entry represents a single line in the Claude session JSONL.
 type Entry struct {
-	Type      string   `json:"type"`
-	Message   *Message `json:"message,omitempty"`
-	Timestamp string   `json:"timestamp,omitempty"`
-	SessionID string   `json:"sessionId,omitempty"`
+	Type       string   `json:"type"`
+	Message    *Message `json:"message,omitempty"`
+	Timestamp  string   `json:"timestamp,omitempty"`
+	SessionID  string   `json:"sessionId,omitempty"`
+	IsMeta     bool     `json:"isMeta,omitempty"`     // Meta entries are internal Claude markers
+	UUID       string   `json:"uuid,omitempty"`       // Unique identifier for this entry
+	ParentUUID string   `json:"parentUuid,omitempty"` // Links to parent entry's UUID
 }
 
 // Message represents the message content within an entry.
