@@ -1,0 +1,43 @@
+{
+  "permissions": {
+    "allow": [
+      "Read(**)",
+      "Write(**)",
+      "Edit(**)",
+
+      "Read(~/.claude/**)",
+      "Read(~/.golangci.yaml)",
+      "Read(~/.golangci.yml)",
+
+      "Bash(make:*)",
+      "Bash(go:*)",
+      "Bash(git:*)",
+      "Bash(gh:*)",
+      "Bash(golangci-lint:*)",
+
+      "Bash(rune:*)",
+      "Bash(claude:*)",
+
+      "Bash(ls:*)",
+      "Bash(find:*)",
+      "Bash(grep:*)",
+      "Bash(head:*)",
+      "Bash(tail:*)",
+      "Bash(cat:*)",
+      "Bash(wc:*)",
+      "Bash(file:*)",
+      "Bash(sed:*)",
+
+      "Bash(mkdir:*)",
+      "Bash(rm:*)",
+
+      "Bash(echo:*)",
+      "Bash(sleep:*)",
+      "Bash(timeout:*)",
+
+      "Bash(./orbit:*)",
+      "Bash(./apsis:*)",
+      "Bash(./bin/apsis:*)"
+    ]
+  }
+}
