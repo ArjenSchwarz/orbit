@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"strings"
 	"time"
 )
 
@@ -35,6 +36,9 @@ func ParseJSONL(r io.Reader) (*ParseResult, error) {
 	}
 	lineNum := 0
 
+	// Track UUIDs of filtered entries for context-aware local command filtering
+	filteredUUIDs := make(map[string]bool)
+
 	for scanner.Scan() {
 		lineNum++
 		line := scanner.Bytes()
@@ -54,6 +58,11 @@ func ParseJSONL(r io.Reader) (*ParseResult, error) {
 		// Only process known entry types (user, assistant)
 		// Skip unknown types silently per requirement 4.7
 		if entry.Type != "user" && entry.Type != "assistant" {
+			continue
+		}
+
+		// Skip local command sequences using UUID tracking
+		if shouldFilterLocalCommand(&entry, filteredUUIDs) {
 			continue
 		}
 
@@ -114,4 +123,67 @@ func ParseFirstTimestamp(r io.Reader) (time.Time, error) {
 	}
 
 	return time.Time{}, fmt.Errorf("no timestamp found in file")
+}
+
+// shouldFilterLocalCommand determines if an entry should be filtered as part of
+// a local command sequence. It uses UUID tracking to filter:
+// 1. Meta entries (isMeta: true) - the "Caveat" warning messages
+// 2. Command entries whose parent is a filtered meta entry
+// 3. Local command stdout entries whose parent is a filtered command entry
+//
+// The filteredUUIDs map is updated in place to track filtered entries.
+func shouldFilterLocalCommand(entry *Entry, filteredUUIDs map[string]bool) bool {
+	// Filter meta entries (internal Claude markers with "Caveat" warnings)
+	if entry.IsMeta {
+		if entry.UUID != "" {
+			filteredUUIDs[entry.UUID] = true
+		}
+		return true
+	}
+
+	// Check if this entry's parent was filtered
+	parentFiltered := entry.ParentUUID != "" && filteredUUIDs[entry.ParentUUID]
+
+	// Filter command entries that follow a meta entry
+	if parentFiltered && hasCommandNameContent(entry) {
+		if entry.UUID != "" {
+			filteredUUIDs[entry.UUID] = true
+		}
+		return true
+	}
+
+	// Filter local-command-stdout entries that follow a filtered command entry
+	if parentFiltered && hasLocalCommandStdoutContent(entry) {
+		return true
+	}
+
+	return false
+}
+
+// hasCommandNameContent checks if an entry contains <command-name> XML tags.
+func hasCommandNameContent(entry *Entry) bool {
+	if entry.Message == nil || len(entry.Message.Content) == 0 {
+		return false
+	}
+
+	for _, item := range entry.Message.Content {
+		if item.Type == "text" && strings.Contains(item.Text, "<command-name>") {
+			return true
+		}
+	}
+	return false
+}
+
+// hasLocalCommandStdoutContent checks if an entry contains <local-command-stdout> XML tags.
+func hasLocalCommandStdoutContent(entry *Entry) bool {
+	if entry.Message == nil || len(entry.Message.Content) == 0 {
+		return false
+	}
+
+	for _, item := range entry.Message.Content {
+		if item.Type == "text" && strings.Contains(item.Text, "<local-command-stdout>") {
+			return true
+		}
+	}
+	return false
 }

@@ -87,6 +87,7 @@ func TestRenderMarkdown_ThinkingBlock(t *testing.T) {
 }
 
 func TestRenderMarkdown_ToolUse(t *testing.T) {
+	// Non-Task/Skill tools now render as combined collapsible blocks with their results
 	entries := []Entry{
 		{
 			Type: "assistant",
@@ -95,8 +96,23 @@ func TestRenderMarkdown_ToolUse(t *testing.T) {
 				Content: []ContentItem{
 					{
 						Type:  "tool_use",
-						Name:  "Read",
-						Input: map[string]any{"file_path": "/tmp/test.txt"},
+						Name:  "Bash",
+						ID:    "bash-test",
+						Input: map[string]any{"command": "ls -la", "description": "List files"},
+					},
+				},
+			},
+		},
+		{
+			Type: "user",
+			Message: &Message{
+				Role: "user",
+				Content: []ContentItem{
+					{
+						Type:      "tool_result",
+						ToolUseID: "bash-test",
+						Content:   "file1.txt\nfile2.txt",
+						IsError:   false,
 					},
 				},
 			},
@@ -105,18 +121,23 @@ func TestRenderMarkdown_ToolUse(t *testing.T) {
 
 	result := RenderMarkdown(entries, RenderOptions{})
 
-	if !strings.Contains(result, "### 🔧 Tool: `Read`") {
-		t.Error("expected tool heading")
+	// Combined tool call + result in collapsible block
+	if !strings.Contains(result, "<details>") {
+		t.Error("expected details block for combined tool")
 	}
-	if !strings.Contains(result, "```json") {
-		t.Error("expected JSON code block")
+	if !strings.Contains(result, "Bash: List files") {
+		t.Error("expected tool name and description in summary")
 	}
-	if !strings.Contains(result, "file_path") {
-		t.Error("expected input content")
+	if !strings.Contains(result, "**Command:**") {
+		t.Error("expected Command section")
+	}
+	if !strings.Contains(result, "**Result:**") {
+		t.Error("expected Result section")
 	}
 }
 
 func TestRenderMarkdown_ToolResultSuccess(t *testing.T) {
+	// Unmatched tool_result (legacy/standalone) renders in collapsible block
 	entries := []Entry{
 		{
 			Type: "assistant",
@@ -131,8 +152,12 @@ func TestRenderMarkdown_ToolResultSuccess(t *testing.T) {
 
 	result := RenderMarkdown(entries, RenderOptions{})
 
-	if !strings.Contains(result, "#### ✅ Tool Result") {
-		t.Error("expected success heading")
+	// Unmatched results render in collapsible blocks
+	if !strings.Contains(result, "<details>") {
+		t.Error("expected details block for unmatched tool_result")
+	}
+	if !strings.Contains(result, "✅ Tool Result") {
+		t.Error("expected success summary")
 	}
 	if !strings.Contains(result, "File contents here") {
 		t.Error("expected result content")
@@ -140,6 +165,7 @@ func TestRenderMarkdown_ToolResultSuccess(t *testing.T) {
 }
 
 func TestRenderMarkdown_ToolResultError(t *testing.T) {
+	// Unmatched error tool_result renders in collapsible block
 	entries := []Entry{
 		{
 			Type: "assistant",
@@ -154,8 +180,12 @@ func TestRenderMarkdown_ToolResultError(t *testing.T) {
 
 	result := RenderMarkdown(entries, RenderOptions{})
 
-	if !strings.Contains(result, "#### ❌ Tool Error") {
-		t.Error("expected error heading")
+	// Unmatched error results render in collapsible blocks
+	if !strings.Contains(result, "<details>") {
+		t.Error("expected details block for unmatched tool_result")
+	}
+	if !strings.Contains(result, "❌ Tool Error") {
+		t.Error("expected error summary")
 	}
 	if !strings.Contains(result, "Error: file not found") {
 		t.Error("expected error content")
@@ -179,7 +209,8 @@ func TestRenderMarkdown_TruncationRuneBoundary(t *testing.T) {
 	markdown := RenderMarkdown(parseResult.Entries, RenderOptions{})
 
 	// The output should be valid UTF-8 (no broken characters)
-	if !strings.Contains(markdown, "🔧") {
+	// Check for common emoji that should be preserved
+	if !strings.Contains(markdown, "🤖") && !strings.Contains(markdown, "✅") {
 		t.Error("expected valid emoji in output")
 	}
 }
@@ -474,6 +505,7 @@ func TestEscapeSummary_XSS(t *testing.T) {
 // Tests for collapsible tool_use blocks (Task 9)
 
 func TestRenderMarkdown_TaskToolAlwaysCollapses(t *testing.T) {
+	// Subagent Task tools defer rendering to tool_result (combined block)
 	entries := []Entry{
 		{
 			Type: "assistant",
@@ -487,7 +519,22 @@ func TestRenderMarkdown_TaskToolAlwaysCollapses(t *testing.T) {
 						Input: map[string]any{
 							"subagent_type": "Explore",
 							"description":   "Search for config files",
+							"prompt":        "Find all configuration files",
 						},
+					},
+				},
+			},
+		},
+		{
+			Type: "user",
+			Message: &Message{
+				Role: "user",
+				Content: []ContentItem{
+					{
+						Type:      "tool_result",
+						ToolUseID: "tool_123",
+						Content:   "Found config files",
+						IsError:   false,
 					},
 				},
 			},
@@ -497,13 +544,19 @@ func TestRenderMarkdown_TaskToolAlwaysCollapses(t *testing.T) {
 	result := RenderMarkdown(entries, RenderOptions{})
 
 	if !strings.Contains(result, "<details>") {
-		t.Error("Task tool should always be wrapped in details")
+		t.Error("subagent Task tool should always be wrapped in details")
 	}
-	if !strings.Contains(result, "<summary>🔧 Explore: Search for config files</summary>") {
-		t.Error("expected Task tool summary with subagent_type and description")
+	if !strings.Contains(result, "<summary>✅ 🤖🔧 Explore: Search for config files</summary>") {
+		t.Error("expected subagent Task summary with robot emoji, tool emoji, subagent_type and description")
 	}
 	if !strings.Contains(result, "</details>") {
 		t.Error("expected closing details tag")
+	}
+	if !strings.Contains(result, "**Prompt:**") {
+		t.Error("expected Prompt section in subagent block")
+	}
+	if !strings.Contains(result, "**Result:**") {
+		t.Error("expected Result section in subagent block")
 	}
 }
 
@@ -621,6 +674,8 @@ func TestRenderMarkdown_SkillToolFallback(t *testing.T) {
 }
 
 func TestRenderMarkdown_ToolNameCaseSensitive(t *testing.T) {
+	// In the new combined format, case-insensitive tool names (not exact "Task" or "Skill")
+	// are treated as regular tools and use combined collapsible format when matched with result
 	tests := map[string]string{
 		"task":  "task",
 		"TASK":  "TASK",
@@ -630,7 +685,6 @@ func TestRenderMarkdown_ToolNameCaseSensitive(t *testing.T) {
 
 	for name, toolName := range tests {
 		t.Run(name, func(t *testing.T) {
-			// Create input small enough that threshold won't trigger collapse
 			entries := []Entry{
 				{
 					Type: "assistant",
@@ -646,23 +700,38 @@ func TestRenderMarkdown_ToolNameCaseSensitive(t *testing.T) {
 						},
 					},
 				},
+				{
+					Type: "user",
+					Message: &Message{
+						Role: "user",
+						Content: []ContentItem{
+							{
+								Type:      "tool_result",
+								ToolUseID: "tool_789",
+								Content:   "result",
+								IsError:   false,
+							},
+						},
+					},
+				},
 			}
 
 			result := RenderMarkdown(entries, RenderOptions{})
 
-			// Case-insensitive variants should NOT collapse (they use heading format)
-			if strings.Contains(result, "<details>") {
-				t.Errorf("tool %q should not collapse (case-sensitive matching)", toolName)
+			// Case-insensitive variants use combined collapsible format
+			if !strings.Contains(result, "<details>") {
+				t.Errorf("tool %q should use combined collapsible format", toolName)
 			}
-			if !strings.Contains(result, "### 🔧 Tool:") {
-				t.Errorf("tool %q should use uncollapsed heading format", toolName)
+			if !strings.Contains(result, toolName) {
+				t.Errorf("expected tool name %q in output", toolName)
 			}
 		})
 	}
 }
 
 func TestRenderMarkdown_ShortToolNoCollapse(t *testing.T) {
-	// Create input that is less than 500 runes when serialized
+	// In the new combined format, all non-Task/Skill tools use collapsible blocks
+	// when matched with their results
 	entries := []Entry{
 		{
 			Type: "assistant",
@@ -671,9 +740,23 @@ func TestRenderMarkdown_ShortToolNoCollapse(t *testing.T) {
 				Content: []ContentItem{
 					{
 						Type:  "tool_use",
-						Name:  "Read",
+						Name:  "Bash",
 						ID:    "tool_short",
-						Input: map[string]any{"file_path": "/tmp/test.txt"},
+						Input: map[string]any{"command": "ls"},
+					},
+				},
+			},
+		},
+		{
+			Type: "user",
+			Message: &Message{
+				Role: "user",
+				Content: []ContentItem{
+					{
+						Type:      "tool_result",
+						ToolUseID: "tool_short",
+						Content:   "file.txt",
+						IsError:   false,
 					},
 				},
 			},
@@ -682,17 +765,17 @@ func TestRenderMarkdown_ShortToolNoCollapse(t *testing.T) {
 
 	result := RenderMarkdown(entries, RenderOptions{})
 
-	// Short tool should NOT be collapsed
-	if strings.Contains(result, "<details>") && !strings.Contains(result, "💭 Thinking") {
-		t.Error("short tool should not be wrapped in details")
+	// Combined tool call + result uses collapsible format
+	if !strings.Contains(result, "<details>") {
+		t.Error("combined tool block should use details")
 	}
-	if !strings.Contains(result, "### 🔧 Tool: `Read`") {
-		t.Error("short tool should use heading format")
+	if !strings.Contains(result, "Bash") {
+		t.Error("expected tool name in output")
 	}
 }
 
 func TestRenderMarkdown_LongToolCollapses(t *testing.T) {
-	// Create input that exceeds 500 runes when serialized
+	// All non-Task/Skill tools now use combined collapsible blocks
 	longContent := strings.Repeat("x", 600)
 	entries := []Entry{
 		{
@@ -702,9 +785,23 @@ func TestRenderMarkdown_LongToolCollapses(t *testing.T) {
 				Content: []ContentItem{
 					{
 						Type:  "tool_use",
-						Name:  "Read",
+						Name:  "Bash",
 						ID:    "tool_long",
-						Input: map[string]any{"file_path": longContent},
+						Input: map[string]any{"command": longContent},
+					},
+				},
+			},
+		},
+		{
+			Type: "user",
+			Message: &Message{
+				Role: "user",
+				Content: []ContentItem{
+					{
+						Type:      "tool_result",
+						ToolUseID: "tool_long",
+						Content:   "output",
+						IsError:   false,
 					},
 				},
 			},
@@ -714,10 +811,10 @@ func TestRenderMarkdown_LongToolCollapses(t *testing.T) {
 	result := RenderMarkdown(entries, RenderOptions{})
 
 	if !strings.Contains(result, "<details>") {
-		t.Error("long tool should be wrapped in details")
+		t.Error("combined tool block should use details")
 	}
-	if !strings.Contains(result, "<summary>🔧 Tool: Read</summary>") {
-		t.Error("expected collapsed tool summary")
+	if !strings.Contains(result, "Bash") {
+		t.Error("expected tool name in output")
 	}
 }
 
@@ -790,7 +887,7 @@ func TestRenderMarkdown_ZeroLengthNoCollapse(t *testing.T) {
 // Tests for tool_result blocks (Task 10)
 
 func TestRenderMarkdown_ResultMatchesToolUse(t *testing.T) {
-	// Tool use in assistant entry, result in user entry
+	// Subagent Task tool use in assistant entry, result in user entry - combined
 	entries := []Entry{
 		{
 			Type: "assistant",
@@ -804,6 +901,7 @@ func TestRenderMarkdown_ResultMatchesToolUse(t *testing.T) {
 						Input: map[string]any{
 							"subagent_type": "Explore",
 							"description":   "Search for files",
+							"prompt":        "Find all relevant files",
 						},
 					},
 				},
@@ -827,9 +925,9 @@ func TestRenderMarkdown_ResultMatchesToolUse(t *testing.T) {
 
 	result := RenderMarkdown(entries, RenderOptions{})
 
-	// Result should be collapsed and use the same summary as the tool_use
-	if !strings.Contains(result, "<summary>✅ Explore: Search for files</summary>") {
-		t.Error("expected tool result to inherit summary from tool_use")
+	// Subagent result should be combined with robot emoji
+	if !strings.Contains(result, "<summary>✅ 🤖🔧 Explore: Search for files</summary>") {
+		t.Error("expected subagent tool result with robot emoji in summary")
 	}
 }
 
@@ -864,7 +962,7 @@ func TestRenderMarkdown_UnmatchedResultThreshold(t *testing.T) {
 }
 
 func TestRenderMarkdown_ResultErrorIcon(t *testing.T) {
-	// Error result matching a Task tool
+	// Error result matching a subagent Task tool
 	entries := []Entry{
 		{
 			Type: "assistant",
@@ -878,6 +976,7 @@ func TestRenderMarkdown_ResultErrorIcon(t *testing.T) {
 						Input: map[string]any{
 							"subagent_type": "Explore",
 							"description":   "Search files",
+							"prompt":        "Find all files",
 						},
 					},
 				},
@@ -901,13 +1000,15 @@ func TestRenderMarkdown_ResultErrorIcon(t *testing.T) {
 
 	result := RenderMarkdown(entries, RenderOptions{})
 
-	// Error result should use ❌ icon
-	if !strings.Contains(result, "<summary>❌ Explore: Search files</summary>") {
-		t.Error("error result should use ❌ icon in summary")
+	// Error result for subagent should use ❌ icon with robot emoji
+	if !strings.Contains(result, "<summary>❌ 🤖🔧 Explore: Search files</summary>") {
+		t.Error("error result should use ❌ icon with robot emoji in summary")
 	}
 }
 
 func TestRenderMarkdown_ZeroLengthResultNoCollapse(t *testing.T) {
+	// Unmatched tool_result with empty content still uses collapsible format
+	// (consistent behavior for all unmatched results)
 	entries := []Entry{
 		{
 			Type: "user",
@@ -927,10 +1028,12 @@ func TestRenderMarkdown_ZeroLengthResultNoCollapse(t *testing.T) {
 
 	result := RenderMarkdown(entries, RenderOptions{})
 
-	// Zero-length result should NOT collapse
-	// Should use the uncollapsed format
-	if strings.Contains(result, "<details>") && strings.Contains(result, "Tool Result</summary>") {
-		t.Error("zero-length result should not collapse")
+	// Unmatched results use collapsible format even when empty
+	if !strings.Contains(result, "<details>") {
+		t.Error("unmatched tool_result should use collapsible format")
+	}
+	if !strings.Contains(result, "Tool Result") {
+		t.Error("expected Tool Result summary")
 	}
 }
 
@@ -939,6 +1042,7 @@ func TestRenderMarkdown_ZeroLengthResultNoCollapse(t *testing.T) {
 func TestRenderMarkdown_CrossEntryToolMatching(t *testing.T) {
 	// This is the critical test: tool_use appears in "assistant" entry,
 	// but tool_result appears in "user" entry. The map must persist across entries.
+	// For subagent Tasks, they're combined into a single block.
 	entries := []Entry{
 		{
 			Type: "assistant",
@@ -952,6 +1056,7 @@ func TestRenderMarkdown_CrossEntryToolMatching(t *testing.T) {
 						Input: map[string]any{
 							"subagent_type": "Explore",
 							"description":   "Find config",
+							"prompt":        "Find config files",
 						},
 					},
 				},
@@ -975,14 +1080,17 @@ func TestRenderMarkdown_CrossEntryToolMatching(t *testing.T) {
 
 	result := RenderMarkdown(entries, RenderOptions{})
 
-	// The tool_use should be collapsed with Task summary
-	if !strings.Contains(result, "<summary>🔧 Explore: Find config</summary>") {
-		t.Error("tool_use should be collapsed with Task summary")
+	// Subagent combines tool_use and tool_result into one block with robot emoji
+	if !strings.Contains(result, "<summary>✅ 🤖🔧 Explore: Find config</summary>") {
+		t.Error("subagent should have combined block with robot emoji")
 	}
 
-	// The tool_result should inherit the collapse and summary from tool_use
-	if !strings.Contains(result, "<summary>✅ Explore: Find config</summary>") {
-		t.Error("tool_result should inherit summary from tool_use across entries")
+	// Should have Prompt and Result sections
+	if !strings.Contains(result, "**Prompt:**") {
+		t.Error("expected Prompt section in combined block")
+	}
+	if !strings.Contains(result, "**Result:**") {
+		t.Error("expected Result section in combined block")
 	}
 }
 
@@ -1031,6 +1139,7 @@ func TestRenderMarkdown_ToolResultInUserEntry(t *testing.T) {
 
 func TestRenderMarkdown_MultipleToolsMatching(t *testing.T) {
 	// Multiple tool_use/result pairs should match correctly
+	// Subagent Task combines, Skill renders separately
 	entries := []Entry{
 		{
 			Type: "assistant",
@@ -1044,6 +1153,7 @@ func TestRenderMarkdown_MultipleToolsMatching(t *testing.T) {
 						Input: map[string]any{
 							"subagent_type": "Plan",
 							"description":   "Create plan",
+							"prompt":        "Create a plan",
 						},
 					},
 					{
@@ -1081,10 +1191,11 @@ func TestRenderMarkdown_MultipleToolsMatching(t *testing.T) {
 
 	result := RenderMarkdown(entries, RenderOptions{})
 
-	// Each result should match its corresponding tool_use
-	if !strings.Contains(result, "<summary>✅ Plan: Create plan</summary>") {
-		t.Error("first tool_result should match first tool_use")
+	// Subagent Task result should be combined with robot emoji
+	if !strings.Contains(result, "<summary>✅ 🤖🔧 Plan: Create plan</summary>") {
+		t.Error("subagent Task result should have robot emoji")
 	}
+	// Skill result should match its tool_use (no robot emoji, rendered separately)
 	if !strings.Contains(result, "<summary>✅ Skill: rune</summary>") {
 		t.Error("second tool_result should match second tool_use")
 	}
@@ -1093,7 +1204,7 @@ func TestRenderMarkdown_MultipleToolsMatching(t *testing.T) {
 // Tests for Markdown output format (Task 15)
 
 func TestRenderMarkdown_DetailsFormat(t *testing.T) {
-	// Verify the <details>/<summary> structure is correct
+	// Verify the <details>/<summary> structure is correct for Skill (non-subagent)
 	entries := []Entry{
 		{
 			Type: "assistant",
@@ -1102,11 +1213,10 @@ func TestRenderMarkdown_DetailsFormat(t *testing.T) {
 				Content: []ContentItem{
 					{
 						Type: "tool_use",
-						Name: "Task",
+						Name: "Skill",
 						ID:   "format_test",
 						Input: map[string]any{
-							"subagent_type": "Explore",
-							"description":   "Test format",
+							"skill": "next-task",
 						},
 					},
 				},
@@ -1118,7 +1228,7 @@ func TestRenderMarkdown_DetailsFormat(t *testing.T) {
 
 	// Verify structure: <details>\n<summary>...</summary>\n\n...content...\n</details>
 	expectedStructure := `<details>
-<summary>🔧 Explore: Test format</summary>
+<summary>🔧 Skill: next-task</summary>
 
 ` + "```json"
 
@@ -1138,7 +1248,8 @@ func TestRenderMarkdown_DetailsFormat(t *testing.T) {
 }
 
 func TestRenderMarkdown_UncollapsedFormat(t *testing.T) {
-	// Verify that uncollapsed tools use the heading format
+	// In the new combined format, all non-Task/Skill tools use collapsible blocks
+	// when matched with their results
 	entries := []Entry{
 		{
 			Type: "assistant",
@@ -1147,9 +1258,9 @@ func TestRenderMarkdown_UncollapsedFormat(t *testing.T) {
 				Content: []ContentItem{
 					{
 						Type:  "tool_use",
-						Name:  "Read",
+						Name:  "Bash",
 						ID:    "uncollapsed_test",
-						Input: map[string]any{"file_path": "/tmp/test.txt"},
+						Input: map[string]any{"command": "ls"},
 					},
 				},
 			},
@@ -1172,26 +1283,18 @@ func TestRenderMarkdown_UncollapsedFormat(t *testing.T) {
 
 	result := RenderMarkdown(entries, RenderOptions{})
 
-	// Verify tool_use uses heading format (not details)
-	if !strings.Contains(result, "### 🔧 Tool: `Read`") {
-		t.Error("uncollapsed tool_use should use heading format")
+	// Combined tool call + result uses collapsible format
+	if !strings.Contains(result, "<details>") {
+		t.Error("combined tool block should use details")
 	}
-
-	// Verify tool_result uses heading format (not details)
-	if !strings.Contains(result, "#### ✅ Tool Result") {
-		t.Error("uncollapsed tool_result should use heading format")
+	if !strings.Contains(result, "Bash") {
+		t.Error("expected tool name in output")
 	}
-
-	// Should NOT have details tags for these short items
-	// (Note: we need to check carefully since thinking blocks also use <details>)
-	lines := strings.SplitSeq(result, "\n")
-	for line := range lines {
-		if strings.Contains(line, "<details>") && !strings.Contains(result, "💭 Thinking") {
-			// If we find a details tag and there's no thinking block, it's an error
-			if strings.Contains(line, "Tool") || strings.Contains(line, "Read") {
-				t.Error("short tool should not use details tag")
-			}
-		}
+	if !strings.Contains(result, "**Command:**") {
+		t.Error("expected Command section")
+	}
+	if !strings.Contains(result, "**Result:**") {
+		t.Error("expected Result section")
 	}
 }
 
@@ -1259,9 +1362,9 @@ func TestBackwardCompat_NoIDFields(t *testing.T) {
 				Content: []ContentItem{
 					{
 						Type:  "tool_use",
-						Name:  "Read",
+						Name:  "Bash",
 						ID:    "", // Empty ID (old format)
-						Input: map[string]any{"file_path": "/tmp/test.txt"},
+						Input: map[string]any{"command": "ls"},
 					},
 				},
 			},
@@ -1274,7 +1377,7 @@ func TestBackwardCompat_NoIDFields(t *testing.T) {
 					{
 						Type:      "tool_result",
 						ToolUseID: "", // Empty ToolUseID (old format)
-						Content:   "File contents here",
+						Content:   "File list here",
 						IsError:   false,
 					},
 				},
@@ -1285,28 +1388,21 @@ func TestBackwardCompat_NoIDFields(t *testing.T) {
 	// Should render without panicking
 	result := RenderMarkdown(entries, RenderOptions{})
 
-	// Tool use should render normally (uncollapsed since it's short)
-	if !strings.Contains(result, "### 🔧 Tool: `Read`") {
-		t.Error("expected tool_use to render with heading format")
+	// With no matching IDs, tool_use stores metadata but doesn't render
+	// tool_result renders as standalone collapsible with "Tool Result" summary
+	if !strings.Contains(result, "<details>") {
+		t.Error("expected unmatched tool_result to use collapsible format")
 	}
-
-	// Tool result should render normally (uncollapsed since unmatched and short)
-	if !strings.Contains(result, "#### ✅ Tool Result") {
-		t.Error("expected tool_result to render with heading format")
+	if !strings.Contains(result, "Tool Result") {
+		t.Error("expected unmatched tool_result to have 'Tool Result' summary")
 	}
-
-	// Content should be present
-	if !strings.Contains(result, "file_path") {
-		t.Error("expected tool input to be rendered")
-	}
-	if !strings.Contains(result, "File contents here") {
+	if !strings.Contains(result, "File list here") {
 		t.Error("expected tool result content to be rendered")
 	}
 }
 
 func TestBackwardCompat_TruncationPreserved(t *testing.T) {
-	// Test that MaxToolInputRunes and MaxToolResultRunes truncation still works
-	// within collapsed blocks
+	// Test that long content is NOT truncated (truncation removed with <details> blocks)
 	longInput := strings.Repeat("x", MaxToolInputRunes+500)
 	longResult := strings.Repeat("y", MaxToolResultRunes+500)
 
@@ -1343,25 +1439,19 @@ func TestBackwardCompat_TruncationPreserved(t *testing.T) {
 
 	result := RenderMarkdown(entries, RenderOptions{})
 
-	// Should be collapsed (long input exceeds threshold)
+	// Should be collapsed (combined tool block)
 	if !strings.Contains(result, "<details>") {
-		t.Error("long tool should be collapsed")
+		t.Error("combined tool block should be collapsed")
 	}
 
-	// Should be truncated (contains truncation marker)
-	// The truncation marker should appear at least twice (once for input, once for result)
-	truncationCount := strings.Count(result, "... (truncated)")
-	if truncationCount < 2 {
-		t.Errorf("expected at least 2 truncation markers, got %d", truncationCount)
+	// Should NOT be truncated (no truncation marker)
+	if strings.Contains(result, "... (truncated)") {
+		t.Error("content should not be truncated with <details> blocks")
 	}
 
-	// Verify the FULL content is NOT present (truncation actually happened)
-	// The full input would have MaxToolInputRunes+500 x's
-	if strings.Contains(result, longInput) {
-		t.Error("full input should be truncated, but it appears in result")
-	}
-	if strings.Contains(result, longResult) {
-		t.Error("full result should be truncated, but it appears in result")
+	// Verify the FULL result content IS present (no truncation)
+	if !strings.Contains(result, longResult) {
+		t.Error("full result should be present, not truncated")
 	}
 }
 

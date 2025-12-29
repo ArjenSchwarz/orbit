@@ -9,6 +9,44 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Markdown-to-HTML conversion for HTML transcript renderer using goldmark library:
+  - Assistant text messages render markdown formatting (headers, lists, code blocks, etc.)
+  - Subagent results render as formatted HTML instead of raw text
+  - Thinking blocks render with markdown formatting
+  - Added `.markdown-content` CSS class with styling for all markdown elements
+  - GitHub Flavored Markdown (GFM) support for tables, strikethrough, autolinks
+- Subagent rendering with robot emoji prefix (🤖🔧) for Task tools with `subagent_type`:
+  - Combined Prompt/Result display in single collapsible block
+  - JSON array result parsing to extract text content from `[{"text":"..."}]` format
+  - Deferred rendering pattern - tool_use stores metadata, renders at tool_result
+- Combined tool call rendering for non-Task/Skill tools:
+  - Tool input and result displayed together in single collapsible block
+  - Tool-specific input formatting (Bash shows command, Write/Edit shows file path, etc.)
+  - Empty assistant sections prevented when only deferred tools present
+- Read tool grouping: consecutive Read-only entries combined into single assistant block
+- Context-aware filtering of local command entries in parser:
+  - Meta entries (`isMeta: true`) always filtered with UUID tracking
+  - Command entries (`<command-name>`) filtered when parentUuid points to filtered meta
+  - Local command stdout filtered when parentUuid points to filtered command
+- `UUID` and `ParentUUID` fields added to `Entry` struct for context-aware filtering
+- Distinct background colors for user and assistant messages in HTML output:
+  - User messages: light blue (`#e7f1ff` light / `#1e3a5f` dark)
+  - Assistant messages: light purple (`#f3e8ff` light / `#2d1f3d` dark)
+- Thinking block styling with amber background and left border (no longer collapsible)
+- `grouping.go` with entry preprocessing for Read tool grouping
+- `extractSubagentResultText()` function for parsing subagent JSON array results
+
+### Changed
+
+- Removed text truncation from transcript rendering (content preserved in full within `<details>` blocks)
+- Reduced HTML output spacing (margins, padding) for more compact layout
+- Thinking blocks changed from collapsible `<details>` to always-visible div with distinct styling
+- Updated backward compatibility tests to verify content is NOT truncated
+
+### Fixed
+
+- Subagent results no longer display as raw JSON arrays `[{"text":"..."}]`
+
 - Collapsible `<details>` blocks for Task and Skill tools in Markdown and HTML transcript renderers:
   - Task tools always collapse with summary format "🔧 {subagent_type}: {description}"
   - Skill tools always collapse with summary format "🔧 Skill: {skill_name}"

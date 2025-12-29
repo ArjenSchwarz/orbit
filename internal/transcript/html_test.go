@@ -115,21 +115,23 @@ func TestRenderHTML_ThinkingBlock(t *testing.T) {
 
 	result := RenderHTML(entries, RenderOptions{})
 
-	if !strings.Contains(result, `<details class="thinking">`) {
-		t.Error("expected thinking details tag")
+	if !strings.Contains(result, `<div class="thinking-block">`) {
+		t.Error("expected thinking block div")
 	}
-	if !strings.Contains(result, "<summary>💭 Thinking</summary>") {
-		t.Error("expected thinking summary")
+	if !strings.Contains(result, `<div class="thinking-header">💭 Thinking</div>`) {
+		t.Error("expected thinking header")
 	}
 	if !strings.Contains(result, "Let me think about this...") {
 		t.Error("expected thinking content")
 	}
-	if !strings.Contains(result, "</details>") {
-		t.Error("expected closing details tag")
+	if !strings.Contains(result, `<div class="thinking-content markdown-content">`) {
+		t.Error("expected thinking content div with markdown class")
 	}
 }
 
 func TestRenderHTML_ToolUse(t *testing.T) {
+	// Test that non-Task/Skill tool_use stores metadata but doesn't render until result
+	// Use Bash tool with matching tool_result to test combined rendering
 	entries := []Entry{
 		{
 			Type: "assistant",
@@ -138,8 +140,23 @@ func TestRenderHTML_ToolUse(t *testing.T) {
 				Content: []ContentItem{
 					{
 						Type:  "tool_use",
-						Name:  "Read",
-						Input: map[string]any{"file_path": "/tmp/test.txt"},
+						Name:  "Bash",
+						ID:    "bash-test",
+						Input: map[string]any{"command": "echo hello", "description": "Print hello"},
+					},
+				},
+			},
+		},
+		{
+			Type: "user",
+			Message: &Message{
+				Role: "user",
+				Content: []ContentItem{
+					{
+						Type:      "tool_result",
+						ToolUseID: "bash-test",
+						Content:   "hello",
+						IsError:   false,
 					},
 				},
 			},
@@ -148,24 +165,26 @@ func TestRenderHTML_ToolUse(t *testing.T) {
 
 	result := RenderHTML(entries, RenderOptions{})
 
-	if !strings.Contains(result, `class="tool-use"`) {
-		t.Error("expected tool-use class")
+	// Combined tool call + result should be in a collapsible block
+	if !strings.Contains(result, `<details class="tool-collapsible">`) {
+		t.Error("expected combined tool block to use details.tool-collapsible")
 	}
 	if !strings.Contains(result, "🔧") {
 		t.Error("expected tool icon")
 	}
-	if !strings.Contains(result, "<code>Read</code>") {
-		t.Error("expected tool name in code tag")
+	if !strings.Contains(result, "Bash: Print hello") {
+		t.Error("expected tool name and description in summary")
 	}
-	if !strings.Contains(result, "file_path") {
-		t.Error("expected input content")
+	if !strings.Contains(result, "Command:") {
+		t.Error("expected Command input section")
 	}
-	if !strings.Contains(result, "<pre><code>") {
-		t.Error("expected code block")
+	if !strings.Contains(result, "Result:") {
+		t.Error("expected Result section")
 	}
 }
 
 func TestRenderHTML_ToolResultSuccess(t *testing.T) {
+	// Unmatched tool_result (legacy/standalone) renders in collapsible block
 	entries := []Entry{
 		{
 			Type: "assistant",
@@ -180,14 +199,15 @@ func TestRenderHTML_ToolResultSuccess(t *testing.T) {
 
 	result := RenderHTML(entries, RenderOptions{})
 
-	if !strings.Contains(result, `class="tool-result"`) {
-		t.Error("expected tool-result class")
-	}
-	if !strings.Contains(result, `class="tool-result-header success"`) {
-		t.Error("expected success header class")
+	// Unmatched results render in collapsible blocks
+	if !strings.Contains(result, `<details class="tool-collapsible">`) {
+		t.Error("expected unmatched tool_result to use details.tool-collapsible")
 	}
 	if !strings.Contains(result, "✅") {
 		t.Error("expected success icon")
+	}
+	if !strings.Contains(result, "Tool Result") {
+		t.Error("expected Tool Result summary")
 	}
 	if !strings.Contains(result, "File contents here") {
 		t.Error("expected result content")
@@ -195,6 +215,7 @@ func TestRenderHTML_ToolResultSuccess(t *testing.T) {
 }
 
 func TestRenderHTML_ToolResultError(t *testing.T) {
+	// Unmatched error tool_result renders in collapsible block with error class
 	entries := []Entry{
 		{
 			Type: "assistant",
@@ -209,11 +230,15 @@ func TestRenderHTML_ToolResultError(t *testing.T) {
 
 	result := RenderHTML(entries, RenderOptions{})
 
-	if !strings.Contains(result, `class="tool-result-header error"`) {
-		t.Error("expected error header class")
+	// Error results have error class on the collapsible
+	if !strings.Contains(result, `<details class="tool-collapsible error">`) {
+		t.Error("expected error class on collapsible")
 	}
 	if !strings.Contains(result, "❌") {
 		t.Error("expected error icon")
+	}
+	if !strings.Contains(result, "Tool Error") {
+		t.Error("expected Tool Error summary")
 	}
 	if !strings.Contains(result, "Error: file not found") {
 		t.Error("expected error content")
@@ -419,10 +444,11 @@ func TestRenderHTML_TruncationRuneBoundary(t *testing.T) {
 		t.Fatalf("ParseJSONL returned error: %v", err)
 	}
 
-	html := RenderHTML(parseResult.Entries, RenderOptions{})
+	htmlResult := RenderHTML(parseResult.Entries, RenderOptions{})
 
 	// The output should be valid UTF-8 (no broken characters)
-	if !strings.Contains(html, "🔧") {
+	// Check for common emoji that should be preserved
+	if !strings.Contains(htmlResult, "🤖") && !strings.Contains(htmlResult, "✅") {
 		t.Error("expected valid emoji in output")
 	}
 }
@@ -467,6 +493,7 @@ func TestRenderHTML_MultipleMessages(t *testing.T) {
 }
 
 func TestRenderHTML_TaskToolCollapses(t *testing.T) {
+	// Subagent Task tools defer rendering to tool_result (combined block)
 	entries := []Entry{
 		{
 			Type: "assistant",
@@ -480,7 +507,22 @@ func TestRenderHTML_TaskToolCollapses(t *testing.T) {
 						Input: map[string]any{
 							"subagent_type": "Explore",
 							"description":   "Search for config files",
+							"prompt":        "Find all configuration files",
 						},
+					},
+				},
+			},
+		},
+		{
+			Type: "user",
+			Message: &Message{
+				Role: "user",
+				Content: []ContentItem{
+					{
+						Type:      "tool_result",
+						ToolUseID: "task-123",
+						Content:   "Found config files",
+						IsError:   false,
 					},
 				},
 			},
@@ -490,13 +532,19 @@ func TestRenderHTML_TaskToolCollapses(t *testing.T) {
 	result := RenderHTML(entries, RenderOptions{})
 
 	if !strings.Contains(result, `<details class="tool-collapsible">`) {
-		t.Error("expected Task tool to use details.tool-collapsible")
+		t.Error("expected subagent Task tool to use details.tool-collapsible")
 	}
 	if !strings.Contains(result, "Explore: Search for config files") {
 		t.Error("expected summary to contain subagent_type and description")
 	}
-	if !strings.Contains(result, "🔧") {
-		t.Error("expected tool icon in summary")
+	if !strings.Contains(result, "🤖🔧") {
+		t.Error("expected robot and tool icons in summary for subagent")
+	}
+	if !strings.Contains(result, "<strong>Prompt:</strong>") {
+		t.Error("expected Prompt section in subagent block")
+	}
+	if !strings.Contains(result, "<strong>Result:</strong>") {
+		t.Error("expected Result section in subagent block")
 	}
 }
 
@@ -529,6 +577,8 @@ func TestRenderHTML_SkillToolCollapses(t *testing.T) {
 }
 
 func TestRenderHTML_ShortToolNoCollapse(t *testing.T) {
+	// In the new combined format, all non-Task/Skill tools use collapsible blocks
+	// even for short content, because they combine tool_use + tool_result
 	entries := []Entry{
 		{
 			Type: "assistant",
@@ -537,9 +587,23 @@ func TestRenderHTML_ShortToolNoCollapse(t *testing.T) {
 				Content: []ContentItem{
 					{
 						Type:  "tool_use",
-						Name:  "Read",
-						ID:    "read-123",
-						Input: map[string]any{"file_path": "/tmp/test.txt"},
+						Name:  "Bash",
+						ID:    "bash-123",
+						Input: map[string]any{"command": "echo hello"},
+					},
+				},
+			},
+		},
+		{
+			Type: "user",
+			Message: &Message{
+				Role: "user",
+				Content: []ContentItem{
+					{
+						Type:      "tool_result",
+						ToolUseID: "bash-123",
+						Content:   "hello",
+						IsError:   false,
 					},
 				},
 			},
@@ -548,17 +612,17 @@ func TestRenderHTML_ShortToolNoCollapse(t *testing.T) {
 
 	result := RenderHTML(entries, RenderOptions{})
 
-	// Short tool input should use div.tool-use, not details
-	if strings.Contains(result, `<details class="tool-collapsible">`) {
-		t.Error("short tool input should not use details.tool-collapsible")
+	// Combined tool call + result always uses collapsible block
+	if !strings.Contains(result, `<details class="tool-collapsible">`) {
+		t.Error("expected combined tool block to use details.tool-collapsible")
 	}
-	if !strings.Contains(result, `class="tool-use"`) {
-		t.Error("expected div.tool-use for short tool input")
+	if !strings.Contains(result, "Bash") {
+		t.Error("expected tool name in summary")
 	}
 }
 
 func TestRenderHTML_LongToolCollapses(t *testing.T) {
-	// Create input exceeding 500 runes threshold
+	// All non-Task/Skill tools now use combined collapsible blocks
 	longContent := strings.Repeat("a", 600)
 	entries := []Entry{
 		{
@@ -570,7 +634,21 @@ func TestRenderHTML_LongToolCollapses(t *testing.T) {
 						Type:  "tool_use",
 						Name:  "Write",
 						ID:    "write-123",
-						Input: map[string]any{"content": longContent},
+						Input: map[string]any{"content": longContent, "file_path": "/path/to/file.txt"},
+					},
+				},
+			},
+		},
+		{
+			Type: "user",
+			Message: &Message{
+				Role: "user",
+				Content: []ContentItem{
+					{
+						Type:      "tool_result",
+						ToolUseID: "write-123",
+						Content:   "File written successfully",
+						IsError:   false,
 					},
 				},
 			},
@@ -580,9 +658,9 @@ func TestRenderHTML_LongToolCollapses(t *testing.T) {
 	result := RenderHTML(entries, RenderOptions{})
 
 	if !strings.Contains(result, `<details class="tool-collapsible">`) {
-		t.Error("long tool input should use details.tool-collapsible")
+		t.Error("combined tool block should use details.tool-collapsible")
 	}
-	if !strings.Contains(result, "Tool: Write") {
+	if !strings.Contains(result, "Write") {
 		t.Error("expected summary to contain tool name")
 	}
 }
@@ -603,7 +681,7 @@ func TestRenderHTML_CSSIncluded(t *testing.T) {
 }
 
 func TestRenderHTML_ResultCollapses(t *testing.T) {
-	// Tool result for a Task tool should collapse
+	// Subagent Task tools combine tool_use and tool_result into a single block
 	entries := []Entry{
 		{
 			Type: "assistant",
@@ -617,6 +695,7 @@ func TestRenderHTML_ResultCollapses(t *testing.T) {
 						Input: map[string]any{
 							"subagent_type": "Explore",
 							"description":   "Find files",
+							"prompt":        "Find all files matching the pattern",
 						},
 					},
 				},
@@ -640,18 +719,22 @@ func TestRenderHTML_ResultCollapses(t *testing.T) {
 
 	result := RenderHTML(entries, RenderOptions{})
 
-	// Count details.tool-collapsible occurrences (should be 2: one for tool_use, one for tool_result)
+	// Subagent combines into 1 block with both Prompt and Result sections
 	detailsCount := strings.Count(result, `<details class="tool-collapsible">`)
-	if detailsCount != 2 {
-		t.Errorf("expected 2 collapsible blocks, got %d", detailsCount)
+	if detailsCount != 1 {
+		t.Errorf("expected 1 combined collapsible block for subagent, got %d", detailsCount)
 	}
 	if !strings.Contains(result, "✅") {
 		t.Error("expected success icon in result")
 	}
+	if !strings.Contains(result, "🤖🔧") {
+		t.Error("expected robot and tool icons for subagent")
+	}
 }
 
 func TestRenderHTML_ShortResultNoCollapse(t *testing.T) {
-	// Short tool result for non-Task/Skill tool should not collapse
+	// In the new combined format, all non-Task/Skill tools use collapsible blocks
+	// The combined block contains both the tool call and result
 	entries := []Entry{
 		{
 			Type: "assistant",
@@ -660,9 +743,9 @@ func TestRenderHTML_ShortResultNoCollapse(t *testing.T) {
 				Content: []ContentItem{
 					{
 						Type:  "tool_use",
-						Name:  "Read",
-						ID:    "read-456",
-						Input: map[string]any{"file_path": "/tmp/test.txt"},
+						Name:  "Bash",
+						ID:    "bash-456",
+						Input: map[string]any{"command": "echo hello"},
 					},
 				},
 			},
@@ -674,7 +757,7 @@ func TestRenderHTML_ShortResultNoCollapse(t *testing.T) {
 				Content: []ContentItem{
 					{
 						Type:      "tool_result",
-						ToolUseID: "read-456",
+						ToolUseID: "bash-456",
 						Content:   "Short content",
 						IsError:   false,
 					},
@@ -685,14 +768,14 @@ func TestRenderHTML_ShortResultNoCollapse(t *testing.T) {
 
 	result := RenderHTML(entries, RenderOptions{})
 
-	// The tool_result should use div.tool-result, not details
-	if !strings.Contains(result, `class="tool-result"`) {
-		t.Error("expected div.tool-result for short result")
+	// Combined tool call + result uses collapsible block
+	if !strings.Contains(result, `<details class="tool-collapsible">`) {
+		t.Error("expected combined tool block to use details.tool-collapsible")
 	}
-	// Should have exactly 0 collapsible blocks (Read tool is short, result is short)
+	// Should have exactly 1 collapsible block (the combined tool call + result)
 	detailsCount := strings.Count(result, `<details class="tool-collapsible">`)
-	if detailsCount != 0 {
-		t.Errorf("expected 0 collapsible blocks for short content, got %d", detailsCount)
+	if detailsCount != 1 {
+		t.Errorf("expected 1 collapsible block for combined tool call + result, got %d", detailsCount)
 	}
 }
 
@@ -798,11 +881,12 @@ func TestRenderHTML_ResultErrorWithCollapse(t *testing.T) {
 // Golden file integration tests for collapsible blocks (HTML)
 
 func TestRenderHTML_GoldenCollapsible_TaskTool(t *testing.T) {
+	// Subagent Task tools now render with 🤖🔧 and Prompt/Result sections
 	testGoldenCollapsibleHTML(t, "task_tool", []string{
 		`<details class="tool-collapsible">`,
-		`<summary><span class="icon">🔧</span> Explore: Search for config files</summary>`,
-		`<summary><span class="icon">✅</span> Explore: Search for config files</summary>`,
-		"subagent_type",
+		`🤖🔧 Explore: Search for config files`,
+		`<strong>Prompt:</strong>`,
+		`<strong>Result:</strong>`,
 		"Found 3 config files",
 	})
 }
@@ -817,20 +901,23 @@ func TestRenderHTML_GoldenCollapsible_SkillTool(t *testing.T) {
 }
 
 func TestRenderHTML_GoldenCollapsible_LongOutput(t *testing.T) {
+	// Bash tool with long input - now uses combined collapsible format
 	testGoldenCollapsibleHTML(t, "long_output", []string{
 		`<details class="tool-collapsible">`,
-		`<summary><span class="icon">🔧</span> Tool: Read</summary>`,
-		`<summary><span class="icon">✅</span> Tool: Read</summary>`,
+		"🔧 Bash:",
+		"Command:",
+		"Result:",
 		"Line 1: This is a very long file content",
 	})
 }
 
 func TestRenderHTML_GoldenCollapsible_ShortOutput(t *testing.T) {
+	// Bash tool with short input - now uses combined collapsible format (same as long)
 	testGoldenCollapsibleHTML(t, "short_output", []string{
-		`class="tool-use"`,
-		`<code>Read</code>`,
-		`class="tool-result"`,
-		`class="tool-result-header success"`,
+		`<details class="tool-collapsible">`,
+		"🔧 Bash",
+		"Command:",
+		"Result:",
 		"Hello, World!",
 	})
 }
@@ -866,6 +953,7 @@ func testGoldenCollapsibleHTML(t *testing.T, name string, expectedPatterns []str
 
 func TestBackwardCompat_NoIDFields_HTML(t *testing.T) {
 	// Test that old JSONL without id/tool_use_id fields renders correctly
+	// When IDs don't match, tool_result renders as standalone collapsible
 	entries := []Entry{
 		{
 			Type: "assistant",
@@ -874,9 +962,9 @@ func TestBackwardCompat_NoIDFields_HTML(t *testing.T) {
 				Content: []ContentItem{
 					{
 						Type:  "tool_use",
-						Name:  "Read",
+						Name:  "Bash",
 						ID:    "", // Empty ID (old format)
-						Input: map[string]any{"file_path": "/tmp/test.txt"},
+						Input: map[string]any{"command": "echo hello"},
 					},
 				},
 			},
@@ -889,7 +977,7 @@ func TestBackwardCompat_NoIDFields_HTML(t *testing.T) {
 					{
 						Type:      "tool_result",
 						ToolUseID: "", // Empty ToolUseID (old format)
-						Content:   "File contents here",
+						Content:   "hello",
 						IsError:   false,
 					},
 				},
@@ -900,25 +988,21 @@ func TestBackwardCompat_NoIDFields_HTML(t *testing.T) {
 	// Should render without panicking
 	result := RenderHTML(entries, RenderOptions{})
 
-	// Tool use should render with div.tool-use (short input)
-	if !strings.Contains(result, `class="tool-use"`) {
-		t.Error("expected tool_use with div.tool-use")
+	// With no matching IDs, tool_use stores metadata but doesn't render
+	// tool_result renders as standalone collapsible with "Tool Result" summary
+	if !strings.Contains(result, `<details class="tool-collapsible">`) {
+		t.Error("expected unmatched tool_result to use details.tool-collapsible")
 	}
-	if !strings.Contains(result, `<code>Read</code>`) {
-		t.Error("expected tool name in code tag")
+	if !strings.Contains(result, "Tool Result") {
+		t.Error("expected unmatched tool_result to have 'Tool Result' summary")
 	}
-
-	// Tool result should render with div.tool-result (short unmatched)
-	if !strings.Contains(result, `class="tool-result"`) {
-		t.Error("expected tool_result with div.tool-result")
-	}
-	if !strings.Contains(result, "File contents here") {
+	if !strings.Contains(result, "hello") {
 		t.Error("expected tool result content to be rendered")
 	}
 }
 
 func TestBackwardCompat_TruncationPreserved_HTML(t *testing.T) {
-	// Test that truncation still works within collapsed blocks
+	// Test that long content is NOT truncated (truncation removed with <details> blocks)
 	longInput := strings.Repeat("x", MaxToolInputRunes+500)
 	longResult := strings.Repeat("y", MaxToolResultRunes+500)
 
@@ -960,9 +1044,14 @@ func TestBackwardCompat_TruncationPreserved_HTML(t *testing.T) {
 		t.Error("long tool should be collapsed")
 	}
 
-	// Should be truncated
-	if !strings.Contains(result, "... (truncated)") {
-		t.Error("long content should be truncated")
+	// Should NOT be truncated (no truncation marker)
+	if strings.Contains(result, "... (truncated)") {
+		t.Error("content should not be truncated with <details> blocks")
+	}
+
+	// Verify the FULL result content IS present (no truncation)
+	if !strings.Contains(result, longResult) {
+		t.Error("full result should be present, not truncated")
 	}
 }
 
