@@ -1135,3 +1135,277 @@ func TestPostCompletionFileName_WithSubdirs(t *testing.T) {
 		t.Errorf("got filename %q, want %q", fileName, expected)
 	}
 }
+
+func TestSortedPhaseMap(t *testing.T) {
+	sessions := []SessionEntry{
+		{Phase: 3, SessionID: "session-3"},
+		{Phase: 1, SessionID: "session-1a"},
+		{Phase: 1, SessionID: "session-1b"},
+		{Phase: 0, SessionID: "post-completion"}, // Phase 0 should be excluded
+		{Phase: 2, SessionID: "session-2"},
+	}
+
+	phaseMap, phases := sortedPhaseMap(sessions)
+
+	// Check phases are sorted
+	if len(phases) != 3 {
+		t.Errorf("got %d phases, want 3", len(phases))
+	}
+	if phases[0] != 1 || phases[1] != 2 || phases[2] != 3 {
+		t.Errorf("phases not sorted correctly: got %v, want [1 2 3]", phases)
+	}
+
+	// Check phase 0 is excluded
+	if _, found := phaseMap[0]; found {
+		t.Error("phase 0 should be excluded from phaseMap")
+	}
+
+	// Check phase 1 has 2 sessions
+	if len(phaseMap[1]) != 2 {
+		t.Errorf("phase 1 should have 2 sessions, got %d", len(phaseMap[1]))
+	}
+}
+
+func TestSortedPhaseMap_EmptySessions(t *testing.T) {
+	phaseMap, phases := sortedPhaseMap([]SessionEntry{})
+
+	if len(phases) != 0 {
+		t.Errorf("got %d phases, want 0", len(phases))
+	}
+	if len(phaseMap) != 0 {
+		t.Errorf("got %d entries in phaseMap, want 0", len(phaseMap))
+	}
+}
+
+func TestWriteRunIndex_CreatesFiles(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	m, err := NewManager(tmpDir, "test-branch", "/tmp/test-project")
+	if err != nil {
+		t.Fatalf("NewManager failed: %v", err)
+	}
+
+	// Add some sessions
+	result := &claude.SessionResult{
+		SessionID: "test-session-123",
+		Cost:      0.15,
+		Duration:  45 * time.Second,
+		NumTurns:  5,
+		Output:    "Test output",
+		IsError:   false,
+		RawJSON:   []byte(`{"session_id": "test-session-123"}`),
+	}
+	startTime := time.Now().Add(-45 * time.Second)
+	if err := m.SaveSession(1, result, startTime); err != nil {
+		t.Fatalf("SaveSession failed: %v", err)
+	}
+
+	// Complete the run (which should write the index files)
+	if err := m.Complete(); err != nil {
+		t.Fatalf("Complete failed: %v", err)
+	}
+
+	// Check index.md was created
+	mdPath := filepath.Join(m.SessionDir(), "index.md")
+	if _, err := os.Stat(mdPath); os.IsNotExist(err) {
+		t.Error("index.md was not created")
+	}
+
+	// Check index.html was created
+	htmlPath := filepath.Join(m.SessionDir(), "index.html")
+	if _, err := os.Stat(htmlPath); os.IsNotExist(err) {
+		t.Error("index.html was not created")
+	}
+}
+
+func TestWriteRunIndex_OnFail(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	m, err := NewManager(tmpDir, "test-branch", "/tmp/test-project")
+	if err != nil {
+		t.Fatalf("NewManager failed: %v", err)
+	}
+
+	// Fail the run (which should also write the index files)
+	testErr := os.ErrNotExist
+	if err := m.Fail(testErr); err != nil {
+		t.Fatalf("Fail failed: %v", err)
+	}
+
+	// Check index.md was created even on failure
+	mdPath := filepath.Join(m.SessionDir(), "index.md")
+	if _, err := os.Stat(mdPath); os.IsNotExist(err) {
+		t.Error("index.md was not created on Fail")
+	}
+
+	// Check index.html was created even on failure
+	htmlPath := filepath.Join(m.SessionDir(), "index.html")
+	if _, err := os.Stat(htmlPath); os.IsNotExist(err) {
+		t.Error("index.html was not created on Fail")
+	}
+}
+
+func TestGenerateMarkdownIndex_Content(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	m, err := NewManager(tmpDir, "feature/test-branch", "/tmp/test-project")
+	if err != nil {
+		t.Fatalf("NewManager failed: %v", err)
+	}
+
+	// Add a session
+	m.summary.Sessions = []SessionEntry{
+		{
+			Phase:      1,
+			SessionID:  "session-1",
+			DurationMS: 45000,
+			CostUSD:    0.15,
+			NumTurns:   5,
+			RunNumber:  1,
+		},
+	}
+	m.summary.PhasesCompleted = 1
+	m.summary.TotalCostUSD = 0.15
+	now := time.Now()
+	m.summary.CompletedAt = &now
+
+	markdown := m.generateMarkdownIndex()
+
+	// Check key elements are present
+	if !containsString(markdown, "# Orbit Run Summary") {
+		t.Error("markdown should contain title")
+	}
+	if !containsString(markdown, "feature/test-branch") {
+		t.Error("markdown should contain branch name")
+	}
+	if !containsString(markdown, "### Phase 1") {
+		t.Error("markdown should contain phase heading")
+	}
+	if !containsString(markdown, "phase-1-transcript.md") {
+		t.Error("markdown should contain link to transcript.md")
+	}
+	if !containsString(markdown, "phase-1-transcript.html") {
+		t.Error("markdown should contain link to transcript.html")
+	}
+}
+
+func TestGenerateHTMLIndex_Content(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	m, err := NewManager(tmpDir, "feature/test-branch", "/tmp/test-project")
+	if err != nil {
+		t.Fatalf("NewManager failed: %v", err)
+	}
+
+	// Add a session
+	m.summary.Sessions = []SessionEntry{
+		{
+			Phase:      1,
+			SessionID:  "session-1",
+			DurationMS: 45000,
+			CostUSD:    0.15,
+			NumTurns:   5,
+			RunNumber:  1,
+		},
+	}
+	m.summary.PhasesCompleted = 1
+	m.summary.TotalCostUSD = 0.15
+
+	html := m.generateHTMLIndex()
+
+	// Check key elements are present
+	if !containsString(html, "<!DOCTYPE html>") {
+		t.Error("HTML should contain doctype")
+	}
+	if !containsString(html, "<title>Orbit Run Summary</title>") {
+		t.Error("HTML should contain title")
+	}
+	if !containsString(html, "feature/test-branch") {
+		t.Error("HTML should contain branch name")
+	}
+	if !containsString(html, "Phase 1") {
+		t.Error("HTML should contain phase heading")
+	}
+	if !containsString(html, "phase-1-transcript.html") {
+		t.Error("HTML should contain link to transcript.html")
+	}
+}
+
+func TestGenerateHTMLIndex_EscapesUserContent(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	m, err := NewManager(tmpDir, "test-branch", "/tmp/test-project")
+	if err != nil {
+		t.Fatalf("NewManager failed: %v", err)
+	}
+
+	// Set potentially dangerous content
+	m.summary.BranchName = "<script>alert('xss')</script>"
+	m.summary.Error = "<img src=x onerror=alert('xss')>"
+	m.summary.Status = "failed"
+
+	html := m.generateHTMLIndex()
+
+	// Check that content is escaped
+	if containsString(html, "<script>alert") {
+		t.Error("branch name should be HTML escaped")
+	}
+	if containsString(html, "<img src=x") {
+		t.Error("error message should be HTML escaped")
+	}
+	// Escaped versions should be present
+	if !containsString(html, "&lt;script&gt;") {
+		t.Error("HTML should contain escaped branch name")
+	}
+	if !containsString(html, "&lt;img") {
+		t.Error("HTML should contain escaped error message")
+	}
+}
+
+func TestGenerateMarkdownIndex_WithPostCompletion(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	m, err := NewManager(tmpDir, "test-branch", "/tmp/test-project")
+	if err != nil {
+		t.Fatalf("NewManager failed: %v", err)
+	}
+
+	// Add sessions including post-completion (phase 0)
+	m.summary.Sessions = []SessionEntry{
+		{Phase: 1, SessionID: "session-1", RunNumber: 1, CostUSD: 0.10},
+		{Phase: 0, SessionID: "post-session", RunNumber: 1, CostUSD: 0.05}, // Post-completion
+	}
+
+	markdown := m.generateMarkdownIndex()
+
+	if !containsString(markdown, "### Post-Completion") {
+		t.Error("markdown should contain post-completion section")
+	}
+	if !containsString(markdown, "post-completion-session-transcript.md") {
+		t.Error("markdown should contain link to post-completion transcript")
+	}
+}
+
+func TestGenerateMarkdownIndex_WithMultipleRuns(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	m, err := NewManager(tmpDir, "test-branch", "/tmp/test-project")
+	if err != nil {
+		t.Fatalf("NewManager failed: %v", err)
+	}
+
+	// Add sessions from multiple runs of the same phase
+	m.summary.Sessions = []SessionEntry{
+		{Phase: 1, SessionID: "session-1a", RunNumber: 1, CostUSD: 0.10, IsError: true},
+		{Phase: 1, SessionID: "session-1b", RunNumber: 2, CostUSD: 0.15},
+	}
+
+	markdown := m.generateMarkdownIndex()
+
+	if !containsString(markdown, "(Run 1)") {
+		t.Error("markdown should indicate run 1")
+	}
+	if !containsString(markdown, "(Run 2)") {
+		t.Error("markdown should indicate run 2")
+	}
+}

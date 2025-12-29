@@ -4,10 +4,12 @@ package logs
 import (
 	"encoding/json"
 	"fmt"
+	"html"
 	"io"
 	"log"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"time"
 
@@ -350,7 +352,15 @@ func (m *Manager) Complete() error {
 	now := time.Now()
 	m.summary.CompletedAt = &now
 	m.summary.Status = "success"
-	return m.writeSummary()
+	if err := m.writeSummary(); err != nil {
+		return err
+	}
+	// Write index files linking to all session transcripts
+	if err := m.writeRunIndex(); err != nil {
+		// Log but don't fail - index is supplementary
+		fmt.Fprintf(os.Stderr, "Warning: could not write run index: %v\n", err)
+	}
+	return nil
 }
 
 // SavePostCompletionSession saves the post-command session with distinct naming.
@@ -489,7 +499,14 @@ func (m *Manager) Fail(err error) error {
 	m.summary.CompletedAt = &now
 	m.summary.Status = "failed"
 	m.summary.Error = err.Error()
-	return m.writeSummary()
+	if writeErr := m.writeSummary(); writeErr != nil {
+		return writeErr
+	}
+	// Write index files even on failure so users can see what happened
+	if indexErr := m.writeRunIndex(); indexErr != nil {
+		fmt.Fprintf(os.Stderr, "Warning: could not write run index: %v\n", indexErr)
+	}
+	return nil
 }
 
 // writeSummary writes the current summary to disk.
@@ -637,6 +654,421 @@ func (m *Manager) generateMarkdownTranscript(srcPath, dstPath string, phase int,
 	return nil
 }
 
+
+// sortedPhaseMap groups sessions by phase and returns sorted phase numbers.
+// Post-completion sessions (phase 0) are excluded from the map.
+func sortedPhaseMap(sessions []SessionEntry) (map[int][]SessionEntry, []int) {
+	phaseMap := make(map[int][]SessionEntry)
+	for _, session := range sessions {
+		if session.Phase > 0 {
+			phaseMap[session.Phase] = append(phaseMap[session.Phase], session)
+		}
+	}
+
+	phases := make([]int, 0, len(phaseMap))
+	for phase := range phaseMap {
+		phases = append(phases, phase)
+	}
+	sort.Ints(phases)
+
+	return phaseMap, phases
+}
+
+// writeRunIndex generates index.md and index.html files that link to all session transcripts.
+func (m *Manager) writeRunIndex() error {
+	// Generate markdown index
+	mdContent := m.generateMarkdownIndex()
+	mdPath := filepath.Join(m.sessionDir, "index.md")
+	if err := os.WriteFile(mdPath, []byte(mdContent), 0644); err != nil {
+		return fmt.Errorf("failed to write index.md: %w", err)
+	}
+
+	// Generate HTML index
+	htmlContent := m.generateHTMLIndex()
+	htmlPath := filepath.Join(m.sessionDir, "index.html")
+	if err := os.WriteFile(htmlPath, []byte(htmlContent), 0644); err != nil {
+		return fmt.Errorf("failed to write index.html: %w", err)
+	}
+
+	return nil
+}
+
+// generateMarkdownIndex creates a markdown index of all session transcripts.
+func (m *Manager) generateMarkdownIndex() string {
+	var sb strings.Builder
+
+	sb.WriteString("# Orbit Run Summary\n\n")
+
+	// Run metadata
+	sb.WriteString("## Run Information\n\n")
+	sb.WriteString(fmt.Sprintf("- **Branch:** %s\n", m.summary.BranchName))
+	sb.WriteString(fmt.Sprintf("- **Status:** %s\n", m.summary.Status))
+	sb.WriteString(fmt.Sprintf("- **Started:** %s\n", m.summary.StartedAt.Format(time.RFC3339)))
+	if m.summary.CompletedAt != nil {
+		sb.WriteString(fmt.Sprintf("- **Completed:** %s\n", m.summary.CompletedAt.Format(time.RFC3339)))
+		duration := m.summary.CompletedAt.Sub(m.summary.StartedAt)
+		sb.WriteString(fmt.Sprintf("- **Total Duration:** %s\n", duration.Round(time.Second)))
+	}
+	sb.WriteString(fmt.Sprintf("- **Phases Completed:** %d\n", m.summary.PhasesCompleted))
+	sb.WriteString(fmt.Sprintf("- **Total Cost:** $%.4f\n", m.summary.TotalCostUSD))
+	if m.summary.Error != "" {
+		sb.WriteString(fmt.Sprintf("- **Error:** %s\n", m.summary.Error))
+	}
+	sb.WriteString("\n")
+
+	// Phase transcripts
+	sb.WriteString("## Session Transcripts\n\n")
+
+	phaseMap, phases := sortedPhaseMap(m.summary.Sessions)
+
+	for _, phase := range phases {
+		sessions := phaseMap[phase]
+		sb.WriteString(fmt.Sprintf("### Phase %d\n\n", phase))
+
+		for _, session := range sessions {
+			runLabel := ""
+			if session.RunNumber > 1 || len(sessions) > 1 {
+				runLabel = fmt.Sprintf(" (Run %d)", session.RunNumber)
+			}
+
+			statusIcon := "✅"
+			if session.IsError {
+				statusIcon = "❌"
+			}
+
+			sb.WriteString(fmt.Sprintf("- %s **Session%s** - Cost: $%.4f, Duration: %s, Turns: %d\n",
+				statusIcon, runLabel, session.CostUSD,
+				time.Duration(session.DurationMS*int64(time.Millisecond)).Round(time.Second),
+				session.NumTurns))
+
+			// Links to transcript files
+			mdFile := m.phaseFileName(phase, "transcript.md")
+			htmlFile := m.phaseFileName(phase, "transcript.html")
+			sb.WriteString(fmt.Sprintf("  - [Markdown](%s) | [HTML](%s)\n", mdFile, htmlFile))
+		}
+		sb.WriteString("\n")
+	}
+
+	// Post-completion if exists
+	for _, session := range m.summary.Sessions {
+		if session.Phase == 0 {
+			sb.WriteString("### Post-Completion\n\n")
+			statusIcon := "✅"
+			if session.IsError {
+				statusIcon = "❌"
+			}
+			sb.WriteString(fmt.Sprintf("- %s **Session** - Cost: $%.4f, Duration: %s, Turns: %d\n",
+				statusIcon, session.CostUSD,
+				time.Duration(session.DurationMS*int64(time.Millisecond)).Round(time.Second),
+				session.NumTurns))
+
+			baseName := m.postCompletionFileName()
+			mdFile := baseName + "-transcript.md"
+			htmlFile := baseName + "-transcript.html"
+			sb.WriteString(fmt.Sprintf("  - [Markdown](%s) | [HTML](%s)\n", mdFile, htmlFile))
+			sb.WriteString("\n")
+			break
+		}
+	}
+
+	return sb.String()
+}
+
+// generateHTMLIndex creates an HTML index of all session transcripts.
+func (m *Manager) generateHTMLIndex() string {
+	var sb strings.Builder
+
+	title := "Orbit Run Summary"
+
+	sb.WriteString("<!DOCTYPE html>\n")
+	sb.WriteString("<html lang=\"en\">\n")
+	sb.WriteString("<head>\n")
+	sb.WriteString("    <meta charset=\"UTF-8\">\n")
+	sb.WriteString("    <meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\">\n")
+	sb.WriteString(fmt.Sprintf("    <title>%s</title>\n", title))
+	sb.WriteString("    <style>\n")
+	sb.WriteString(indexCSS)
+	sb.WriteString("    </style>\n")
+	sb.WriteString("</head>\n")
+	sb.WriteString("<body>\n")
+	sb.WriteString("    <header>\n")
+	sb.WriteString(fmt.Sprintf("        <h1>%s</h1>\n", title))
+	sb.WriteString("    </header>\n")
+	sb.WriteString("    <main>\n")
+
+	// Run information section
+	sb.WriteString("        <section class=\"run-info\">\n")
+	sb.WriteString("            <h2>Run Information</h2>\n")
+	sb.WriteString("            <dl>\n")
+	sb.WriteString(fmt.Sprintf("                <dt>Branch</dt><dd>%s</dd>\n", html.EscapeString(m.summary.BranchName)))
+
+	statusClass := "success"
+	if m.summary.Status == "failed" {
+		statusClass = "error"
+	} else if m.summary.Status == "running" {
+		statusClass = "running"
+	}
+	sb.WriteString(fmt.Sprintf("                <dt>Status</dt><dd class=\"status %s\">%s</dd>\n",
+		statusClass, html.EscapeString(m.summary.Status)))
+
+	sb.WriteString(fmt.Sprintf("                <dt>Started</dt><dd>%s</dd>\n",
+		m.summary.StartedAt.Format(time.RFC3339)))
+	if m.summary.CompletedAt != nil {
+		sb.WriteString(fmt.Sprintf("                <dt>Completed</dt><dd>%s</dd>\n",
+			m.summary.CompletedAt.Format(time.RFC3339)))
+		duration := m.summary.CompletedAt.Sub(m.summary.StartedAt)
+		sb.WriteString(fmt.Sprintf("                <dt>Total Duration</dt><dd>%s</dd>\n",
+			duration.Round(time.Second)))
+	}
+	sb.WriteString(fmt.Sprintf("                <dt>Phases Completed</dt><dd>%d</dd>\n",
+		m.summary.PhasesCompleted))
+	sb.WriteString(fmt.Sprintf("                <dt>Total Cost</dt><dd>$%.4f</dd>\n",
+		m.summary.TotalCostUSD))
+	if m.summary.Error != "" {
+		sb.WriteString(fmt.Sprintf("                <dt>Error</dt><dd class=\"error-text\">%s</dd>\n",
+			html.EscapeString(m.summary.Error)))
+	}
+	sb.WriteString("            </dl>\n")
+	sb.WriteString("        </section>\n")
+
+	// Session transcripts section
+	sb.WriteString("        <section class=\"transcripts\">\n")
+	sb.WriteString("            <h2>Session Transcripts</h2>\n")
+
+	phaseMap, phases := sortedPhaseMap(m.summary.Sessions)
+
+	for _, phase := range phases {
+		sessions := phaseMap[phase]
+		sb.WriteString(fmt.Sprintf("            <div class=\"phase\">\n"))
+		sb.WriteString(fmt.Sprintf("                <h3>Phase %d</h3>\n", phase))
+
+		for _, session := range sessions {
+			runLabel := ""
+			if session.RunNumber > 1 || len(sessions) > 1 {
+				runLabel = fmt.Sprintf(" (Run %d)", session.RunNumber)
+			}
+
+			statusIcon := "✅"
+			cardClass := "session-card"
+			if session.IsError {
+				statusIcon = "❌"
+				cardClass += " error"
+			}
+
+			sb.WriteString(fmt.Sprintf("                <div class=\"%s\">\n", cardClass))
+			sb.WriteString(fmt.Sprintf("                    <div class=\"session-header\">%s Session%s</div>\n",
+				statusIcon, runLabel))
+			sb.WriteString("                    <div class=\"session-stats\">\n")
+			sb.WriteString(fmt.Sprintf("                        <span>Cost: $%.4f</span>\n", session.CostUSD))
+			sb.WriteString(fmt.Sprintf("                        <span>Duration: %s</span>\n",
+				time.Duration(session.DurationMS*int64(time.Millisecond)).Round(time.Second)))
+			sb.WriteString(fmt.Sprintf("                        <span>Turns: %d</span>\n", session.NumTurns))
+			sb.WriteString("                    </div>\n")
+			sb.WriteString("                    <div class=\"session-links\">\n")
+
+			mdFile := m.phaseFileName(phase, "transcript.md")
+			htmlFile := m.phaseFileName(phase, "transcript.html")
+			sb.WriteString(fmt.Sprintf("                        <a href=\"%s\">📄 Markdown</a>\n", mdFile))
+			sb.WriteString(fmt.Sprintf("                        <a href=\"%s\">🌐 HTML</a>\n", htmlFile))
+			sb.WriteString("                    </div>\n")
+			sb.WriteString("                </div>\n")
+		}
+		sb.WriteString("            </div>\n")
+	}
+
+	// Post-completion if exists
+	for _, session := range m.summary.Sessions {
+		if session.Phase == 0 {
+			sb.WriteString("            <div class=\"phase\">\n")
+			sb.WriteString("                <h3>Post-Completion</h3>\n")
+
+			statusIcon := "✅"
+			cardClass := "session-card"
+			if session.IsError {
+				statusIcon = "❌"
+				cardClass += " error"
+			}
+
+			sb.WriteString(fmt.Sprintf("                <div class=\"%s\">\n", cardClass))
+			sb.WriteString(fmt.Sprintf("                    <div class=\"session-header\">%s Session</div>\n", statusIcon))
+			sb.WriteString("                    <div class=\"session-stats\">\n")
+			sb.WriteString(fmt.Sprintf("                        <span>Cost: $%.4f</span>\n", session.CostUSD))
+			sb.WriteString(fmt.Sprintf("                        <span>Duration: %s</span>\n",
+				time.Duration(session.DurationMS*int64(time.Millisecond)).Round(time.Second)))
+			sb.WriteString(fmt.Sprintf("                        <span>Turns: %d</span>\n", session.NumTurns))
+			sb.WriteString("                    </div>\n")
+			sb.WriteString("                    <div class=\"session-links\">\n")
+
+			baseName := m.postCompletionFileName()
+			mdFile := baseName + "-transcript.md"
+			htmlFile := baseName + "-transcript.html"
+			sb.WriteString(fmt.Sprintf("                        <a href=\"%s\">📄 Markdown</a>\n", mdFile))
+			sb.WriteString(fmt.Sprintf("                        <a href=\"%s\">🌐 HTML</a>\n", htmlFile))
+			sb.WriteString("                    </div>\n")
+			sb.WriteString("                </div>\n")
+			sb.WriteString("            </div>\n")
+			break
+		}
+	}
+
+	sb.WriteString("        </section>\n")
+	sb.WriteString("    </main>\n")
+	sb.WriteString("</body>\n")
+	sb.WriteString("</html>\n")
+
+	return sb.String()
+}
+
+// indexCSS contains the embedded stylesheet for the HTML index.
+const indexCSS = `
+:root {
+    --bg-primary: #ffffff;
+    --bg-secondary: #f8f9fa;
+    --bg-card: #ffffff;
+    --text-primary: #212529;
+    --text-secondary: #6c757d;
+    --border-color: #dee2e6;
+    --success-color: #198754;
+    --error-color: #dc3545;
+    --running-color: #0d6efd;
+    --link-color: #0d6efd;
+}
+
+@media (prefers-color-scheme: dark) {
+    :root {
+        --bg-primary: #1a1a1a;
+        --bg-secondary: #2d2d2d;
+        --bg-card: #2d2d2d;
+        --text-primary: #e9ecef;
+        --text-secondary: #adb5bd;
+        --border-color: #495057;
+        --link-color: #6ea8fe;
+    }
+}
+
+* {
+    box-sizing: border-box;
+}
+
+body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    line-height: 1.6;
+    color: var(--text-primary);
+    background-color: var(--bg-primary);
+    max-width: 900px;
+    margin: 0 auto;
+    padding: 2rem;
+}
+
+header {
+    margin-bottom: 2rem;
+    padding-bottom: 1rem;
+    border-bottom: 2px solid var(--border-color);
+}
+
+header h1 {
+    margin: 0;
+    font-size: 1.75rem;
+}
+
+h2 {
+    font-size: 1.4rem;
+    margin: 1.5rem 0 1rem 0;
+    color: var(--text-primary);
+}
+
+h3 {
+    font-size: 1.1rem;
+    margin: 1rem 0 0.75rem 0;
+    color: var(--text-secondary);
+}
+
+.run-info {
+    background-color: var(--bg-secondary);
+    padding: 1rem 1.5rem;
+    border-radius: 8px;
+    margin-bottom: 2rem;
+}
+
+.run-info dl {
+    display: grid;
+    grid-template-columns: auto 1fr;
+    gap: 0.5rem 1rem;
+    margin: 0;
+}
+
+.run-info dt {
+    font-weight: 600;
+    color: var(--text-secondary);
+}
+
+.run-info dd {
+    margin: 0;
+}
+
+.status.success {
+    color: var(--success-color);
+    font-weight: 600;
+}
+
+.status.error {
+    color: var(--error-color);
+    font-weight: 600;
+}
+
+.status.running {
+    color: var(--running-color);
+    font-weight: 600;
+}
+
+.error-text {
+    color: var(--error-color);
+}
+
+.phase {
+    margin-bottom: 1.5rem;
+}
+
+.session-card {
+    background-color: var(--bg-card);
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    padding: 1rem;
+    margin-bottom: 0.75rem;
+}
+
+.session-card.error {
+    border-left: 4px solid var(--error-color);
+}
+
+.session-header {
+    font-weight: 600;
+    margin-bottom: 0.5rem;
+}
+
+.session-stats {
+    display: flex;
+    gap: 1.5rem;
+    color: var(--text-secondary);
+    font-size: 0.9rem;
+    margin-bottom: 0.75rem;
+}
+
+.session-links {
+    display: flex;
+    gap: 1rem;
+}
+
+.session-links a {
+    color: var(--link-color);
+    text-decoration: none;
+    font-size: 0.9rem;
+}
+
+.session-links a:hover {
+    text-decoration: underline;
+}
+`
 
 // sanitizeName replaces characters that are invalid in filenames.
 func sanitizeName(name string) string {
