@@ -4,10 +4,12 @@ package logs
 import (
 	"encoding/json"
 	"fmt"
+	"html"
 	"io"
 	"log"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"time"
 
@@ -653,6 +655,25 @@ func (m *Manager) generateMarkdownTranscript(srcPath, dstPath string, phase int,
 }
 
 
+// sortedPhaseMap groups sessions by phase and returns sorted phase numbers.
+// Post-completion sessions (phase 0) are excluded from the map.
+func sortedPhaseMap(sessions []SessionEntry) (map[int][]SessionEntry, []int) {
+	phaseMap := make(map[int][]SessionEntry)
+	for _, session := range sessions {
+		if session.Phase > 0 {
+			phaseMap[session.Phase] = append(phaseMap[session.Phase], session)
+		}
+	}
+
+	phases := make([]int, 0, len(phaseMap))
+	for phase := range phaseMap {
+		phases = append(phases, phase)
+	}
+	sort.Ints(phases)
+
+	return phaseMap, phases
+}
+
 // writeRunIndex generates index.md and index.html files that link to all session transcripts.
 func (m *Manager) writeRunIndex() error {
 	// Generate markdown index
@@ -698,26 +719,7 @@ func (m *Manager) generateMarkdownIndex() string {
 	// Phase transcripts
 	sb.WriteString("## Session Transcripts\n\n")
 
-	// Group sessions by phase (in case of retries)
-	phaseMap := make(map[int][]SessionEntry)
-	for _, session := range m.summary.Sessions {
-		if session.Phase > 0 {
-			phaseMap[session.Phase] = append(phaseMap[session.Phase], session)
-		}
-	}
-
-	// Sort phases
-	phases := make([]int, 0, len(phaseMap))
-	for phase := range phaseMap {
-		phases = append(phases, phase)
-	}
-	for i := 0; i < len(phases)-1; i++ {
-		for j := i + 1; j < len(phases); j++ {
-			if phases[i] > phases[j] {
-				phases[i], phases[j] = phases[j], phases[i]
-			}
-		}
-	}
+	phaseMap, phases := sortedPhaseMap(m.summary.Sessions)
 
 	for _, phase := range phases {
 		sessions := phaseMap[phase]
@@ -798,7 +800,7 @@ func (m *Manager) generateHTMLIndex() string {
 	sb.WriteString("        <section class=\"run-info\">\n")
 	sb.WriteString("            <h2>Run Information</h2>\n")
 	sb.WriteString("            <dl>\n")
-	sb.WriteString(fmt.Sprintf("                <dt>Branch</dt><dd>%s</dd>\n", m.summary.BranchName))
+	sb.WriteString(fmt.Sprintf("                <dt>Branch</dt><dd>%s</dd>\n", html.EscapeString(m.summary.BranchName)))
 
 	statusClass := "success"
 	if m.summary.Status == "failed" {
@@ -807,7 +809,7 @@ func (m *Manager) generateHTMLIndex() string {
 		statusClass = "running"
 	}
 	sb.WriteString(fmt.Sprintf("                <dt>Status</dt><dd class=\"status %s\">%s</dd>\n",
-		statusClass, m.summary.Status))
+		statusClass, html.EscapeString(m.summary.Status)))
 
 	sb.WriteString(fmt.Sprintf("                <dt>Started</dt><dd>%s</dd>\n",
 		m.summary.StartedAt.Format(time.RFC3339)))
@@ -824,7 +826,7 @@ func (m *Manager) generateHTMLIndex() string {
 		m.summary.TotalCostUSD))
 	if m.summary.Error != "" {
 		sb.WriteString(fmt.Sprintf("                <dt>Error</dt><dd class=\"error-text\">%s</dd>\n",
-			m.summary.Error))
+			html.EscapeString(m.summary.Error)))
 	}
 	sb.WriteString("            </dl>\n")
 	sb.WriteString("        </section>\n")
@@ -833,26 +835,7 @@ func (m *Manager) generateHTMLIndex() string {
 	sb.WriteString("        <section class=\"transcripts\">\n")
 	sb.WriteString("            <h2>Session Transcripts</h2>\n")
 
-	// Group sessions by phase
-	phaseMap := make(map[int][]SessionEntry)
-	for _, session := range m.summary.Sessions {
-		if session.Phase > 0 {
-			phaseMap[session.Phase] = append(phaseMap[session.Phase], session)
-		}
-	}
-
-	// Sort phases
-	phases := make([]int, 0, len(phaseMap))
-	for phase := range phaseMap {
-		phases = append(phases, phase)
-	}
-	for i := 0; i < len(phases)-1; i++ {
-		for j := i + 1; j < len(phases); j++ {
-			if phases[i] > phases[j] {
-				phases[i], phases[j] = phases[j], phases[i]
-			}
-		}
-	}
+	phaseMap, phases := sortedPhaseMap(m.summary.Sessions)
 
 	for _, phase := range phases {
 		sessions := phaseMap[phase]
