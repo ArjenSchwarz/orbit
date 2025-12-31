@@ -300,6 +300,25 @@ func TestManager_SavePostCompletionSession(t *testing.T) {
 	if !containsString(transcript, "Review complete. All tests pass.") {
 		t.Error("transcript should contain output")
 	}
+
+	// Verify session entry was added to summary
+	if len(m.summary.Sessions) != 1 {
+		t.Errorf("got %d sessions, want 1", len(m.summary.Sessions))
+	}
+	if m.summary.Sessions[0].Phase != 0 {
+		t.Errorf("post-completion session should have Phase=0, got %d", m.summary.Sessions[0].Phase)
+	}
+	if m.summary.Sessions[0].SessionID != "post-completion-session-456" {
+		t.Errorf("got session ID %q, want %q", m.summary.Sessions[0].SessionID, "post-completion-session-456")
+	}
+
+	// Verify totals were updated
+	if m.summary.TotalCostUSD != 0.25 {
+		t.Errorf("got total cost %f, want 0.25", m.summary.TotalCostUSD)
+	}
+	if m.summary.TotalDurationMS != 60000 {
+		t.Errorf("got total duration %d ms, want 60000", m.summary.TotalDurationMS)
+	}
 }
 
 func TestFormatPostCompletionTranscript(t *testing.T) {
