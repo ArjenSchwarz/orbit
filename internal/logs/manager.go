@@ -368,6 +368,22 @@ func (m *Manager) SavePostCompletionSession(result *claude.SessionResult, startT
 	endTime := time.Now()
 	baseName := m.postCompletionFileName()
 
+	// Add session entry to summary (Phase 0 indicates post-completion)
+	entry := SessionEntry{
+		Phase:      0, // Post-completion marker
+		SessionID:  result.SessionID,
+		DurationMS: result.Duration.Milliseconds(),
+		CostUSD:    result.Cost,
+		NumTurns:   result.NumTurns,
+		StartedAt:  startTime,
+		EndedAt:    endTime,
+		IsError:    result.IsError,
+		RunNumber:  m.summary.RunNumber,
+	}
+	m.summary.Sessions = append(m.summary.Sessions, entry)
+	m.summary.TotalCostUSD += result.Cost
+	m.summary.TotalDurationMS += result.Duration.Milliseconds()
+
 	// Save JSON
 	jsonPath := filepath.Join(m.sessionDir, baseName+".json")
 	if err := os.WriteFile(jsonPath, result.RawJSON, 0644); err != nil {
@@ -388,7 +404,8 @@ func (m *Manager) SavePostCompletionSession(result *claude.SessionResult, startT
 		}
 	}
 
-	return nil
+	// Update summary with the new session entry
+	return m.writeSummary()
 }
 
 // copyPostCompletionTranscript copies the full session transcript for post-completion.
