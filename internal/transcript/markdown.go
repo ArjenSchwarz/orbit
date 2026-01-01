@@ -47,6 +47,17 @@ func RenderMarkdown(entries []Entry, opts RenderOptions) string {
 	// Pre-process entries to group consecutive Read calls
 	groups := preprocessEntries(entries)
 
+	// Extract project directory from entries (use cwd from first entry that has it)
+	projectDir := opts.ProjectDir
+	if projectDir == "" {
+		for i := range entries {
+			if entries[i].Cwd != "" {
+				projectDir = entries[i].Cwd
+				break
+			}
+		}
+	}
+
 	// Initialize tool metadata map at render level (shared across entries)
 	// This is critical because tool_use appears in assistant entries but
 	// tool_result appears in user entries - the map must persist across both.
@@ -64,7 +75,9 @@ func RenderMarkdown(entries []Entry, opts RenderOptions) string {
 				sb.WriteString(formatAssistantMessage(&group.Entries[i], toolMeta))
 			}
 		case "read_group":
-			sb.WriteString(formatReadGroup(group.Reads))
+			sb.WriteString(formatReadGroup(group.Reads, projectDir))
+		case "edit_group":
+			sb.WriteString(formatEditGroup(group.Edits, projectDir))
 		}
 	}
 
@@ -72,7 +85,7 @@ func RenderMarkdown(entries []Entry, opts RenderOptions) string {
 }
 
 // formatReadGroup formats a group of consecutive Read tool calls as a single block.
-func formatReadGroup(reads []readItem) string {
+func formatReadGroup(reads []readItem, projectDir string) string {
 	if len(reads) == 0 {
 		return ""
 	}
@@ -86,14 +99,53 @@ func formatReadGroup(reads []readItem) string {
 			icon = "❌"
 		}
 
+		displayPath := stripProjectDir(read.FilePath, projectDir)
 		sb.WriteString("<details>\n")
 		sb.WriteString(fmt.Sprintf("<summary>%s 🔧 Read: <code>%s</code></summary>\n\n",
-			icon, html.EscapeString(read.FilePath)))
+			icon, html.EscapeString(displayPath)))
 
 		if read.Content != "" {
 			sb.WriteString("```\n")
 			sb.WriteString(read.Content)
 			sb.WriteString("\n```\n\n")
+		}
+
+		sb.WriteString("</details>\n\n")
+	}
+
+	sb.WriteString("---\n\n")
+	return sb.String()
+}
+
+// formatEditGroup formats a group of consecutive Edit tool calls as a single block.
+func formatEditGroup(edits []editItem, projectDir string) string {
+	if len(edits) == 0 {
+		return ""
+	}
+
+	var sb strings.Builder
+	sb.WriteString("## 🤖 Assistant\n\n")
+
+	for _, edit := range edits {
+		icon := "✅"
+		if edit.IsError {
+			icon = "❌"
+		}
+
+		displayPath := stripProjectDir(edit.FilePath, projectDir)
+		sb.WriteString("<details>\n")
+		sb.WriteString(fmt.Sprintf("<summary>%s 🔧 Edit: <code>%s</code></summary>\n\n",
+			icon, html.EscapeString(displayPath)))
+
+		if len(edit.Patch) > 0 {
+			sb.WriteString("```patch\n")
+			for _, hunk := range edit.Patch {
+				for _, line := range hunk.Lines {
+					sb.WriteString(line)
+					sb.WriteString("\n")
+				}
+			}
+			sb.WriteString("```\n\n")
 		}
 
 		sb.WriteString("</details>\n\n")
@@ -315,7 +367,13 @@ func formatToolResult(item *ContentItem, toolMeta map[string]toolMetadata) strin
 			summaryText += ": " + meta.Description
 		}
 
-		sb.WriteString("<details>\n")
+		// Determine if this tool should be expanded by default
+		openAttr := ""
+		if meta.Name == "TodoWrite" {
+			openAttr = " open"
+		}
+
+		sb.WriteString(fmt.Sprintf("<details%s>\n", openAttr))
 		sb.WriteString(fmt.Sprintf("<summary>%s %s</summary>\n\n", icon, escapeSummary(summaryText)))
 
 		// Render tool-specific input
@@ -484,6 +542,24 @@ func formatToolInput(name string, input any) string {
 	case "Grep":
 		if pattern, ok := inputMap["pattern"].(string); ok {
 			sb.WriteString(fmt.Sprintf("**Pattern:** `%s`\n\n", pattern))
+		}
+	case "TodoWrite":
+		if todos, ok := inputMap["todos"].([]any); ok {
+			for _, todo := range todos {
+				if todoMap, ok := todo.(map[string]any); ok {
+					content, _ := todoMap["content"].(string)
+					status, _ := todoMap["status"].(string)
+					checkbox := "[ ]"
+					switch status {
+					case "in_progress":
+						checkbox = "[-]"
+					case "completed":
+						checkbox = "[x]"
+					}
+					sb.WriteString(fmt.Sprintf("- %s %s\n", checkbox, content))
+				}
+			}
+			sb.WriteString("\n")
 		}
 	default:
 		// For unknown tools, show JSON input

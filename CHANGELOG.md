@@ -9,6 +9,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- TodoWrite tool checklist rendering:
+  - Display todos as checklist with `[ ]` pending, `[-]` in progress, `[x]` completed
+  - Expanded by default using `<details open>` attribute
+  - Result section hidden as it provides no useful information
+  - CSS styling for `.todo-list` class with monospace font
+- Edit tool grouping and patch display:
+  - Consecutive Edit calls grouped into single assistant block (like Read)
+  - Show `structuredPatch` instead of cat output with color-coded additions/deletions
+  - File path shown in summary: `🔧 Edit: <code>path/to/file</code>`
+  - CSS styling for `.patch-content`, `.patch-line`, `.addition`, `.deletion`, `.context`
+- Project-relative file paths in Read and Edit tool display:
+  - Strip project directory prefix from file paths using `cwd` from JSONL entries
+  - `stripProjectDir()` helper function in grouping.go
+  - `Cwd` field added to Entry struct for working directory extraction
+- `ToolUseResult` and `PatchHunk` structs for parsing Edit tool structured patches
+
+### Fixed
+
+- Lint issues in logs/manager.go: converted if/else chain to tagged switch, removed unnecessary fmt.Sprintf
+
 - Markdown-to-HTML conversion for HTML transcript renderer using goldmark library:
   - Assistant text messages render markdown formatting (headers, lists, code blocks, etc.)
   - Subagent results render as formatted HTML instead of raw text

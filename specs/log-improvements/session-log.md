@@ -507,6 +507,154 @@ All this content is now preserved in full within the collapsible blocks.
 
 ---
 
+## TodoWrite Tool Checklist Rendering
+
+**Date**: 2026-01-01
+
+### Problem
+
+The TodoWrite tool was displaying raw JSON input, which was difficult to read and didn't convey the task status clearly:
+
+```json
+{
+  "todos": [
+    {"content": "Fix bug", "status": "pending", "activeForm": "Fixing bug"},
+    {"content": "Run tests", "status": "completed", "activeForm": "Running tests"}
+  ]
+}
+```
+
+### Solution
+
+1. **Checklist format**: Display todos as a checklist with checkbox notation:
+   - `[ ]` for pending
+   - `[-]` for in_progress
+   - `[x]` for completed
+
+2. **Expanded by default**: TodoWrite blocks use `<details open>` to show content immediately
+
+3. **Hide Result section**: The tool result ("Todos have been modified successfully...") provides no value and is hidden
+
+After (Markdown):
+```markdown
+<details open>
+<summary>✅ 🔧 TodoWrite</summary>
+
+- [ ] Fix bug
+- [-] Add feature
+- [x] Run tests
+
+</details>
+```
+
+After (HTML):
+- Uses `<ul class="todo-list">` with monospace font
+- Color-coded patch styling inherited from code blocks
+
+### Changes
+
+- `internal/transcript/html.go`: Added TodoWrite case to `formatToolInputHTML()`, CSS for `.todo-list`, `open` attribute for TodoWrite details, skip Result section for TodoWrite
+- `internal/transcript/markdown.go`: Added TodoWrite case to `formatToolInput()`, `open` attribute for TodoWrite details
+
+---
+
+## Edit Tool Grouping and Patch Display
+
+**Date**: 2026-01-01
+
+### Problem
+
+1. Edit tool calls were not grouped like Read calls, resulting in separate blocks for each edit
+2. The Edit result showed output from `cat -n` instead of the more useful `structuredPatch` data
+3. Full absolute file paths were shown instead of project-relative paths
+
+### Solution
+
+1. **Grouping**: Consecutive Edit calls are now grouped into a single Assistant block, matching Read behavior
+
+2. **Patch display**: Show the `structuredPatch` from the tool result instead of cat output:
+   - HTML: Color-coded with additions in green, deletions in red
+   - Markdown: Uses ` ```patch ` code fence for syntax highlighting
+
+3. **Filename in summary**: File path shown next to tool name: `🔧 Edit: <code>path/to/file.swift</code>`
+
+After (HTML):
+```html
+<details class="tool-collapsible read-item">
+    <summary><span class="icon">✅</span> 🔧 Edit: <code>Services/Store.swift</code></summary>
+    <div class="tool-content">
+        <div class="patch-content">
+            <span class="patch-line context">     private static let key = "value"</span>
+            <span class="patch-line deletion">-    private static let old = 10</span>
+            <span class="patch-line addition">+    private static let new = 20</span>
+        </div>
+    </div>
+</details>
+```
+
+After (Markdown):
+```markdown
+<details>
+<summary>✅ 🔧 Edit: <code>Services/Store.swift</code></summary>
+
+` ` `patch
+     private static let key = "value"
+-    private static let old = 10
++    private static let new = 20
+` ` `
+
+</details>
+```
+
+### Implementation
+
+Extended the grouping infrastructure used for Read to also handle Edit:
+
+1. **Entry struct**: Added `ToolUseResult` field to capture `structuredPatch` from entries
+2. **Types**: Added `ToolUseResult` and `PatchHunk` structs
+3. **Grouping**: Added `editItem` struct, `isEditOnlyEntry()`, `extractEditItems()` functions
+4. **Rendering**: Added `formatEditGroupHTML()` and `formatEditGroup()` functions
+5. **CSS**: Added `.patch-content`, `.patch-line`, `.addition`, `.deletion`, `.context` classes
+
+### Changes
+
+- `internal/transcript/types.go`: Added `ToolUseResult`, `PatchHunk` structs, `ToolUseResult` field to `Entry`
+- `internal/transcript/grouping.go`: Added `editItem`, `isEditOnlyEntry()`, `extractEditItems()`, updated `preprocessEntries()` for Edit grouping
+- `internal/transcript/html.go`: Added `formatEditGroupHTML()`, patch CSS styling
+- `internal/transcript/markdown.go`: Added `formatEditGroup()`
+
+---
+
+## Project-Relative File Paths
+
+**Date**: 2026-01-01
+
+### Problem
+
+Read and Edit tool calls displayed full absolute paths like `/Users/arjenschwarz/projects/personal/phase/PhaseShared/Sources/PhaseShared/Services/SharedDataStore.swift`, which are long and contain redundant information.
+
+### Solution
+
+Strip the project directory prefix from file paths, displaying only the project-relative path: `PhaseShared/Sources/PhaseShared/Services/SharedDataStore.swift`
+
+The project directory is extracted from the `cwd` field present in each JSONL entry, which contains the working directory for that session.
+
+### Implementation
+
+1. **Entry struct**: Added `Cwd` field to capture working directory from entries
+2. **Helper function**: Added `stripProjectDir()` to remove project directory prefix from paths
+3. **Render functions**: Extract `cwd` from first entry that has it, pass to group rendering functions
+4. **Fallback**: `RenderOptions.ProjectDir` can be explicitly set as override
+
+### Changes
+
+- `internal/transcript/types.go`: Added `Cwd` field to `Entry`
+- `internal/transcript/grouping.go`: Added `stripProjectDir()` helper
+- `internal/transcript/html.go`: Extract `cwd` from entries, pass `projectDir` to group render functions
+- `internal/transcript/markdown.go`: Extract `cwd` from entries, pass `projectDir` to group render functions
+
+---
+
 ## Distinct Message Colors and Thinking Block Styling
 
 **Date**: 2025-12-30

@@ -7,13 +7,30 @@ import (
 
 // Entry represents a single line in the Claude session JSONL.
 type Entry struct {
-	Type       string   `json:"type"`
-	Message    *Message `json:"message,omitempty"`
-	Timestamp  string   `json:"timestamp,omitempty"`
-	SessionID  string   `json:"sessionId,omitempty"`
-	IsMeta     bool     `json:"isMeta,omitempty"`     // Meta entries are internal Claude markers
-	UUID       string   `json:"uuid,omitempty"`       // Unique identifier for this entry
-	ParentUUID string   `json:"parentUuid,omitempty"` // Links to parent entry's UUID
+	Type          string         `json:"type"`
+	Message       *Message       `json:"message,omitempty"`
+	Timestamp     string         `json:"timestamp,omitempty"`
+	SessionID     string         `json:"sessionId,omitempty"`
+	Cwd           string         `json:"cwd,omitempty"`           // Working directory for this entry
+	IsMeta        bool           `json:"isMeta,omitempty"`        // Meta entries are internal Claude markers
+	UUID          string         `json:"uuid,omitempty"`          // Unique identifier for this entry
+	ParentUUID    string         `json:"parentUuid,omitempty"`    // Links to parent entry's UUID
+	ToolUseResult *ToolUseResult `json:"toolUseResult,omitempty"` // Result metadata for tool calls
+}
+
+// ToolUseResult contains metadata about a tool execution result.
+type ToolUseResult struct {
+	FilePath        string           `json:"filePath,omitempty"`
+	StructuredPatch []PatchHunk      `json:"structuredPatch,omitempty"`
+}
+
+// PatchHunk represents a single hunk in a unified diff.
+type PatchHunk struct {
+	OldStart int      `json:"oldStart"`
+	OldLines int      `json:"oldLines"`
+	NewStart int      `json:"newStart"`
+	NewLines int      `json:"newLines"`
+	Lines    []string `json:"lines"`
 }
 
 // Message represents the message content within an entry.
@@ -117,6 +134,7 @@ func (c *ContentItem) UnmarshalJSON(data []byte) error {
 
 // RenderOptions configures Markdown rendering.
 type RenderOptions struct {
-	Title     string // Document title (e.g., "Session Transcript" or "Phase 1 Session Transcript")
-	SessionID string // Session ID to display in header
+	Title      string // Document title (e.g., "Session Transcript" or "Phase 1 Session Transcript")
+	SessionID  string // Session ID to display in header
+	ProjectDir string // Project directory to strip from file paths (e.g., "/Users/foo/project")
 }

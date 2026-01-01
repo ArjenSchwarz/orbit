@@ -393,6 +393,60 @@ details.read-item:last-child {
 .markdown-content em {
     font-style: italic;
 }
+
+.todo-list {
+    list-style: none;
+    padding-left: 0;
+    margin: 0;
+    font-family: "SF Mono", Monaco, "Cascadia Code", monospace;
+    font-size: 0.9rem;
+}
+
+.todo-list li {
+    margin: 0.25rem 0;
+}
+
+.patch-content {
+    font-family: "SF Mono", Monaco, "Cascadia Code", monospace;
+    font-size: 0.85rem;
+    line-height: 1.4;
+    background-color: var(--bg-code);
+    border-radius: 4px;
+    overflow-x: auto;
+    margin: 0;
+    padding: 0.5rem;
+}
+
+.patch-line {
+    display: block;
+    white-space: pre;
+}
+
+.patch-line.addition {
+    background-color: rgba(40, 167, 69, 0.2);
+    color: #28a745;
+}
+
+.patch-line.deletion {
+    background-color: rgba(220, 53, 69, 0.2);
+    color: #dc3545;
+}
+
+.patch-line.context {
+    color: var(--text-secondary);
+}
+
+@media (prefers-color-scheme: dark) {
+    .patch-line.addition {
+        background-color: rgba(40, 167, 69, 0.3);
+        color: #5fd068;
+    }
+
+    .patch-line.deletion {
+        background-color: rgba(220, 53, 69, 0.3);
+        color: #ff6b6b;
+    }
+}
 `
 
 // mdConverter is the shared goldmark markdown converter instance.
@@ -451,6 +505,17 @@ func RenderHTML(entries []Entry, opts RenderOptions) string {
 	// Pre-process entries to group consecutive Read calls
 	groups := preprocessEntries(entries)
 
+	// Extract project directory from entries (use cwd from first entry that has it)
+	projectDir := opts.ProjectDir
+	if projectDir == "" {
+		for i := range entries {
+			if entries[i].Cwd != "" {
+				projectDir = entries[i].Cwd
+				break
+			}
+		}
+	}
+
 	// Initialize tool metadata map at render level (shared across entries)
 	// This is critical because tool_use appears in assistant entries but
 	// tool_result appears in user entries - the map must persist across both.
@@ -467,7 +532,9 @@ func RenderHTML(entries []Entry, opts RenderOptions) string {
 				sb.WriteString(formatAssistantMessageHTML(&group.Entries[i], toolMeta))
 			}
 		case "read_group":
-			sb.WriteString(formatReadGroupHTML(group.Reads))
+			sb.WriteString(formatReadGroupHTML(group.Reads, projectDir))
+		case "edit_group":
+			sb.WriteString(formatEditGroupHTML(group.Edits, projectDir))
 		}
 	}
 
@@ -479,7 +546,7 @@ func RenderHTML(entries []Entry, opts RenderOptions) string {
 }
 
 // formatReadGroupHTML formats a group of consecutive Read tool calls as HTML.
-func formatReadGroupHTML(reads []readItem) string {
+func formatReadGroupHTML(reads []readItem, projectDir string) string {
 	if len(reads) == 0 {
 		return ""
 	}
@@ -498,15 +565,72 @@ func formatReadGroupHTML(reads []readItem) string {
 			icon = "❌"
 		}
 
+		displayPath := stripProjectDir(read.FilePath, projectDir)
 		sb.WriteString("                <details class=\"tool-collapsible read-item\">\n")
 		sb.WriteString(fmt.Sprintf("                    <summary><span class=\"icon\">%s</span> 🔧 Read: <code>%s</code></summary>\n",
-			icon, stdhtml.EscapeString(read.FilePath)))
+			icon, stdhtml.EscapeString(displayPath)))
 		sb.WriteString("                    <div class=\"tool-content\">\n")
 
 		if read.Content != "" {
 			sb.WriteString("                        <pre><code>")
 			sb.WriteString(stdhtml.EscapeString(read.Content))
 			sb.WriteString("</code></pre>\n")
+		}
+
+		sb.WriteString("                    </div>\n")
+		sb.WriteString("                </details>\n")
+	}
+
+	sb.WriteString("            </div>\n")
+	sb.WriteString("        </section>\n")
+
+	return sb.String()
+}
+
+// formatEditGroupHTML formats a group of consecutive Edit tool calls as HTML.
+func formatEditGroupHTML(edits []editItem, projectDir string) string {
+	if len(edits) == 0 {
+		return ""
+	}
+
+	var sb strings.Builder
+	sb.WriteString("        <section class=\"message assistant\">\n")
+	sb.WriteString("            <div class=\"message-header\">\n")
+	sb.WriteString("                <span class=\"icon\">🤖</span>\n")
+	sb.WriteString("                <span>Assistant</span>\n")
+	sb.WriteString("            </div>\n")
+	sb.WriteString("            <div class=\"message-content\">\n")
+
+	for _, edit := range edits {
+		icon := "✅"
+		if edit.IsError {
+			icon = "❌"
+		}
+
+		displayPath := stripProjectDir(edit.FilePath, projectDir)
+		sb.WriteString("                <details class=\"tool-collapsible read-item\">\n")
+		sb.WriteString(fmt.Sprintf("                    <summary><span class=\"icon\">%s</span> 🔧 Edit: <code>%s</code></summary>\n",
+			icon, stdhtml.EscapeString(displayPath)))
+		sb.WriteString("                    <div class=\"tool-content\">\n")
+
+		if len(edit.Patch) > 0 {
+			sb.WriteString("                        <div class=\"patch-content\">\n")
+			for _, hunk := range edit.Patch {
+				for _, line := range hunk.Lines {
+					lineClass := "context"
+					if len(line) > 0 {
+						switch line[0] {
+						case '+':
+							lineClass = "addition"
+						case '-':
+							lineClass = "deletion"
+						}
+					}
+					sb.WriteString(fmt.Sprintf("                            <span class=\"patch-line %s\">%s</span>\n",
+						lineClass, stdhtml.EscapeString(line)))
+				}
+			}
+			sb.WriteString("                        </div>\n")
 		}
 
 		sb.WriteString("                    </div>\n")
@@ -852,6 +976,12 @@ func formatToolResultHTML(item *ContentItem, toolMeta map[string]toolMetadata) s
 			summaryText += ": " + meta.Description
 		}
 
+		// Determine if this tool should be expanded by default
+		openAttr := ""
+		if meta.Name == "TodoWrite" {
+			openAttr = " open"
+		}
+
 		// Wrap in assistant section since tool calls come from assistant
 		sb.WriteString("        <section class=\"message assistant\">\n")
 		sb.WriteString("            <div class=\"message-header\">\n")
@@ -860,7 +990,7 @@ func formatToolResultHTML(item *ContentItem, toolMeta map[string]toolMetadata) s
 		sb.WriteString("            </div>\n")
 		sb.WriteString("            <div class=\"message-content\">\n")
 
-		sb.WriteString(fmt.Sprintf("                <details class=\"tool-collapsible%s\">\n", errorClass))
+		sb.WriteString(fmt.Sprintf("                <details class=\"tool-collapsible%s\"%s>\n", errorClass, openAttr))
 		sb.WriteString(fmt.Sprintf("                    <summary><span class=\"icon\">%s</span> 🔧 %s</summary>\n",
 			icon, stdhtml.EscapeString(summaryText)))
 		sb.WriteString("                    <div class=\"tool-content\">\n")
@@ -868,13 +998,15 @@ func formatToolResultHTML(item *ContentItem, toolMeta map[string]toolMetadata) s
 		// Render tool-specific input
 		sb.WriteString(formatToolInputHTML(meta.Name, meta.Input))
 
-		// Render result
-		sb.WriteString("                        <div class=\"tool-result-section\">\n")
-		sb.WriteString("                            <strong>Result:</strong>\n")
-		sb.WriteString("                            <pre><code>")
-		sb.WriteString(stdhtml.EscapeString(content))
-		sb.WriteString("</code></pre>\n")
-		sb.WriteString("                        </div>\n")
+		// Render result (skip for TodoWrite as it contains no useful information)
+		if meta.Name != "TodoWrite" {
+			sb.WriteString("                        <div class=\"tool-result-section\">\n")
+			sb.WriteString("                            <strong>Result:</strong>\n")
+			sb.WriteString("                            <pre><code>")
+			sb.WriteString(stdhtml.EscapeString(content))
+			sb.WriteString("</code></pre>\n")
+			sb.WriteString("                        </div>\n")
+		}
 
 		sb.WriteString("                    </div>\n")
 		sb.WriteString("                </details>\n")
@@ -950,6 +1082,28 @@ func formatToolInputHTML(name string, input any) string {
 			sb.WriteString("                        <div class=\"tool-input-section\">\n")
 			sb.WriteString(fmt.Sprintf("                            <strong>Pattern:</strong> <code>%s</code>\n",
 				stdhtml.EscapeString(pattern)))
+			sb.WriteString("                        </div>\n")
+		}
+	case "TodoWrite":
+		if todos, ok := inputMap["todos"].([]any); ok {
+			sb.WriteString("                        <div class=\"tool-input-section\">\n")
+			sb.WriteString("                            <ul class=\"todo-list\">\n")
+			for _, todo := range todos {
+				if todoMap, ok := todo.(map[string]any); ok {
+					content, _ := todoMap["content"].(string)
+					status, _ := todoMap["status"].(string)
+					checkbox := "[ ]"
+					switch status {
+					case "in_progress":
+						checkbox = "[-]"
+					case "completed":
+						checkbox = "[x]"
+					}
+					sb.WriteString(fmt.Sprintf("                                <li>%s %s</li>\n",
+						checkbox, stdhtml.EscapeString(content)))
+				}
+			}
+			sb.WriteString("                            </ul>\n")
 			sb.WriteString("                        </div>\n")
 		}
 	default:
