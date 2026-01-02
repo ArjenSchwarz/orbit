@@ -150,6 +150,11 @@ func formatEditGroup(edits []editItem, projectDir string) string {
 				}
 			}
 			sb.WriteString("```\n\n")
+		} else if edit.Content != "" {
+			// Fallback: show content (error message or legacy format)
+			sb.WriteString("```\n")
+			sb.WriteString(edit.Content)
+			sb.WriteString("\n```\n\n")
 		}
 
 		sb.WriteString("</details>\n\n")

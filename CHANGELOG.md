@@ -37,6 +37,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Edit tool error message preservation: when Edit operations fail or logs lack `structuredPatch`, the tool_result content (error message or legacy format) is now rendered as fallback instead of showing empty blocks
 - Polymorphic `toolUseResult` field parsing: handles both string and object values in JSONL
   - Custom `UnmarshalJSON` method on Entry struct
   - Prevents parse warnings for string `toolUseResult` values

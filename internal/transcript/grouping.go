@@ -125,6 +125,7 @@ type readItem struct {
 type editItem struct {
 	FilePath string      // The file path being edited
 	Patch    []PatchHunk // The structured patch from tool result
+	Content  string      // Fallback content when no patch (error messages, legacy format)
 	IsError  bool        // Whether the edit failed
 	ToolID   string      // Tool use ID for tracking
 }
@@ -367,8 +368,11 @@ func extractEditItems(entry *Entry, resultMap map[string]toolResultInfo, usedIDs
 			// Look up the result
 			if result, found := resultMap[item.ID]; found {
 				edit.IsError = result.IsError
-				if result.ToolUseResult != nil {
+				if result.ToolUseResult != nil && len(result.ToolUseResult.StructuredPatch) > 0 {
 					edit.Patch = result.ToolUseResult.StructuredPatch
+				} else {
+					// Preserve content as fallback (error messages or legacy format)
+					edit.Content = result.Content
 				}
 				usedIDs[item.ID] = true
 			}

@@ -1553,3 +1553,110 @@ func TestBackwardCompat_PreTruncationDecision(t *testing.T) {
 		t.Error("content under MaxToolResultRunes should not be truncated")
 	}
 }
+
+func TestRenderMarkdown_EditGroupErrorMessagePreserved(t *testing.T) {
+	// Test that Edit tool error messages are preserved when there's no structuredPatch
+	// This tests the fix for the regression where failed Edit operations showed empty blocks.
+	entries := []Entry{
+		{
+			Type: "assistant",
+			Message: &Message{
+				Role: "assistant",
+				Content: []ContentItem{
+					{
+						Type: "tool_use",
+						Name: "Edit",
+						ID:   "edit_fail",
+						Input: map[string]any{
+							"file_path":  "/path/to/file.go",
+							"old_string": "not found",
+							"new_string": "replacement",
+						},
+					},
+				},
+			},
+		},
+		{
+			Type: "user",
+			Message: &Message{
+				Role: "user",
+				Content: []ContentItem{
+					{
+						Type:      "tool_result",
+						ToolUseID: "edit_fail",
+						Content:   "Error: old_string not found in file",
+						IsError:   true,
+					},
+				},
+			},
+		},
+	}
+
+	result := RenderMarkdown(entries, RenderOptions{})
+
+	// Should show error icon
+	if !strings.Contains(result, "❌") {
+		t.Error("expected error icon for failed edit")
+	}
+
+	// Should show Edit tool summary
+	if !strings.Contains(result, "🔧 Edit:") {
+		t.Error("expected Edit tool in summary")
+	}
+
+	// Error message should be preserved and rendered as fallback content
+	if !strings.Contains(result, "Error: old_string not found in file") {
+		t.Error("expected error message to be preserved in output")
+	}
+}
+
+func TestRenderMarkdown_EditGroupLegacyFormatPreserved(t *testing.T) {
+	// Test that Edit tool results from older logs without structuredPatch are displayed
+	entries := []Entry{
+		{
+			Type: "assistant",
+			Message: &Message{
+				Role: "assistant",
+				Content: []ContentItem{
+					{
+						Type: "tool_use",
+						Name: "Edit",
+						ID:   "edit_legacy",
+						Input: map[string]any{
+							"file_path":  "/path/to/file.go",
+							"old_string": "old content",
+							"new_string": "new content",
+						},
+					},
+				},
+			},
+		},
+		{
+			Type: "user",
+			Message: &Message{
+				Role: "user",
+				Content: []ContentItem{
+					{
+						Type:      "tool_result",
+						ToolUseID: "edit_legacy",
+						Content:   "Successfully edited /path/to/file.go",
+						IsError:   false,
+					},
+				},
+			},
+			// No ToolUseResult field - simulating legacy format
+		},
+	}
+
+	result := RenderMarkdown(entries, RenderOptions{})
+
+	// Should show success icon
+	if !strings.Contains(result, "✅") {
+		t.Error("expected success icon for successful edit")
+	}
+
+	// Legacy content should be preserved and rendered as fallback
+	if !strings.Contains(result, "Successfully edited /path/to/file.go") {
+		t.Error("expected legacy format content to be preserved in output")
+	}
+}
