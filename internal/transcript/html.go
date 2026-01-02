@@ -516,6 +516,9 @@ func RenderHTML(entries []Entry, opts RenderOptions) string {
 		}
 	}
 
+	// Build skill description map from meta entries
+	skillDescriptions := buildSkillDescriptionMap(entries)
+
 	// Initialize tool metadata map at render level (shared across entries)
 	// This is critical because tool_use appears in assistant entries but
 	// tool_result appears in user entries - the map must persist across both.
@@ -525,11 +528,11 @@ func RenderHTML(entries []Entry, opts RenderOptions) string {
 		switch group.Type {
 		case "user":
 			for i := range group.Entries {
-				sb.WriteString(formatUserMessageHTML(&group.Entries[i], toolMeta))
+				sb.WriteString(formatUserMessageHTML(&group.Entries[i], toolMeta, skillDescriptions))
 			}
 		case "assistant":
 			for i := range group.Entries {
-				sb.WriteString(formatAssistantMessageHTML(&group.Entries[i], toolMeta))
+				sb.WriteString(formatAssistantMessageHTML(&group.Entries[i], toolMeta, skillDescriptions))
 			}
 		case "read_group":
 			sb.WriteString(formatReadGroupHTML(group.Reads, projectDir))
@@ -644,9 +647,19 @@ func formatEditGroupHTML(edits []editItem, projectDir string) string {
 }
 
 // formatUserMessageHTML formats a user message as HTML.
-func formatUserMessageHTML(entry *Entry, toolMeta map[string]toolMetadata) string {
+func formatUserMessageHTML(entry *Entry, toolMeta map[string]toolMetadata, skillDescriptions map[string]string) string {
 	if entry.Message == nil || len(entry.Message.Content) == 0 {
 		return ""
+	}
+
+	// Skip skill/command description meta entries - they're rendered with the Skill/command block
+	if entry.IsMeta {
+		return ""
+	}
+
+	// Check if this is a slash command entry (e.g., /catchup)
+	if isSlashCommandEntry(entry) {
+		return formatSlashCommandHTML(entry, skillDescriptions)
 	}
 
 	// Check if there's any content to render (text or tool_result)
@@ -703,8 +716,66 @@ func formatUserMessageHTML(entry *Entry, toolMeta map[string]toolMetadata) strin
 	return sb.String()
 }
 
+// formatSlashCommandHTML formats a slash command entry as HTML.
+func formatSlashCommandHTML(entry *Entry, skillDescriptions map[string]string) string {
+	if entry.Message == nil {
+		return ""
+	}
+
+	// Extract command name from the entry
+	var commandName string
+	for _, item := range entry.Message.Content {
+		if item.Type == "text" {
+			commandName = parseSlashCommand(item.Text)
+			if commandName != "" {
+				break
+			}
+		}
+	}
+
+	if commandName == "" {
+		return ""
+	}
+
+	// Look up description by entry UUID
+	var description string
+	if entry.UUID != "" && skillDescriptions != nil {
+		description = skillDescriptions[entry.UUID]
+	}
+
+	var sb strings.Builder
+	sb.WriteString("        <section class=\"message user\">\n")
+	sb.WriteString("            <div class=\"message-header\">\n")
+	sb.WriteString("                <span class=\"icon\">👤</span>\n")
+	sb.WriteString("                <span>User</span>\n")
+	sb.WriteString("            </div>\n")
+	sb.WriteString("            <div class=\"message-content\">\n")
+
+	if description != "" {
+		// Render as collapsible with description
+		sb.WriteString("                <details class=\"tool-collapsible\">\n")
+		sb.WriteString(fmt.Sprintf("                    <summary><span class=\"icon\">⚡</span> /%s</summary>\n",
+			stdhtml.EscapeString(commandName)))
+		sb.WriteString("                    <div class=\"tool-content\">\n")
+		sb.WriteString("                        <div class=\"markdown-content\">\n")
+		sb.WriteString(markdownToHTML(description))
+		sb.WriteString("                        </div>\n")
+		sb.WriteString("                    </div>\n")
+		sb.WriteString("                </details>\n")
+	} else {
+		// Simple format without description
+		sb.WriteString(fmt.Sprintf("                <div class=\"tool-use\"><span class=\"icon\">⚡</span> /%s</div>\n",
+			stdhtml.EscapeString(commandName)))
+	}
+
+	sb.WriteString("            </div>\n")
+	sb.WriteString("        </section>\n")
+
+	return sb.String()
+}
+
 // formatAssistantMessageHTML formats an assistant message as HTML.
-func formatAssistantMessageHTML(entry *Entry, toolMeta map[string]toolMetadata) string {
+func formatAssistantMessageHTML(entry *Entry, toolMeta map[string]toolMetadata, skillDescriptions map[string]string) string {
 	if entry.Message == nil {
 		return ""
 	}
@@ -799,7 +870,7 @@ func formatAssistantMessageHTML(entry *Entry, toolMeta map[string]toolMetadata) 
 			}
 
 		case "tool_use":
-			sb.WriteString(formatToolUseHTML(&item, toolMeta))
+			sb.WriteString(formatToolUseHTML(&item, toolMeta, skillDescriptions))
 
 		case "tool_result":
 			// tool_result in assistant entries (legacy handling)
@@ -816,9 +887,10 @@ func formatAssistantMessageHTML(entry *Entry, toolMeta map[string]toolMetadata) 
 }
 
 // formatToolUseHTML formats a tool_use content item as HTML.
-// For Skill and non-subagent Task: renders collapsed details block.
+// For Skill: renders collapsible block with description (if available) or simple non-collapsible block.
+// For non-subagent Task: renders collapsed details block with JSON.
 // For subagent Task and other tools: stores metadata and defers rendering to formatToolResultHTML.
-func formatToolUseHTML(item *ContentItem, toolMeta map[string]toolMetadata) string {
+func formatToolUseHTML(item *ContentItem, toolMeta map[string]toolMetadata, skillDescriptions map[string]string) string {
 	// Get summary text and description
 	summary := getToolSummary(item.Name, item.Input)
 	description := getToolDescription(item.Input)
@@ -837,15 +909,22 @@ func formatToolUseHTML(item *ContentItem, toolMeta map[string]toolMetadata) stri
 	// Check if this is a subagent Task
 	subagent := item.Name == "Task" && isSubagent(item.Input)
 
+	// Look up skill description if this is a Skill tool
+	var skillDesc string
+	if item.Name == "Skill" && item.ID != "" && skillDescriptions != nil {
+		skillDesc = skillDescriptions[item.ID]
+	}
+
 	// Store metadata for result matching (if ID is present)
 	if item.ID != "" {
 		toolMeta[item.ID] = toolMetadata{
-			Name:        item.Name,
-			Summary:     summary,
-			Description: description,
-			Input:       item.Input,
-			Prompt:      getSubagentPrompt(item.Input),
-			IsSubagent:  subagent,
+			Name:             item.Name,
+			Summary:          summary,
+			Description:      description,
+			Input:            item.Input,
+			Prompt:           getSubagentPrompt(item.Input),
+			IsSubagent:       subagent,
+			SkillDescription: skillDesc,
 		}
 	}
 
@@ -854,8 +933,28 @@ func formatToolUseHTML(item *ContentItem, toolMeta map[string]toolMetadata) stri
 		return ""
 	}
 
-	// For Skill or non-subagent Task, render collapsed block now
-	if item.Name == "Task" || item.Name == "Skill" {
+	// For Skill, render with description if available, otherwise simple block
+	if item.Name == "Skill" {
+		if skillDesc != "" {
+			var sb strings.Builder
+			sb.WriteString("                <details class=\"tool-collapsible\">\n")
+			sb.WriteString(fmt.Sprintf("                    <summary><span class=\"icon\">🔧</span> %s</summary>\n",
+				stdhtml.EscapeString(summary)))
+			sb.WriteString("                    <div class=\"tool-content\">\n")
+			sb.WriteString("                        <div class=\"markdown-content\">\n")
+			sb.WriteString(markdownToHTML(skillDesc))
+			sb.WriteString("                        </div>\n")
+			sb.WriteString("                    </div>\n")
+			sb.WriteString("                </details>\n")
+			return sb.String()
+		}
+		// No description, render simple non-collapsible block
+		return fmt.Sprintf("                <div class=\"tool-use\"><span class=\"icon\">🔧</span> %s</div>\n",
+			stdhtml.EscapeString(summary))
+	}
+
+	// For non-subagent Task, render collapsed block now
+	if item.Name == "Task" {
 		var sb strings.Builder
 		var inputJSON []byte
 		if item.Input != nil {
@@ -882,7 +981,8 @@ func formatToolUseHTML(item *ContentItem, toolMeta map[string]toolMetadata) stri
 
 // formatToolResultHTML formats a tool_result content item as HTML.
 // For subagent Task: renders combined Prompt/Result with 🤖 emoji in assistant section.
-// For Skill and non-subagent Task: renders just the result in a collapsed block.
+// For Skill: skips rendering (already shown in tool_use, result is just "Launching skill: X").
+// For non-subagent Task: renders just the result in a collapsed block.
 // For other tools: renders the combined tool call + result in a single details block.
 func formatToolResultHTML(item *ContentItem, toolMeta map[string]toolMetadata) string {
 	var sb strings.Builder
@@ -945,8 +1045,13 @@ func formatToolResultHTML(item *ContentItem, toolMeta map[string]toolMetadata) s
 		return sb.String()
 	}
 
-	// For Skill or non-subagent Task, render just the result
-	if found && (meta.Name == "Task" || meta.Name == "Skill") {
+	// For Skill, skip rendering the result (already shown in tool_use, result is just "Launching skill: X")
+	if found && meta.Name == "Skill" {
+		return ""
+	}
+
+	// For non-subagent Task, render just the result
+	if found && meta.Name == "Task" {
 		errorClass := ""
 		if item.IsError {
 			errorClass = " error"

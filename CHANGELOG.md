@@ -9,6 +9,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Slash command rendering with description support:
+  - Slash commands (e.g., `/catchup`) display with `⚡` icon
+  - Descriptions from meta entries linked via `parentUuid` render in collapsible blocks
+  - `parseSlashCommand()` and `isSlashCommandEntry()` helpers in grouping.go
+  - `formatSlashCommand()` and `formatSlashCommandHTML()` for rendering
+- Skill tool description support:
+  - Meta entries with `sourceToolUseID` now provide descriptions for Skill tools
+  - Descriptions render as collapsible content in the Skill block
+  - `buildSkillDescriptionMap()` function to link descriptions via `sourceToolUseID` or `parentUuid`
+  - `SourceToolUseID` field added to Entry struct
 - TodoWrite tool checklist rendering:
   - Display todos as checklist with `[ ]` pending, `[-]` in progress, `[x]` completed
   - Expanded by default using `<details open>` attribute
@@ -27,6 +37,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Polymorphic `toolUseResult` field parsing: handles both string and object values in JSONL
+  - Custom `UnmarshalJSON` method on Entry struct
+  - Prevents parse warnings for string `toolUseResult` values
+- Skill tool rendering simplified:
+  - Result no longer rendered (just "Launching skill: X" which is redundant)
+  - Without description, renders as simple non-collapsible block
+- Meta entry filtering improved to preserve skill/command descriptions:
+  - `hasNonCaveatTextContent()` helper distinguishes descriptions from "Caveat:" warnings
+  - Meta entries with `sourceToolUseID` are preserved for skill descriptions
+  - Meta entries with text content (not "Caveat:") are preserved for command descriptions
 - Lint issues in logs/manager.go: converted if/else chain to tagged switch, removed unnecessary fmt.Sprintf
 
 - Markdown-to-HTML conversion for HTML transcript renderer using goldmark library:

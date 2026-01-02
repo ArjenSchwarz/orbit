@@ -1,6 +1,91 @@
 package transcript
 
-import "strings"
+import (
+	"regexp"
+	"strings"
+)
+
+// slashCommandPattern matches slash command format in user entries.
+// Example: <command-message>catchup</command-message>\n<command-name>/catchup</command-name>
+var slashCommandPattern = regexp.MustCompile(`<command-message>.*?</command-message>\s*<command-name>/([^<]+)</command-name>`)
+
+// parseSlashCommand extracts the command name from a user message if it matches
+// the slash command pattern. Returns empty string if not a slash command.
+func parseSlashCommand(text string) string {
+	matches := slashCommandPattern.FindStringSubmatch(text)
+	if len(matches) >= 2 {
+		return matches[1]
+	}
+	return ""
+}
+
+// isSlashCommandEntry checks if a user entry is purely a slash command invocation.
+func isSlashCommandEntry(entry *Entry) bool {
+	if entry.Type != "user" || entry.Message == nil {
+		return false
+	}
+
+	// Check string content (older format)
+	if len(entry.Message.Content) == 0 {
+		return false
+	}
+
+	// Check if there's a single text item that matches the slash command pattern
+	for _, item := range entry.Message.Content {
+		if item.Type == "text" && parseSlashCommand(item.Text) != "" {
+			return true
+		}
+	}
+	return false
+}
+
+// buildSkillDescriptionMap scans entries for meta entries containing skill/command descriptions
+// and returns a map from sourceToolUseID (for Skill tools) or parentUUID (for slash commands)
+// to the description text.
+func buildSkillDescriptionMap(entries []Entry) map[string]string {
+	result := make(map[string]string)
+
+	// First pass: identify slash command entry UUIDs
+	slashCommandUUIDs := make(map[string]bool)
+	for i := range entries {
+		entry := &entries[i]
+		if isSlashCommandEntry(entry) && entry.UUID != "" {
+			slashCommandUUIDs[entry.UUID] = true
+		}
+	}
+
+	// Second pass: collect descriptions from meta entries
+	for i := range entries {
+		entry := &entries[i]
+		if !entry.IsMeta || entry.Message == nil {
+			continue
+		}
+
+		// Extract text content as description
+		var descText string
+		for _, item := range entry.Message.Content {
+			if item.Type == "text" && item.Text != "" {
+				descText = item.Text
+				break
+			}
+		}
+		if descText == "" {
+			continue
+		}
+
+		// Link via sourceToolUseID (Skill tools)
+		if entry.SourceToolUseID != "" {
+			result[entry.SourceToolUseID] = descText
+		}
+
+		// Link via parentUUID (slash commands) - meta entry's parent is the slash command
+		if entry.ParentUUID != "" && slashCommandUUIDs[entry.ParentUUID] {
+			result[entry.ParentUUID] = descText
+		}
+	}
+
+	return result
+}
 
 // stripProjectDir removes the project directory prefix from a file path.
 // If the path doesn't start with the project directory, it's returned unchanged.
