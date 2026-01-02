@@ -548,7 +548,7 @@ func TestRenderHTML_TaskToolCollapses(t *testing.T) {
 	}
 }
 
-func TestRenderHTML_SkillToolCollapses(t *testing.T) {
+func TestRenderHTML_SkillToolRendersSimple(t *testing.T) {
 	entries := []Entry{
 		{
 			Type: "assistant",
@@ -568,11 +568,66 @@ func TestRenderHTML_SkillToolCollapses(t *testing.T) {
 
 	result := RenderHTML(entries, RenderOptions{})
 
-	if !strings.Contains(result, `<details class="tool-collapsible">`) {
-		t.Error("expected Skill tool to use details.tool-collapsible")
+	// Skill should render as a simple div, not a collapsible details
+	if !strings.Contains(result, `<div class="tool-use">`) {
+		t.Error("expected Skill tool to use div.tool-use")
 	}
 	if !strings.Contains(result, "Skill: next-task") {
-		t.Error("expected summary to contain skill name")
+		t.Error("expected content to contain skill name")
+	}
+	// Should NOT have collapsible details
+	if strings.Contains(result, `<details class="tool-collapsible">`) {
+		t.Error("Skill tool should not use collapsible details")
+	}
+}
+
+func TestRenderHTML_SkillToolWithDescription(t *testing.T) {
+	// When a skill has a meta entry with sourceToolUseID linking to it,
+	// the skill description should be rendered as collapsible content.
+	entries := []Entry{
+		{
+			Type: "assistant",
+			Message: &Message{
+				Role: "assistant",
+				Content: []ContentItem{
+					{
+						Type: "tool_use",
+						Name: "Skill",
+						ID:   "skill_123",
+						Input: map[string]any{
+							"skill": "permission-analyzer",
+						},
+					},
+				},
+			},
+		},
+		{
+			Type:            "user",
+			IsMeta:          true,
+			SourceToolUseID: "skill_123",
+			Message: &Message{
+				Role: "user",
+				Content: []ContentItem{
+					{
+						Type: "text",
+						Text: "This skill analyzes permissions and generates config.",
+					},
+				},
+			},
+		},
+	}
+
+	result := RenderHTML(entries, RenderOptions{})
+
+	// Skill with description should be collapsible
+	if !strings.Contains(result, `<details class="tool-collapsible">`) {
+		t.Error("expected Skill with description to be wrapped in details")
+	}
+	if !strings.Contains(result, "Skill: permission-analyzer") {
+		t.Error("expected Skill tool to show skill name in summary")
+	}
+	if !strings.Contains(result, "This skill analyzes permissions") {
+		t.Error("expected skill description to be rendered")
 	}
 }
 
@@ -781,6 +836,7 @@ func TestRenderHTML_ShortResultNoCollapse(t *testing.T) {
 
 func TestRenderHTML_CrossEntryToolMatching(t *testing.T) {
 	// Verify that tool_result in user entry matches tool_use in assistant entry
+	// For Skill tools, the result is skipped (only tool_use renders)
 	entries := []Entry{
 		{
 			Type: "assistant",
@@ -806,7 +862,7 @@ func TestRenderHTML_CrossEntryToolMatching(t *testing.T) {
 					{
 						Type:      "tool_result",
 						ToolUseID: "skill-789",
-						Content:   "Commit successful",
+						Content:   "Launching skill: commit",
 						IsError:   false,
 					},
 				},
@@ -816,18 +872,16 @@ func TestRenderHTML_CrossEntryToolMatching(t *testing.T) {
 
 	result := RenderHTML(entries, RenderOptions{})
 
-	// Both should be collapsed and show proper summaries
+	// Skill should render as simple div with skill name
 	if !strings.Contains(result, "Skill: commit") {
 		t.Error("expected Skill summary in tool_use")
 	}
-	// Result should inherit the summary from tool_use
-	if !strings.Contains(result, "✅") {
-		t.Error("expected success icon in matched result")
+	if !strings.Contains(result, `<div class="tool-use">`) {
+		t.Error("expected Skill to use div.tool-use")
 	}
-	// Both should be in details blocks
-	detailsCount := strings.Count(result, `<details class="tool-collapsible">`)
-	if detailsCount != 2 {
-		t.Errorf("expected 2 collapsible blocks for Skill tool and result, got %d", detailsCount)
+	// Skill result should be skipped (not rendered)
+	if strings.Contains(result, "Launching skill: commit") {
+		t.Error("Skill result should not be rendered")
 	}
 }
 
@@ -892,11 +946,10 @@ func TestRenderHTML_GoldenCollapsible_TaskTool(t *testing.T) {
 }
 
 func TestRenderHTML_GoldenCollapsible_SkillTool(t *testing.T) {
+	// Skill tools now render as simple div (not collapsible) and result is skipped
 	testGoldenCollapsibleHTML(t, "skill_tool", []string{
-		`<details class="tool-collapsible">`,
-		`<summary><span class="icon">🔧</span> Skill: next-task</summary>`,
-		`<summary><span class="icon">✅</span> Skill: next-task</summary>`,
-		"Task completed: Updated to next phase",
+		`<div class="tool-use">`,
+		`Skill: next-task`,
 	})
 }
 

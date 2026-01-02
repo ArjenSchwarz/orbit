@@ -820,9 +820,10 @@ func (m *Manager) generateHTMLIndex() string {
 	sb.WriteString(fmt.Sprintf("                <dt>Branch</dt><dd>%s</dd>\n", html.EscapeString(m.summary.BranchName)))
 
 	statusClass := "success"
-	if m.summary.Status == "failed" {
+	switch m.summary.Status {
+	case "failed":
 		statusClass = "error"
-	} else if m.summary.Status == "running" {
+	case "running":
 		statusClass = "running"
 	}
 	sb.WriteString(fmt.Sprintf("                <dt>Status</dt><dd class=\"status %s\">%s</dd>\n",
@@ -856,7 +857,7 @@ func (m *Manager) generateHTMLIndex() string {
 
 	for _, phase := range phases {
 		sessions := phaseMap[phase]
-		sb.WriteString(fmt.Sprintf("            <div class=\"phase\">\n"))
+		sb.WriteString("            <div class=\"phase\">\n")
 		sb.WriteString(fmt.Sprintf("                <h3>Phase %d</h3>\n", phase))
 
 		for _, session := range sessions {

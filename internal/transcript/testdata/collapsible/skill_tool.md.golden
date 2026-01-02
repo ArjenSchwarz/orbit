@@ -4,26 +4,7 @@
 
 ## 🤖 Assistant
 
-<details>
-<summary>🔧 Skill: next-task</summary>
-
-```json
-{
-  "args": "--phase",
-  "skill": "next-task"
-}
-```
-
-</details>
+🔧 Skill: next-task
 
 ---
-
-<details>
-<summary>✅ Skill: next-task</summary>
-
-```
-Task completed: Updated to next phase
-```
-
-</details>
 

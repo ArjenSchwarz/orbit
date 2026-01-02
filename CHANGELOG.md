@@ -9,6 +9,47 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Slash command rendering with description support:
+  - Slash commands (e.g., `/catchup`) display with `⚡` icon
+  - Descriptions from meta entries linked via `parentUuid` render in collapsible blocks
+  - `parseSlashCommand()` and `isSlashCommandEntry()` helpers in grouping.go
+  - `formatSlashCommand()` and `formatSlashCommandHTML()` for rendering
+- Skill tool description support:
+  - Meta entries with `sourceToolUseID` now provide descriptions for Skill tools
+  - Descriptions render as collapsible content in the Skill block
+  - `buildSkillDescriptionMap()` function to link descriptions via `sourceToolUseID` or `parentUuid`
+  - `SourceToolUseID` field added to Entry struct
+- TodoWrite tool checklist rendering:
+  - Display todos as checklist with `[ ]` pending, `[-]` in progress, `[x]` completed
+  - Expanded by default using `<details open>` attribute
+  - Result section hidden as it provides no useful information
+  - CSS styling for `.todo-list` class with monospace font
+- Edit tool grouping and patch display:
+  - Consecutive Edit calls grouped into single assistant block (like Read)
+  - Show `structuredPatch` instead of cat output with color-coded additions/deletions
+  - File path shown in summary: `🔧 Edit: <code>path/to/file</code>`
+  - CSS styling for `.patch-content`, `.patch-line`, `.addition`, `.deletion`, `.context`
+- Project-relative file paths in Read and Edit tool display:
+  - Strip project directory prefix from file paths using `cwd` from JSONL entries
+  - `stripProjectDir()` helper function in grouping.go
+  - `Cwd` field added to Entry struct for working directory extraction
+- `ToolUseResult` and `PatchHunk` structs for parsing Edit tool structured patches
+
+### Fixed
+
+- Edit tool error message preservation: when Edit operations fail or logs lack `structuredPatch`, the tool_result content (error message or legacy format) is now rendered as fallback instead of showing empty blocks
+- Polymorphic `toolUseResult` field parsing: handles both string and object values in JSONL
+  - Custom `UnmarshalJSON` method on Entry struct
+  - Prevents parse warnings for string `toolUseResult` values
+- Skill tool rendering simplified:
+  - Result no longer rendered (just "Launching skill: X" which is redundant)
+  - Without description, renders as simple non-collapsible block
+- Meta entry filtering improved to preserve skill/command descriptions:
+  - `hasNonCaveatTextContent()` helper distinguishes descriptions from "Caveat:" warnings
+  - Meta entries with `sourceToolUseID` are preserved for skill descriptions
+  - Meta entries with text content (not "Caveat:") are preserved for command descriptions
+- Lint issues in logs/manager.go: converted if/else chain to tagged switch, removed unnecessary fmt.Sprintf
+
 - Markdown-to-HTML conversion for HTML transcript renderer using goldmark library:
   - Assistant text messages render markdown formatting (headers, lists, code blocks, etc.)
   - Subagent results render as formatted HTML instead of raw text

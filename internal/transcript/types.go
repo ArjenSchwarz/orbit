@@ -7,13 +7,76 @@ import (
 
 // Entry represents a single line in the Claude session JSONL.
 type Entry struct {
-	Type       string   `json:"type"`
-	Message    *Message `json:"message,omitempty"`
-	Timestamp  string   `json:"timestamp,omitempty"`
-	SessionID  string   `json:"sessionId,omitempty"`
-	IsMeta     bool     `json:"isMeta,omitempty"`     // Meta entries are internal Claude markers
-	UUID       string   `json:"uuid,omitempty"`       // Unique identifier for this entry
-	ParentUUID string   `json:"parentUuid,omitempty"` // Links to parent entry's UUID
+	Type            string         `json:"type"`
+	Message         *Message       `json:"message,omitempty"`
+	Timestamp       string         `json:"timestamp,omitempty"`
+	SessionID       string         `json:"sessionId,omitempty"`
+	Cwd             string         `json:"cwd,omitempty"`             // Working directory for this entry
+	IsMeta          bool           `json:"isMeta,omitempty"`          // Meta entries are internal Claude markers
+	UUID            string         `json:"uuid,omitempty"`            // Unique identifier for this entry
+	ParentUUID      string         `json:"parentUuid,omitempty"`      // Links to parent entry's UUID
+	SourceToolUseID string         `json:"sourceToolUseID,omitempty"` // Links meta entry to originating tool_use
+	ToolUseResult   *ToolUseResult `json:"toolUseResult,omitempty"`   // Result metadata for tool calls
+}
+
+// ToolUseResult contains metadata about a tool execution result.
+type ToolUseResult struct {
+	FilePath        string      `json:"filePath,omitempty"`
+	StructuredPatch []PatchHunk `json:"structuredPatch,omitempty"`
+}
+
+// UnmarshalJSON handles polymorphic toolUseResult field (string or object).
+// Some tool results have toolUseResult as a string, others as an object.
+func (e *Entry) UnmarshalJSON(data []byte) error {
+	// Use an alias to avoid infinite recursion
+	type entryAlias struct {
+		Type            string          `json:"type"`
+		Message         *Message        `json:"message,omitempty"`
+		Timestamp       string          `json:"timestamp,omitempty"`
+		SessionID       string          `json:"sessionId,omitempty"`
+		Cwd             string          `json:"cwd,omitempty"`
+		IsMeta          bool            `json:"isMeta,omitempty"`
+		UUID            string          `json:"uuid,omitempty"`
+		ParentUUID      string          `json:"parentUuid,omitempty"`
+		SourceToolUseID string          `json:"sourceToolUseID,omitempty"`
+		ToolUseResult   json.RawMessage `json:"toolUseResult,omitempty"`
+	}
+
+	var alias entryAlias
+	if err := json.Unmarshal(data, &alias); err != nil {
+		return err
+	}
+
+	e.Type = alias.Type
+	e.Message = alias.Message
+	e.Timestamp = alias.Timestamp
+	e.SessionID = alias.SessionID
+	e.Cwd = alias.Cwd
+	e.IsMeta = alias.IsMeta
+	e.UUID = alias.UUID
+	e.ParentUUID = alias.ParentUUID
+	e.SourceToolUseID = alias.SourceToolUseID
+
+	// Handle toolUseResult which can be string or object
+	if len(alias.ToolUseResult) > 0 {
+		// Try to unmarshal as object first
+		var result ToolUseResult
+		if err := json.Unmarshal(alias.ToolUseResult, &result); err == nil {
+			e.ToolUseResult = &result
+		}
+		// If it's a string or fails to parse as object, leave ToolUseResult as nil
+	}
+
+	return nil
+}
+
+// PatchHunk represents a single hunk in a unified diff.
+type PatchHunk struct {
+	OldStart int      `json:"oldStart"`
+	OldLines int      `json:"oldLines"`
+	NewStart int      `json:"newStart"`
+	NewLines int      `json:"newLines"`
+	Lines    []string `json:"lines"`
 }
 
 // Message represents the message content within an entry.
@@ -117,6 +180,7 @@ func (c *ContentItem) UnmarshalJSON(data []byte) error {
 
 // RenderOptions configures Markdown rendering.
 type RenderOptions struct {
-	Title     string // Document title (e.g., "Session Transcript" or "Phase 1 Session Transcript")
-	SessionID string // Session ID to display in header
+	Title      string // Document title (e.g., "Session Transcript" or "Phase 1 Session Transcript")
+	SessionID  string // Session ID to display in header
+	ProjectDir string // Project directory to strip from file paths (e.g., "/Users/foo/project")
 }

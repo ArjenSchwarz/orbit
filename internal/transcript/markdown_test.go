@@ -602,7 +602,7 @@ func TestRenderMarkdown_TaskToolFallback(t *testing.T) {
 	}
 }
 
-func TestRenderMarkdown_SkillToolAlwaysCollapses(t *testing.T) {
+func TestRenderMarkdown_SkillToolRendersSimple(t *testing.T) {
 	entries := []Entry{
 		{
 			Type: "assistant",
@@ -624,11 +624,13 @@ func TestRenderMarkdown_SkillToolAlwaysCollapses(t *testing.T) {
 
 	result := RenderMarkdown(entries, RenderOptions{})
 
-	if !strings.Contains(result, "<details>") {
-		t.Error("Skill tool should always be wrapped in details")
+	// Skill should render as simple line, not collapsible
+	if !strings.Contains(result, "🔧 Skill: next-task") {
+		t.Error("expected Skill tool to show skill name")
 	}
-	if !strings.Contains(result, "<summary>🔧 Skill: next-task</summary>") {
-		t.Error("expected Skill tool summary with skill name")
+	// Should NOT be wrapped in details
+	if strings.Contains(result, "<details>") {
+		t.Error("Skill tool should not be wrapped in details")
 	}
 }
 
@@ -663,13 +665,65 @@ func TestRenderMarkdown_SkillToolFallback(t *testing.T) {
 
 			result := RenderMarkdown(entries, RenderOptions{})
 
-			if !strings.Contains(result, "<details>") {
-				t.Error("Skill tool should still be wrapped in details")
+			// Skill should render as simple line with fallback name
+			if !strings.Contains(result, "🔧 Skill") {
+				t.Errorf("expected fallback '🔧 Skill' for case %s", name)
 			}
-			if !strings.Contains(result, "<summary>🔧 Skill</summary>") {
-				t.Errorf("expected fallback summary '🔧 Skill' for case %s", name)
+			// Should NOT be wrapped in details
+			if strings.Contains(result, "<details>") {
+				t.Error("Skill tool should not be wrapped in details")
 			}
 		})
+	}
+}
+
+func TestRenderMarkdown_SkillToolWithDescription(t *testing.T) {
+	// When a skill has a meta entry with sourceToolUseID linking to it,
+	// the skill description should be rendered as collapsible content.
+	entries := []Entry{
+		{
+			Type: "assistant",
+			Message: &Message{
+				Role: "assistant",
+				Content: []ContentItem{
+					{
+						Type: "tool_use",
+						Name: "Skill",
+						ID:   "skill_123",
+						Input: map[string]any{
+							"skill": "permission-analyzer",
+						},
+					},
+				},
+			},
+		},
+		{
+			Type:            "user",
+			IsMeta:          true,
+			SourceToolUseID: "skill_123",
+			Message: &Message{
+				Role: "user",
+				Content: []ContentItem{
+					{
+						Type: "text",
+						Text: "This skill analyzes permissions and generates config.",
+					},
+				},
+			},
+		},
+	}
+
+	result := RenderMarkdown(entries, RenderOptions{})
+
+	// Skill with description should be collapsible
+	if !strings.Contains(result, "<details>") {
+		t.Error("expected Skill with description to be wrapped in details")
+	}
+	if !strings.Contains(result, "🔧 Skill: permission-analyzer") {
+		t.Error("expected Skill tool to show skill name in summary")
+	}
+	if !strings.Contains(result, "This skill analyzes permissions") {
+		t.Error("expected skill description to be rendered")
 	}
 }
 
@@ -1096,6 +1150,7 @@ func TestRenderMarkdown_CrossEntryToolMatching(t *testing.T) {
 
 func TestRenderMarkdown_ToolResultInUserEntry(t *testing.T) {
 	// Verify that tool_result is properly handled in user entries (not assistant)
+	// For Skill, the tool_result is skipped (only tool_use renders)
 	entries := []Entry{
 		{
 			Type: "assistant",
@@ -1131,15 +1186,19 @@ func TestRenderMarkdown_ToolResultInUserEntry(t *testing.T) {
 
 	result := RenderMarkdown(entries, RenderOptions{})
 
-	// Verify the user entry contains the collapsed tool_result
-	if !strings.Contains(result, "<summary>✅ Skill: commit</summary>") {
-		t.Error("tool_result in user entry should be collapsed with inherited summary")
+	// Skill tool_use should render as simple line
+	if !strings.Contains(result, "🔧 Skill: commit") {
+		t.Error("Skill tool_use should render with skill name")
+	}
+	// Skill result should be skipped
+	if strings.Contains(result, "Commit created successfully") {
+		t.Error("Skill tool_result should not be rendered")
 	}
 }
 
 func TestRenderMarkdown_MultipleToolsMatching(t *testing.T) {
 	// Multiple tool_use/result pairs should match correctly
-	// Subagent Task combines, Skill renders separately
+	// Subagent Task combines, Skill renders as simple line (result skipped)
 	entries := []Entry{
 		{
 			Type: "assistant",
@@ -1195,16 +1254,20 @@ func TestRenderMarkdown_MultipleToolsMatching(t *testing.T) {
 	if !strings.Contains(result, "<summary>✅ 🤖🔧 Plan: Create plan</summary>") {
 		t.Error("subagent Task result should have robot emoji")
 	}
-	// Skill result should match its tool_use (no robot emoji, rendered separately)
-	if !strings.Contains(result, "<summary>✅ Skill: rune</summary>") {
-		t.Error("second tool_result should match second tool_use")
+	// Skill should render as simple line (not collapsible, result skipped)
+	if !strings.Contains(result, "🔧 Skill: rune") {
+		t.Error("Skill should render with skill name")
+	}
+	// Skill result should be skipped
+	if strings.Contains(result, "Rune executed") {
+		t.Error("Skill result should not be rendered")
 	}
 }
 
 // Tests for Markdown output format (Task 15)
 
-func TestRenderMarkdown_DetailsFormat(t *testing.T) {
-	// Verify the <details>/<summary> structure is correct for Skill (non-subagent)
+func TestRenderMarkdown_SkillSimpleFormat(t *testing.T) {
+	// Verify that Skill renders as a simple line, not collapsible
 	entries := []Entry{
 		{
 			Type: "assistant",
@@ -1226,24 +1289,19 @@ func TestRenderMarkdown_DetailsFormat(t *testing.T) {
 
 	result := RenderMarkdown(entries, RenderOptions{})
 
-	// Verify structure: <details>\n<summary>...</summary>\n\n...content...\n</details>
-	expectedStructure := `<details>
-<summary>🔧 Skill: next-task</summary>
-
-` + "```json"
-
-	if !strings.Contains(result, expectedStructure) {
-		t.Errorf("expected details structure:\n%s\n\ngot:\n%s", expectedStructure, result)
+	// Skill should render as simple line
+	if !strings.Contains(result, "🔧 Skill: next-task") {
+		t.Error("expected Skill to render with skill name")
 	}
 
-	// Verify closing tag
-	if !strings.Contains(result, "</details>") {
-		t.Error("expected closing </details> tag")
+	// Should NOT use details/summary
+	if strings.Contains(result, "<details>") {
+		t.Error("Skill should not use details element")
 	}
 
-	// Verify JSON code block inside details
-	if !strings.Contains(result, "```json") || !strings.Contains(result, "```\n\n</details>") {
-		t.Error("expected JSON code block inside details")
+	// Should NOT show JSON
+	if strings.Contains(result, "```json") {
+		t.Error("Skill should not show JSON input")
 	}
 }
 
@@ -1493,5 +1551,112 @@ func TestBackwardCompat_PreTruncationDecision(t *testing.T) {
 	// Content should NOT be truncated (it's under MaxToolResultRunes)
 	if strings.Contains(result, "... (truncated)") {
 		t.Error("content under MaxToolResultRunes should not be truncated")
+	}
+}
+
+func TestRenderMarkdown_EditGroupErrorMessagePreserved(t *testing.T) {
+	// Test that Edit tool error messages are preserved when there's no structuredPatch
+	// This tests the fix for the regression where failed Edit operations showed empty blocks.
+	entries := []Entry{
+		{
+			Type: "assistant",
+			Message: &Message{
+				Role: "assistant",
+				Content: []ContentItem{
+					{
+						Type: "tool_use",
+						Name: "Edit",
+						ID:   "edit_fail",
+						Input: map[string]any{
+							"file_path":  "/path/to/file.go",
+							"old_string": "not found",
+							"new_string": "replacement",
+						},
+					},
+				},
+			},
+		},
+		{
+			Type: "user",
+			Message: &Message{
+				Role: "user",
+				Content: []ContentItem{
+					{
+						Type:      "tool_result",
+						ToolUseID: "edit_fail",
+						Content:   "Error: old_string not found in file",
+						IsError:   true,
+					},
+				},
+			},
+		},
+	}
+
+	result := RenderMarkdown(entries, RenderOptions{})
+
+	// Should show error icon
+	if !strings.Contains(result, "❌") {
+		t.Error("expected error icon for failed edit")
+	}
+
+	// Should show Edit tool summary
+	if !strings.Contains(result, "🔧 Edit:") {
+		t.Error("expected Edit tool in summary")
+	}
+
+	// Error message should be preserved and rendered as fallback content
+	if !strings.Contains(result, "Error: old_string not found in file") {
+		t.Error("expected error message to be preserved in output")
+	}
+}
+
+func TestRenderMarkdown_EditGroupLegacyFormatPreserved(t *testing.T) {
+	// Test that Edit tool results from older logs without structuredPatch are displayed
+	entries := []Entry{
+		{
+			Type: "assistant",
+			Message: &Message{
+				Role: "assistant",
+				Content: []ContentItem{
+					{
+						Type: "tool_use",
+						Name: "Edit",
+						ID:   "edit_legacy",
+						Input: map[string]any{
+							"file_path":  "/path/to/file.go",
+							"old_string": "old content",
+							"new_string": "new content",
+						},
+					},
+				},
+			},
+		},
+		{
+			Type: "user",
+			Message: &Message{
+				Role: "user",
+				Content: []ContentItem{
+					{
+						Type:      "tool_result",
+						ToolUseID: "edit_legacy",
+						Content:   "Successfully edited /path/to/file.go",
+						IsError:   false,
+					},
+				},
+			},
+			// No ToolUseResult field - simulating legacy format
+		},
+	}
+
+	result := RenderMarkdown(entries, RenderOptions{})
+
+	// Should show success icon
+	if !strings.Contains(result, "✅") {
+		t.Error("expected success icon for successful edit")
+	}
+
+	// Legacy content should be preserved and rendered as fallback
+	if !strings.Contains(result, "Successfully edited /path/to/file.go") {
+		t.Error("expected legacy format content to be preserved in output")
 	}
 }

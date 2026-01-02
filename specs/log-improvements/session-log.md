@@ -507,6 +507,154 @@ All this content is now preserved in full within the collapsible blocks.
 
 ---
 
+## TodoWrite Tool Checklist Rendering
+
+**Date**: 2026-01-01
+
+### Problem
+
+The TodoWrite tool was displaying raw JSON input, which was difficult to read and didn't convey the task status clearly:
+
+```json
+{
+  "todos": [
+    {"content": "Fix bug", "status": "pending", "activeForm": "Fixing bug"},
+    {"content": "Run tests", "status": "completed", "activeForm": "Running tests"}
+  ]
+}
+```
+
+### Solution
+
+1. **Checklist format**: Display todos as a checklist with checkbox notation:
+   - `[ ]` for pending
+   - `[-]` for in_progress
+   - `[x]` for completed
+
+2. **Expanded by default**: TodoWrite blocks use `<details open>` to show content immediately
+
+3. **Hide Result section**: The tool result ("Todos have been modified successfully...") provides no value and is hidden
+
+After (Markdown):
+```markdown
+<details open>
+<summary>✅ 🔧 TodoWrite</summary>
+
+- [ ] Fix bug
+- [-] Add feature
+- [x] Run tests
+
+</details>
+```
+
+After (HTML):
+- Uses `<ul class="todo-list">` with monospace font
+- Color-coded patch styling inherited from code blocks
+
+### Changes
+
+- `internal/transcript/html.go`: Added TodoWrite case to `formatToolInputHTML()`, CSS for `.todo-list`, `open` attribute for TodoWrite details, skip Result section for TodoWrite
+- `internal/transcript/markdown.go`: Added TodoWrite case to `formatToolInput()`, `open` attribute for TodoWrite details
+
+---
+
+## Edit Tool Grouping and Patch Display
+
+**Date**: 2026-01-01
+
+### Problem
+
+1. Edit tool calls were not grouped like Read calls, resulting in separate blocks for each edit
+2. The Edit result showed output from `cat -n` instead of the more useful `structuredPatch` data
+3. Full absolute file paths were shown instead of project-relative paths
+
+### Solution
+
+1. **Grouping**: Consecutive Edit calls are now grouped into a single Assistant block, matching Read behavior
+
+2. **Patch display**: Show the `structuredPatch` from the tool result instead of cat output:
+   - HTML: Color-coded with additions in green, deletions in red
+   - Markdown: Uses ` ```patch ` code fence for syntax highlighting
+
+3. **Filename in summary**: File path shown next to tool name: `🔧 Edit: <code>path/to/file.swift</code>`
+
+After (HTML):
+```html
+<details class="tool-collapsible read-item">
+    <summary><span class="icon">✅</span> 🔧 Edit: <code>Services/Store.swift</code></summary>
+    <div class="tool-content">
+        <div class="patch-content">
+            <span class="patch-line context">     private static let key = "value"</span>
+            <span class="patch-line deletion">-    private static let old = 10</span>
+            <span class="patch-line addition">+    private static let new = 20</span>
+        </div>
+    </div>
+</details>
+```
+
+After (Markdown):
+```markdown
+<details>
+<summary>✅ 🔧 Edit: <code>Services/Store.swift</code></summary>
+
+` ` `patch
+     private static let key = "value"
+-    private static let old = 10
++    private static let new = 20
+` ` `
+
+</details>
+```
+
+### Implementation
+
+Extended the grouping infrastructure used for Read to also handle Edit:
+
+1. **Entry struct**: Added `ToolUseResult` field to capture `structuredPatch` from entries
+2. **Types**: Added `ToolUseResult` and `PatchHunk` structs
+3. **Grouping**: Added `editItem` struct, `isEditOnlyEntry()`, `extractEditItems()` functions
+4. **Rendering**: Added `formatEditGroupHTML()` and `formatEditGroup()` functions
+5. **CSS**: Added `.patch-content`, `.patch-line`, `.addition`, `.deletion`, `.context` classes
+
+### Changes
+
+- `internal/transcript/types.go`: Added `ToolUseResult`, `PatchHunk` structs, `ToolUseResult` field to `Entry`
+- `internal/transcript/grouping.go`: Added `editItem`, `isEditOnlyEntry()`, `extractEditItems()`, updated `preprocessEntries()` for Edit grouping
+- `internal/transcript/html.go`: Added `formatEditGroupHTML()`, patch CSS styling
+- `internal/transcript/markdown.go`: Added `formatEditGroup()`
+
+---
+
+## Project-Relative File Paths
+
+**Date**: 2026-01-01
+
+### Problem
+
+Read and Edit tool calls displayed full absolute paths like `/Users/arjenschwarz/projects/personal/phase/PhaseShared/Sources/PhaseShared/Services/SharedDataStore.swift`, which are long and contain redundant information.
+
+### Solution
+
+Strip the project directory prefix from file paths, displaying only the project-relative path: `PhaseShared/Sources/PhaseShared/Services/SharedDataStore.swift`
+
+The project directory is extracted from the `cwd` field present in each JSONL entry, which contains the working directory for that session.
+
+### Implementation
+
+1. **Entry struct**: Added `Cwd` field to capture working directory from entries
+2. **Helper function**: Added `stripProjectDir()` to remove project directory prefix from paths
+3. **Render functions**: Extract `cwd` from first entry that has it, pass to group rendering functions
+4. **Fallback**: `RenderOptions.ProjectDir` can be explicitly set as override
+
+### Changes
+
+- `internal/transcript/types.go`: Added `Cwd` field to `Entry`
+- `internal/transcript/grouping.go`: Added `stripProjectDir()` helper
+- `internal/transcript/html.go`: Extract `cwd` from entries, pass `projectDir` to group render functions
+- `internal/transcript/markdown.go`: Extract `cwd` from entries, pass `projectDir` to group render functions
+
+---
+
 ## Distinct Message Colors and Thinking Block Styling
 
 **Date**: 2025-12-30
@@ -540,3 +688,191 @@ Thinking blocks also have a left border in amber (`#d97706`) to provide addition
   - Changed `.thinking-block` from `<details>` to a div with header and content
   - Added `.thinking-header` and updated `.thinking-content` styling
 - `internal/transcript/html_test.go`: Updated `TestRenderHTML_ThinkingBlock` for new div structure
+
+---
+
+## Slash Command Rendering
+
+**Date**: 2026-01-02
+
+### Problem
+
+When users run slash commands like `/catchup` or `/commit`, they appear in the transcript as verbose XML:
+
+```
+<command-message>catchup</command-message>
+<command-name>/catchup</command-name>
+```
+
+This is difficult to read and obscures the actual command being run.
+
+### Solution
+
+Detect slash command entries using a regex pattern and render them as a compact tool-like block with a lightning bolt emoji:
+
+After (Markdown):
+```markdown
+## 👤 User
+
+⚡ `/catchup`
+
+---
+```
+
+After (HTML):
+```html
+<div class="tool-use"><span class="icon">⚡</span> /catchup</div>
+```
+
+### Implementation
+
+1. **Pattern matching**: Added `slashCommandPattern` regex to match `<command-message>...<command-name>/X</command-name>` format
+2. **Detection**: Added `parseSlashCommand()` and `isSlashCommandEntry()` helper functions
+3. **Rendering**: Added `formatSlashCommand()` and `formatSlashCommandHTML()` functions
+
+### Changes
+
+- `internal/transcript/grouping.go`: Added `slashCommandPattern`, `parseSlashCommand()`, `isSlashCommandEntry()`
+- `internal/transcript/markdown.go`: Added `formatSlashCommand()`, check in `formatUserMessage()`
+- `internal/transcript/html.go`: Added `formatSlashCommandHTML()`, check in `formatUserMessageHTML()`
+
+---
+
+## Slash Command Description Rendering
+
+**Date**: 2026-01-02
+
+### Problem
+
+Slash commands like `/catchup` have description text in a following meta entry that was being filtered out and not displayed. The description is linked via `parentUuid` pointing to the slash command entry.
+
+### Solution
+
+1. **Keep description meta entries**: Modified parser to keep meta entries with text content that doesn't contain "Caveat:" (local command warnings)
+2. **Build description map**: Extended `buildSkillDescriptionMap()` to also capture descriptions linked via `parentUuid` to slash command entries
+3. **Render in command block**: When a slash command has a description, render as collapsible details
+4. **Skip duplicate rendering**: Meta entries are skipped in user message rendering
+
+After (Markdown):
+```markdown
+<details>
+<summary>⚡ /catchup</summary>
+
+# Catch Up on Branch Changes
+
+You need to help me understand what work has been done on this branch...
+
+</details>
+```
+
+After (HTML):
+- Collapsible `<details class="tool-collapsible">` with command name in summary
+- Description content rendered as markdown inside the details body
+
+### Implementation
+
+1. **Parser**: Added `hasNonCaveatTextContent()` to distinguish command descriptions from "Caveat:" warnings
+2. **Grouping**: Updated `buildSkillDescriptionMap()` to track slash command UUIDs and link descriptions via `parentUuid`
+3. **Rendering**: Updated `formatSlashCommand()`/`formatSlashCommandHTML()` to accept skill descriptions and render collapsible block when available
+
+### Changes
+
+- `internal/transcript/parser.go`: Added `hasNonCaveatTextContent()`, updated `shouldFilterLocalCommand()` to keep command descriptions
+- `internal/transcript/grouping.go`: Updated `buildSkillDescriptionMap()` to capture descriptions for both Skill tools (via sourceToolUseID) and slash commands (via parentUuid)
+- `internal/transcript/markdown.go`: Updated `formatUserMessage()` and `formatSlashCommand()` signatures to accept skill descriptions
+- `internal/transcript/html.go`: Updated `formatUserMessageHTML()` and `formatSlashCommandHTML()` signatures to accept skill descriptions
+
+---
+
+## Skill Tool Simplification
+
+**Date**: 2026-01-02
+
+### Problem
+
+The Skill tool was displaying redundant information:
+1. Tool use showed full JSON input: `{"skill": "next-task"}`
+2. Tool result showed useless text: "Launching skill: next-task"
+
+This created noise without providing value.
+
+### Solution
+
+Simplified Skill tool rendering:
+1. **Tool use**: Shows just the skill name without JSON: `🔧 Skill: next-task`
+2. **Tool result**: Skipped entirely (the "Launching skill" message provides no value)
+
+After (Markdown):
+```markdown
+🔧 Skill: next-task
+```
+
+After (HTML):
+```html
+<div class="tool-use"><span class="icon">🔧</span> Skill: next-task</div>
+```
+
+### Implementation
+
+1. **formatToolUse/formatToolUseHTML**: Skill tools render immediately as simple line (not collapsible)
+2. **formatToolResult/formatToolResultHTML**: Skip rendering when tool is Skill (result is just "Launching skill: X")
+
+### Changes
+
+- `internal/transcript/markdown.go`: Updated `formatToolUse()` for simple Skill rendering
+- `internal/transcript/html.go`: Updated `formatToolUseHTML()` for simple Skill rendering
+- `internal/transcript/markdown.go`: Updated `formatToolResult()` to skip Skill results
+- `internal/transcript/html.go`: Updated `formatToolResultHTML()` to skip Skill results
+
+---
+
+## Skill Description Rendering
+
+**Date**: 2026-01-02
+
+### Problem
+
+Skills have description text that appears in meta entries with `sourceToolUseID` linking back to the Skill tool call. This description was being filtered out (all meta entries were skipped) and not displayed.
+
+### Solution
+
+1. **Keep skill description meta entries**: Modified parser to NOT filter meta entries that have `sourceToolUseID` set
+2. **Build description map**: Scan entries for meta entries with `sourceToolUseID` and extract their text content
+3. **Render in Skill block**: When a Skill has a description, render as collapsible details with description content
+4. **Skip duplicate rendering**: Meta entries with `sourceToolUseID` are skipped in user message rendering since they're already displayed in the Skill block
+
+After (Markdown):
+```markdown
+<details>
+<summary>🔧 Skill: permission-analyzer</summary>
+
+# Permission Analyzer
+
+Generate permissions configuration based on actual tool usage...
+
+</details>
+```
+
+After (HTML):
+- Collapsible `<details class="tool-collapsible">` with skill name in summary
+- Description content rendered as markdown inside the details body
+
+### Implementation
+
+1. **Parser**: Modified `shouldFilterLocalCommand()` to keep meta entries with `SourceToolUseID`
+2. **Types**: Added `SourceToolUseID` field to `Entry` struct
+3. **Grouping**: Added `buildSkillDescriptionMap()` function to extract descriptions
+4. **Metadata**: Added `SkillDescription` field to `toolMetadata` struct
+5. **Rendering**: Updated `formatToolUse`/`formatToolUseHTML` to render collapsible block when description available
+6. **User message**: Skip meta entries with `SourceToolUseID` in `formatUserMessage`/`formatUserMessageHTML`
+
+### Changes
+
+- `internal/transcript/types.go`: Added `SourceToolUseID` field to `Entry`
+- `internal/transcript/parser.go`: Modified `shouldFilterLocalCommand()` to keep skill descriptions
+- `internal/transcript/grouping.go`: Added `buildSkillDescriptionMap()`
+- `internal/transcript/markdown.go`: Added `SkillDescription` to `toolMetadata`, updated `RenderMarkdown()`, `formatAssistantMessage()`, `formatToolUse()`, `formatUserMessage()`
+- `internal/transcript/html.go`: Updated `RenderHTML()`, `formatAssistantMessageHTML()`, `formatToolUseHTML()`, `formatUserMessageHTML()`
+- `internal/transcript/parser_test.go`: Added `TestParseJSONL_KeepsSkillDescriptionMetaEntries`
+- `internal/transcript/markdown_test.go`: Added `TestRenderMarkdown_SkillToolWithDescription`
+- `internal/transcript/html_test.go`: Added `TestRenderHTML_SkillToolWithDescription`

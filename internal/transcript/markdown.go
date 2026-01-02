@@ -19,12 +19,13 @@ const (
 
 // toolMetadata stores information about a tool_use for result matching.
 type toolMetadata struct {
-	Name        string // Tool name (e.g., "Task", "Read")
-	Summary     string // Summary text for collapsed display
-	Description string // Description field from input (for Bash, etc.)
-	Input       any    // Full input for rendering
-	Prompt      string // Prompt text for subagent Task calls
-	IsSubagent  bool   // True if Task has subagent_type
+	Name             string // Tool name (e.g., "Task", "Read")
+	Summary          string // Summary text for collapsed display
+	Description      string // Description field from input (for Bash, etc.)
+	Input            any    // Full input for rendering
+	Prompt           string // Prompt text for subagent Task calls
+	IsSubagent       bool   // True if Task has subagent_type
+	SkillDescription string // Full skill description from meta entry (for Skill tools)
 }
 
 // RenderMarkdown converts parsed entries to Markdown format.
@@ -47,6 +48,20 @@ func RenderMarkdown(entries []Entry, opts RenderOptions) string {
 	// Pre-process entries to group consecutive Read calls
 	groups := preprocessEntries(entries)
 
+	// Extract project directory from entries (use cwd from first entry that has it)
+	projectDir := opts.ProjectDir
+	if projectDir == "" {
+		for i := range entries {
+			if entries[i].Cwd != "" {
+				projectDir = entries[i].Cwd
+				break
+			}
+		}
+	}
+
+	// Build skill description map from meta entries
+	skillDescriptions := buildSkillDescriptionMap(entries)
+
 	// Initialize tool metadata map at render level (shared across entries)
 	// This is critical because tool_use appears in assistant entries but
 	// tool_result appears in user entries - the map must persist across both.
@@ -57,14 +72,16 @@ func RenderMarkdown(entries []Entry, opts RenderOptions) string {
 		switch group.Type {
 		case "user":
 			for i := range group.Entries {
-				sb.WriteString(formatUserMessage(&group.Entries[i], toolMeta))
+				sb.WriteString(formatUserMessage(&group.Entries[i], toolMeta, skillDescriptions))
 			}
 		case "assistant":
 			for i := range group.Entries {
-				sb.WriteString(formatAssistantMessage(&group.Entries[i], toolMeta))
+				sb.WriteString(formatAssistantMessage(&group.Entries[i], toolMeta, skillDescriptions))
 			}
 		case "read_group":
-			sb.WriteString(formatReadGroup(group.Reads))
+			sb.WriteString(formatReadGroup(group.Reads, projectDir))
+		case "edit_group":
+			sb.WriteString(formatEditGroup(group.Edits, projectDir))
 		}
 	}
 
@@ -72,7 +89,7 @@ func RenderMarkdown(entries []Entry, opts RenderOptions) string {
 }
 
 // formatReadGroup formats a group of consecutive Read tool calls as a single block.
-func formatReadGroup(reads []readItem) string {
+func formatReadGroup(reads []readItem, projectDir string) string {
 	if len(reads) == 0 {
 		return ""
 	}
@@ -86,9 +103,10 @@ func formatReadGroup(reads []readItem) string {
 			icon = "❌"
 		}
 
+		displayPath := stripProjectDir(read.FilePath, projectDir)
 		sb.WriteString("<details>\n")
 		sb.WriteString(fmt.Sprintf("<summary>%s 🔧 Read: <code>%s</code></summary>\n\n",
-			icon, html.EscapeString(read.FilePath)))
+			icon, html.EscapeString(displayPath)))
 
 		if read.Content != "" {
 			sb.WriteString("```\n")
@@ -103,10 +121,63 @@ func formatReadGroup(reads []readItem) string {
 	return sb.String()
 }
 
+// formatEditGroup formats a group of consecutive Edit tool calls as a single block.
+func formatEditGroup(edits []editItem, projectDir string) string {
+	if len(edits) == 0 {
+		return ""
+	}
+
+	var sb strings.Builder
+	sb.WriteString("## 🤖 Assistant\n\n")
+
+	for _, edit := range edits {
+		icon := "✅"
+		if edit.IsError {
+			icon = "❌"
+		}
+
+		displayPath := stripProjectDir(edit.FilePath, projectDir)
+		sb.WriteString("<details>\n")
+		sb.WriteString(fmt.Sprintf("<summary>%s 🔧 Edit: <code>%s</code></summary>\n\n",
+			icon, html.EscapeString(displayPath)))
+
+		if len(edit.Patch) > 0 {
+			sb.WriteString("```patch\n")
+			for _, hunk := range edit.Patch {
+				for _, line := range hunk.Lines {
+					sb.WriteString(line)
+					sb.WriteString("\n")
+				}
+			}
+			sb.WriteString("```\n\n")
+		} else if edit.Content != "" {
+			// Fallback: show content (error message or legacy format)
+			sb.WriteString("```\n")
+			sb.WriteString(edit.Content)
+			sb.WriteString("\n```\n\n")
+		}
+
+		sb.WriteString("</details>\n\n")
+	}
+
+	sb.WriteString("---\n\n")
+	return sb.String()
+}
+
 // formatUserMessage formats a user message as Markdown.
-func formatUserMessage(entry *Entry, toolMeta map[string]toolMetadata) string {
+func formatUserMessage(entry *Entry, toolMeta map[string]toolMetadata, skillDescriptions map[string]string) string {
 	if entry.Message == nil || len(entry.Message.Content) == 0 {
 		return ""
+	}
+
+	// Skip skill/command description meta entries - they're rendered with the Skill/command block
+	if entry.IsMeta {
+		return ""
+	}
+
+	// Check if this is a slash command entry (e.g., /catchup)
+	if isSlashCommandEntry(entry) {
+		return formatSlashCommand(entry, skillDescriptions)
 	}
 
 	// Check if there's any content to render (text or tool_result)
@@ -156,8 +227,54 @@ func formatUserMessage(entry *Entry, toolMeta map[string]toolMetadata) string {
 	return sb.String()
 }
 
+// formatSlashCommand formats a slash command entry as Markdown.
+func formatSlashCommand(entry *Entry, skillDescriptions map[string]string) string {
+	if entry.Message == nil {
+		return ""
+	}
+
+	// Extract command name from the entry
+	var commandName string
+	for _, item := range entry.Message.Content {
+		if item.Type == "text" {
+			commandName = parseSlashCommand(item.Text)
+			if commandName != "" {
+				break
+			}
+		}
+	}
+
+	if commandName == "" {
+		return ""
+	}
+
+	// Look up description by entry UUID
+	var description string
+	if entry.UUID != "" && skillDescriptions != nil {
+		description = skillDescriptions[entry.UUID]
+	}
+
+	var sb strings.Builder
+	sb.WriteString("## 👤 User\n\n")
+
+	if description != "" {
+		// Render as collapsible with description
+		sb.WriteString("<details>\n")
+		sb.WriteString(fmt.Sprintf("<summary>⚡ /%s</summary>\n\n", commandName))
+		sb.WriteString(description)
+		sb.WriteString("\n\n</details>\n\n")
+	} else {
+		// Simple format without description
+		sb.WriteString(fmt.Sprintf("⚡ `/%s`\n\n", commandName))
+	}
+
+	sb.WriteString("---\n\n")
+
+	return sb.String()
+}
+
 // formatAssistantMessage formats an assistant message as Markdown.
-func formatAssistantMessage(entry *Entry, toolMeta map[string]toolMetadata) string {
+func formatAssistantMessage(entry *Entry, toolMeta map[string]toolMetadata, skillDescriptions map[string]string) string {
 	if entry.Message == nil {
 		return ""
 	}
@@ -181,7 +298,7 @@ func formatAssistantMessage(entry *Entry, toolMeta map[string]toolMetadata) stri
 			}
 
 		case "tool_use":
-			sb.WriteString(formatToolUse(&item, toolMeta))
+			sb.WriteString(formatToolUse(&item, toolMeta, skillDescriptions))
 
 		case "tool_result":
 			// tool_result in assistant entries (legacy handling)
@@ -196,9 +313,10 @@ func formatAssistantMessage(entry *Entry, toolMeta map[string]toolMetadata) stri
 }
 
 // formatToolUse formats a tool_use content item.
-// For Skill and non-subagent Task: renders collapsed details block.
+// For Skill: renders collapsible block with skill description (if available) or simple line.
+// For non-subagent Task: renders collapsed details block with JSON.
 // For subagent Task and other tools: stores metadata and defers rendering to formatToolResult.
-func formatToolUse(item *ContentItem, toolMeta map[string]toolMetadata) string {
+func formatToolUse(item *ContentItem, toolMeta map[string]toolMetadata, skillDescriptions map[string]string) string {
 	// Get summary text and description
 	summary := getToolSummary(item.Name, item.Input)
 	description := getToolDescription(item.Input)
@@ -217,15 +335,22 @@ func formatToolUse(item *ContentItem, toolMeta map[string]toolMetadata) string {
 	// Check if this is a subagent Task
 	subagent := item.Name == "Task" && isSubagent(item.Input)
 
+	// Look up skill description if this is a Skill tool
+	var skillDesc string
+	if item.Name == "Skill" && item.ID != "" && skillDescriptions != nil {
+		skillDesc = skillDescriptions[item.ID]
+	}
+
 	// Store metadata for result matching (if ID is present)
 	if item.ID != "" {
 		toolMeta[item.ID] = toolMetadata{
-			Name:        item.Name,
-			Summary:     summary,
-			Description: description,
-			Input:       item.Input,
-			Prompt:      getSubagentPrompt(item.Input),
-			IsSubagent:  subagent,
+			Name:             item.Name,
+			Summary:          summary,
+			Description:      description,
+			Input:            item.Input,
+			Prompt:           getSubagentPrompt(item.Input),
+			IsSubagent:       subagent,
+			SkillDescription: skillDesc,
 		}
 	}
 
@@ -234,8 +359,22 @@ func formatToolUse(item *ContentItem, toolMeta map[string]toolMetadata) string {
 		return ""
 	}
 
-	// For Skill or non-subagent Task, render collapsed block now
-	if item.Name == "Task" || item.Name == "Skill" {
+	// For Skill, render with description if available
+	if item.Name == "Skill" {
+		if skillDesc != "" {
+			var sb strings.Builder
+			sb.WriteString("<details>\n")
+			sb.WriteString(fmt.Sprintf("<summary>🔧 %s</summary>\n\n", escapeSummary(summary)))
+			sb.WriteString(skillDesc)
+			sb.WriteString("\n\n</details>\n\n")
+			return sb.String()
+		}
+		// No description, render simple line
+		return fmt.Sprintf("🔧 %s\n\n", escapeSummary(summary))
+	}
+
+	// For non-subagent Task, render collapsed block now
+	if item.Name == "Task" {
 		var sb strings.Builder
 		var inputJSON []byte
 		if item.Input != nil {
@@ -259,7 +398,8 @@ func formatToolUse(item *ContentItem, toolMeta map[string]toolMetadata) string {
 
 // formatToolResult formats a tool_result content item.
 // For subagent Task: renders combined Prompt/Result with 🤖 emoji.
-// For Skill and non-subagent Task: renders just the result in a collapsed block.
+// For Skill: skips rendering (already shown in tool_use, result is just "Launching skill: X").
+// For non-subagent Task: renders just the result in a collapsed block.
 // For other tools: renders the combined tool call + result in a single details block.
 func formatToolResult(item *ContentItem, toolMeta map[string]toolMetadata) string {
 	var sb strings.Builder
@@ -296,8 +436,13 @@ func formatToolResult(item *ContentItem, toolMeta map[string]toolMetadata) strin
 		return sb.String()
 	}
 
-	// For Skill or non-subagent Task, render just the result
-	if found && (meta.Name == "Task" || meta.Name == "Skill") {
+	// For Skill, skip rendering the result (already shown in tool_use, result is just "Launching skill: X")
+	if found && meta.Name == "Skill" {
+		return ""
+	}
+
+	// For non-subagent Task, render just the result
+	if found && meta.Name == "Task" {
 		sb.WriteString("<details>\n")
 		sb.WriteString(fmt.Sprintf("<summary>%s %s</summary>\n\n", icon, escapeSummary(meta.Summary)))
 		sb.WriteString("```\n")
@@ -315,7 +460,13 @@ func formatToolResult(item *ContentItem, toolMeta map[string]toolMetadata) strin
 			summaryText += ": " + meta.Description
 		}
 
-		sb.WriteString("<details>\n")
+		// Determine if this tool should be expanded by default
+		openAttr := ""
+		if meta.Name == "TodoWrite" {
+			openAttr = " open"
+		}
+
+		sb.WriteString(fmt.Sprintf("<details%s>\n", openAttr))
 		sb.WriteString(fmt.Sprintf("<summary>%s %s</summary>\n\n", icon, escapeSummary(summaryText)))
 
 		// Render tool-specific input
@@ -484,6 +635,24 @@ func formatToolInput(name string, input any) string {
 	case "Grep":
 		if pattern, ok := inputMap["pattern"].(string); ok {
 			sb.WriteString(fmt.Sprintf("**Pattern:** `%s`\n\n", pattern))
+		}
+	case "TodoWrite":
+		if todos, ok := inputMap["todos"].([]any); ok {
+			for _, todo := range todos {
+				if todoMap, ok := todo.(map[string]any); ok {
+					content, _ := todoMap["content"].(string)
+					status, _ := todoMap["status"].(string)
+					checkbox := "[ ]"
+					switch status {
+					case "in_progress":
+						checkbox = "[-]"
+					case "completed":
+						checkbox = "[x]"
+					}
+					sb.WriteString(fmt.Sprintf("- %s %s\n", checkbox, content))
+				}
+			}
+			sb.WriteString("\n")
 		}
 	default:
 		// For unknown tools, show JSON input

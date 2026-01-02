@@ -127,14 +127,26 @@ func ParseFirstTimestamp(r io.Reader) (time.Time, error) {
 
 // shouldFilterLocalCommand determines if an entry should be filtered as part of
 // a local command sequence. It uses UUID tracking to filter:
-// 1. Meta entries (isMeta: true) - the "Caveat" warning messages
+// 1. Meta entries (isMeta: true) - the "Caveat" warning messages (but NOT skill/command descriptions)
 // 2. Command entries whose parent is a filtered meta entry
 // 3. Local command stdout entries whose parent is a filtered command entry
 //
 // The filteredUUIDs map is updated in place to track filtered entries.
 func shouldFilterLocalCommand(entry *Entry, filteredUUIDs map[string]bool) bool {
 	// Filter meta entries (internal Claude markers with "Caveat" warnings)
+	// BUT keep meta entries that are skill/command descriptions:
+	// - Skill descriptions have sourceToolUseID
+	// - Command descriptions have text content that doesn't start with "Caveat:"
 	if entry.IsMeta {
+		// Keep skill description meta entries (they have sourceToolUseID)
+		if entry.SourceToolUseID != "" {
+			return false
+		}
+		// Keep command description meta entries (text content without "Caveat:" marker)
+		// Caveat entries are local command warnings that should be filtered
+		if hasNonCaveatTextContent(entry) {
+			return false
+		}
 		if entry.UUID != "" {
 			filteredUUIDs[entry.UUID] = true
 		}
@@ -182,6 +194,25 @@ func hasLocalCommandStdoutContent(entry *Entry) bool {
 
 	for _, item := range entry.Message.Content {
 		if item.Type == "text" && strings.Contains(item.Text, "<local-command-stdout>") {
+			return true
+		}
+	}
+	return false
+}
+
+// hasNonCaveatTextContent checks if an entry has text content that isn't a "Caveat:" warning.
+// Used to identify command descriptions (which should be kept) vs local command warnings (which should be filtered).
+func hasNonCaveatTextContent(entry *Entry) bool {
+	if entry.Message == nil || len(entry.Message.Content) == 0 {
+		return false
+	}
+
+	for _, item := range entry.Message.Content {
+		if item.Type == "text" && item.Text != "" {
+			// Filter entries that contain "Caveat:" - these are local command warnings
+			if strings.Contains(item.Text, "Caveat:") {
+				return false
+			}
 			return true
 		}
 	}
