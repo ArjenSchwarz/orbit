@@ -9,6 +9,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- `internal/display` package for terminal display functionality:
+  - `hyperlink.go` with OSC 8 terminal hyperlink support:
+    - `FormatOSC8Link()` creates clickable terminal hyperlinks using OSC 8 escape sequences
+    - `FormatFileLink()` creates properly percent-encoded file:// URIs
+    - `PrintIndexLinks()` outputs labeled links for index.md and index.html to stderr
+    - `IsTTY()` helper for TTY detection using mattn/go-isatty
+  - `spinner.go` wrapping briandowns/spinner with orbit-specific behavior:
+    - Braille character set with cyan color and 100ms update interval
+    - `Start()` and `Stop()` methods with idempotency guards
+    - `StartPostCompletion()` for post-completion command spinner
+    - `UpdateWait()` and `ResumePhase()` for retry countdown display
+    - `Pause()` and `Resume()` for log output coordination
+    - Thread-safe via mutex, nil-safe method receivers
+- briandowns/spinner dependency (v1.23.2) for terminal spinner animation
 - Spec for Orbit UX improvements feature:
   - Requirements document with 5 sections covering completion links, progress indicator, terminal compatibility, integration, and demo command
   - Design document with architecture, components, interfaces, and testing strategy for spinner and hyperlink display

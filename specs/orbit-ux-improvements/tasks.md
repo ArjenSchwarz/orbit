@@ -8,72 +8,72 @@ references:
 
 ## Phase 1: Display Package Foundation
 
-- [ ] 1. Create internal/display package and hyperlink component
+- [x] 1. Create internal/display package and hyperlink component
   - Create internal/display/hyperlink.go with FormatOSC8Link and FormatFileLink functions
   - Use net/url for proper URI encoding
   - Use mattn/go-isatty for TTY detection
   - Requirements: [1.3](requirements.md#1.3), [1.4](requirements.md#1.4), [3.2](requirements.md#3.2)
   - References: internal/display/hyperlink.go
-  - [ ] 1.1. Write hyperlink unit tests
+  - [x] 1.1. Write hyperlink unit tests
     - Create internal/display/hyperlink_test.go
     - Test OSC 8 escape sequence format
     - Test file:// URI encoding with spaces and special characters
     - Requirements: [1.3](requirements.md#1.3), [1.4](requirements.md#1.4)
     - References: internal/display/hyperlink_test.go
-  - [ ] 1.2. Implement FormatOSC8Link function
+  - [x] 1.2. Implement FormatOSC8Link function
     - Format: \x1b]8;;<uri>\x1b\\<text>\x1b]8;;\x1b\\
     - Check TTY before adding escape sequences
     - Requirements: [1.3](requirements.md#1.3), [3.2](requirements.md#3.2)
     - References: internal/display/hyperlink.go
-  - [ ] 1.3. Implement FormatFileLink function
+  - [x] 1.3. Implement FormatFileLink function
     - Create file:// URIs with proper percent-encoding
     - Handle paths with spaces and special characters
     - Requirements: [1.4](requirements.md#1.4)
     - References: internal/display/hyperlink.go
-  - [ ] 1.4. Implement PrintIndexLinks function
+  - [x] 1.4. Implement PrintIndexLinks function
     - Output labeled links for index.md and index.html
     - Write to stderr
     - Check TTY before printing
     - Requirements: [1.5](requirements.md#1.5), [1.6](requirements.md#1.6), [3.4](requirements.md#3.4)
     - References: internal/display/hyperlink.go
 
-- [ ] 2. Create spinner component
+- [x] 2. Create spinner component
   - Create internal/display/spinner.go wrapping briandowns/spinner
   - Add cyan color, 100ms update interval, Braille charset
   - Requirements: [2.1](requirements.md#2.1), [2.4](requirements.md#2.4), [3.3](requirements.md#3.3)
   - References: internal/display/spinner.go
-  - [ ] 2.1. Add briandowns/spinner dependency
+  - [x] 2.1. Add briandowns/spinner dependency
     - Run go get github.com/briandowns/spinner
     - Verify dependency added to go.mod
     - References: go.mod
-  - [ ] 2.2. Implement Spinner struct with idempotency guards
+  - [x] 2.2. Implement Spinner struct with idempotency guards
     - Add started bool and sync.Once fields
     - Add mutex for thread safety
     - Return nil from NewSpinner if stderr not TTY
     - Requirements: [2.5](requirements.md#2.5), [3.5](requirements.md#3.5)
     - References: internal/display/spinner.go
-  - [ ] 2.3. Implement Start and Stop methods
+  - [x] 2.3. Implement Start and Stop methods
     - Start shows phase number and elapsed time
     - Stop clears line and restores terminal
     - Both methods are idempotent
     - Requirements: [2.1](requirements.md#2.1), [2.2](requirements.md#2.2), [2.3](requirements.md#2.3), [2.6](requirements.md#2.6)
     - References: internal/display/spinner.go
-  - [ ] 2.4. Implement StartPostCompletion method
+  - [x] 2.4. Implement StartPostCompletion method
     - Shows Post-completion instead of phase number
     - Reuses elapsed time tracking from Start
     - Requirements: [2.1](requirements.md#2.1)
     - References: internal/display/spinner.go
-  - [ ] 2.5. Implement UpdateWait and ResumePhase methods
+  - [x] 2.5. Implement UpdateWait and ResumePhase methods
     - UpdateWait switches to countdown display
     - ResumePhase returns to normal elapsed time display
     - Requirements: [2.7](requirements.md#2.7)
     - References: internal/display/spinner.go
-  - [ ] 2.6. Implement Pause and Resume methods
+  - [x] 2.6. Implement Pause and Resume methods
     - Pause stops spinner before log output
     - Resume restarts after logging
     - Requirements: [4.5](requirements.md#4.5)
     - References: internal/display/spinner.go
-  - [ ] 2.7. Write spinner unit tests
+  - [x] 2.7. Write spinner unit tests
     - Test idempotency of Start/Stop
     - Test Pause/Resume behavior
     - Test nil return when not TTY
