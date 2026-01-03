@@ -25,6 +25,17 @@ orbit serve [--port 8080] [--bind localhost]
 - Single binary, no new tools to install
 - Shares existing code for reading logs/transcripts
 - Auto-discovers all registered runs from `~/.orbit/runs/`
+- Port and bind configurable via CLI flags or `.orbit.yaml`
+
+**Configuration** (in `.orbit.yaml` or `~/.orbit.yaml`):
+
+```yaml
+serve:
+  port: 8080
+  bind: localhost
+```
+
+Configuration priority: CLI flags > environment variables > config file > defaults
 
 **`orbit register`** - Manually registers a run directory
 
@@ -54,6 +65,7 @@ Each file contains:
 {
   "id": "abc123",
   "name": "feature-x",
+  "repository": "ArjenSchwarz/orbit",
   "log_dir": "/path/to/.orbit/2024-01-03-150405",
   "status": "running",
   "started_at": "2024-01-03T15:04:05Z",
@@ -61,6 +73,10 @@ Each file contains:
   "pid": 12345
 }
 ```
+
+The `repository` field enables grouping runs by project in the web interface. It is derived from:
+1. Git remote origin URL (preferred)
+2. Directory name as fallback
 
 **Benefits:**
 - No file locking issues (atomic file operations)
