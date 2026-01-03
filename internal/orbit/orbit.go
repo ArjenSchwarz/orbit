@@ -282,6 +282,11 @@ func (o *Orbit) runPhaseWithRetry(phase int) error {
 			return err
 		}
 
+		// Pause spinner before logging to prevent visual artifacts
+		if o.spinner != nil {
+			o.spinner.Pause()
+		}
+
 		// Determine wait time
 		var waitTime time.Duration
 		switch classified.Type {
@@ -304,10 +309,10 @@ func (o *Orbit) runPhaseWithRetry(phase int) error {
 			waitTime = orberrors.BackoffDuration(attempt)
 		}
 
-		// Start spinner with wait countdown during retry wait
+		// Resume spinner with wait countdown during retry wait
 		if o.spinner != nil {
-			o.spinner.Start(phase)
 			o.spinner.UpdateWait(waitTime)
+			o.spinner.Resume()
 		}
 
 		time.Sleep(waitTime)
@@ -337,10 +342,7 @@ func (o *Orbit) runPhase(phase int) error {
 		var err error
 		sessionID, isResume, err = o.logManager.StartPhase(phase, o.config.ContinueSession)
 		if err != nil {
-			if o.spinner != nil {
-				o.spinner.Stop()
-			}
-			return fmt.Errorf("failed to start phase: %w", err)
+			return o.fail(fmt.Errorf("failed to start phase: %w", err))
 		}
 	} else {
 		sessionID = uuid.NewString()
@@ -426,10 +428,7 @@ func (o *Orbit) runPostCommand() error {
 		var err error
 		sessionID, isResume, err = o.logManager.StartPostCompletion(o.config.ContinueSession)
 		if err != nil {
-			if o.spinner != nil {
-				o.spinner.Stop()
-			}
-			return fmt.Errorf("failed to start post-completion: %w", err)
+			return o.fail(fmt.Errorf("failed to start post-completion: %w", err))
 		}
 	}
 
@@ -516,6 +515,11 @@ func (o *Orbit) runPostCommandWithRetry() error {
 			return err
 		}
 
+		// Pause spinner before logging to prevent visual artifacts
+		if o.spinner != nil {
+			o.spinner.Pause()
+		}
+
 		// Determine wait time
 		var waitTime time.Duration
 		switch classified.Type {
@@ -538,7 +542,18 @@ func (o *Orbit) runPostCommandWithRetry() error {
 			waitTime = orberrors.BackoffDuration(attempt)
 		}
 
+		// Resume spinner with wait countdown during retry wait
+		if o.spinner != nil {
+			o.spinner.UpdateWait(waitTime)
+			o.spinner.Resume()
+		}
+
 		time.Sleep(waitTime)
+
+		// Stop spinner before next attempt (runPostCommand will start it again)
+		if o.spinner != nil {
+			o.spinner.Stop()
+		}
 	}
 
 	return fmt.Errorf("max retries exceeded: %w", lastErr)
