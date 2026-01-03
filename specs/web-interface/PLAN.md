@@ -12,96 +12,39 @@ Users need a way to monitor orbit runs and browse logs/results remotely (e.g., f
 4. **Remote access** - Work well on mobile devices
 5. **File isolation** - Server reads files, not the browser directly
 
-## Architectural Options
+## Architecture
 
-### Option A: `orbit serve` Subcommand
+### New Commands
 
-Add a `serve` subcommand to orbit that starts a web server.
+**`orbit serve`** - Starts the web server
 
 ```bash
-orbit serve [--port 8080] [--bind 0.0.0.0]
+orbit serve [--port 8080] [--bind localhost]
 ```
 
-**Pros:**
 - Single binary, no new tools to install
 - Shares existing code for reading logs/transcripts
-- Natural fit with existing CLI
+- Auto-discovers all registered runs from `~/.orbit/runs/`
 
-**Cons:**
-- Need a registration mechanism for runs to be discoverable
-
-### Option B: Separate `orbit-web` Binary
-
-Create a new binary specifically for the web interface.
+**`orbit register`** - Manually registers a run directory
 
 ```bash
-orbit-web [--port 8080]
+orbit register /path/to/.orbit/2024-01-03-150405
+orbit register .                    # Register current directory's .orbit/
+orbit register --name "my-feature"  # Optional display name
 ```
 
-**Pros:**
-- Separation of concerns
-- Can run independently of orchestration
-- Smaller attack surface if exposing to network
-
-**Cons:**
-- Another binary to build/install
-- Code duplication or shared internal packages
-
-### Option C: Embedded Server During Runs (Live Only)
-
-Start a web server automatically when `orbit run` executes.
-
-**Pros:**
-- Zero configuration for live monitoring
-- Server lifetime matches run lifetime
-
-**Cons:**
-- Can't view past runs
-- No historical browsing
-- Would need separate solution for history
-
----
-
-**Recommendation:** Option A (`orbit serve`) - keeps everything in one tool, maximizes code reuse.
+- Adds existing log directories to the registry
+- Useful for historical runs or runs started before web interface existed
+- Validates that the directory contains valid orbit logs
 
 ## Run Registration Mechanism
 
-For the server to discover runs, we need a registration system.
-
-### Approach 1: Global Registry File
-
-Store run metadata in `~/.orbit/runs.json`:
-
-```json
-{
-  "runs": [
-    {
-      "id": "abc123",
-      "spec_path": "/home/user/project/specs/feature-x",
-      "log_dir": "/home/user/project/specs/feature-x/.orbit/2024-01-03-150405",
-      "status": "running",
-      "started_at": "2024-01-03T15:04:05Z",
-      "branch": "feature/feature-x"
-    }
-  ]
-}
-```
-
-**Pros:**
-- Simple to implement
-- Easy to query
-
-**Cons:**
-- Need file locking for concurrent access
-- Registry can get stale if runs crash
-
-### Approach 2: Directory-Based Registration
-
-Use `~/.orbit/runs/` with one file per run:
+Directory-based registration using `~/.orbit/runs/` with one file per run:
 
 ```
 ~/.orbit/runs/
-├── abc123.json        # Active run metadata
+├── abc123.json        # Run metadata
 ├── def456.json        # Another run
 └── ...
 ```
@@ -109,38 +52,25 @@ Use `~/.orbit/runs/` with one file per run:
 Each file contains:
 ```json
 {
+  "id": "abc123",
+  "name": "feature-x",
   "log_dir": "/path/to/.orbit/2024-01-03-150405",
   "status": "running",
   "started_at": "2024-01-03T15:04:05Z",
+  "branch": "feature/feature-x",
   "pid": 12345
 }
 ```
 
-**Pros:**
-- No locking issues (atomic file operations)
+**Benefits:**
+- No file locking issues (atomic file operations)
 - Can detect stale runs via PID checking
 - Natural filesystem operations
+- Easy cleanup via file deletion
 
-**Cons:**
-- More files to manage
-- Need cleanup strategy
-
-### Approach 3: SQLite Database
-
-Use `~/.orbit/orbit.db` for all run tracking.
-
-**Pros:**
-- ACID transactions
-- Query flexibility
-- Built-in for Go (mattn/go-sqlite3)
-
-**Cons:**
-- CGO dependency (unless using modernc.org/sqlite)
-- More complex than needed?
-
----
-
-**Recommendation:** Approach 2 (directory-based) - simple, robust, no locking issues, easy cleanup.
+**Registration sources:**
+1. `orbit run` - auto-registers at startup, updates on completion
+2. `orbit register` - manual registration of existing directories
 
 ## Web Interface Architecture
 
@@ -180,60 +110,45 @@ GET  /runs/:id              # Run detail page
 GET  /runs/:id/transcript/:phase      # Transcript viewer
 ```
 
-### Frontend Approach Options
+### Frontend Approach
 
-#### Frontend Option 1: Server-Side Rendering (SSR) with htmx
+Server-side rendering with Go templates + htmx for interactivity.
 
-Use Go templates + htmx for interactivity without heavy JavaScript.
+**htmx** is a lightweight (~14kb) JavaScript library that enables dynamic behavior via HTML attributes. Instead of fetching JSON and manipulating the DOM with JavaScript, htmx fetches HTML fragments from the server and swaps them into the page.
 
-**Pros:**
-- Minimal JavaScript
-- Fast initial load
-- Works great on mobile
-- Easy to implement
+```html
+<!-- Auto-refresh run status every 5 seconds -->
+<div hx-get="/api/runs/abc123/status"
+     hx-trigger="every 5s"
+     hx-swap="innerHTML">
+  Status: running...
+</div>
 
-**Cons:**
-- Less "app-like" feel
-- Limited offline capability
+<!-- Load transcript on click -->
+<a hx-get="/runs/abc123/transcript/1"
+   hx-target="#content">
+  View Phase 1
+</a>
+```
 
-#### Frontend Option 2: Static HTML + Vanilla JS
-
-Serve static HTML with fetch() calls to API.
-
-**Pros:**
-- No framework dependencies
-- Simple to understand
-- Good performance
-
-**Cons:**
-- More boilerplate code
-- Manual DOM manipulation
-
-#### Frontend Option 3: SPA Framework (React/Vue/Svelte)
-
-Build a full single-page application.
-
-**Pros:**
-- Rich interactivity
-- Modern UI patterns
-
-**Cons:**
-- Build complexity
-- Larger bundle size
-- Overkill for this use case
-
----
-
-**Recommendation:** Option 1 (SSR + htmx) - simplest approach, works well on mobile, minimal dependencies.
+**Benefits:**
+- Minimal JavaScript, no build step
+- Fast initial load, works great on mobile
+- Server does all rendering (reuse Go templates)
+- Progressive enhancement
 
 ## Data Flow
 
 ```
 ┌─────────────────┐     ┌──────────────────┐     ┌─────────────────┐
-│  orbit run      │────▶│  ~/.orbit/runs/  │◀────│  orbit serve    │
-│  (registers)    │     │  (registry)      │     │  (discovers)    │
-└─────────────────┘     └──────────────────┘     └────────┬────────┘
-        │                                                  │
+│  orbit run      │────▶│                  │◀────│  orbit serve    │
+│  (auto-register)│     │  ~/.orbit/runs/  │     │  (discovers)    │
+└─────────────────┘     │    (registry)    │     └────────┬────────┘
+                        │                  │               │
+┌─────────────────┐     │                  │               │
+│  orbit register │────▶│                  │               │
+│  (manual)       │     └──────────────────┘               │
+└─────────────────┘                                        │
         │                                                  │
         ▼                                                  ▼
 ┌─────────────────┐                              ┌─────────────────┐
@@ -242,44 +157,25 @@ Build a full single-page application.
 └─────────────────┘                              └─────────────────┘
 ```
 
-1. `orbit run` registers itself in `~/.orbit/runs/` at startup
-2. Updates status periodically or on phase completion
-3. `orbit serve` scans registry for known runs
+1. `orbit run` auto-registers in `~/.orbit/runs/` at startup, updates on completion
+2. `orbit register` manually adds existing log directories to registry
+3. `orbit serve` scans registry for all known runs
 4. Server reads log files directly when serving requests
 5. Browser only talks to server, never touches filesystem
 
 ## Live Updates
 
-For showing live progress of running orchestrations:
+For showing live progress of running orchestrations, use htmx polling:
 
-### Option 1: Polling
-
-Browser polls `/api/runs/:id` every N seconds.
-
-**Pros:** Simple, works everywhere
-**Cons:** Latency, unnecessary requests
-
-### Option 2: Server-Sent Events (SSE)
-
-Server pushes updates to browser.
-
-```go
-GET /api/runs/:id/stream
+```html
+<div hx-get="/api/runs/abc123/status"
+     hx-trigger="every 5s"
+     hx-swap="innerHTML">
+  <!-- Status updates automatically -->
+</div>
 ```
 
-**Pros:** Real-time, efficient, works with htmx
-**Cons:** Need connection management
-
-### Option 3: WebSockets
-
-Full duplex communication.
-
-**Pros:** Most flexible
-**Cons:** Overkill for read-only updates
-
----
-
-**Recommendation:** Start with polling (simple), add SSE later if needed.
+Simple, works everywhere, and htmx handles it declaratively. Can upgrade to Server-Sent Events (SSE) later if needed for lower latency.
 
 ## Mobile Considerations
 
@@ -301,7 +197,8 @@ Full duplex communication.
 
 ### Phase 1: Core Infrastructure
 - [ ] Create run registry system (`internal/registry/`)
-- [ ] Modify `orbit run` to register/deregister runs
+- [ ] Modify `orbit run` to auto-register/deregister runs
+- [ ] Add `orbit register` subcommand for manual registration
 - [ ] Add `orbit serve` subcommand skeleton
 - [ ] Basic HTTP server with routing
 
@@ -312,16 +209,16 @@ Full duplex communication.
 - [ ] Transcript serving endpoint
 
 ### Phase 3: Web UI
-- [ ] HTML templates with embedded static files
+- [ ] HTML templates with embedded static files (including htmx)
 - [ ] Dashboard page (run list)
 - [ ] Run detail page
 - [ ] Transcript viewer
 - [ ] Basic responsive CSS
 
 ### Phase 4: Polish
-- [ ] Auto-refresh for running jobs (polling)
+- [ ] Auto-refresh for running jobs (htmx polling)
 - [ ] Mobile-optimized styling
-- [ ] Dark mode
+- [ ] Dark mode (system preference)
 - [ ] Error handling and empty states
 
 ### Phase 5: Future Enhancements
@@ -350,14 +247,11 @@ Push logs to a cloud service for viewing.
 
 **Why not:** Privacy concerns, external dependency, overkill for local use.
 
-## Questions for Discussion
+## Design Decisions
 
-1. Should `orbit serve` discover runs automatically from `~/.orbit/runs/` OR require explicit paths?
-
-2. Should we support viewing arbitrary `.orbit/` directories (not just registered runs)?
-
-3. Is htmx acceptable as a dependency, or prefer zero JavaScript dependencies?
-
-4. Should the server auto-open browser on startup?
-
-5. What level of authentication (if any) should be included in v1?
+| Decision | Choice |
+|----------|--------|
+| Discovery | Auto-discover all registered runs from `~/.orbit/runs/` |
+| Ad-hoc viewing | Use `orbit register` command to add runs to registry |
+| Frontend | Server-side rendering with htmx |
+| Authentication | None for v1 (localhost-only by default) |
