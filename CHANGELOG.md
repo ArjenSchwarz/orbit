@@ -9,6 +9,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Spec for Orbit UX improvements feature:
+  - Requirements document with 5 sections covering completion links, progress indicator, terminal compatibility, integration, and demo command
+  - Design document with architecture, components, interfaces, and testing strategy for spinner and hyperlink display
+  - Decision log documenting 8 design decisions (OSC 8 hyperlinks, briandowns/spinner library, signal.NotifyContext, etc.)
+  - Task list with 4 implementation phases: display package foundation, orbit integration, demo command, and integration tests
+
 - Slash command rendering with description support:
   - Slash commands (e.g., `/catchup`) display with `⚡` icon
   - Descriptions from meta entries linked via `parentUuid` render in collapsible blocks
