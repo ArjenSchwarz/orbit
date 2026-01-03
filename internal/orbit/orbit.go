@@ -127,6 +127,13 @@ func (o *Orbit) Run() error {
 	}
 
 	for {
+		// Check for shutdown signal between phases
+		select {
+		case <-o.shutdownCtx.Done():
+			return o.fail(fmt.Errorf("interrupted by user"))
+		default:
+		}
+
 		// Check for remaining tasks
 		pending, err := o.runeClient.ListPending()
 		if err != nil {

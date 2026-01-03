@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- Graceful shutdown now properly checks for interrupt signals between phases in the orchestration loop
+- Context leak in demo command: `waitCancel()` is now properly deferred in a scoped closure
+- Added documentation comments explaining goroutine safety in spinner `Start()` and `StartPostCompletion()` methods
+
 ### Added
 
 - `orbit demo` subcommand for previewing spinner and hyperlink functionality:

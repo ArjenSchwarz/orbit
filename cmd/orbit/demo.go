@@ -53,12 +53,13 @@ func RunDemo() error {
 			if phase%2 == 0 {
 				spin.UpdateWait(5 * time.Second)
 				// Wait with countdown, checking for interrupt
-				waitCtx, waitCancel := context.WithTimeout(ctx, 5*time.Second)
-				<-waitCtx.Done()
-				waitCancel()
-
-				// Check if we were interrupted
-				if ctx.Err() != nil {
+				interrupted := func() bool {
+					waitCtx, waitCancel := context.WithTimeout(ctx, 5*time.Second)
+					defer waitCancel()
+					<-waitCtx.Done()
+					return ctx.Err() != nil
+				}()
+				if interrupted {
 					spin.Stop()
 					displayDemoLinks()
 					return nil

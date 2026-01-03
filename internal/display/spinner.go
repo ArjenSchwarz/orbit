@@ -55,6 +55,12 @@ func newSpinnerWithTTY(isTTY bool) *Spinner {
 
 // Start begins the spinner animation for a phase.
 // Idempotent: calling Start() when already started is a no-op.
+//
+// Goroutine safety: The s.started check prevents concurrent starts. When Stop()
+// is called, it closes s.done (causing updateLoop to exit) and sets s.started
+// to false. A subsequent Start() can then safely reset stopOnce and create a
+// new done channel - the old goroutine will have exited because its done channel
+// was closed.
 func (s *Spinner) Start(phase int) {
 	if s == nil {
 		return
@@ -83,6 +89,7 @@ func (s *Spinner) Start(phase int) {
 }
 
 // StartPostCompletion begins spinner for post-completion command.
+// See Start() for goroutine safety notes.
 func (s *Spinner) StartPostCompletion() {
 	if s == nil {
 		return
