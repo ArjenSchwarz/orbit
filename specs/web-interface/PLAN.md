@@ -30,12 +30,13 @@ orbit serve [--port 8080] [--bind localhost]
 **Configuration** (in `.orbit.yaml` or `~/.orbit.yaml`):
 
 ```yaml
-serve:
-  port: 8080
-  bind: localhost
+serve-port: 8080
+serve-bind: localhost
 ```
 
-Configuration priority: CLI flags > environment variables > config file > defaults
+This follows the existing flat key pattern used by other config options (`post-command`, `date-subdirs`, etc.).
+
+Configuration priority: CLI flags > environment variables (`ORBIT_SERVE_PORT`, `ORBIT_SERVE_BIND`) > config file > defaults
 
 **`orbit register`** - Manually registers a run directory
 
@@ -78,11 +79,26 @@ The `repository` field enables grouping runs by project in the web interface. It
 1. Git remote origin URL (preferred)
 2. Directory name as fallback
 
+**Git URL parsing logic:**
+
+Extract `owner/repo` from common remote URL formats:
+- HTTPS: `https://github.com/owner/repo.git` → `owner/repo`
+- SSH: `git@github.com:owner/repo.git` → `owner/repo`
+- SSH (alt): `ssh://git@github.com/owner/repo.git` → `owner/repo`
+
+Strip `.git` suffix if present. For non-standard URLs or parsing failures, fall back to the working directory name.
+
 **Benefits:**
 - No file locking issues (atomic file operations)
 - Can detect stale runs via PID checking
 - Natural filesystem operations
 - Easy cleanup via file deletion
+
+**Concurrency handling:**
+- Use atomic write pattern: write to temp file, then rename
+- Each run has a unique ID, so no conflicts between different runs
+- Same run updating its own file is sequential (single process)
+- `orbit serve` reads are eventually consistent (acceptable for UI refresh)
 
 **Registration sources:**
 1. `orbit run` - auto-registers at startup, updates on completion
@@ -203,11 +219,28 @@ Simple, works everywhere, and htmx handles it declaratively. Can upgrade to Serv
 
 ## Security Considerations
 
+### Network Security
 - Default bind to `localhost` only
 - Optional `--bind` flag for network access
 - No authentication by default (trusted network assumption)
 - Future: optional basic auth or token auth
 - No write operations exposed (read-only interface)
+
+### Input Validation
+- Validate run IDs as UUIDs before use in file paths
+- Use `filepath.Clean()` on all path components
+- Reject path components containing `..` or absolute paths
+- Validate phase numbers as positive integers
+
+### File Access Controls
+- Only serve files from directories in the registry
+- Verify requested paths are within registered `log_dir` boundaries
+- Never follow symlinks outside registered directories
+
+### API Security
+- Add input validation middleware for all endpoints
+- Return generic 404 for invalid/unauthorized paths (no information leakage)
+- Rate limiting consideration for future if exposed to network
 
 ## Implementation Phases
 
@@ -242,6 +275,36 @@ Simple, works everywhere, and htmx handles it declaratively. Can upgrade to Serv
 - [ ] Search/filter runs
 - [ ] Cost analytics dashboard
 - [ ] Optional authentication
+
+## Testing Strategy
+
+### Unit Tests
+- Registry operations (register, list, delete, stale detection)
+- Git URL parsing for repository extraction
+- Input validation functions (UUID validation, path sanitization)
+- Config loading for serve options
+
+### Integration Tests
+- HTTP endpoints return correct responses
+- File serving respects directory boundaries
+- Registry persistence across restarts
+
+### Manual/E2E Testing
+- Mobile responsiveness verification
+- Live polling during active runs
+- Cross-browser testing (Safari mobile, Chrome, Firefox)
+
+## Performance Considerations
+
+### Initial Implementation
+- Simple file-based reads on each request (sufficient for typical usage)
+- No caching in v1
+
+### Future Optimizations (if needed)
+- In-memory cache of registry with file-watch invalidation
+- Pagination for run list if users accumulate many runs
+- Lazy loading of transcript content
+- Summary.json caching with mtime checking
 
 ## Alternative Approaches Considered
 
