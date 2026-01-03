@@ -82,57 +82,57 @@ references:
 
 ## Phase 2: Orbit Integration
 
-- [ ] 3. Integrate spinner into Orbit struct
+- [x] 3. Integrate spinner into Orbit struct
   - Add spinner field to Orbit struct
   - Add shutdownCtx and shutdownCancel for signal handling
   - Add Close method for cleanup
   - Requirements: [2.9](requirements.md#2.9)
   - References: internal/orbit/orbit.go
-  - [ ] 3.1. Update Orbit struct and New function
+  - [x] 3.1. Update Orbit struct and New function
     - Add spinner, shutdownCtx, shutdownCancel fields
     - Initialize spinner in New() when not dry-run
     - Set up signal.NotifyContext for SIGINT/SIGTERM
     - Requirements: [2.8](requirements.md#2.8), [2.9](requirements.md#2.9)
     - References: internal/orbit/orbit.go
-  - [ ] 3.2. Add Close method to Orbit
+  - [x] 3.2. Add Close method to Orbit
     - Cancel shutdown context
     - Stop spinner if running
     - Make idempotent for safety
     - Requirements: [2.9](requirements.md#2.9)
     - References: internal/orbit/orbit.go
-  - [ ] 3.3. Integrate spinner in runPhase
+  - [x] 3.3. Integrate spinner in runPhase
     - Call spinner.Start(phase) before RunPhase
     - Call spinner.Stop() after RunPhase returns
     - Requirements: [2.1](requirements.md#2.1), [2.6](requirements.md#2.6)
     - References: internal/orbit/orbit.go
-  - [ ] 3.4. Integrate spinner in runPhaseWithRetry
+  - [x] 3.4. Integrate spinner in runPhaseWithRetry
     - Call spinner.Pause() before log messages
     - Call spinner.UpdateWait() during retry waits
     - Call spinner.ResumePhase() after wait
     - Requirements: [2.7](requirements.md#2.7), [4.5](requirements.md#4.5)
     - References: internal/orbit/orbit.go
-  - [ ] 3.5. Integrate spinner in runPostCommand
+  - [x] 3.5. Integrate spinner in runPostCommand
     - Call spinner.StartPostCompletion() before command
     - Call spinner.Stop() after command returns
     - Requirements: [2.1](requirements.md#2.1), [2.6](requirements.md#2.6)
     - References: internal/orbit/orbit.go
 
-- [ ] 4. Integrate completion links
+- [x] 4. Integrate completion links
   - Add PrintIndexLinks calls in complete() and fail()
   - Requirements: [1.1](requirements.md#1.1), [1.2](requirements.md#1.2), [1.7](requirements.md#1.7), [4.3](requirements.md#4.3)
   - References: internal/orbit/orbit.go
-  - [ ] 4.1. Add links in complete method
+  - [x] 4.1. Add links in complete method
     - Call display.PrintIndexLinks after logManager.Complete()
     - Only print if logManager is not nil
     - Requirements: [1.1](requirements.md#1.1), [1.7](requirements.md#1.7), [4.3](requirements.md#4.3)
     - References: internal/orbit/orbit.go
-  - [ ] 4.2. Add links in fail method
+  - [x] 4.2. Add links in fail method
     - Stop spinner before printing links
     - Call display.PrintIndexLinks after logManager.Fail()
     - Requirements: [1.2](requirements.md#1.2), [1.7](requirements.md#1.7)
     - References: internal/orbit/orbit.go
 
-- [ ] 5. Update main.go for cleanup
+- [x] 5. Update main.go for cleanup
   - Add defer o.Close() after New() call
   - Requirements: [2.9](requirements.md#2.9)
   - References: cmd/orbit/main.go

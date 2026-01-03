@@ -123,6 +123,7 @@ func main() {
 	if err != nil {
 		log.Fatalf("Failed to initialize Orbit: %v", err)
 	}
+	defer o.Close()
 
 	if err := o.Run(); err != nil {
 		log.Fatalf("Orchestration failed: %v", err)

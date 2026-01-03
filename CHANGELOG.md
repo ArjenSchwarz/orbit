@@ -9,6 +9,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Spinner and hyperlink integration in Orbit orchestration loop:
+  - Spinner displays during phase execution with phase number and elapsed time
+  - Spinner shows wait countdown during retry delays (rate limit, connection errors)
+  - Post-completion command displays "Post-completion" spinner
+  - OSC 8 terminal hyperlinks printed on completion (success or failure) with paths to index.md and index.html
+  - Graceful shutdown via `signal.NotifyContext` for SIGINT/SIGTERM handling
+  - `Close()` method on Orbit struct for resource cleanup (called via defer in main)
 - `internal/display` package for terminal display functionality:
   - `hyperlink.go` with OSC 8 terminal hyperlink support:
     - `FormatOSC8Link()` creates clickable terminal hyperlinks using OSC 8 escape sequences
