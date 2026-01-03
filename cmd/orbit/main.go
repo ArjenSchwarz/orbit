@@ -17,6 +17,14 @@ import (
 var version = "dev"
 
 func main() {
+	// Check for demo subcommand before flag parsing
+	if len(os.Args) > 1 && os.Args[1] == "demo" {
+		if err := RunDemo(); err != nil {
+			log.Fatalf("Demo failed: %v", err)
+		}
+		return
+	}
+
 	// CLI flags
 	tasksFile := flag.String("tasks-file", "", "Path to rune tasks file (auto-detects from branch if not specified)")
 	logDir := flag.String("log-dir", "", "Base directory for session logs (default: .orbit next to tasks file)")

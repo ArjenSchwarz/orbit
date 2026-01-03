@@ -9,6 +9,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- `orbit demo` subcommand for previewing spinner and hyperlink functionality:
+  - Displays simulated phase overview table with sample data (Setup complete, Implementation running, Testing pending)
+  - Runs animated spinner cycling through phases 1-3 with 10s per phase
+  - Simulates retry wait countdown on even phases (5s wait)
+  - Displays sample completion links to /tmp/orbit-demo on Ctrl+C exit
+  - Requires TTY terminal (fails gracefully with error if not a TTY)
+  - Subcommand dispatch in main.go before flag parsing
 - Spinner and hyperlink integration in Orbit orchestration loop:
   - Spinner displays during phase execution with phase number and elapsed time
   - Spinner shows wait countdown during retry delays (rate limit, connection errors)

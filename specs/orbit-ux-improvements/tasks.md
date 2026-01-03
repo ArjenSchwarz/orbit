@@ -139,33 +139,33 @@ references:
 
 ## Phase 3: Demo Command
 
-- [ ] 6. Implement demo command
+- [x] 6. Implement demo command
   - Create cmd/orbit/demo.go with RunDemo function
   - Add demo subcommand dispatch in main.go
   - Requirements: [5.1](requirements.md#5.1), [5.7](requirements.md#5.7)
   - References: cmd/orbit/demo.go, cmd/orbit/main.go
-  - [ ] 6.1. Create demo.go file structure
+  - [x] 6.1. Create demo.go file structure
     - Create RunDemo function
     - Set up signal handling for Ctrl+C exit
     - Requirements: [5.1](requirements.md#5.1), [5.5](requirements.md#5.5)
     - References: cmd/orbit/demo.go
-  - [ ] 6.2. Implement displayMockPhaseOverview
+  - [x] 6.2. Implement displayMockPhaseOverview
     - Create sample phase table with go-output
     - Show Setup complete, Implementation running, Testing pending
     - Requirements: [5.2](requirements.md#5.2)
     - References: cmd/orbit/demo.go
-  - [ ] 6.3. Implement demo spinner loop
+  - [x] 6.3. Implement demo spinner loop
     - Cycle through phases 1-3
     - Simulate 10s work per phase
     - Simulate retry wait on even phases
     - Requirements: [5.3](requirements.md#5.3), [5.4](requirements.md#5.4), [5.5](requirements.md#5.5)
     - References: cmd/orbit/demo.go
-  - [ ] 6.4. Implement displayDemoLinks
+  - [x] 6.4. Implement displayDemoLinks
     - Show sample file:// links on Ctrl+C
     - Use /tmp/orbit-demo as example path
     - Requirements: [5.6](requirements.md#5.6)
     - References: cmd/orbit/demo.go
-  - [ ] 6.5. Add demo subcommand dispatch to main.go
+  - [x] 6.5. Add demo subcommand dispatch to main.go
     - Check for demo as first arg before flag parsing
     - Call demo.RunDemo and exit
     - Requirements: [5.1](requirements.md#5.1)
