@@ -8,14 +8,18 @@ import (
 	"path/filepath"
 	"regexp"
 	"sort"
+	"strings"
 	"time"
 
 	"github.com/arjenschwarz/orbit/internal/logs"
 	"github.com/arjenschwarz/orbit/internal/registry"
 )
 
-// phaseSessionPattern matches phase-N-run-M-session.json files.
+// phaseSessionPattern matches phase-N-run-M-session.json files (new format).
 var phaseSessionPattern = regexp.MustCompile(`^phase-(\d+)-run-(\d+)-session\.json$`)
+
+// legacyPhaseSessionPattern matches phase-N-session.json files (old format without run number).
+var legacyPhaseSessionPattern = regexp.MustCompile(`^phase-(\d+)-session\.json$`)
 
 // registerCommand handles the `orbit register` subcommand.
 // It registers an existing orbit log directory with the run registry.
@@ -28,11 +32,17 @@ func registerCommand(args []string) error {
 	}
 
 	remaining := fs.Args()
+	var path string
 	if len(remaining) == 0 {
-		return fmt.Errorf("usage: orbit register [--name NAME] <path>")
+		// Auto-detect from branch name, similar to run command
+		detected, err := detectOrbitDir()
+		if err != nil {
+			return fmt.Errorf("usage: orbit register [--name NAME] <path>\n\nAuto-detection failed: %w", err)
+		}
+		path = detected
+	} else {
+		path = remaining[0]
 	}
-
-	path := remaining[0]
 
 	// Resolve the path (handle "." specially)
 	logDir, err := resolvePath(path)
@@ -132,7 +142,8 @@ func resolvePath(path string) (string, error) {
 }
 
 // isValidOrbitLogDir checks if a directory contains valid orbit logs.
-// A directory is valid if it contains at least one phase-*-run-*-session.json file.
+// A directory is valid if it contains at least one phase session file
+// (either new format phase-N-run-M-session.json or legacy phase-N-session.json).
 func isValidOrbitLogDir(dir string) bool {
 	entries, err := os.ReadDir(dir)
 	if err != nil {
@@ -143,7 +154,8 @@ func isValidOrbitLogDir(dir string) bool {
 		if entry.IsDir() {
 			continue
 		}
-		if phaseSessionPattern.MatchString(entry.Name()) {
+		name := entry.Name()
+		if phaseSessionPattern.MatchString(name) || legacyPhaseSessionPattern.MatchString(name) {
 			return true
 		}
 	}
@@ -187,17 +199,31 @@ func derivePhases(logDir string) []registry.Phase {
 			continue
 		}
 
-		matches := phaseSessionPattern.FindStringSubmatch(entry.Name())
-		if matches == nil {
+		name := entry.Name()
+
+		// Try new format first: phase-N-run-M-session.json
+		matches := phaseSessionPattern.FindStringSubmatch(name)
+		if matches != nil {
+			var phaseNum, runNum int
+			_, _ = fmt.Sscanf(matches[1], "%d", &phaseNum)
+			_, _ = fmt.Sscanf(matches[2], "%d", &runNum)
+
+			if runNum > phaseRuns[phaseNum] {
+				phaseRuns[phaseNum] = runNum
+			}
 			continue
 		}
 
-		var phaseNum, runNum int
-		_, _ = fmt.Sscanf(matches[1], "%d", &phaseNum)
-		_, _ = fmt.Sscanf(matches[2], "%d", &runNum)
+		// Try legacy format: phase-N-session.json
+		legacyMatches := legacyPhaseSessionPattern.FindStringSubmatch(name)
+		if legacyMatches != nil {
+			var phaseNum int
+			_, _ = fmt.Sscanf(legacyMatches[1], "%d", &phaseNum)
 
-		if runNum > phaseRuns[phaseNum] {
-			phaseRuns[phaseNum] = runNum
+			// Legacy format has implicit run count of 1
+			if phaseRuns[phaseNum] == 0 {
+				phaseRuns[phaseNum] = 1
+			}
 		}
 	}
 
@@ -243,7 +269,8 @@ func deriveStartedAt(logDir string) time.Time {
 		if entry.IsDir() {
 			continue
 		}
-		if !phaseSessionPattern.MatchString(entry.Name()) {
+		name := entry.Name()
+		if !phaseSessionPattern.MatchString(name) && !legacyPhaseSessionPattern.MatchString(name) {
 			continue
 		}
 
@@ -338,4 +365,33 @@ func getRegistryDir() (string, error) {
 	}
 
 	return filepath.Join(homeDir, ".orbit", "runs"), nil
+}
+
+// detectOrbitDir attempts to find an .orbit directory based on the branch name.
+// This mirrors the logic in detectTasksFile() from run.go.
+func detectOrbitDir() (string, error) {
+	branchName, err := getGitBranch()
+	if err != nil {
+		return "", fmt.Errorf("not in a git repository: %w", err)
+	}
+
+	// Strip prefix before first slash (e.g., "specs/my-feature" -> "my-feature")
+	name := branchName
+	if _, after, found := strings.Cut(branchName, "/"); found {
+		name = after
+	}
+
+	// Try various paths for .orbit directories
+	candidates := []string{
+		filepath.Join("specs", name, ".orbit"),
+		filepath.Join("specs", branchName, ".orbit"),
+	}
+
+	for _, candidate := range candidates {
+		if info, err := os.Stat(candidate); err == nil && info.IsDir() {
+			return candidate, nil
+		}
+	}
+
+	return "", fmt.Errorf("could not find .orbit directory for branch '%s'\nTried: %s", branchName, strings.Join(candidates, ", "))
 }

@@ -60,14 +60,38 @@ func TestIsValidOrbitLogDir(t *testing.T) {
 		}
 	})
 
+	t.Run("valid with legacy format files", func(t *testing.T) {
+		tmpDir := t.TempDir()
+
+		// Create legacy format file (phase-N-session.json without run number)
+		files := []string{
+			"summary.json",
+			"phase-1-session.json", // legacy format
+			"transcript.md",
+		}
+		for _, f := range files {
+			if err := os.WriteFile(
+				filepath.Join(tmpDir, f),
+				[]byte("{}"),
+				0644,
+			); err != nil {
+				t.Fatalf("Failed to create test file: %v", err)
+			}
+		}
+
+		if !isValidOrbitLogDir(tmpDir) {
+			t.Error("isValidOrbitLogDir() = false, want true (legacy format should be valid)")
+		}
+	})
+
 	t.Run("invalid with non-matching files", func(t *testing.T) {
 		tmpDir := t.TempDir()
 
-		// Create files that don't match the pattern
+		// Create files that don't match any pattern
 		files := []string{
 			"summary.json",
-			"phase-1-session.json", // missing run number
 			"transcript.md",
+			"random-file.json",
 		}
 		for _, f := range files {
 			if err := os.WriteFile(
