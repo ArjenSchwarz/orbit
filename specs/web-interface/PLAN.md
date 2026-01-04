@@ -64,7 +64,7 @@ Directory-based registration using `~/.orbit/runs/` with one file per run:
 Each file contains:
 ```json
 {
-  "id": "abc123",
+  "id": "550e8400-e29b-41d4-a716-446655440000",
   "name": "feature-x",
   "repository": "ArjenSchwarz/orbit",
   "log_dir": "/path/to/.orbit/2024-01-03-150405",
@@ -74,6 +74,8 @@ Each file contains:
   "pid": 12345
 }
 ```
+
+Run IDs use standard UUID v4 format. Registry filenames match the ID (e.g., `550e8400-e29b-41d4-a716-446655440000.json`).
 
 The `repository` field enables grouping runs by project in the web interface. It is derived from:
 1. Git remote origin URL (preferred)
@@ -227,7 +229,7 @@ Simple, works everywhere, and htmx handles it declaratively. Can upgrade to Serv
 - No write operations exposed (read-only interface)
 
 ### Input Validation
-- Validate run IDs as UUIDs before use in file paths
+- Run IDs must be standard UUID v4 format (e.g., `550e8400-e29b-41d4-a716-446655440000`)
 - Use `filepath.Clean()` on all path components
 - Reject path components containing `..` or absolute paths
 - Validate phase numbers as positive integers
@@ -241,6 +243,11 @@ Simple, works everywhere, and htmx handles it declaratively. Can upgrade to Serv
 - Add input validation middleware for all endpoints
 - Return generic 404 for invalid/unauthorized paths (no information leakage)
 - Rate limiting consideration for future if exposed to network
+
+### Registry Integrity
+- Atomic writes must handle partial failures (cleanup temp files on error)
+- PID-based stale detection has limitations due to OS PID reuse; combine with timestamp checks
+- Consider file locking or heartbeat mechanism for long-running processes
 
 ## Implementation Phases
 
@@ -325,6 +332,36 @@ A daemon process that watches filesystem and maintains state.
 Push logs to a cloud service for viewing.
 
 **Why not:** Privacy concerns, external dependency, overkill for local use.
+
+## Open Design Questions
+
+The following items need to be resolved during detailed specification:
+
+### Git URL Parsing
+- Handle enterprise Git platforms (GitLab, Bitbucket, self-hosted)
+- Support alternative SSH formats and custom ports
+- Graceful handling of repositories with unusual remote configurations
+
+### API Response Strategy
+- Clarify when endpoints return JSON vs HTML fragments
+- Define content negotiation approach (Accept header vs separate endpoints)
+- Document htmx-specific response requirements
+
+### Mobile UX Details
+- Specific viewport meta tag configuration
+- Minimum supported screen widths
+- Touch gesture handling for transcript navigation
+- Offline/poor-connectivity behavior
+
+### Auto-Registration Timing
+- Exact point in `orbit run` lifecycle when registration occurs
+- How to handle registration failures (retry, warn, fail?)
+- Cleanup behavior when runs are interrupted (SIGINT, SIGTERM)
+
+### Cost Analytics
+- Consider promoting from Phase 5 to Phase 4
+- Define specific metrics to display (per-run, per-repo, trends)
+- Data aggregation and storage requirements
 
 ## Design Decisions
 
