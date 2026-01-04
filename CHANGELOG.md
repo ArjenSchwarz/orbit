@@ -9,6 +9,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- `orbit register` command for manually registering existing orbit log directories with the run registry
+  - Validates log directories by checking for `phase-*-run-*-session.json` files
+  - Derives status from `summary.json` when present (defaults to "completed" for historical runs)
+  - Derives phases array by scanning session files and tracking run counts
+  - Derives start time from `summary.json` or earliest file modification time
+  - Derives branch name from `summary.json` or directory structure
+  - Derives repository from git remote origin or directory name as fallback
+  - Supports `--name` flag for custom display names
+  - Updates existing entries when re-registering the same log directory (preserves ID)
+  - Special handling for "." path to look for `.orbit/` in current directory
+  - Sets PID to nil for manual registrations (vs auto-registered runs)
 - CLI subcommand routing with `orbit run`, `orbit serve`, and `orbit register` subcommands
 - Backward compatibility: existing `orbit --flags` syntax defaults to `orbit run`
 - `ServePort` and `ServeBind` configuration options for the web server (defaults: 8080, localhost)

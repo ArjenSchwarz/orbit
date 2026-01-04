@@ -82,8 +82,3 @@ func serveCommand(args []string) error {
 	return fmt.Errorf("serve command not yet implemented")
 }
 
-// registerCommand is a placeholder for the run registration command.
-// Will be implemented in a later task.
-func registerCommand(args []string) error {
-	return fmt.Errorf("register command not yet implemented")
-}

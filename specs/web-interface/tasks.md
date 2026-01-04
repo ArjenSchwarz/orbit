@@ -65,16 +65,16 @@ references:
 
 ## Phase 3: Manual Registration Command
 
-- [ ] 6. Implement orbit register command (cmd/orbit/register.go)
+- [x] 6. Implement orbit register command (cmd/orbit/register.go)
   - Validate log directory, derive metadata, create/update registry entry
   - Requirements: [4.1](requirements.md#4.1), [4.2](requirements.md#4.2), [4.3](requirements.md#4.3), [4.4](requirements.md#4.4), [4.5](requirements.md#4.5), [4.6](requirements.md#4.6), [4.7](requirements.md#4.7), [4.8](requirements.md#4.8), [4.9](requirements.md#4.9), [4.10](requirements.md#4.10), [4.11](requirements.md#4.11), [4.12](requirements.md#4.12)
-  - [ ] 6.1. Write unit tests for register command
+  - [x] 6.1. Write unit tests for register command
     - Test valid logs, invalid path, existing entry update, status derivation
-  - [ ] 6.2. Implement log directory validation
+  - [x] 6.2. Implement log directory validation
     - Check for phase-*-run-*-session.json files
-  - [ ] 6.3. Implement metadata derivation
+  - [x] 6.3. Implement metadata derivation
     - Parse summary.json for status, scan files for phases
-  - [ ] 6.4. Implement registerCommand function
+  - [x] 6.4. Implement registerCommand function
     - Parse flags, validate, derive metadata, register
 
 ## Phase 4: Transcript Extension
