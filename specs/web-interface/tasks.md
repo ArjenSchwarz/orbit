@@ -44,23 +44,23 @@ references:
 
 ## Phase 2: CLI Refactoring
 
-- [ ] 4. Refactor CLI for subcommands (cmd/orbit/)
+- [x] 4. Refactor CLI for subcommands (cmd/orbit/)
   - Extract run logic, add subcommand routing with backward compatibility
   - Requirements: [1.1](requirements.md#1.1)
-  - [ ] 4.1. Write integration tests for CLI subcommand routing
+  - [x] 4.1. Write integration tests for CLI subcommand routing
     - Test orbit run, orbit serve, orbit register, backward compatibility
-  - [ ] 4.2. Extract run command to run.go
+  - [x] 4.2. Extract run command to run.go
     - Move orchestration logic from main.go to runCommand function
-  - [ ] 4.3. Implement subcommand router in main.go
+  - [x] 4.3. Implement subcommand router in main.go
     - Route to run/serve/register, default to run for backward compatibility
 
-- [ ] 5. Extend config for serve options (internal/config/config.go)
+- [x] 5. Extend config for serve options (internal/config/config.go)
   - Add ServePort, ServeBind with defaults and env var support
   - Requirements: [1.2](requirements.md#1.2), [1.3](requirements.md#1.3), [1.4](requirements.md#1.4), [1.5](requirements.md#1.5)
   - References: internal/config/config.go
-  - [ ] 5.1. Write unit tests for serve config
+  - [x] 5.1. Write unit tests for serve config
     - Test defaults, env vars, config file loading
-  - [ ] 5.2. Add ServePort and ServeBind to Config struct
+  - [x] 5.2. Add ServePort and ServeBind to Config struct
     - Add fields, SetDefault calls, env var bindings
 
 ## Phase 3: Manual Registration Command

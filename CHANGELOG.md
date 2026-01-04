@@ -9,6 +9,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- CLI subcommand routing with `orbit run`, `orbit serve`, and `orbit register` subcommands
+- Backward compatibility: existing `orbit --flags` syntax defaults to `orbit run`
+- `ServePort` and `ServeBind` configuration options for the web server (defaults: 8080, localhost)
+- Environment variable support: `ORBIT_SERVE_PORT` and `ORBIT_SERVE_BIND`
+- Integration tests for CLI subcommand routing (`subcommand_test.go`)
+- Unit tests for serve configuration options
+
+### Changed
+
+- Refactored `cmd/orbit/main.go` to use subcommand router pattern
+- Extracted run command logic to `cmd/orbit/run.go`
+
+### Added
+
 - `internal/registry` package for run registration and discovery:
   - `types.go` with `RunStatus`, `PhaseStatus`, `Phase`, and `RunEntry` types with JSON serialization
   - `git.go` with `ParseGitRemote()` for extracting owner/repo from HTTPS, SSH, and SSH-alt git URLs

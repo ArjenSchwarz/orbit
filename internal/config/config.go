@@ -2,6 +2,7 @@
 package config
 
 import (
+	"fmt"
 	"log"
 	"os"
 	"path/filepath"
@@ -14,6 +15,10 @@ const (
 	DefaultCommand = "Run /next-task --phase and when complete run /commit"
 	// DefaultPostCommand is the default prompt executed after all tasks complete.
 	DefaultPostCommand = "Review the implementation to verify it meets the requirements and all tests pass. If issues are found, fix them."
+	// DefaultServePort is the default port for the web server.
+	DefaultServePort = 8080
+	// DefaultServeBind is the default bind address for the web server.
+	DefaultServeBind = "localhost"
 )
 
 // Config holds the resolved configuration values.
@@ -22,6 +27,8 @@ type Config struct {
 	PostCommand     string
 	DateSubdirs     bool
 	ContinueSession bool
+	ServePort       int
+	ServeBind       string
 
 	// postCommandExplicit tracks whether post-command was explicitly set in config.
 	// This allows distinguishing "not set" (use default) from "set to empty" (disabled).
@@ -49,6 +56,8 @@ func Load(workingDir string) *Config {
 	v.SetDefault("post-command", DefaultPostCommand)
 	v.SetDefault("date-subdirs", false)
 	v.SetDefault("continue-session", true)
+	v.SetDefault("serve-port", DefaultServePort)
+	v.SetDefault("serve-bind", DefaultServeBind)
 
 	// Config file name (without extension)
 	v.SetConfigName(".orbit")
@@ -104,6 +113,8 @@ func Load(workingDir string) *Config {
 	postCommand := v.GetString("post-command")
 	dateSubdirs := v.GetBool("date-subdirs")
 	continueSession := v.GetBool("continue-session")
+	servePort := v.GetInt("serve-port")
+	serveBind := v.GetString("serve-bind")
 
 	// Apply environment variable overrides (highest priority)
 	// Using os.LookupEnv to detect both set values and explicitly empty values
@@ -120,14 +131,38 @@ func Load(workingDir string) *Config {
 	if envContinueSession, exists := os.LookupEnv("ORBIT_CONTINUE_SESSION"); exists {
 		continueSession = envContinueSession == "true" || envContinueSession == "1"
 	}
+	if envServePort, exists := os.LookupEnv("ORBIT_SERVE_PORT"); exists {
+		if port, err := parsePort(envServePort); err == nil {
+			servePort = port
+		}
+		// Invalid port values are silently ignored (use config/default)
+	}
+	if envServeBind, exists := os.LookupEnv("ORBIT_SERVE_BIND"); exists {
+		serveBind = envServeBind
+	}
 
 	return &Config{
 		Command:             command,
 		PostCommand:         postCommand,
 		DateSubdirs:         dateSubdirs,
 		ContinueSession:     continueSession,
+		ServePort:           servePort,
+		ServeBind:           serveBind,
 		postCommandExplicit: postCommandExplicit,
 	}
+}
+
+// parsePort attempts to parse a string as a valid port number.
+func parsePort(s string) (int, error) {
+	var port int
+	_, err := fmt.Sscanf(s, "%d", &port)
+	if err != nil {
+		return 0, err
+	}
+	if port < 1 || port > 65535 {
+		return 0, fmt.Errorf("port out of range: %d", port)
+	}
+	return port, nil
 }
 
 // IsPostCommandDisabled returns true if post-command was explicitly set to empty.
