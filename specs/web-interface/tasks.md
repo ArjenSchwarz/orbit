@@ -186,21 +186,21 @@ references:
 
 ## Phase 6: Auto-Registration Integration
 
-- [ ] 14. Integrate registry with orbit run (internal/orbit/orbit.go)
+- [x] 14. Integrate registry with orbit run (internal/orbit/orbit.go)
   - Register on start, update status on completion, update phases
   - Requirements: [3.1](requirements.md#3.1), [3.2](requirements.md#3.2), [3.3](requirements.md#3.3), [3.4](requirements.md#3.4), [3.5](requirements.md#3.5), [3.6](requirements.md#3.6), [3.7](requirements.md#3.7)
   - References: internal/orbit/orbit.go
-  - [ ] 14.1. Write unit tests for auto-registration
+  - [x] 14.1. Write unit tests for auto-registration
     - Test registration on start, status updates, phase updates
-  - [ ] 14.2. Add registry field to Orbit struct
+  - [x] 14.2. Add registry field to Orbit struct
     - Initialize registry in New function
-  - [ ] 14.3. Register run on start
+  - [x] 14.3. Register run on start
     - Create entry with running status, pid, log_dir
-  - [ ] 14.4. Update phase status during execution
+  - [x] 14.4. Update phase status during execution
     - Call UpdatePhase when phases start/complete
-  - [ ] 14.5. Update run status on completion
+  - [x] 14.5. Update run status on completion
     - Set completed/failed status, finished_at timestamp
-  - [ ] 14.6. Handle registration failures gracefully
+  - [x] 14.6. Handle registration failures gracefully
     - Log warning, continue execution
 
 ## Phase 7: Live Updates

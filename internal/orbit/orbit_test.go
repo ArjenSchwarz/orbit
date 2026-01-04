@@ -2,6 +2,8 @@ package orbit
 
 import (
 	"errors"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -9,6 +11,7 @@ import (
 	"github.com/arjenschwarz/orbit/internal/claude"
 	orberrors "github.com/arjenschwarz/orbit/internal/errors"
 	"github.com/arjenschwarz/orbit/internal/logs"
+	"github.com/arjenschwarz/orbit/internal/registry"
 )
 
 // mockClaudeClient implements claudeRunner for testing.
@@ -664,5 +667,375 @@ func TestRunPhase_ResumeFallback(t *testing.T) {
 	}
 	if calls[1].sessionID == sessionID {
 		t.Error("second call should have a different session ID")
+	}
+}
+
+// --- Auto-Registration Tests (Phase 6) ---
+
+func TestOrbit_RegistryIntegration_RegisterOnStart(t *testing.T) {
+	// Test that registry entry is created on run start (requirement 3.1)
+	tempDir := t.TempDir()
+	registryDir := filepath.Join(tempDir, "runs")
+
+	reg, err := registry.New(registryDir)
+	if err != nil {
+		t.Fatalf("Failed to create registry: %v", err)
+	}
+
+	logDir := filepath.Join(tempDir, "logs")
+	if err := os.MkdirAll(logDir, 0755); err != nil {
+		t.Fatalf("Failed to create log dir: %v", err)
+	}
+
+	o := &Orbit{
+		config: Config{
+			BranchName: "feature/test",
+			WorkingDir: tempDir,
+			LogDir:     logDir,
+		},
+		registry: reg,
+	}
+
+	// Register the run
+	runID, err := o.registerRun()
+	if err != nil {
+		t.Fatalf("registerRun() returned error: %v", err)
+	}
+
+	// Verify entry was created
+	entry, err := reg.Get(runID)
+	if err != nil {
+		t.Fatalf("Failed to get registry entry: %v", err)
+	}
+	if entry == nil {
+		t.Fatal("Registry entry not found after registration")
+	}
+
+	// Check required fields
+	if entry.Status != registry.StatusRunning {
+		t.Errorf("Status = %q, want %q", entry.Status, registry.StatusRunning)
+	}
+	if entry.PID == nil {
+		t.Error("PID should be set for auto-registered runs")
+	} else if *entry.PID != os.Getpid() {
+		t.Errorf("PID = %d, want %d", *entry.PID, os.Getpid())
+	}
+	if entry.Branch != "feature/test" {
+		t.Errorf("Branch = %q, want %q", entry.Branch, "feature/test")
+	}
+	if entry.LogDir != logDir {
+		t.Errorf("LogDir = %q, want %q", entry.LogDir, logDir)
+	}
+}
+
+func TestOrbit_RegistryIntegration_UpdatePhaseOnStart(t *testing.T) {
+	// Test that phase status is updated when phases start (requirement 3.5)
+	tempDir := t.TempDir()
+	registryDir := filepath.Join(tempDir, "runs")
+
+	reg, err := registry.New(registryDir)
+	if err != nil {
+		t.Fatalf("Failed to create registry: %v", err)
+	}
+
+	logDir := filepath.Join(tempDir, "logs")
+	if err := os.MkdirAll(logDir, 0755); err != nil {
+		t.Fatalf("Failed to create log dir: %v", err)
+	}
+
+	o := &Orbit{
+		config: Config{
+			BranchName: "feature/test",
+			WorkingDir: tempDir,
+			LogDir:     logDir,
+		},
+		registry: reg,
+	}
+
+	// Register the run first
+	runID, err := o.registerRun()
+	if err != nil {
+		t.Fatalf("registerRun() returned error: %v", err)
+	}
+	o.runID = runID
+
+	// Update phase to running
+	o.updatePhaseStatus(1, registry.PhaseStatusRunning, 1)
+
+	// Verify phase was added
+	entry, err := reg.Get(runID)
+	if err != nil {
+		t.Fatalf("Failed to get registry entry: %v", err)
+	}
+
+	if len(entry.Phases) != 1 {
+		t.Fatalf("Expected 1 phase, got %d", len(entry.Phases))
+	}
+	if entry.Phases[0].Number != 1 {
+		t.Errorf("Phase number = %d, want 1", entry.Phases[0].Number)
+	}
+	if entry.Phases[0].Status != registry.PhaseStatusRunning {
+		t.Errorf("Phase status = %q, want %q", entry.Phases[0].Status, registry.PhaseStatusRunning)
+	}
+}
+
+func TestOrbit_RegistryIntegration_UpdatePhaseOnComplete(t *testing.T) {
+	// Test that phase status is updated when phases complete (requirement 3.6)
+	tempDir := t.TempDir()
+	registryDir := filepath.Join(tempDir, "runs")
+
+	reg, err := registry.New(registryDir)
+	if err != nil {
+		t.Fatalf("Failed to create registry: %v", err)
+	}
+
+	logDir := filepath.Join(tempDir, "logs")
+	if err := os.MkdirAll(logDir, 0755); err != nil {
+		t.Fatalf("Failed to create log dir: %v", err)
+	}
+
+	o := &Orbit{
+		config: Config{
+			BranchName: "feature/test",
+			WorkingDir: tempDir,
+			LogDir:     logDir,
+		},
+		registry: reg,
+	}
+
+	// Register and start a phase
+	runID, err := o.registerRun()
+	if err != nil {
+		t.Fatalf("registerRun() returned error: %v", err)
+	}
+	o.runID = runID
+	o.updatePhaseStatus(1, registry.PhaseStatusRunning, 1)
+
+	// Complete the phase
+	o.updatePhaseStatus(1, registry.PhaseStatusCompleted, 1)
+
+	// Verify phase was updated
+	entry, err := reg.Get(runID)
+	if err != nil {
+		t.Fatalf("Failed to get registry entry: %v", err)
+	}
+
+	if len(entry.Phases) != 1 {
+		t.Fatalf("Expected 1 phase, got %d", len(entry.Phases))
+	}
+	if entry.Phases[0].Status != registry.PhaseStatusCompleted {
+		t.Errorf("Phase status = %q, want %q", entry.Phases[0].Status, registry.PhaseStatusCompleted)
+	}
+}
+
+func TestOrbit_RegistryIntegration_UpdateStatusOnComplete(t *testing.T) {
+	// Test that run status is updated on successful completion (requirement 3.2)
+	tempDir := t.TempDir()
+	registryDir := filepath.Join(tempDir, "runs")
+
+	reg, err := registry.New(registryDir)
+	if err != nil {
+		t.Fatalf("Failed to create registry: %v", err)
+	}
+
+	logDir := filepath.Join(tempDir, "logs")
+	if err := os.MkdirAll(logDir, 0755); err != nil {
+		t.Fatalf("Failed to create log dir: %v", err)
+	}
+
+	o := &Orbit{
+		config: Config{
+			BranchName: "feature/test",
+			WorkingDir: tempDir,
+			LogDir:     logDir,
+		},
+		registry: reg,
+	}
+
+	// Register the run
+	runID, err := o.registerRun()
+	if err != nil {
+		t.Fatalf("registerRun() returned error: %v", err)
+	}
+	o.runID = runID
+
+	// Complete the run
+	o.updateRunStatus(registry.StatusCompleted)
+
+	// Verify status was updated
+	entry, err := reg.Get(runID)
+	if err != nil {
+		t.Fatalf("Failed to get registry entry: %v", err)
+	}
+	if entry.Status != registry.StatusCompleted {
+		t.Errorf("Status = %q, want %q", entry.Status, registry.StatusCompleted)
+	}
+	if entry.FinishedAt == nil {
+		t.Error("FinishedAt should be set on completion")
+	}
+}
+
+func TestOrbit_RegistryIntegration_UpdateStatusOnFail(t *testing.T) {
+	// Test that run status is updated on failure (requirement 3.3)
+	tempDir := t.TempDir()
+	registryDir := filepath.Join(tempDir, "runs")
+
+	reg, err := registry.New(registryDir)
+	if err != nil {
+		t.Fatalf("Failed to create registry: %v", err)
+	}
+
+	logDir := filepath.Join(tempDir, "logs")
+	if err := os.MkdirAll(logDir, 0755); err != nil {
+		t.Fatalf("Failed to create log dir: %v", err)
+	}
+
+	o := &Orbit{
+		config: Config{
+			BranchName: "feature/test",
+			WorkingDir: tempDir,
+			LogDir:     logDir,
+		},
+		registry: reg,
+	}
+
+	// Register the run
+	runID, err := o.registerRun()
+	if err != nil {
+		t.Fatalf("registerRun() returned error: %v", err)
+	}
+	o.runID = runID
+
+	// Fail the run
+	o.updateRunStatus(registry.StatusFailed)
+
+	// Verify status was updated
+	entry, err := reg.Get(runID)
+	if err != nil {
+		t.Fatalf("Failed to get registry entry: %v", err)
+	}
+	if entry.Status != registry.StatusFailed {
+		t.Errorf("Status = %q, want %q", entry.Status, registry.StatusFailed)
+	}
+	if entry.FinishedAt == nil {
+		t.Error("FinishedAt should be set on failure")
+	}
+}
+
+func TestOrbit_RegistryIntegration_GracefulFailure(t *testing.T) {
+	// Test that registration failures don't stop execution (requirement 3.7)
+	// Use nil registry to simulate registration failure
+	o := &Orbit{
+		config: Config{
+			BranchName: "feature/test",
+			WorkingDir: t.TempDir(),
+		},
+		registry: nil, // No registry - should not panic or error
+	}
+
+	// These should not panic with nil registry
+	_, err := o.registerRun()
+	if err != nil {
+		t.Errorf("registerRun() with nil registry should return nil error, got %v", err)
+	}
+
+	o.updatePhaseStatus(1, registry.PhaseStatusRunning, 1)
+	o.updateRunStatus(registry.StatusCompleted)
+	// If we get here without panic, test passes
+}
+
+func TestOrbit_RegistryIntegration_PhaseFailedStatus(t *testing.T) {
+	// Test that phase status is set to failed when phase fails
+	tempDir := t.TempDir()
+	registryDir := filepath.Join(tempDir, "runs")
+
+	reg, err := registry.New(registryDir)
+	if err != nil {
+		t.Fatalf("Failed to create registry: %v", err)
+	}
+
+	logDir := filepath.Join(tempDir, "logs")
+	if err := os.MkdirAll(logDir, 0755); err != nil {
+		t.Fatalf("Failed to create log dir: %v", err)
+	}
+
+	o := &Orbit{
+		config: Config{
+			BranchName: "feature/test",
+			WorkingDir: tempDir,
+			LogDir:     logDir,
+		},
+		registry: reg,
+	}
+
+	// Register and start a phase
+	runID, err := o.registerRun()
+	if err != nil {
+		t.Fatalf("registerRun() returned error: %v", err)
+	}
+	o.runID = runID
+	o.updatePhaseStatus(1, registry.PhaseStatusRunning, 1)
+
+	// Fail the phase
+	o.updatePhaseStatus(1, registry.PhaseStatusFailed, 1)
+
+	// Verify phase status
+	entry, err := reg.Get(runID)
+	if err != nil {
+		t.Fatalf("Failed to get registry entry: %v", err)
+	}
+	if entry.Phases[0].Status != registry.PhaseStatusFailed {
+		t.Errorf("Phase status = %q, want %q", entry.Phases[0].Status, registry.PhaseStatusFailed)
+	}
+}
+
+func TestOrbit_RegistryIntegration_RunCountIncrement(t *testing.T) {
+	// Test that run_count increments on retry
+	tempDir := t.TempDir()
+	registryDir := filepath.Join(tempDir, "runs")
+
+	reg, err := registry.New(registryDir)
+	if err != nil {
+		t.Fatalf("Failed to create registry: %v", err)
+	}
+
+	logDir := filepath.Join(tempDir, "logs")
+	if err := os.MkdirAll(logDir, 0755); err != nil {
+		t.Fatalf("Failed to create log dir: %v", err)
+	}
+
+	o := &Orbit{
+		config: Config{
+			BranchName: "feature/test",
+			WorkingDir: tempDir,
+			LogDir:     logDir,
+		},
+		registry: reg,
+	}
+
+	runID, err := o.registerRun()
+	if err != nil {
+		t.Fatalf("registerRun() returned error: %v", err)
+	}
+	o.runID = runID
+
+	// First attempt at phase 1
+	o.updatePhaseStatus(1, registry.PhaseStatusRunning, 1)
+	o.updatePhaseStatus(1, registry.PhaseStatusFailed, 1)
+
+	// Second attempt at phase 1
+	o.updatePhaseStatus(1, registry.PhaseStatusRunning, 2)
+	o.updatePhaseStatus(1, registry.PhaseStatusCompleted, 2)
+
+	// Verify run_count
+	entry, err := reg.Get(runID)
+	if err != nil {
+		t.Fatalf("Failed to get registry entry: %v", err)
+	}
+	if len(entry.Phases) != 1 {
+		t.Fatalf("Expected 1 phase, got %d", len(entry.Phases))
+	}
+	if entry.Phases[0].RunCount != 2 {
+		t.Errorf("RunCount = %d, want 2", entry.Phases[0].RunCount)
 	}
 }

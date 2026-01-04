@@ -9,6 +9,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Auto-registration integration for web interface (Phase 6):
+  - Orbit runs automatically register with the web interface registry on start
+  - Registry entry created with status "running", PID, and log directory
+  - Phase status updates tracked during execution (running, completed, failed)
+  - Run count incremented on phase retries
+  - Run status updated on completion (completed/failed) with finished timestamp
+  - Graceful failure handling: registry errors logged as warnings, execution continues
+  - Unit tests for all auto-registration scenarios
 - `internal/web` package for web interface:
   - `server.go` with `Server` struct, `New()`, `Start()`, and `Shutdown()` methods
   - Graceful shutdown with 5-second timeout for in-flight requests
