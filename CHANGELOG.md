@@ -7,7 +7,48 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- Race condition in spinner `updateLoop`: the done channel is now captured and passed as a parameter to prevent goroutine leaks during rapid Stop()/Start() sequences
+- Graceful shutdown now properly checks for interrupt signals between phases in the orchestration loop
+- Context leak in demo command: `waitCancel()` is now properly deferred in a scoped closure
+- Added documentation comments explaining goroutine safety in spinner `Start()` and `StartPostCompletion()` methods
+
 ### Added
+
+- `orbit demo` subcommand for previewing spinner and hyperlink functionality:
+  - Displays simulated phase overview table with sample data (Setup complete, Implementation running, Testing pending)
+  - Runs animated spinner cycling through phases 1-3 with 10s per phase
+  - Simulates retry wait countdown on even phases (5s wait)
+  - Displays sample completion links to /tmp/orbit-demo on Ctrl+C exit
+  - Requires TTY terminal (fails gracefully with error if not a TTY)
+  - Subcommand dispatch in main.go before flag parsing
+- Spinner and hyperlink integration in Orbit orchestration loop:
+  - Spinner displays during phase execution with phase number and elapsed time
+  - Spinner shows wait countdown during retry delays (rate limit, connection errors)
+  - Post-completion command displays "Post-completion" spinner
+  - OSC 8 terminal hyperlinks printed on completion (success or failure) with paths to index.md and index.html
+  - Graceful shutdown via `signal.NotifyContext` for SIGINT/SIGTERM handling
+  - `Close()` method on Orbit struct for resource cleanup (called via defer in main)
+- `internal/display` package for terminal display functionality:
+  - `hyperlink.go` with OSC 8 terminal hyperlink support:
+    - `FormatOSC8Link()` creates clickable terminal hyperlinks using OSC 8 escape sequences
+    - `FormatFileLink()` creates properly percent-encoded file:// URIs
+    - `PrintIndexLinks()` outputs labeled links for index.md and index.html to stderr
+    - `IsTTY()` helper for TTY detection using mattn/go-isatty
+  - `spinner.go` wrapping briandowns/spinner with orbit-specific behavior:
+    - Braille character set with cyan color and 100ms update interval
+    - `Start()` and `Stop()` methods with idempotency guards
+    - `StartPostCompletion()` for post-completion command spinner
+    - `UpdateWait()` and `ResumePhase()` for retry countdown display
+    - `Pause()` and `Resume()` for log output coordination
+    - Thread-safe via mutex, nil-safe method receivers
+- briandowns/spinner dependency (v1.23.2) for terminal spinner animation
+- Spec for Orbit UX improvements feature:
+  - Requirements document with 5 sections covering completion links, progress indicator, terminal compatibility, integration, and demo command
+  - Design document with architecture, components, interfaces, and testing strategy for spinner and hyperlink display
+  - Decision log documenting 8 design decisions (OSC 8 hyperlinks, briandowns/spinner library, signal.NotifyContext, etc.)
+  - Task list with 4 implementation phases: display package foundation, orbit integration, demo command, and integration tests
 
 - Slash command rendering with description support:
   - Slash commands (e.g., `/catchup`) display with `⚡` icon
@@ -37,6 +78,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Spinner now pauses before log output during retry waits to prevent visual artifacts (implements Requirement 4.5)
+- Consistent error handling in `runPhase` and `runPostCommand`: errors now use `fail()` method to display index links on all failure paths
 - Edit tool error message preservation: when Edit operations fail or logs lack `structuredPatch`, the tool_result content (error message or legacy format) is now rendered as fallback instead of showing empty blocks
 - Polymorphic `toolUseResult` field parsing: handles both string and object values in JSONL
   - Custom `UnmarshalJSON` method on Entry struct

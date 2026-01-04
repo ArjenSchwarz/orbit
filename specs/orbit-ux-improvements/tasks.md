@@ -1,0 +1,172 @@
+---
+references:
+    - specs/orbit-ux-improvements/requirements.md
+    - specs/orbit-ux-improvements/design.md
+    - specs/orbit-ux-improvements/decision_log.md
+---
+# Orbit UX Improvements
+
+## Phase 1: Display Package Foundation
+
+- [x] 1. Create internal/display package and hyperlink component
+  - Create internal/display/hyperlink.go with FormatOSC8Link and FormatFileLink functions
+  - Use net/url for proper URI encoding
+  - Use mattn/go-isatty for TTY detection
+  - Requirements: [1.3](requirements.md#1.3), [1.4](requirements.md#1.4), [3.2](requirements.md#3.2)
+  - References: internal/display/hyperlink.go
+  - [x] 1.1. Write hyperlink unit tests
+    - Create internal/display/hyperlink_test.go
+    - Test OSC 8 escape sequence format
+    - Test file:// URI encoding with spaces and special characters
+    - Requirements: [1.3](requirements.md#1.3), [1.4](requirements.md#1.4)
+    - References: internal/display/hyperlink_test.go
+  - [x] 1.2. Implement FormatOSC8Link function
+    - Format: \x1b]8;;<uri>\x1b\\<text>\x1b]8;;\x1b\\
+    - Check TTY before adding escape sequences
+    - Requirements: [1.3](requirements.md#1.3), [3.2](requirements.md#3.2)
+    - References: internal/display/hyperlink.go
+  - [x] 1.3. Implement FormatFileLink function
+    - Create file:// URIs with proper percent-encoding
+    - Handle paths with spaces and special characters
+    - Requirements: [1.4](requirements.md#1.4)
+    - References: internal/display/hyperlink.go
+  - [x] 1.4. Implement PrintIndexLinks function
+    - Output labeled links for index.md and index.html
+    - Write to stderr
+    - Check TTY before printing
+    - Requirements: [1.5](requirements.md#1.5), [1.6](requirements.md#1.6), [3.4](requirements.md#3.4)
+    - References: internal/display/hyperlink.go
+
+- [x] 2. Create spinner component
+  - Create internal/display/spinner.go wrapping briandowns/spinner
+  - Add cyan color, 100ms update interval, Braille charset
+  - Requirements: [2.1](requirements.md#2.1), [2.4](requirements.md#2.4), [3.3](requirements.md#3.3)
+  - References: internal/display/spinner.go
+  - [x] 2.1. Add briandowns/spinner dependency
+    - Run go get github.com/briandowns/spinner
+    - Verify dependency added to go.mod
+    - References: go.mod
+  - [x] 2.2. Implement Spinner struct with idempotency guards
+    - Add started bool and sync.Once fields
+    - Add mutex for thread safety
+    - Return nil from NewSpinner if stderr not TTY
+    - Requirements: [2.5](requirements.md#2.5), [3.5](requirements.md#3.5)
+    - References: internal/display/spinner.go
+  - [x] 2.3. Implement Start and Stop methods
+    - Start shows phase number and elapsed time
+    - Stop clears line and restores terminal
+    - Both methods are idempotent
+    - Requirements: [2.1](requirements.md#2.1), [2.2](requirements.md#2.2), [2.3](requirements.md#2.3), [2.6](requirements.md#2.6)
+    - References: internal/display/spinner.go
+  - [x] 2.4. Implement StartPostCompletion method
+    - Shows Post-completion instead of phase number
+    - Reuses elapsed time tracking from Start
+    - Requirements: [2.1](requirements.md#2.1)
+    - References: internal/display/spinner.go
+  - [x] 2.5. Implement UpdateWait and ResumePhase methods
+    - UpdateWait switches to countdown display
+    - ResumePhase returns to normal elapsed time display
+    - Requirements: [2.7](requirements.md#2.7)
+    - References: internal/display/spinner.go
+  - [x] 2.6. Implement Pause and Resume methods
+    - Pause stops spinner before log output
+    - Resume restarts after logging
+    - Requirements: [4.5](requirements.md#4.5)
+    - References: internal/display/spinner.go
+  - [x] 2.7. Write spinner unit tests
+    - Test idempotency of Start/Stop
+    - Test Pause/Resume behavior
+    - Test nil return when not TTY
+    - Requirements: [2.1](requirements.md#2.1), [2.6](requirements.md#2.6), [3.5](requirements.md#3.5)
+    - References: internal/display/spinner_test.go
+
+## Phase 2: Orbit Integration
+
+- [x] 3. Integrate spinner into Orbit struct
+  - Add spinner field to Orbit struct
+  - Add shutdownCtx and shutdownCancel for signal handling
+  - Add Close method for cleanup
+  - Requirements: [2.9](requirements.md#2.9)
+  - References: internal/orbit/orbit.go
+  - [x] 3.1. Update Orbit struct and New function
+    - Add spinner, shutdownCtx, shutdownCancel fields
+    - Initialize spinner in New() when not dry-run
+    - Set up signal.NotifyContext for SIGINT/SIGTERM
+    - Requirements: [2.8](requirements.md#2.8), [2.9](requirements.md#2.9)
+    - References: internal/orbit/orbit.go
+  - [x] 3.2. Add Close method to Orbit
+    - Cancel shutdown context
+    - Stop spinner if running
+    - Make idempotent for safety
+    - Requirements: [2.9](requirements.md#2.9)
+    - References: internal/orbit/orbit.go
+  - [x] 3.3. Integrate spinner in runPhase
+    - Call spinner.Start(phase) before RunPhase
+    - Call spinner.Stop() after RunPhase returns
+    - Requirements: [2.1](requirements.md#2.1), [2.6](requirements.md#2.6)
+    - References: internal/orbit/orbit.go
+  - [x] 3.4. Integrate spinner in runPhaseWithRetry
+    - Call spinner.Pause() before log messages
+    - Call spinner.UpdateWait() during retry waits
+    - Call spinner.ResumePhase() after wait
+    - Requirements: [2.7](requirements.md#2.7), [4.5](requirements.md#4.5)
+    - References: internal/orbit/orbit.go
+  - [x] 3.5. Integrate spinner in runPostCommand
+    - Call spinner.StartPostCompletion() before command
+    - Call spinner.Stop() after command returns
+    - Requirements: [2.1](requirements.md#2.1), [2.6](requirements.md#2.6)
+    - References: internal/orbit/orbit.go
+
+- [x] 4. Integrate completion links
+  - Add PrintIndexLinks calls in complete() and fail()
+  - Requirements: [1.1](requirements.md#1.1), [1.2](requirements.md#1.2), [1.7](requirements.md#1.7), [4.3](requirements.md#4.3)
+  - References: internal/orbit/orbit.go
+  - [x] 4.1. Add links in complete method
+    - Call display.PrintIndexLinks after logManager.Complete()
+    - Only print if logManager is not nil
+    - Requirements: [1.1](requirements.md#1.1), [1.7](requirements.md#1.7), [4.3](requirements.md#4.3)
+    - References: internal/orbit/orbit.go
+  - [x] 4.2. Add links in fail method
+    - Stop spinner before printing links
+    - Call display.PrintIndexLinks after logManager.Fail()
+    - Requirements: [1.2](requirements.md#1.2), [1.7](requirements.md#1.7)
+    - References: internal/orbit/orbit.go
+
+- [x] 5. Update main.go for cleanup
+  - Add defer o.Close() after New() call
+  - Requirements: [2.9](requirements.md#2.9)
+  - References: cmd/orbit/main.go
+
+## Phase 3: Demo Command
+
+- [x] 6. Implement demo command
+  - Create cmd/orbit/demo.go with RunDemo function
+  - Add demo subcommand dispatch in main.go
+  - Requirements: [5.1](requirements.md#5.1), [5.7](requirements.md#5.7)
+  - References: cmd/orbit/demo.go, cmd/orbit/main.go
+  - [x] 6.1. Create demo.go file structure
+    - Create RunDemo function
+    - Set up signal handling for Ctrl+C exit
+    - Requirements: [5.1](requirements.md#5.1), [5.5](requirements.md#5.5)
+    - References: cmd/orbit/demo.go
+  - [x] 6.2. Implement displayMockPhaseOverview
+    - Create sample phase table with go-output
+    - Show Setup complete, Implementation running, Testing pending
+    - Requirements: [5.2](requirements.md#5.2)
+    - References: cmd/orbit/demo.go
+  - [x] 6.3. Implement demo spinner loop
+    - Cycle through phases 1-3
+    - Simulate 10s work per phase
+    - Simulate retry wait on even phases
+    - Requirements: [5.3](requirements.md#5.3), [5.4](requirements.md#5.4), [5.5](requirements.md#5.5)
+    - References: cmd/orbit/demo.go
+  - [x] 6.4. Implement displayDemoLinks
+    - Show sample file:// links on Ctrl+C
+    - Use /tmp/orbit-demo as example path
+    - Requirements: [5.6](requirements.md#5.6)
+    - References: cmd/orbit/demo.go
+  - [x] 6.5. Add demo subcommand dispatch to main.go
+    - Check for demo as first arg before flag parsing
+    - Call demo.RunDemo and exit
+    - Requirements: [5.1](requirements.md#5.1)
+    - References: cmd/orbit/main.go

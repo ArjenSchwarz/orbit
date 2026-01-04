@@ -5,11 +5,15 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"os"
+	"os/signal"
 	"strings"
+	"syscall"
 	"time"
 
 	output "github.com/ArjenSchwarz/go-output/v2"
 	"github.com/arjenschwarz/orbit/internal/claude"
+	"github.com/arjenschwarz/orbit/internal/display"
 	orberrors "github.com/arjenschwarz/orbit/internal/errors"
 	"github.com/arjenschwarz/orbit/internal/logs"
 	"github.com/arjenschwarz/orbit/internal/rune"
@@ -50,6 +54,9 @@ type Orbit struct {
 	claudeClient   claudeRunner
 	logManager     *logs.Manager
 	phaseSummaries []rune.PhaseSummary
+	spinner        *display.Spinner
+	shutdownCtx    context.Context
+	shutdownCancel context.CancelFunc
 }
 
 // New creates a new Orbit instance.
@@ -77,12 +84,36 @@ func New(config Config) (*Orbit, error) {
 		}
 	}
 
+	// Create spinner (nil in dry-run mode or if not a TTY)
+	var spin *display.Spinner
+	if !config.DryRun {
+		spin = display.NewSpinner()
+	}
+
+	// Set up graceful shutdown context for signal handling
+	ctx, cancel := signal.NotifyContext(context.Background(),
+		os.Interrupt, syscall.SIGTERM)
+
 	return &Orbit{
-		config:       config,
-		runeClient:   runeClient,
-		claudeClient: claudeClient,
-		logManager:   logManager,
+		config:         config,
+		runeClient:     runeClient,
+		claudeClient:   claudeClient,
+		logManager:     logManager,
+		spinner:        spin,
+		shutdownCtx:    ctx,
+		shutdownCancel: cancel,
 	}, nil
+}
+
+// Close releases resources and should be called via defer in main().
+// Idempotent: calling Close() multiple times is safe.
+func (o *Orbit) Close() {
+	if o.shutdownCancel != nil {
+		o.shutdownCancel()
+	}
+	if o.spinner != nil {
+		o.spinner.Stop()
+	}
 }
 
 // Run executes the orchestration loop until all tasks are complete.
@@ -96,6 +127,13 @@ func (o *Orbit) Run() error {
 	}
 
 	for {
+		// Check for shutdown signal between phases
+		select {
+		case <-o.shutdownCtx.Done():
+			return o.fail(fmt.Errorf("interrupted by user"))
+		default:
+		}
+
 		// Check for remaining tasks
 		pending, err := o.runeClient.ListPending()
 		if err != nil {
@@ -158,7 +196,11 @@ func (o *Orbit) complete() error {
 	}
 
 	if o.logManager != nil {
-		return o.logManager.Complete()
+		if err := o.logManager.Complete(); err != nil {
+			return err
+		}
+		// Print index links after successful completion
+		display.PrintIndexLinks(o.logManager.SessionDir())
 	}
 	return nil
 }
@@ -247,6 +289,11 @@ func (o *Orbit) runPhaseWithRetry(phase int) error {
 			return err
 		}
 
+		// Pause spinner before logging to prevent visual artifacts
+		if o.spinner != nil {
+			o.spinner.Pause()
+		}
+
 		// Determine wait time
 		var waitTime time.Duration
 		switch classified.Type {
@@ -269,7 +316,18 @@ func (o *Orbit) runPhaseWithRetry(phase int) error {
 			waitTime = orberrors.BackoffDuration(attempt)
 		}
 
+		// Resume spinner with wait countdown during retry wait
+		if o.spinner != nil {
+			o.spinner.UpdateWait(waitTime)
+			o.spinner.Resume()
+		}
+
 		time.Sleep(waitTime)
+
+		// Stop spinner before next phase attempt (runPhase will start it again)
+		if o.spinner != nil {
+			o.spinner.Stop()
+		}
 	}
 
 	return fmt.Errorf("max retries exceeded: %w", lastErr)
@@ -279,6 +337,11 @@ func (o *Orbit) runPhaseWithRetry(phase int) error {
 func (o *Orbit) runPhase(phase int) error {
 	startTime := time.Now()
 
+	// Start spinner before Claude execution
+	if o.spinner != nil {
+		o.spinner.Start(phase)
+	}
+
 	// Get session ID and determine if resuming (req 3.1-3.3)
 	var sessionID string
 	var isResume bool
@@ -286,7 +349,7 @@ func (o *Orbit) runPhase(phase int) error {
 		var err error
 		sessionID, isResume, err = o.logManager.StartPhase(phase, o.config.ContinueSession)
 		if err != nil {
-			return fmt.Errorf("failed to start phase: %w", err)
+			return o.fail(fmt.Errorf("failed to start phase: %w", err))
 		}
 	} else {
 		sessionID = uuid.NewString()
@@ -294,6 +357,11 @@ func (o *Orbit) runPhase(phase int) error {
 	}
 
 	result, err := o.claudeClient.RunPhase(sessionID, isResume)
+
+	// Stop spinner after Claude returns
+	if o.spinner != nil {
+		o.spinner.Stop()
+	}
 
 	// Handle resume failure (req 3.7-3.9)
 	if err != nil && isResume && isSessionInvalidError(result) {
@@ -355,6 +423,11 @@ func (o *Orbit) runPhase(phase int) error {
 func (o *Orbit) runPostCommand() error {
 	startTime := time.Now()
 
+	// Start spinner for post-completion
+	if o.spinner != nil {
+		o.spinner.StartPostCompletion()
+	}
+
 	// Get session ID and determine if resuming
 	var sessionID string
 	var isResume bool
@@ -362,11 +435,16 @@ func (o *Orbit) runPostCommand() error {
 		var err error
 		sessionID, isResume, err = o.logManager.StartPostCompletion(o.config.ContinueSession)
 		if err != nil {
-			return fmt.Errorf("failed to start post-completion: %w", err)
+			return o.fail(fmt.Errorf("failed to start post-completion: %w", err))
 		}
 	}
 
 	result, err := o.claudeClient.RunCustomPromptWithSession(o.config.PostCommand, sessionID, isResume)
+
+	// Stop spinner after Claude returns
+	if o.spinner != nil {
+		o.spinner.Stop()
+	}
 
 	// Handle resume failure
 	if err != nil && isResume && isSessionInvalidError(result) {
@@ -444,6 +522,11 @@ func (o *Orbit) runPostCommandWithRetry() error {
 			return err
 		}
 
+		// Pause spinner before logging to prevent visual artifacts
+		if o.spinner != nil {
+			o.spinner.Pause()
+		}
+
 		// Determine wait time
 		var waitTime time.Duration
 		switch classified.Type {
@@ -466,7 +549,18 @@ func (o *Orbit) runPostCommandWithRetry() error {
 			waitTime = orberrors.BackoffDuration(attempt)
 		}
 
+		// Resume spinner with wait countdown during retry wait
+		if o.spinner != nil {
+			o.spinner.UpdateWait(waitTime)
+			o.spinner.Resume()
+		}
+
 		time.Sleep(waitTime)
+
+		// Stop spinner before next attempt (runPostCommand will start it again)
+		if o.spinner != nil {
+			o.spinner.Stop()
+		}
 	}
 
 	return fmt.Errorf("max retries exceeded: %w", lastErr)
@@ -474,8 +568,14 @@ func (o *Orbit) runPostCommandWithRetry() error {
 
 // fail marks the orchestration as failed and returns the error.
 func (o *Orbit) fail(err error) error {
+	// Stop spinner before printing links
+	if o.spinner != nil {
+		o.spinner.Stop()
+	}
 	if o.logManager != nil {
 		_ = o.logManager.Fail(err)
+		// Print index links even on failure for debugging
+		display.PrintIndexLinks(o.logManager.SessionDir())
 	}
 	return err
 }
