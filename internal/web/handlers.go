@@ -41,11 +41,12 @@ type RepositoryGroup struct {
 
 // RunSummary is a summary of a run for the dashboard.
 type RunSummary struct {
-	ID        string
-	Name      string
-	Branch    string
-	Status    string
-	StartedAt string
+	ID          string
+	Name        string
+	Branch      string
+	Status      string
+	StartedAt   string
+	startedTime time.Time // unexported, used for sorting
 }
 
 // RunDetailData is passed to run_detail.html.
@@ -151,11 +152,12 @@ func (s *Server) buildDashboardData(entries []*registry.RunEntry, currentURL str
 		}
 
 		summary := RunSummary{
-			ID:        entry.ID,
-			Name:      entry.Name,
-			Branch:    entry.Branch,
-			Status:    status,
-			StartedAt: entry.StartedAt.Format("Jan 2, 15:04"),
+			ID:          entry.ID,
+			Name:        entry.Name,
+			Branch:      entry.Branch,
+			Status:      status,
+			StartedAt:   entry.StartedAt.Format("Jan 2, 15:04"),
+			startedTime: entry.StartedAt,
 		}
 		repoMap[entry.Repository] = append(repoMap[entry.Repository], summary)
 	}
@@ -163,7 +165,7 @@ func (s *Server) buildDashboardData(entries []*registry.RunEntry, currentURL str
 	// Sort runs within each repository by start time (newest first)
 	for repo := range repoMap {
 		sort.Slice(repoMap[repo], func(i, j int) bool {
-			return repoMap[repo][i].StartedAt > repoMap[repo][j].StartedAt
+			return repoMap[repo][i].startedTime.After(repoMap[repo][j].startedTime)
 		})
 	}
 

@@ -24,31 +24,35 @@ func SecurityHeaders(next http.Handler) http.Handler {
 		w.Header().Set("X-Frame-Options", "DENY")
 		w.Header().Set("Referrer-Policy", "no-referrer")
 
-		// Use a response wrapper to add CSP for HTML content
-		wrapper := &responseWrapper{
-			ResponseWriter: w,
-			statusCode:     http.StatusOK,
-		}
-
+		// Wrap response to add CSP for HTML content
+		wrapper := &cspResponseWriter{ResponseWriter: w}
 		next.ServeHTTP(wrapper, r)
+	})
+}
 
-		// Add CSP for HTML content
+// cspResponseWriter wraps http.ResponseWriter to add CSP header for HTML content.
+type cspResponseWriter struct {
+	http.ResponseWriter
+	wroteHeader bool
+}
+
+func (w *cspResponseWriter) WriteHeader(code int) {
+	if !w.wroteHeader {
+		w.wroteHeader = true
+		// Add CSP for HTML content before writing header
 		contentType := w.Header().Get("Content-Type")
 		if strings.HasPrefix(contentType, "text/html") {
 			w.Header().Set("Content-Security-Policy", "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'")
 		}
-	})
+	}
+	w.ResponseWriter.WriteHeader(code)
 }
 
-// responseWrapper captures the response for inspection.
-type responseWrapper struct {
-	http.ResponseWriter
-	statusCode int
-}
-
-func (rw *responseWrapper) WriteHeader(code int) {
-	rw.statusCode = code
-	rw.ResponseWriter.WriteHeader(code)
+func (w *cspResponseWriter) Write(b []byte) (int, error) {
+	if !w.wroteHeader {
+		w.WriteHeader(http.StatusOK)
+	}
+	return w.ResponseWriter.Write(b)
 }
 
 // ValidateUUID validates that a path parameter is a valid UUID v4.

@@ -55,6 +55,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Configuration via environment variables or config files
   - Integration with registry for run discovery
 
+### Fixed
+
+- CSP header timing in web interface middleware: headers are now set before the response is written using a response wrapper that intercepts `WriteHeader()` and `Write()` calls
+- Dashboard sort order: runs are now sorted chronologically using `time.Time.After()` instead of alphabetically by formatted date strings
+
 ### Changed
 
 - Removed placeholder `serveCommand` from `cmd/orbit/main.go`
