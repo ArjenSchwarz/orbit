@@ -7,6 +7,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- `internal/registry` package for run registration and discovery:
+  - `types.go` with `RunStatus`, `PhaseStatus`, `Phase`, and `RunEntry` types with JSON serialization
+  - `git.go` with `ParseGitRemote()` for extracting owner/repo from HTTPS, SSH, and SSH-alt git URLs
+  - `GetRepository()` function with fallback to directory name when git parsing fails
+  - `registry.go` with `Registry` struct for managing run entries in `~/.orbit/runs/`
+  - Atomic file operations using temp file + rename pattern
+  - `Register()`, `Get()`, `List()`, `FindByLogDir()`, `UpdateStatus()`, `UpdatePhase()` methods
+  - Property-based tests using pgregory.net/rapid for git URL parsing
+  - Schema version field for future migration support
+- Web interface specification documents:
+  - `requirements.md` with 11 requirement sections covering web server, registry, auto-registration, manual registration, dashboard, run detail, transcript viewer, mobile responsiveness, security, frontend architecture, and live updates
+  - `design.md` with architecture, components, interfaces, data models, and testing strategy
+  - `decision_log.md` with 10 design decisions (historical run discovery, htmx embedding, missing log handling, read-only v1, mobile viewport, transcript rendering, deferred REST API, schema versioning, per-phase tracking, security headers)
+  - `tasks.md` with 8 implementation phases and 40+ tasks
+- pgregory.net/rapid dependency (v1.2.0) for property-based testing
+
 ### Fixed
 
 - Race condition in spinner `updateLoop`: the done channel is now captured and passed as a parameter to prevent goroutine leaks during rapid Stop()/Start() sequences
