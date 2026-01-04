@@ -2,7 +2,6 @@
 package main
 
 import (
-	"fmt"
 	"log"
 	"os"
 	"strings"
@@ -75,10 +74,3 @@ func parseSubcommand(args []string) (string, []string) {
 func isKnownSubcommand(arg string) bool {
 	return knownSubcommands[arg]
 }
-
-// serveCommand is a placeholder for the web server command.
-// Will be implemented in a later task.
-func serveCommand(args []string) error {
-	return fmt.Errorf("serve command not yet implemented")
-}
-

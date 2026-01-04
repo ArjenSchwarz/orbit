@@ -9,6 +9,49 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- `internal/web` package for web interface:
+  - `server.go` with `Server` struct, `New()`, `Start()`, and `Shutdown()` methods
+  - Graceful shutdown with 5-second timeout for in-flight requests
+  - Signal handling for SIGINT/SIGTERM
+  - `middleware.go` with security middleware:
+    - `SecurityHeaders` adding X-Content-Type-Options, X-Frame-Options, Referrer-Policy, and CSP headers
+    - `ValidateUUID` middleware for UUID v4 validation with regex
+    - `PathSanitizer` middleware for path traversal prevention
+    - `isPathWithinDir` helper with symlink resolution for security
+  - `handlers.go` with page handlers:
+    - `handleDashboard` rendering run list grouped by repository
+    - `handleDashboardStatus` for htmx polling fragment
+    - `handleRunDetail` rendering run info and phase list
+    - `handleRunStatus` for htmx run status polling
+    - `handleTranscript` rendering transcript viewer with navigation
+    - `handleError` and `handleNotFound` for error pages
+  - `static.go` with embedded static file handler using go:embed
+  - `static/htmx.min.js` (htmx 1.9.12)
+  - `static/style.css` with responsive design:
+    - CSS variables for theming
+    - Dark mode support via prefers-color-scheme
+    - Mobile-responsive layout with 44px touch targets
+    - Status indicator styling for running/completed/failed states
+  - HTML templates in `templates/`:
+    - `layout.html` base template with htmx connection status handling
+    - `dashboard.html` for run list display
+    - `dashboard_status.html` htmx polling fragment
+    - `run_detail.html` for run info and phase list
+    - `run_status.html` htmx polling fragment
+    - `transcript.html` for transcript viewer with navigation
+    - `error.html` for generic error pages
+- `orbit serve` command for starting the web interface:
+  - `--port` flag for port configuration (default from config or 8080)
+  - `--bind` flag for bind address (default from config or localhost)
+  - `--version` and `--help` flags
+  - Configuration via environment variables or config files
+  - Integration with registry for run discovery
+
+### Changed
+
+- Removed placeholder `serveCommand` from `cmd/orbit/main.go`
+- Removed unused `fmt` import from `cmd/orbit/main.go`
+
 - `NavigationContext` struct for transcript navigation with prev/next/back links
 - `RenderHTMLFragment()` function for rendering transcript content without document wrapper (for embedding in web templates)
 - `renderEntriesToBuilder()` shared function extracted from `RenderHTML()` to support both full document and fragment rendering

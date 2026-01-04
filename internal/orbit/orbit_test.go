@@ -13,9 +13,9 @@ import (
 
 // mockClaudeClient implements claudeRunner for testing.
 type mockClaudeClient struct {
-	runPhaseFunc                    func(sessionID string, resume bool) (*claude.SessionResult, error)
-	runCustomPromptFunc             func(prompt string) (*claude.SessionResult, error)
-	runCustomPromptWithSessionFunc  func(prompt, sessionID string, resume bool) (*claude.SessionResult, error)
+	runPhaseFunc                   func(sessionID string, resume bool) (*claude.SessionResult, error)
+	runCustomPromptFunc            func(prompt string) (*claude.SessionResult, error)
+	runCustomPromptWithSessionFunc func(prompt, sessionID string, resume bool) (*claude.SessionResult, error)
 }
 
 func (m *mockClaudeClient) RunPhase(sessionID string, resume bool) (*claude.SessionResult, error) {

@@ -1019,7 +1019,7 @@ func formatAssistantMessageHTML(entry *Entry, toolMeta map[string]toolMetadata, 
 			// tool_result in assistant entries (legacy handling)
 			sb.WriteString(formatToolResultHTML(&item, toolMeta))
 
-		// Unknown content types are skipped silently
+			// Unknown content types are skipped silently
 		}
 	}
 

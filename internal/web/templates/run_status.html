@@ -1,0 +1,9 @@
+{{/* This template is used for htmx polling updates on run status */}}
+<div id="run-status"
+     {{if eq .Run.Status "running"}}
+     hx-get="/runs/{{.Run.ID}}/status"
+     hx-trigger="every 5s"
+     hx-swap="outerHTML"
+     {{end}}>
+    {{template "run_status_content" .}}
+</div>

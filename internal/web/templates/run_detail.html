@@ -1,0 +1,80 @@
+{{define "content"}}
+<h2>{{.Run.Name}}</h2>
+
+{{if .Missing}}
+<div class="no-js-notice">
+    The log directory for this run no longer exists.
+</div>
+{{end}}
+
+<section class="run-info">
+    <dl>
+        <dt>Repository</dt>
+        <dd>{{.Run.Repository}}</dd>
+
+        <dt>Branch</dt>
+        <dd>{{.Run.Branch}}</dd>
+
+        <dt>Status</dt>
+        <dd>
+            <div id="run-status"
+                 {{if eq .Run.Status "running"}}
+                 hx-get="/runs/{{.Run.ID}}/status"
+                 hx-trigger="every 5s"
+                 hx-swap="outerHTML"
+                 {{end}}>
+                {{template "run_status_content" .}}
+            </div>
+        </dd>
+
+        <dt>Started</dt>
+        <dd>{{.StartedAt}}</dd>
+
+        {{if .FinishedAt}}
+        <dt>Finished</dt>
+        <dd>{{.FinishedAt}}</dd>
+        {{end}}
+
+        {{if .Duration}}
+        <dt>Duration</dt>
+        <dd>{{.Duration}}</dd>
+        {{end}}
+
+        {{if .Summary}}
+        <dt>Phases Completed</dt>
+        <dd>{{.Summary.PhasesCompleted}}</dd>
+
+        {{if .Summary.TotalCostUSD}}
+        <dt>Total Cost</dt>
+        <dd>${{printf "%.4f" .Summary.TotalCostUSD}}</dd>
+        {{end}}
+
+        {{if .Summary.Error}}
+        <dt>Error</dt>
+        <dd class="status status-failed">{{.Summary.Error}}</dd>
+        {{end}}
+        {{end}}
+    </dl>
+</section>
+
+<h3>Phases</h3>
+{{if .Phases}}
+<div class="phase-list">
+    {{range .Phases}}
+    <div class="phase-item">
+        <span class="phase-number">Phase {{.Number}}</span>
+        <span class="phase-status status status-{{.Status}}">{{.Status}}</span>
+        {{if .HasTranscript}}
+        <a href="/runs/{{$.Run.ID}}/transcript/{{.Number}}" class="btn">View Transcript</a>
+        {{end}}
+    </div>
+    {{end}}
+</div>
+{{else}}
+<p class="empty-state">No phases recorded yet.</p>
+{{end}}
+{{end}}
+
+{{define "run_status_content"}}
+<span class="status status-{{.Run.Status}}">{{.Run.Status}}</span>
+{{end}}

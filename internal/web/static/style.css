@@ -1,0 +1,398 @@
+/* Orbit Web Interface Styles */
+
+/* CSS Variables for theming */
+:root {
+    --bg-primary: #ffffff;
+    --bg-secondary: #f8f9fa;
+    --bg-card: #ffffff;
+    --bg-code: #f4f4f4;
+    --text-primary: #212529;
+    --text-secondary: #6c757d;
+    --border-color: #dee2e6;
+    --success-color: #198754;
+    --error-color: #dc3545;
+    --running-color: #0d6efd;
+    --missing-color: #fd7e14;
+    --link-color: #0d6efd;
+    --link-hover: #0a58ca;
+}
+
+/* Dark mode */
+@media (prefers-color-scheme: dark) {
+    :root {
+        --bg-primary: #1a1a1a;
+        --bg-secondary: #2d2d2d;
+        --bg-card: #2d2d2d;
+        --bg-code: #2d2d2d;
+        --text-primary: #e9ecef;
+        --text-secondary: #adb5bd;
+        --border-color: #495057;
+        --link-color: #6ea8fe;
+        --link-hover: #9ec5fe;
+    }
+}
+
+/* Reset and base styles */
+* {
+    box-sizing: border-box;
+}
+
+body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    line-height: 1.6;
+    color: var(--text-primary);
+    background-color: var(--bg-primary);
+    margin: 0;
+    padding: 0;
+}
+
+/* Container */
+.container {
+    max-width: 1200px;
+    margin: 0 auto;
+    padding: 1rem;
+}
+
+/* Header */
+header {
+    background-color: var(--bg-secondary);
+    border-bottom: 1px solid var(--border-color);
+    padding: 1rem;
+}
+
+header h1 {
+    margin: 0;
+    font-size: 1.5rem;
+}
+
+header h1 a {
+    color: var(--text-primary);
+    text-decoration: none;
+}
+
+header h1 a:hover {
+    text-decoration: underline;
+}
+
+/* Main content */
+main {
+    padding: 1rem;
+}
+
+/* Typography */
+h1, h2, h3, h4 {
+    color: var(--text-primary);
+    margin-top: 0;
+}
+
+h2 {
+    font-size: 1.3rem;
+    margin-bottom: 1rem;
+    border-bottom: 1px solid var(--border-color);
+    padding-bottom: 0.5rem;
+}
+
+h3 {
+    font-size: 1.1rem;
+    margin-bottom: 0.75rem;
+    color: var(--text-secondary);
+}
+
+/* Links - minimum 44px touch target */
+a {
+    color: var(--link-color);
+    text-decoration: none;
+    display: inline-block;
+    min-height: 44px;
+    min-width: 44px;
+    padding: 0.5rem;
+    margin: -0.5rem;
+}
+
+a:hover {
+    color: var(--link-hover);
+    text-decoration: underline;
+}
+
+/* Button-style links */
+.btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0.5rem 1rem;
+    min-height: 44px;
+    min-width: 44px;
+    border-radius: 6px;
+    background-color: var(--bg-secondary);
+    border: 1px solid var(--border-color);
+    color: var(--text-primary);
+    margin: 0;
+}
+
+.btn:hover {
+    background-color: var(--bg-code);
+    text-decoration: none;
+}
+
+/* Repository groups */
+.repository-group {
+    margin-bottom: 2rem;
+}
+
+.repository-group h3 {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+/* Run list */
+.run-list {
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+}
+
+/* Run card */
+.run-card {
+    background-color: var(--bg-card);
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    padding: 1rem;
+    display: grid;
+    grid-template-columns: 1fr auto;
+    gap: 0.5rem;
+    align-items: center;
+}
+
+.run-card:hover {
+    border-color: var(--link-color);
+}
+
+.run-card a {
+    color: inherit;
+    text-decoration: none;
+    margin: 0;
+    padding: 0;
+}
+
+.run-card a:hover {
+    text-decoration: underline;
+}
+
+.run-name {
+    font-weight: 600;
+    font-size: 1rem;
+}
+
+.run-meta {
+    font-size: 0.85rem;
+    color: var(--text-secondary);
+}
+
+/* Status indicators */
+.status {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.25rem;
+    padding: 0.25rem 0.75rem;
+    border-radius: 999px;
+    font-size: 0.85rem;
+    font-weight: 500;
+}
+
+.status-running {
+    background-color: rgba(13, 110, 253, 0.1);
+    color: var(--running-color);
+}
+
+.status-completed {
+    background-color: rgba(25, 135, 84, 0.1);
+    color: var(--success-color);
+}
+
+.status-failed {
+    background-color: rgba(220, 53, 69, 0.1);
+    color: var(--error-color);
+}
+
+.status-missing {
+    background-color: rgba(253, 126, 20, 0.1);
+    color: var(--missing-color);
+}
+
+/* Run detail page */
+.run-info {
+    background-color: var(--bg-secondary);
+    padding: 1rem 1.5rem;
+    border-radius: 8px;
+    margin-bottom: 2rem;
+}
+
+.run-info dl {
+    display: grid;
+    grid-template-columns: auto 1fr;
+    gap: 0.5rem 1rem;
+    margin: 0;
+}
+
+.run-info dt {
+    font-weight: 600;
+    color: var(--text-secondary);
+}
+
+.run-info dd {
+    margin: 0;
+}
+
+/* Phase list */
+.phase-list {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+}
+
+.phase-item {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    padding: 0.75rem 1rem;
+    background-color: var(--bg-card);
+    border: 1px solid var(--border-color);
+    border-radius: 6px;
+}
+
+.phase-item a {
+    margin: 0;
+    padding: 0;
+    min-height: auto;
+    min-width: auto;
+}
+
+.phase-number {
+    font-weight: 600;
+    min-width: 5rem;
+}
+
+.phase-status {
+    flex: 1;
+}
+
+/* Connection status indicator */
+.connection-status {
+    display: none;
+    position: fixed;
+    bottom: 1rem;
+    right: 1rem;
+    padding: 0.75rem 1rem;
+    background-color: var(--error-color);
+    color: white;
+    border-radius: 6px;
+    z-index: 1000;
+    font-size: 0.9rem;
+}
+
+.connection-status.disconnected {
+    display: block;
+}
+
+/* No-JS notice */
+.no-js-notice {
+    background-color: var(--bg-secondary);
+    border: 1px solid var(--border-color);
+    border-radius: 6px;
+    padding: 0.75rem 1rem;
+    margin-bottom: 1rem;
+    font-size: 0.9rem;
+    color: var(--text-secondary);
+}
+
+.no-js-notice a {
+    min-height: auto;
+    min-width: auto;
+    padding: 0;
+    margin: 0;
+}
+
+/* Empty state */
+.empty-state {
+    text-align: center;
+    padding: 3rem 1rem;
+    color: var(--text-secondary);
+}
+
+.empty-state h2 {
+    border: none;
+    padding: 0;
+}
+
+.empty-state code {
+    background-color: var(--bg-code);
+    padding: 0.2rem 0.4rem;
+    border-radius: 4px;
+    font-family: "SF Mono", Monaco, "Cascadia Code", monospace;
+}
+
+/* Error page */
+.error-page {
+    text-align: center;
+    padding: 4rem 1rem;
+}
+
+.error-page h1 {
+    font-size: 4rem;
+    margin-bottom: 0.5rem;
+    color: var(--text-secondary);
+}
+
+.error-page p {
+    font-size: 1.2rem;
+    color: var(--text-secondary);
+}
+
+/* Transcript wrapper */
+.transcript-wrapper {
+    max-width: 900px;
+    margin: 0 auto;
+}
+
+/* Mobile responsive - single column under 768px */
+@media (max-width: 768px) {
+    .run-card {
+        grid-template-columns: 1fr;
+    }
+
+    .run-info dl {
+        grid-template-columns: 1fr;
+    }
+
+    .run-info dt {
+        margin-top: 0.5rem;
+    }
+
+    .run-info dt:first-child {
+        margin-top: 0;
+    }
+
+    .phase-item {
+        flex-wrap: wrap;
+    }
+}
+
+/* Minimum viewport 320px (iPhone SE) */
+@media (max-width: 320px) {
+    .container {
+        padding: 0.5rem;
+    }
+
+    main {
+        padding: 0.5rem;
+    }
+
+    header {
+        padding: 0.75rem;
+    }
+
+    header h1 {
+        font-size: 1.25rem;
+    }
+}

@@ -96,92 +96,92 @@ references:
 
 ## Phase 5: Web Server
 
-- [ ] 8. Implement web server foundation (internal/web/)
+- [x] 8. Implement web server foundation (internal/web/)
   - Server struct, Start, Shutdown with graceful handling
   - Requirements: [1.6](requirements.md#1.6), [1.7](requirements.md#1.7), [1.8](requirements.md#1.8), [1.9](requirements.md#1.9)
-  - [ ] 8.1. Write unit tests for server lifecycle
+  - [x] 8.1. Write unit tests for server lifecycle
     - Test start, shutdown, port conflict handling
-  - [ ] 8.2. Implement Server struct and New function
+  - [x] 8.2. Implement Server struct and New function
     - Create server with config, registry, router
-  - [ ] 8.3. Implement Start with signal handling
+  - [x] 8.3. Implement Start with signal handling
     - Listen, print URL, handle SIGINT/SIGTERM
-  - [ ] 8.4. Implement Shutdown with graceful drain
+  - [x] 8.4. Implement Shutdown with graceful drain
     - 5-second timeout for in-flight requests
 
-- [ ] 9. Implement security middleware (internal/web/middleware.go)
+- [x] 9. Implement security middleware (internal/web/middleware.go)
   - SecurityHeaders, ValidateUUID, PathSanitizer
   - Requirements: [9.1](requirements.md#9.1), [9.3](requirements.md#9.3), [9.4](requirements.md#9.4), [9.5](requirements.md#9.5), [9.6](requirements.md#9.6), [9.7](requirements.md#9.7), [9.8](requirements.md#9.8), [9.9](requirements.md#9.9), [9.10](requirements.md#9.10)
-  - [ ] 9.1. Write unit tests for middleware
+  - [x] 9.1. Write unit tests for middleware
     - Test headers, UUID validation, path traversal rejection
-  - [ ] 9.2. Implement SecurityHeaders middleware
+  - [x] 9.2. Implement SecurityHeaders middleware
     - Add X-Content-Type-Options, X-Frame-Options, Referrer-Policy, CSP
-  - [ ] 9.3. Implement ValidateUUID middleware
+  - [x] 9.3. Implement ValidateUUID middleware
     - Regex validation, 404 for invalid UUIDs
-  - [ ] 9.4. Implement PathSanitizer middleware
+  - [x] 9.4. Implement PathSanitizer middleware
     - Reject paths with .., verify within log_dir
-  - [ ] 9.5. Implement isPathWithinDir helper
+  - [x] 9.5. Implement isPathWithinDir helper
     - Resolve symlinks, check relative path does not escape
 
-- [ ] 10. Create embedded static assets (internal/web/static/)
+- [x] 10. Create embedded static assets (internal/web/static/)
   - Embed htmx.min.js, style.css with go:embed
   - Requirements: [10.2](requirements.md#10.2), [10.3](requirements.md#10.3), [10.6](requirements.md#10.6)
-  - [ ] 10.1. Download and embed htmx.min.js
+  - [x] 10.1. Download and embed htmx.min.js
     - Get htmx 1.9.x, add go:embed directive
-  - [ ] 10.2. Create style.css with responsive styles
+  - [x] 10.2. Create style.css with responsive styles
     - CSS variables, dark mode, mobile breakpoints, 44px touch targets
     - Requirements: [8.1](requirements.md#8.1), [8.2](requirements.md#8.2), [8.3](requirements.md#8.3), [8.4](requirements.md#8.4), [8.5](requirements.md#8.5)
-  - [ ] 10.3. Create static file handler
+  - [x] 10.3. Create static file handler
     - Serve embedded files with correct content types
 
-- [ ] 11. Create HTML templates (internal/web/templates/)
+- [x] 11. Create HTML templates (internal/web/templates/)
   - layout.html, dashboard.html, run_detail.html, transcript.html, error.html
   - Requirements: [10.1](requirements.md#10.1), [10.4](requirements.md#10.4), [10.7](requirements.md#10.7), [10.8](requirements.md#10.8)
-  - [ ] 11.1. Create layout.html base template
+  - [x] 11.1. Create layout.html base template
     - HTML structure, viewport meta, htmx script, connection status, noscript
     - Requirements: [8.6](requirements.md#8.6), [8.7](requirements.md#8.7)
-  - [ ] 11.2. Create dashboard.html template
+  - [x] 11.2. Create dashboard.html template
     - Run list grouped by repository, status indicators, empty state message
     - Requirements: [5.1](requirements.md#5.1), [5.2](requirements.md#5.2), [5.3](requirements.md#5.3), [5.4](requirements.md#5.4), [5.5](requirements.md#5.5), [5.6](requirements.md#5.6), [5.7](requirements.md#5.7), [5.8](requirements.md#5.8)
-  - [ ] 11.3. Create dashboard_status.html fragment
+  - [x] 11.3. Create dashboard_status.html fragment
     - htmx polling fragment for dashboard status updates
-  - [ ] 11.4. Create run_detail.html template
+  - [x] 11.4. Create run_detail.html template
     - Run info, phase list with links, duration, summary data
     - Requirements: [6.1](requirements.md#6.1), [6.2](requirements.md#6.2), [6.3](requirements.md#6.3), [6.4](requirements.md#6.4), [6.5](requirements.md#6.5), [6.6](requirements.md#6.6)
-  - [ ] 11.5. Create run_status.html fragment
+  - [x] 11.5. Create run_status.html fragment
     - htmx polling fragment for run status updates
     - Requirements: [6.7](requirements.md#6.7)
-  - [ ] 11.6. Create transcript.html template
+  - [x] 11.6. Create transcript.html template
     - Wrapper for RenderHTMLFragment content with navigation
-  - [ ] 11.7. Create error.html template
+  - [x] 11.7. Create error.html template
     - Generic error page for 404 responses
     - Requirements: [6.8](requirements.md#6.8), [6.9](requirements.md#6.9), [7.6](requirements.md#7.6), [7.7](requirements.md#7.7)
 
-- [ ] 12. Implement page handlers (internal/web/handlers.go)
+- [x] 12. Implement page handlers (internal/web/handlers.go)
   - handleDashboard, handleRunDetail, handleTranscript, status endpoints
   - Requirements: [5.1](requirements.md#5.1), [6.1](requirements.md#6.1), [7.1](requirements.md#7.1), [7.2](requirements.md#7.2)
-  - [ ] 12.1. Write unit tests for handlers
+  - [x] 12.1. Write unit tests for handlers
     - Test rendering, data population, error cases
-  - [ ] 12.2. Implement handleDashboard
+  - [x] 12.2. Implement handleDashboard
     - Load runs, group by repository, sort by time, check log_dir existence
-  - [ ] 12.3. Implement handleDashboardStatus
+  - [x] 12.3. Implement handleDashboardStatus
     - Return status fragment for htmx polling
     - Requirements: [11.3](requirements.md#11.3)
-  - [ ] 12.4. Implement handleRunDetail
+  - [x] 12.4. Implement handleRunDetail
     - Load run, phases, summary.json, calculate duration
-  - [ ] 12.5. Implement handleRunStatus
+  - [x] 12.5. Implement handleRunStatus
     - Return status fragment, stop polling on terminal state
     - Requirements: [11.1](requirements.md#11.1), [11.2](requirements.md#11.2)
-  - [ ] 12.6. Implement handleTranscript
+  - [x] 12.6. Implement handleTranscript
     - Load session file, call RenderHTMLFragment, build navigation
-  - [ ] 12.7. Wire up router with all handlers and middleware
+  - [x] 12.7. Wire up router with all handlers and middleware
     - Register routes, apply middleware chain
 
-- [ ] 13. Implement orbit serve command (cmd/orbit/serve.go)
+- [x] 13. Implement orbit serve command (cmd/orbit/serve.go)
   - Parse flags, load config, start server
   - Requirements: [1.1](requirements.md#1.1), [1.2](requirements.md#1.2), [1.3](requirements.md#1.3), [1.4](requirements.md#1.4), [1.5](requirements.md#1.5), [1.6](requirements.md#1.6)
-  - [ ] 13.1. Write integration tests for serve command
+  - [x] 13.1. Write integration tests for serve command
     - Test flag parsing, config loading, server startup
-  - [ ] 13.2. Implement serveCommand function
+  - [x] 13.2. Implement serveCommand function
     - Parse --port, --bind flags, merge with config, start server
 
 ## Phase 6: Auto-Registration Integration
