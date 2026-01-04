@@ -56,11 +56,12 @@ func newSpinnerWithTTY(isTTY bool) *Spinner {
 // Start begins the spinner animation for a phase.
 // Idempotent: calling Start() when already started is a no-op.
 //
-// Goroutine safety: The s.started check prevents concurrent starts. When Stop()
-// is called, it closes s.done (causing updateLoop to exit) and sets s.started
-// to false. A subsequent Start() can then safely reset stopOnce and create a
-// new done channel - the old goroutine will have exited because its done channel
-// was closed.
+// Goroutine safety: The done channel is captured and passed to updateLoop to
+// prevent a race condition. Without this, a rapid Stop() -> Start() sequence
+// could leave the old goroutine running: if it's blocked on ticker.C when
+// Stop() closes the channel, and Start() creates a new channel before the
+// goroutine checks s.done, it would read the new (unclosed) channel and
+// continue running.
 func (s *Spinner) Start(phase int) {
 	if s == nil {
 		return
@@ -84,8 +85,12 @@ func (s *Spinner) Start(phase int) {
 	s.updateSuffix()
 	s.spinner.Start()
 
-	// Start goroutine to update elapsed time
-	go s.updateLoop()
+	// Start goroutine to update elapsed time.
+	// Capture done channel to avoid race: if Stop() closes the channel and
+	// a subsequent Start() creates a new one, the goroutine must monitor
+	// the original channel, not the reassigned s.done field.
+	done := s.done
+	go s.updateLoop(done)
 }
 
 // StartPostCompletion begins spinner for post-completion command.
@@ -113,7 +118,9 @@ func (s *Spinner) StartPostCompletion() {
 	s.updateSuffix()
 	s.spinner.Start()
 
-	go s.updateLoop()
+	// See Start() for why we capture the done channel.
+	done := s.done
+	go s.updateLoop(done)
 }
 
 // UpdateWait switches to wait mode with countdown.
@@ -196,13 +203,16 @@ func (s *Spinner) Stop() {
 }
 
 // updateLoop periodically updates the spinner suffix with elapsed time.
-func (s *Spinner) updateLoop() {
+// The done channel is passed as a parameter rather than read from s.done
+// to prevent a race condition where Stop() closes the channel but a
+// subsequent Start() creates a new one before this goroutine checks it.
+func (s *Spinner) updateLoop(done <-chan struct{}) {
 	ticker := time.NewTicker(time.Second)
 	defer ticker.Stop()
 
 	for {
 		select {
-		case <-s.done:
+		case <-done:
 			return
 		case <-ticker.C:
 			s.mu.Lock()
