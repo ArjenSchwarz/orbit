@@ -79,19 +79,19 @@ references:
 
 ## Phase 4: Transcript Extension
 
-- [ ] 7. Extend transcript renderer with navigation (internal/transcript/html.go)
+- [x] 7. Extend transcript renderer with navigation (internal/transcript/html.go)
   - Add NavigationContext, RenderHTMLFragment, renderEntriesToBuilder
   - Requirements: [7.3](requirements.md#7.3), [7.4](requirements.md#7.4), [7.5](requirements.md#7.5)
   - References: internal/transcript/html.go
-  - [ ] 7.1. Write unit tests for transcript navigation
+  - [x] 7.1. Write unit tests for transcript navigation
     - Test RenderHTMLFragment output, navigation HTML generation
-  - [ ] 7.2. Add NavigationContext to RenderOptions
+  - [x] 7.2. Add NavigationContext to RenderOptions
     - Add struct and field for navigation links
-  - [ ] 7.3. Refactor RenderHTML to use renderEntriesToBuilder
+  - [x] 7.3. Refactor RenderHTML to use renderEntriesToBuilder
     - Extract entry rendering to shared function
-  - [ ] 7.4. Implement RenderHTMLFragment
+  - [x] 7.4. Implement RenderHTMLFragment
     - Render without document wrapper, include navigation
-  - [ ] 7.5. Add renderNavigationHTML helper
+  - [x] 7.5. Add renderNavigationHTML helper
     - Generate navigation bar HTML with prev/next/back links
 
 ## Phase 5: Web Server

@@ -9,6 +9,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- `NavigationContext` struct for transcript navigation with prev/next/back links
+- `RenderHTMLFragment()` function for rendering transcript content without document wrapper (for embedding in web templates)
+- `renderEntriesToBuilder()` shared function extracted from `RenderHTML()` to support both full document and fragment rendering
+- `renderNavigationHTML()` helper function to generate navigation bar HTML with prev/next/back links
+- Navigation CSS styles with mobile-responsive layout (44px touch targets, flexbox layout)
+- Navigation support in `RenderHTML()` - adds navigation at top and bottom when `Navigation` is set in `RenderOptions`
+- Unit tests for `RenderHTMLFragment`, navigation HTML generation, and HTML escaping
+
+### Changed
+
+- Extended `RenderOptions` with optional `Navigation` field for navigation context
+- Refactored `RenderHTML()` to use shared `renderEntriesToBuilder()` function
 - `orbit register` command for manually registering existing orbit log directories with the run registry
   - Validates log directories by checking for `phase-*-run-*-session.json` files
   - Derives status from `summary.json` when present (defaults to "completed" for historical runs)

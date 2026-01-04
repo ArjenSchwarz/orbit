@@ -178,9 +178,20 @@ func (c *ContentItem) UnmarshalJSON(data []byte) error {
 	return nil
 }
 
+// NavigationContext provides previous/next phase links for transcript navigation.
+type NavigationContext struct {
+	PrevURL  string // URL for previous phase (empty if no previous)
+	PrevText string // Display text for previous link (e.g., "Phase 1")
+	NextURL  string // URL for next phase (empty if no next)
+	NextText string // Display text for next link (e.g., "Phase 3")
+	BackURL  string // URL to return to run detail page
+	BackText string // Display text for back link (e.g., "Back to Run")
+}
+
 // RenderOptions configures Markdown rendering.
 type RenderOptions struct {
-	Title      string // Document title (e.g., "Session Transcript" or "Phase 1 Session Transcript")
-	SessionID  string // Session ID to display in header
-	ProjectDir string // Project directory to strip from file paths (e.g., "/Users/foo/project")
+	Title      string             // Document title (e.g., "Session Transcript" or "Phase 1 Session Transcript")
+	SessionID  string             // Session ID to display in header
+	ProjectDir string             // Project directory to strip from file paths (e.g., "/Users/foo/project")
+	Navigation *NavigationContext // Optional navigation context for prev/next/back links
 }

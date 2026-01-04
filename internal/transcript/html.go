@@ -486,6 +486,7 @@ func RenderHTML(entries []Entry, opts RenderOptions) string {
 	sb.WriteString(fmt.Sprintf("    <title>%s</title>\n", stdhtml.EscapeString(title)))
 	sb.WriteString("    <style>\n")
 	sb.WriteString(htmlCSS)
+	sb.WriteString(navigationCSS)
 	sb.WriteString("    </style>\n")
 	sb.WriteString("</head>\n")
 	sb.WriteString("<body>\n")
@@ -499,9 +500,56 @@ func RenderHTML(entries []Entry, opts RenderOptions) string {
 	}
 	sb.WriteString("    </header>\n")
 
+	// Navigation at top (if provided)
+	if opts.Navigation != nil {
+		sb.WriteString(renderNavigationHTML(opts.Navigation))
+	}
+
 	// Main content
 	sb.WriteString("    <main>\n")
 
+	// Render entries using shared function
+	renderEntriesToBuilder(&sb, entries, opts)
+
+	sb.WriteString("    </main>\n")
+
+	// Navigation at bottom (if provided)
+	if opts.Navigation != nil {
+		sb.WriteString(renderNavigationHTML(opts.Navigation))
+	}
+
+	sb.WriteString("</body>\n")
+	sb.WriteString("</html>\n")
+
+	return sb.String()
+}
+
+// RenderHTMLFragment renders just the content without document wrapper.
+// Returns HTML that can be embedded in an existing page template.
+// Includes navigation at top/bottom when Navigation is set.
+// Does NOT include <!DOCTYPE>, <html>, <head>, or <body> tags.
+func RenderHTMLFragment(entries []Entry, opts RenderOptions) string {
+	var sb strings.Builder
+
+	// Navigation at top (if provided)
+	if opts.Navigation != nil {
+		sb.WriteString(renderNavigationHTML(opts.Navigation))
+	}
+
+	// Render entries using shared function
+	renderEntriesToBuilder(&sb, entries, opts)
+
+	// Navigation at bottom (if provided)
+	if opts.Navigation != nil {
+		sb.WriteString(renderNavigationHTML(opts.Navigation))
+	}
+
+	return sb.String()
+}
+
+// renderEntriesToBuilder writes entry HTML to the builder.
+// Extracted to share between RenderHTML and RenderHTMLFragment.
+func renderEntriesToBuilder(sb *strings.Builder, entries []Entry, opts RenderOptions) {
 	// Pre-process entries to group consecutive Read calls
 	groups := preprocessEntries(entries)
 
@@ -540,11 +588,106 @@ func RenderHTML(entries []Entry, opts RenderOptions) string {
 			sb.WriteString(formatEditGroupHTML(group.Edits, projectDir))
 		}
 	}
+}
 
-	sb.WriteString("    </main>\n")
-	sb.WriteString("</body>\n")
-	sb.WriteString("</html>\n")
+// navigationCSS contains the styles for transcript navigation.
+const navigationCSS = `
+.transcript-nav {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 0.75rem 1rem;
+    margin: 1rem 0;
+    background-color: var(--bg-secondary);
+    border-radius: 6px;
+    border: 1px solid var(--border-color);
+    gap: 1rem;
+}
 
+.transcript-nav a {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.25rem;
+    padding: 0.5rem 0.75rem;
+    min-height: 44px;
+    min-width: 44px;
+    text-decoration: none;
+    color: var(--user-accent);
+    border-radius: 4px;
+    transition: background-color 0.15s ease;
+}
+
+.transcript-nav a:hover {
+    background-color: var(--bg-code);
+    text-decoration: underline;
+}
+
+.nav-prev::before {
+    content: "← ";
+}
+
+.nav-next::after {
+    content: " →";
+}
+
+.nav-back {
+    font-size: 0.9rem;
+}
+
+.nav-spacer {
+    flex: 1;
+}
+
+@media (max-width: 480px) {
+    .transcript-nav {
+        flex-wrap: wrap;
+        justify-content: center;
+    }
+
+    .nav-spacer {
+        display: none;
+    }
+
+    .transcript-nav a {
+        flex: 1 1 auto;
+        justify-content: center;
+        text-align: center;
+    }
+}
+`
+
+// renderNavigationHTML generates the navigation bar HTML with prev/next/back links.
+func renderNavigationHTML(nav *NavigationContext) string {
+	if nav == nil {
+		return ""
+	}
+
+	var sb strings.Builder
+	sb.WriteString("    <nav class=\"transcript-nav\">\n")
+
+	// Previous link
+	if nav.PrevURL != "" {
+		sb.WriteString(fmt.Sprintf("        <a href=\"%s\" class=\"nav-prev\">%s</a>\n",
+			stdhtml.EscapeString(nav.PrevURL), stdhtml.EscapeString(nav.PrevText)))
+	} else {
+		sb.WriteString("        <span class=\"nav-spacer\"></span>\n")
+	}
+
+	// Back link (center)
+	if nav.BackURL != "" {
+		sb.WriteString(fmt.Sprintf("        <a href=\"%s\" class=\"nav-back\">%s</a>\n",
+			stdhtml.EscapeString(nav.BackURL), stdhtml.EscapeString(nav.BackText)))
+	}
+
+	// Next link
+	if nav.NextURL != "" {
+		sb.WriteString(fmt.Sprintf("        <a href=\"%s\" class=\"nav-next\">%s</a>\n",
+			stdhtml.EscapeString(nav.NextURL), stdhtml.EscapeString(nav.NextText)))
+	} else {
+		sb.WriteString("        <span class=\"nav-spacer\"></span>\n")
+	}
+
+	sb.WriteString("    </nav>\n")
 	return sb.String()
 }
 
