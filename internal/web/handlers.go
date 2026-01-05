@@ -21,7 +21,7 @@ import (
 var templatesFS embed.FS
 
 // CSSVersion is used for cache busting. Bump when CSS changes.
-const CSSVersion = "2"
+const CSSVersion = "3"
 
 // TemplateData is the base data for all templates.
 type TemplateData struct {
@@ -479,6 +479,14 @@ func (s *Server) findTranscriptFile(logDir string, phase, runNumber int) string 
 	}
 
 	return ""
+}
+
+// handleTranscriptCSS serves the transcript CSS from the transcript package.
+// This avoids duplicating CSS between standalone HTML and web interface.
+func (s *Server) handleTranscriptCSS(w http.ResponseWriter, _ *http.Request) {
+	w.Header().Set("Content-Type", "text/css; charset=utf-8")
+	w.Header().Set("Cache-Control", "public, max-age=31536000, immutable")
+	_, _ = w.Write([]byte(transcript.TranscriptCSS()))
 }
 
 // handleNotFound renders the 404 page.

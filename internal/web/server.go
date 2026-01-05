@@ -61,6 +61,9 @@ func (s *Server) setupRoutes() {
 	staticHandler := stripPrefix("/static/", newStaticHandler())
 	s.router.Handle("GET /static/", SecurityHeaders(staticHandler))
 
+	// Transcript CSS (served from transcript package to avoid duplication)
+	s.router.Handle("GET /static/transcript.css", SecurityHeaders(http.HandlerFunc(s.handleTranscriptCSS)))
+
 	// Dashboard
 	s.router.Handle("GET /", SecurityHeaders(http.HandlerFunc(s.handleDashboard)))
 	s.router.Handle("GET /dashboard/status", SecurityHeaders(http.HandlerFunc(s.handleDashboardStatus)))
