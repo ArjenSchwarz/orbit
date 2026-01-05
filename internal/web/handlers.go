@@ -357,25 +357,25 @@ func (s *Server) handleTranscript(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Parse optional run number (default to 1)
-	runNumber := 1
-	if runStr != "" {
-		var parseErr error
-		runNumber, parseErr = strconv.Atoi(runStr)
-		if parseErr != nil || runNumber < 1 {
-			s.handleNotFound(w, r)
-			return
-		}
-	}
-
 	// Handle post-completion transcript
 	isPostCompletion := phaseStr == "post"
 
 	var transcriptPath string
 	var phase int
+	var runNumber int
 	var title string
 
 	if isPostCompletion {
+		// For post-completion, default to latest run or 1
+		runNumber = s.getLatestPostCompletionRun(entry.LogDir)
+		if runStr != "" {
+			var parseErr error
+			runNumber, parseErr = strconv.Atoi(runStr)
+			if parseErr != nil || runNumber < 1 {
+				s.handleNotFound(w, r)
+				return
+			}
+		}
 		transcriptPath = s.findPostCompletionTranscript(entry.LogDir, runNumber)
 		title = "Post-Completion Transcript"
 	} else {
@@ -386,6 +386,17 @@ func (s *Server) handleTranscript(w http.ResponseWriter, r *http.Request) {
 			s.handleNotFound(w, r)
 			return
 		}
+
+		// Default run number to latest for this phase
+		runNumber = s.getPhaseRunCount(entry, phase)
+		if runStr != "" {
+			runNumber, parseErr = strconv.Atoi(runStr)
+			if parseErr != nil || runNumber < 1 {
+				s.handleNotFound(w, r)
+				return
+			}
+		}
+
 		transcriptPath = s.findTranscriptFile(entry.LogDir, phase, runNumber)
 		title = fmt.Sprintf("Phase %d Transcript", phase)
 	}
@@ -462,6 +473,43 @@ func (s *Server) handleTranscript(w http.ResponseWriter, r *http.Request) {
 	}
 
 	s.renderTemplate(w, "layout.html", "transcript.html", data)
+}
+
+// getPhaseRunCount returns the run count for a phase from the registry entry.
+// Defaults to 1 if the phase is not found.
+func (s *Server) getPhaseRunCount(entry *registry.RunEntry, phase int) int {
+	for _, p := range entry.Phases {
+		if p.Number == phase {
+			if p.RunCount > 0 {
+				return p.RunCount
+			}
+			return 1
+		}
+	}
+	return 1
+}
+
+// getLatestPostCompletionRun scans for the highest post-completion run number.
+// Returns 1 if no numbered runs are found.
+func (s *Server) getLatestPostCompletionRun(logDir string) int {
+	pattern := filepath.Join(logDir, "post-completion-run-*-session-transcript.jsonl")
+	matches, err := filepath.Glob(pattern)
+	if err != nil || len(matches) == 0 {
+		return 1
+	}
+
+	// Find highest run number
+	highest := 1
+	for _, match := range matches {
+		base := filepath.Base(match)
+		var runNum int
+		if _, err := fmt.Sscanf(base, "post-completion-run-%d-session-transcript.jsonl", &runNum); err == nil {
+			if runNum > highest {
+				highest = runNum
+			}
+		}
+	}
+	return highest
 }
 
 // findTranscriptFile finds the transcript file for a phase and run.
