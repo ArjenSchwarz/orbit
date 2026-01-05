@@ -671,7 +671,6 @@ func (m *Manager) generateMarkdownTranscript(srcPath, dstPath string, phase int,
 	return nil
 }
 
-
 // sortedPhaseMap groups sessions by phase and returns sorted phase numbers.
 // Post-completion sessions (phase 0) are excluded from the map.
 func sortedPhaseMap(sessions []SessionEntry) (map[int][]SessionEntry, []int) {

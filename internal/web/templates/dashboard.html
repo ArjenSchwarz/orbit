@@ -1,0 +1,38 @@
+{{define "content"}}
+<h2>Runs</h2>
+
+{{if .Empty}}
+<div class="empty-state">
+    <h2>No runs registered</h2>
+    <p>Runs are automatically registered when you use <code>orbit run</code>.</p>
+    <p>You can also manually register existing log directories with <code>orbit register ./path/to/.orbit</code>.</p>
+</div>
+{{else}}
+<div id="dashboard-runs" hx-get="/dashboard/status" hx-trigger="every 10s" hx-swap="innerHTML">
+    {{template "dashboard_runs" .}}
+</div>
+{{end}}
+{{end}}
+
+{{define "dashboard_runs"}}
+{{range .Repositories}}
+<div class="repository-group">
+    <h3>{{.Name}}</h3>
+    <div class="run-list">
+        {{range .Runs}}
+        <div class="run-card">
+            <div>
+                <div class="run-name">
+                    <a href="/runs/{{.ID}}">{{.Name}}</a>
+                </div>
+                <div class="run-meta">
+                    {{.Branch}} &bull; {{.StartedAt}}
+                </div>
+            </div>
+            <span class="status status-{{.Status}}">{{.Status}}</span>
+        </div>
+        {{end}}
+    </div>
+</div>
+{{end}}
+{{end}}

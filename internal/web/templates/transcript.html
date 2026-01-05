@@ -1,0 +1,46 @@
+{{define "content"}}
+<div class="transcript-wrapper">
+    <nav class="transcript-nav">
+        {{if .PrevPhase}}
+        <a href="/runs/{{.RunID}}/transcript/{{.PrevPhase}}" class="nav-prev">Phase {{.PrevPhase}}</a>
+        {{else}}
+        <span class="nav-spacer"></span>
+        {{end}}
+
+        <a href="/runs/{{.RunID}}" class="nav-back">Back to Run</a>
+
+        {{if .NextPhase}}
+        <a href="/runs/{{.RunID}}/transcript/{{.NextPhase}}" class="nav-next">Phase {{.NextPhase}}</a>
+        {{else}}
+        <span class="nav-spacer"></span>
+        {{end}}
+    </nav>
+
+    {{if .IsPostCompletion}}
+    <h2>{{.RunName}} - Post-Completion</h2>
+    {{else}}
+    <h2>{{.RunName}} - Phase {{.Phase}}</h2>
+    {{end}}
+    {{if gt .RunNumber 1}}
+    <p>Run {{.RunNumber}}</p>
+    {{end}}
+
+    {{.Content}}
+
+    <nav class="transcript-nav">
+        {{if .PrevPhase}}
+        <a href="/runs/{{.RunID}}/transcript/{{.PrevPhase}}" class="nav-prev">Phase {{.PrevPhase}}</a>
+        {{else}}
+        <span class="nav-spacer"></span>
+        {{end}}
+
+        <a href="/runs/{{.RunID}}" class="nav-back">Back to Run</a>
+
+        {{if .NextPhase}}
+        <a href="/runs/{{.RunID}}/transcript/{{.NextPhase}}" class="nav-next">Phase {{.NextPhase}}</a>
+        {{else}}
+        <span class="nav-spacer"></span>
+        {{end}}
+    </nav>
+</div>
+{{end}}

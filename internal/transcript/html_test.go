@@ -1141,3 +1141,225 @@ func TestBackwardCompat_PreTruncationDecision_HTML(t *testing.T) {
 		t.Error("content under MaxToolResultRunes should not be truncated")
 	}
 }
+
+// Navigation tests for RenderHTMLFragment
+
+func TestRenderHTMLFragment_BasicStructure(t *testing.T) {
+	entries := []Entry{
+		{
+			Type: "user",
+			Message: &Message{
+				Role:    "user",
+				Content: []ContentItem{{Type: "text", Text: "Hello"}},
+			},
+		},
+	}
+
+	result := RenderHTMLFragment(entries, RenderOptions{})
+
+	// Should NOT contain document wrapper elements
+	if strings.Contains(result, "<!DOCTYPE html>") {
+		t.Error("fragment should not contain DOCTYPE")
+	}
+	if strings.Contains(result, "<html") {
+		t.Error("fragment should not contain html tag")
+	}
+	if strings.Contains(result, "<head>") {
+		t.Error("fragment should not contain head tag")
+	}
+	if strings.Contains(result, "<body>") {
+		t.Error("fragment should not contain body tag")
+	}
+
+	// Should contain the message content
+	if !strings.Contains(result, "Hello") {
+		t.Error("fragment should contain message content")
+	}
+	if !strings.Contains(result, `class="message user"`) {
+		t.Error("fragment should contain user message section")
+	}
+}
+
+func TestRenderHTMLFragment_WithNavigation(t *testing.T) {
+	entries := []Entry{
+		{
+			Type: "user",
+			Message: &Message{
+				Role:    "user",
+				Content: []ContentItem{{Type: "text", Text: "Test message"}},
+			},
+		},
+	}
+
+	nav := &NavigationContext{
+		PrevURL:  "/runs/abc/transcript/1",
+		PrevText: "Phase 1",
+		NextURL:  "/runs/abc/transcript/3",
+		NextText: "Phase 3",
+		BackURL:  "/runs/abc",
+		BackText: "Back to Run",
+	}
+
+	result := RenderHTMLFragment(entries, RenderOptions{Navigation: nav})
+
+	// Should contain navigation at top and bottom
+	navCount := strings.Count(result, `class="transcript-nav"`)
+	if navCount != 2 {
+		t.Errorf("expected 2 navigation blocks (top and bottom), got %d", navCount)
+	}
+
+	// Should contain prev link
+	if !strings.Contains(result, `href="/runs/abc/transcript/1"`) {
+		t.Error("expected prev link")
+	}
+	if !strings.Contains(result, "Phase 1") {
+		t.Error("expected prev text")
+	}
+
+	// Should contain next link
+	if !strings.Contains(result, `href="/runs/abc/transcript/3"`) {
+		t.Error("expected next link")
+	}
+	if !strings.Contains(result, "Phase 3") {
+		t.Error("expected next text")
+	}
+
+	// Should contain back link
+	if !strings.Contains(result, `href="/runs/abc"`) {
+		t.Error("expected back link")
+	}
+	if !strings.Contains(result, "Back to Run") {
+		t.Error("expected back text")
+	}
+}
+
+func TestRenderHTMLFragment_NavigationPrevOnly(t *testing.T) {
+	entries := []Entry{}
+
+	nav := &NavigationContext{
+		PrevURL:  "/runs/abc/transcript/1",
+		PrevText: "Phase 1",
+		BackURL:  "/runs/abc",
+		BackText: "Back to Run",
+	}
+
+	result := RenderHTMLFragment(entries, RenderOptions{Navigation: nav})
+
+	// Should contain prev link
+	if !strings.Contains(result, `href="/runs/abc/transcript/1"`) {
+		t.Error("expected prev link")
+	}
+
+	// Should NOT contain next link (empty NextURL)
+	if strings.Contains(result, "nav-next") {
+		t.Error("should not contain next link element when NextURL is empty")
+	}
+}
+
+func TestRenderHTMLFragment_NavigationNextOnly(t *testing.T) {
+	entries := []Entry{}
+
+	nav := &NavigationContext{
+		NextURL:  "/runs/abc/transcript/2",
+		NextText: "Phase 2",
+		BackURL:  "/runs/abc",
+		BackText: "Back to Run",
+	}
+
+	result := RenderHTMLFragment(entries, RenderOptions{Navigation: nav})
+
+	// Should NOT contain prev link (empty PrevURL)
+	if strings.Contains(result, "nav-prev") {
+		t.Error("should not contain prev link element when PrevURL is empty")
+	}
+
+	// Should contain next link
+	if !strings.Contains(result, `href="/runs/abc/transcript/2"`) {
+		t.Error("expected next link")
+	}
+}
+
+func TestRenderHTMLFragment_NoNavigation(t *testing.T) {
+	entries := []Entry{
+		{
+			Type: "user",
+			Message: &Message{
+				Role:    "user",
+				Content: []ContentItem{{Type: "text", Text: "Test"}},
+			},
+		},
+	}
+
+	result := RenderHTMLFragment(entries, RenderOptions{})
+
+	// Should NOT contain navigation
+	if strings.Contains(result, `class="transcript-nav"`) {
+		t.Error("should not contain navigation when Navigation is nil")
+	}
+}
+
+func TestRenderHTML_WithNavigation(t *testing.T) {
+	entries := []Entry{
+		{
+			Type: "user",
+			Message: &Message{
+				Role:    "user",
+				Content: []ContentItem{{Type: "text", Text: "Test message"}},
+			},
+		},
+	}
+
+	nav := &NavigationContext{
+		PrevURL:  "/runs/abc/transcript/1",
+		PrevText: "Phase 1",
+		NextURL:  "/runs/abc/transcript/3",
+		NextText: "Phase 3",
+		BackURL:  "/runs/abc",
+		BackText: "Back to Run",
+	}
+
+	result := RenderHTML(entries, RenderOptions{Navigation: nav})
+
+	// Should contain document wrapper
+	if !strings.Contains(result, "<!DOCTYPE html>") {
+		t.Error("expected DOCTYPE in full HTML")
+	}
+
+	// Should contain navigation
+	navCount := strings.Count(result, `class="transcript-nav"`)
+	if navCount != 2 {
+		t.Errorf("expected 2 navigation blocks, got %d", navCount)
+	}
+
+	// Navigation should be between header and main content
+	if !strings.Contains(result, "</header>") {
+		t.Error("expected header in full HTML")
+	}
+}
+
+func TestRenderNavigationHTML_HTMLEscaping(t *testing.T) {
+	entries := []Entry{}
+
+	// Use potentially dangerous characters in navigation
+	nav := &NavigationContext{
+		PrevURL:  "/runs/<script>/transcript/1",
+		PrevText: "Phase <1>",
+		NextURL:  "/runs/abc&xyz/transcript/2",
+		NextText: "Phase \"2\"",
+		BackURL:  "/runs/test",
+		BackText: "Back & Return",
+	}
+
+	result := RenderHTMLFragment(entries, RenderOptions{Navigation: nav})
+
+	// Should escape HTML entities
+	if strings.Contains(result, "<script>") {
+		t.Error("URL should be escaped")
+	}
+	if strings.Contains(result, "Phase <1>") {
+		t.Error("text should be escaped")
+	}
+	if !strings.Contains(result, "&amp;") || !strings.Contains(result, "&lt;") {
+		t.Error("expected escaped HTML entities")
+	}
+}

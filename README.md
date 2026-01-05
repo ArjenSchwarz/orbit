@@ -214,6 +214,51 @@ Orbit is inherently resumable. Since task state is tracked in the rune tasks fil
 
 With session continuation enabled (default), Orbit will also resume the Claude session context, allowing Claude to remember what it was working on.
 
+## Web Interface
+
+Orbit includes a built-in web interface for viewing runs and transcripts.
+
+### Starting the Server
+
+```bash
+# Start on default port (8080)
+orbit serve
+
+# Start on custom port
+orbit serve --port 3000
+
+# Bind to all interfaces (not just localhost)
+orbit serve --bind 0.0.0.0
+```
+
+### Features
+
+- **Dashboard**: View all runs grouped by repository
+- **Run Details**: See phase status, duration, and summary
+- **Transcript Viewer**: Read transcripts with syntax highlighting and navigation
+- **Live Updates**: Auto-refresh for running sessions via HTMX
+- **Mobile Responsive**: Works on phones and tablets
+- **Dark Mode**: Follows system preference
+
+### Run Registry
+
+Orbit automatically registers runs when orchestrating. Runs are tracked in `~/.orbit/runs/` and persist across sessions.
+
+To manually register an existing orbit log directory:
+
+```bash
+# Register from current directory (auto-detects .orbit/)
+orbit register
+
+# Register a specific path
+orbit register specs/my-feature
+
+# Register with a custom name
+orbit register --name "My Feature" specs/my-feature/.orbit
+```
+
+The web interface shows all registered runs, their status, and provides links to view transcripts.
+
 ---
 
 # Apsis

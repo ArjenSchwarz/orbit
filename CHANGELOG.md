@@ -7,6 +7,142 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Post-completion transcript viewing in web interface:
+  - `hasPostCompletionTranscript()` method to detect post-completion transcript files
+  - `findPostCompletionTranscript()` method to locate transcript files
+  - Post-completion section in run detail page with link to transcript
+  - Support for `/runs/{id}/transcript/post` URL pattern
+  - `IsPostCompletion` field in `TranscriptData` for template conditional rendering
+- CSS cache busting with version query parameter:
+  - `CSSVersion` constant for cache invalidation (bump when CSS changes)
+  - `CSSVersion` field in `TemplateData` propagated to all page templates
+  - CSS link updated to include `?v={{.CSSVersion}}` query parameter
+- Transcript styling in web interface:
+  - Full transcript CSS from standalone HTML renderer added to `style.css`
+  - Message styles (user/assistant with distinct colors)
+  - Thinking block styles with amber accent
+  - Tool use/result styles with collapsible details
+  - Markdown content styles (headings, lists, code, blockquotes)
+  - Patch/diff styles with colored additions/deletions
+  - Navigation bar styles with mobile responsive layout
+  - Dark mode support for all transcript elements
+- Auto-detection of `.orbit` subdirectory in `orbit register`:
+  - When registering a specs directory, automatically uses `.orbit` subdirectory if present
+  - Allows `orbit register specs/feature` instead of `orbit register specs/feature/.orbit`
+
+### Added
+
+- Auto-registration integration for web interface (Phase 6):
+  - Orbit runs automatically register with the web interface registry on start
+  - Registry entry created with status "running", PID, and log directory
+  - Phase status updates tracked during execution (running, completed, failed)
+  - Run count incremented on phase retries
+  - Run status updated on completion (completed/failed) with finished timestamp
+  - Graceful failure handling: registry errors logged as warnings, execution continues
+  - Unit tests for all auto-registration scenarios
+- `internal/web` package for web interface:
+  - `server.go` with `Server` struct, `New()`, `Start()`, and `Shutdown()` methods
+  - Graceful shutdown with 5-second timeout for in-flight requests
+  - Signal handling for SIGINT/SIGTERM
+  - `middleware.go` with security middleware:
+    - `SecurityHeaders` adding X-Content-Type-Options, X-Frame-Options, Referrer-Policy, and CSP headers
+    - `ValidateUUID` middleware for UUID v4 validation with regex
+    - `PathSanitizer` middleware for path traversal prevention
+    - `isPathWithinDir` helper with symlink resolution for security
+  - `handlers.go` with page handlers:
+    - `handleDashboard` rendering run list grouped by repository
+    - `handleDashboardStatus` for htmx polling fragment
+    - `handleRunDetail` rendering run info and phase list
+    - `handleRunStatus` for htmx run status polling
+    - `handleTranscript` rendering transcript viewer with navigation
+    - `handleError` and `handleNotFound` for error pages
+  - `static.go` with embedded static file handler using go:embed
+  - `static/htmx.min.js` (htmx 1.9.12)
+  - `static/style.css` with responsive design:
+    - CSS variables for theming
+    - Dark mode support via prefers-color-scheme
+    - Mobile-responsive layout with 44px touch targets
+    - Status indicator styling for running/completed/failed states
+  - HTML templates in `templates/`:
+    - `layout.html` base template with htmx connection status handling
+    - `dashboard.html` for run list display
+    - `dashboard_status.html` htmx polling fragment
+    - `run_detail.html` for run info and phase list
+    - `run_status.html` htmx polling fragment
+    - `transcript.html` for transcript viewer with navigation
+    - `error.html` for generic error pages
+- `orbit serve` command for starting the web interface:
+  - `--port` flag for port configuration (default from config or 8080)
+  - `--bind` flag for bind address (default from config or localhost)
+  - `--version` and `--help` flags
+  - Configuration via environment variables or config files
+  - Integration with registry for run discovery
+
+### Fixed
+
+- CSP header timing in web interface middleware: headers are now set before the response is written using a response wrapper that intercepts `WriteHeader()` and `Write()` calls
+- Dashboard sort order: runs are now sorted chronologically using `time.Time.After()` instead of alphabetically by formatted date strings
+
+### Changed
+
+- Removed placeholder `serveCommand` from `cmd/orbit/main.go`
+- Removed unused `fmt` import from `cmd/orbit/main.go`
+
+- `NavigationContext` struct for transcript navigation with prev/next/back links
+- `RenderHTMLFragment()` function for rendering transcript content without document wrapper (for embedding in web templates)
+- `renderEntriesToBuilder()` shared function extracted from `RenderHTML()` to support both full document and fragment rendering
+- `renderNavigationHTML()` helper function to generate navigation bar HTML with prev/next/back links
+- Navigation CSS styles with mobile-responsive layout (44px touch targets, flexbox layout)
+- Navigation support in `RenderHTML()` - adds navigation at top and bottom when `Navigation` is set in `RenderOptions`
+- Unit tests for `RenderHTMLFragment`, navigation HTML generation, and HTML escaping
+
+### Changed
+
+- Extended `RenderOptions` with optional `Navigation` field for navigation context
+- Refactored `RenderHTML()` to use shared `renderEntriesToBuilder()` function
+- `orbit register` command for manually registering existing orbit log directories with the run registry
+  - Validates log directories by checking for `phase-*-run-*-session.json` files
+  - Derives status from `summary.json` when present (defaults to "completed" for historical runs)
+  - Derives phases array by scanning session files and tracking run counts
+  - Derives start time from `summary.json` or earliest file modification time
+  - Derives branch name from `summary.json` or directory structure
+  - Derives repository from git remote origin or directory name as fallback
+  - Supports `--name` flag for custom display names
+  - Updates existing entries when re-registering the same log directory (preserves ID)
+  - Special handling for "." path to look for `.orbit/` in current directory
+  - Sets PID to nil for manual registrations (vs auto-registered runs)
+- CLI subcommand routing with `orbit run`, `orbit serve`, and `orbit register` subcommands
+- Backward compatibility: existing `orbit --flags` syntax defaults to `orbit run`
+- `ServePort` and `ServeBind` configuration options for the web server (defaults: 8080, localhost)
+- Environment variable support: `ORBIT_SERVE_PORT` and `ORBIT_SERVE_BIND`
+- Integration tests for CLI subcommand routing (`subcommand_test.go`)
+- Unit tests for serve configuration options
+
+### Changed
+
+- Refactored `cmd/orbit/main.go` to use subcommand router pattern
+- Extracted run command logic to `cmd/orbit/run.go`
+
+### Added
+
+- `internal/registry` package for run registration and discovery:
+  - `types.go` with `RunStatus`, `PhaseStatus`, `Phase`, and `RunEntry` types with JSON serialization
+  - `git.go` with `ParseGitRemote()` for extracting owner/repo from HTTPS, SSH, and SSH-alt git URLs
+  - `GetRepository()` function with fallback to directory name when git parsing fails
+  - `registry.go` with `Registry` struct for managing run entries in `~/.orbit/runs/`
+  - Atomic file operations using temp file + rename pattern
+  - `Register()`, `Get()`, `List()`, `FindByLogDir()`, `UpdateStatus()`, `UpdatePhase()` methods
+  - Property-based tests using pgregory.net/rapid for git URL parsing
+  - Schema version field for future migration support
+- Web interface specification documents:
+  - `requirements.md` with 11 requirement sections covering web server, registry, auto-registration, manual registration, dashboard, run detail, transcript viewer, mobile responsiveness, security, frontend architecture, and live updates
+  - `design.md` with architecture, components, interfaces, data models, and testing strategy
+  - `decision_log.md` with 10 design decisions (historical run discovery, htmx embedding, missing log handling, read-only v1, mobile viewport, transcript rendering, deferred REST API, schema versioning, per-phase tracking, security headers)
+  - `tasks.md` with 8 implementation phases and 40+ tasks
+- pgregory.net/rapid dependency (v1.2.0) for property-based testing
+
 ### Fixed
 
 - Race condition in spinner `updateLoop`: the done channel is now captured and passed as a parameter to prevent goroutine leaks during rapid Stop()/Start() sequences

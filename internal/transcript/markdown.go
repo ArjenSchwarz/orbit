@@ -304,7 +304,7 @@ func formatAssistantMessage(entry *Entry, toolMeta map[string]toolMetadata, skil
 			// tool_result in assistant entries (legacy handling)
 			sb.WriteString(formatToolResult(&item, toolMeta))
 
-		// Unknown content types are skipped silently per requirement 4.8
+			// Unknown content types are skipped silently per requirement 4.8
 		}
 	}
 

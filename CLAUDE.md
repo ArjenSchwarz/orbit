@@ -6,8 +6,8 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 This repository contains two related CLI tools for working with Claude Code:
 
-- **Orbit** - Orchestrates Claude Code sessions to implement spec phases sequentially. Handles session lifecycle, error recovery, and log management.
-- **Apsis** - Converts Claude Code session transcripts from JSONL format to readable Markdown. Lists and transforms session files stored in `~/.claude/projects/`.
+- **Orbit** - Orchestrates Claude Code sessions to implement spec phases sequentially. Handles session lifecycle, error recovery, and log management. Includes a web interface for viewing runs and transcripts.
+- **Apsis** - Converts Claude Code session transcripts from JSONL format to readable Markdown or HTML. Lists and transforms session files stored in `~/.claude/projects/`.
 
 ## Build and Development Commands
 
@@ -33,7 +33,7 @@ The codebase follows a clean internal package structure:
 
 ```
 cmd/
-  orbit/main.go      - Orbit CLI entry point, flag parsing, branch detection
+  orbit/main.go      - Orbit CLI entry point, subcommand routing (run, serve, register)
   apsis/main.go      - Apsis CLI entry point, session listing and conversion
 internal/
   orbit/orbit.go     - Main orchestration loop with retry logic
@@ -43,7 +43,9 @@ internal/
   errors/errors.go   - Error classification (rate limits, connection, overload)
   logs/manager.go    - Session log storage and summary management
   config/config.go   - Configuration loading via Viper (files, env vars, defaults)
-  transcript/        - JSONL parsing and Markdown rendering for apsis
+  transcript/        - JSONL parsing and Markdown/HTML rendering for apsis and web
+  registry/          - Run registry for tracking orbit runs across repositories
+  web/               - HTTP server, handlers, templates for web interface
 ```
 
 ### Orbit Flow
@@ -97,3 +99,20 @@ Sessions are saved to `.orbit/` next to the tasks file (e.g., `specs/my-feature/
 - `phase-N-run-M-session.txt` - human-readable transcript
 
 With `--date-subdirs`, logs are organized by timestamp subdirectories instead.
+
+## Web Interface (Orbit)
+
+Orbit includes a web interface (`orbit serve`) for viewing runs and transcripts:
+- Dashboard showing all runs grouped by repository
+- Run detail page with phase status and summary
+- Transcript viewer with navigation between phases
+- HTMX-powered auto-refresh for running sessions
+- Mobile-responsive design with dark mode support
+
+## Run Registry (Orbit)
+
+Runs are tracked in `~/.orbit/runs/` as individual JSON files (one per run).
+- Auto-registered during orchestration
+- Manually registered via `orbit register`
+- Registry failures are non-fatal (logged as warnings)
+- Atomic writes using temp file + rename pattern

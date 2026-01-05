@@ -2,6 +2,7 @@ package transcript
 
 import (
 	"bytes"
+	_ "embed"
 	"encoding/json"
 	"fmt"
 	stdhtml "html"
@@ -12,40 +13,18 @@ import (
 	gmhtml "github.com/yuin/goldmark/renderer/html"
 )
 
-// htmlCSS contains the embedded stylesheet for HTML transcripts.
-const htmlCSS = `
-:root {
-    --bg-primary: #ffffff;
-    --bg-secondary: #f8f9fa;
-    --bg-code: #f4f4f4;
-    --bg-user: #e7f1ff;
-    --bg-assistant: #f3e8ff;
-    --bg-thinking: #fff8e6;
-    --text-primary: #212529;
-    --text-secondary: #6c757d;
-    --border-color: #dee2e6;
-    --user-accent: #0d6efd;
-    --assistant-accent: #6f42c1;
-    --thinking-accent: #d97706;
-    --success-color: #198754;
-    --error-color: #dc3545;
-    --tool-accent: #fd7e14;
+//go:embed transcript.css
+var transcriptCSS string
+
+// TranscriptCSS returns the CSS for transcript rendering.
+// This can be used by external packages (like the web server) to include
+// the same styles without duplication.
+func TranscriptCSS() string {
+	return transcriptCSS
 }
 
-@media (prefers-color-scheme: dark) {
-    :root {
-        --bg-primary: #1a1a1a;
-        --bg-secondary: #2d2d2d;
-        --bg-code: #2d2d2d;
-        --bg-user: #1e3a5f;
-        --bg-assistant: #2d1f3d;
-        --bg-thinking: #3d2e1a;
-        --text-primary: #e9ecef;
-        --text-secondary: #adb5bd;
-        --border-color: #495057;
-    }
-}
-
+// standaloneCSS contains additional styles only needed for standalone HTML documents.
+const standaloneCSS = `
 * {
     box-sizing: border-box;
 }
@@ -82,370 +61,6 @@ header h1 {
     padding: 0.2rem 0.4rem;
     border-radius: 4px;
     font-family: "SF Mono", Monaco, "Cascadia Code", monospace;
-}
-
-.message {
-    margin-bottom: 0.75rem;
-    padding: 0.75rem;
-    border-radius: 8px;
-    border-left: 4px solid var(--border-color);
-    background-color: var(--bg-secondary);
-}
-
-.message.user {
-    border-left-color: var(--user-accent);
-    background-color: var(--bg-user);
-}
-
-.message.assistant {
-    border-left-color: var(--assistant-accent);
-    background-color: var(--bg-assistant);
-}
-
-.message-header {
-    display: flex;
-    align-items: center;
-    gap: 0.5rem;
-    margin-bottom: 4px;
-    font-weight: 600;
-    font-size: 1.1rem;
-}
-
-.message-header .icon {
-    font-size: 1.2rem;
-}
-
-.message-content {
-    word-wrap: break-word;
-}
-
-.message-content p {
-    margin: 0 0 0.5rem 0;
-}
-
-.message-content p:last-child {
-    margin-bottom: 0;
-}
-
-.thinking-block {
-    margin: 0.5rem 0;
-    padding: 0.75rem;
-    background-color: var(--bg-thinking);
-    border-left: 3px solid var(--thinking-accent);
-    border-radius: 4px;
-}
-
-.thinking-block .thinking-header {
-    display: flex;
-    align-items: center;
-    gap: 0.5rem;
-    font-weight: 500;
-    color: var(--text-secondary);
-    margin-bottom: 0.5rem;
-}
-
-.thinking-block .thinking-content {
-    color: var(--text-primary);
-}
-
-.tool-use {
-    margin: 0.25rem 0;
-    background-color: var(--bg-primary);
-    border: 1px solid var(--border-color);
-    border-radius: 6px;
-    overflow: hidden;
-}
-
-.tool-use-header {
-    display: flex;
-    align-items: center;
-    gap: 0.5rem;
-    padding: 0.5rem 0.75rem;
-    background-color: var(--bg-code);
-    border-bottom: 1px solid var(--border-color);
-    font-weight: 500;
-}
-
-.tool-use-header .icon {
-    color: var(--tool-accent);
-}
-
-.tool-use-header code {
-    font-family: "SF Mono", Monaco, "Cascadia Code", monospace;
-    background-color: var(--bg-secondary);
-    padding: 0.15rem 0.4rem;
-    border-radius: 4px;
-}
-
-.tool-input {
-    padding: 0.75rem;
-}
-
-.tool-input pre {
-    margin: 0;
-    overflow-x: auto;
-}
-
-.tool-input code {
-    font-family: "SF Mono", Monaco, "Cascadia Code", monospace;
-    font-size: 0.85rem;
-    line-height: 1.5;
-}
-
-.tool-result {
-    margin: 0.25rem 0;
-    border-radius: 6px;
-    overflow: hidden;
-    border: 1px solid var(--border-color);
-}
-
-.tool-result-header {
-    display: flex;
-    align-items: center;
-    gap: 0.5rem;
-    padding: 0.4rem 0.75rem;
-    font-weight: 500;
-    font-size: 0.9rem;
-}
-
-.tool-result-header.success {
-    background-color: rgba(25, 135, 84, 0.1);
-    color: var(--success-color);
-}
-
-.tool-result-header.error {
-    background-color: rgba(220, 53, 69, 0.1);
-    color: var(--error-color);
-}
-
-.tool-result-content {
-    padding: 0.75rem;
-    background-color: var(--bg-code);
-}
-
-.tool-result-content pre {
-    margin: 0;
-    overflow-x: auto;
-    white-space: pre-wrap;
-    word-wrap: break-word;
-}
-
-.tool-result-content code {
-    font-family: "SF Mono", Monaco, "Cascadia Code", monospace;
-    font-size: 0.85rem;
-    line-height: 1.5;
-}
-
-.truncated {
-    color: var(--text-secondary);
-    font-style: italic;
-}
-
-details.tool-collapsible {
-    margin: 0.25rem 0;
-    background-color: var(--bg-primary);
-    border: 1px solid var(--border-color);
-    border-radius: 6px;
-}
-
-details.tool-collapsible summary {
-    cursor: pointer;
-    padding: 0.5rem 0.75rem;
-    background-color: var(--bg-code);
-    font-weight: 500;
-    display: flex;
-    align-items: center;
-    gap: 0.5rem;
-}
-
-details.tool-collapsible summary .icon {
-    color: var(--tool-accent);
-}
-
-details.tool-collapsible.error summary .icon {
-    color: var(--error-color);
-}
-
-details.tool-collapsible .tool-content {
-    padding: 0.75rem;
-    border-top: 1px solid var(--border-color);
-}
-
-details.tool-collapsible .tool-content pre {
-    margin: 0;
-    overflow-x: auto;
-    white-space: pre-wrap;
-    word-wrap: break-word;
-}
-
-details.tool-collapsible .tool-content code {
-    font-family: "SF Mono", Monaco, "Cascadia Code", monospace;
-    font-size: 0.85rem;
-    line-height: 1.5;
-}
-
-details.read-item {
-    margin: 2px 0;
-}
-
-details.read-item:first-child {
-    margin-top: 0;
-}
-
-details.read-item:last-child {
-    margin-bottom: 0;
-}
-
-.tool-input-section,
-.tool-result-section {
-    margin-bottom: 0.5rem;
-}
-
-.tool-input-section:last-child,
-.tool-result-section:last-child {
-    margin-bottom: 0;
-}
-
-.tool-input-section strong,
-.tool-result-section strong {
-    display: block;
-    margin-bottom: 0.25rem;
-    color: var(--text-secondary);
-}
-
-.markdown-content {
-    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
-    font-size: 0.9rem;
-    line-height: 1.6;
-}
-
-.markdown-content h1,
-.markdown-content h2,
-.markdown-content h3,
-.markdown-content h4 {
-    margin-top: 1rem;
-    margin-bottom: 0.5rem;
-    font-weight: 600;
-}
-
-.markdown-content h1 { font-size: 1.5rem; }
-.markdown-content h2 { font-size: 1.3rem; }
-.markdown-content h3 { font-size: 1.1rem; }
-.markdown-content h4 { font-size: 1rem; }
-
-.markdown-content p {
-    margin: 0.5rem 0;
-}
-
-.markdown-content ul,
-.markdown-content ol {
-    margin: 0.5rem 0;
-    padding-left: 1.5rem;
-}
-
-.markdown-content li {
-    margin: 0.25rem 0;
-}
-
-.markdown-content code {
-    font-family: "SF Mono", Monaco, "Cascadia Code", monospace;
-    background-color: var(--bg-code);
-    padding: 0.15rem 0.3rem;
-    border-radius: 3px;
-    font-size: 0.85em;
-}
-
-.markdown-content pre {
-    margin: 0.5rem 0;
-    padding: 0.75rem;
-    background-color: var(--bg-code);
-    border-radius: 4px;
-    overflow-x: auto;
-}
-
-.markdown-content pre code {
-    background: none;
-    padding: 0;
-    font-size: 0.85rem;
-    line-height: 1.5;
-}
-
-.markdown-content blockquote {
-    margin: 0.5rem 0;
-    padding: 0.5rem 1rem;
-    border-left: 3px solid var(--border-color);
-    background-color: var(--bg-code);
-}
-
-.markdown-content a {
-    color: var(--user-accent);
-    text-decoration: none;
-}
-
-.markdown-content a:hover {
-    text-decoration: underline;
-}
-
-.markdown-content strong {
-    font-weight: 600;
-}
-
-.markdown-content em {
-    font-style: italic;
-}
-
-.todo-list {
-    list-style: none;
-    padding-left: 0;
-    margin: 0;
-    font-family: "SF Mono", Monaco, "Cascadia Code", monospace;
-    font-size: 0.9rem;
-}
-
-.todo-list li {
-    margin: 0.25rem 0;
-}
-
-.patch-content {
-    font-family: "SF Mono", Monaco, "Cascadia Code", monospace;
-    font-size: 0.85rem;
-    line-height: 1.4;
-    background-color: var(--bg-code);
-    border-radius: 4px;
-    overflow-x: auto;
-    margin: 0;
-    padding: 0.5rem;
-}
-
-.patch-line {
-    display: block;
-    white-space: pre;
-}
-
-.patch-line.addition {
-    background-color: rgba(40, 167, 69, 0.2);
-    color: #28a745;
-}
-
-.patch-line.deletion {
-    background-color: rgba(220, 53, 69, 0.2);
-    color: #dc3545;
-}
-
-.patch-line.context {
-    color: var(--text-secondary);
-}
-
-@media (prefers-color-scheme: dark) {
-    .patch-line.addition {
-        background-color: rgba(40, 167, 69, 0.3);
-        color: #5fd068;
-    }
-
-    .patch-line.deletion {
-        background-color: rgba(220, 53, 69, 0.3);
-        color: #ff6b6b;
-    }
 }
 `
 
@@ -485,7 +100,8 @@ func RenderHTML(entries []Entry, opts RenderOptions) string {
 	sb.WriteString("    <meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\">\n")
 	sb.WriteString(fmt.Sprintf("    <title>%s</title>\n", stdhtml.EscapeString(title)))
 	sb.WriteString("    <style>\n")
-	sb.WriteString(htmlCSS)
+	sb.WriteString(transcriptCSS)
+	sb.WriteString(standaloneCSS)
 	sb.WriteString("    </style>\n")
 	sb.WriteString("</head>\n")
 	sb.WriteString("<body>\n")
@@ -499,9 +115,56 @@ func RenderHTML(entries []Entry, opts RenderOptions) string {
 	}
 	sb.WriteString("    </header>\n")
 
+	// Navigation at top (if provided)
+	if opts.Navigation != nil {
+		sb.WriteString(renderNavigationHTML(opts.Navigation))
+	}
+
 	// Main content
 	sb.WriteString("    <main>\n")
 
+	// Render entries using shared function
+	renderEntriesToBuilder(&sb, entries, opts)
+
+	sb.WriteString("    </main>\n")
+
+	// Navigation at bottom (if provided)
+	if opts.Navigation != nil {
+		sb.WriteString(renderNavigationHTML(opts.Navigation))
+	}
+
+	sb.WriteString("</body>\n")
+	sb.WriteString("</html>\n")
+
+	return sb.String()
+}
+
+// RenderHTMLFragment renders just the content without document wrapper.
+// Returns HTML that can be embedded in an existing page template.
+// Includes navigation at top/bottom when Navigation is set.
+// Does NOT include <!DOCTYPE>, <html>, <head>, or <body> tags.
+func RenderHTMLFragment(entries []Entry, opts RenderOptions) string {
+	var sb strings.Builder
+
+	// Navigation at top (if provided)
+	if opts.Navigation != nil {
+		sb.WriteString(renderNavigationHTML(opts.Navigation))
+	}
+
+	// Render entries using shared function
+	renderEntriesToBuilder(&sb, entries, opts)
+
+	// Navigation at bottom (if provided)
+	if opts.Navigation != nil {
+		sb.WriteString(renderNavigationHTML(opts.Navigation))
+	}
+
+	return sb.String()
+}
+
+// renderEntriesToBuilder writes entry HTML to the builder.
+// Extracted to share between RenderHTML and RenderHTMLFragment.
+func renderEntriesToBuilder(sb *strings.Builder, entries []Entry, opts RenderOptions) {
 	// Pre-process entries to group consecutive Read calls
 	groups := preprocessEntries(entries)
 
@@ -540,11 +203,40 @@ func RenderHTML(entries []Entry, opts RenderOptions) string {
 			sb.WriteString(formatEditGroupHTML(group.Edits, projectDir))
 		}
 	}
+}
 
-	sb.WriteString("    </main>\n")
-	sb.WriteString("</body>\n")
-	sb.WriteString("</html>\n")
+// renderNavigationHTML generates the navigation bar HTML with prev/next/back links.
+func renderNavigationHTML(nav *NavigationContext) string {
+	if nav == nil {
+		return ""
+	}
 
+	var sb strings.Builder
+	sb.WriteString("    <nav class=\"transcript-nav\">\n")
+
+	// Previous link
+	if nav.PrevURL != "" {
+		sb.WriteString(fmt.Sprintf("        <a href=\"%s\" class=\"nav-prev\">%s</a>\n",
+			stdhtml.EscapeString(nav.PrevURL), stdhtml.EscapeString(nav.PrevText)))
+	} else {
+		sb.WriteString("        <span class=\"nav-spacer\"></span>\n")
+	}
+
+	// Back link (center)
+	if nav.BackURL != "" {
+		sb.WriteString(fmt.Sprintf("        <a href=\"%s\" class=\"nav-back\">%s</a>\n",
+			stdhtml.EscapeString(nav.BackURL), stdhtml.EscapeString(nav.BackText)))
+	}
+
+	// Next link
+	if nav.NextURL != "" {
+		sb.WriteString(fmt.Sprintf("        <a href=\"%s\" class=\"nav-next\">%s</a>\n",
+			stdhtml.EscapeString(nav.NextURL), stdhtml.EscapeString(nav.NextText)))
+	} else {
+		sb.WriteString("        <span class=\"nav-spacer\"></span>\n")
+	}
+
+	sb.WriteString("    </nav>\n")
 	return sb.String()
 }
 
@@ -876,7 +568,7 @@ func formatAssistantMessageHTML(entry *Entry, toolMeta map[string]toolMetadata, 
 			// tool_result in assistant entries (legacy handling)
 			sb.WriteString(formatToolResultHTML(&item, toolMeta))
 
-		// Unknown content types are skipped silently
+			// Unknown content types are skipped silently
 		}
 	}
 

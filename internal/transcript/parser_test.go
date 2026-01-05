@@ -593,15 +593,15 @@ func TestParseJSONL_FiltersCompleteLocalCommandSequence(t *testing.T) {
 
 func TestShouldFilterLocalCommand(t *testing.T) {
 	tests := map[string]struct {
-		entry        Entry
-		filteredUUIDs map[string]bool
-		expected     bool
+		entry           Entry
+		filteredUUIDs   map[string]bool
+		expected        bool
 		expectUUIDAdded string // UUID expected to be added to filteredUUIDs
 	}{
 		"meta entry": {
-			entry:        Entry{Type: "user", IsMeta: true, UUID: "meta-1"},
-			filteredUUIDs: make(map[string]bool),
-			expected:     true,
+			entry:           Entry{Type: "user", IsMeta: true, UUID: "meta-1"},
+			filteredUUIDs:   make(map[string]bool),
+			expected:        true,
 			expectUUIDAdded: "meta-1",
 		},
 		"normal entry": {
@@ -613,7 +613,7 @@ func TestShouldFilterLocalCommand(t *testing.T) {
 				},
 			},
 			filteredUUIDs: make(map[string]bool),
-			expected:     false,
+			expected:      false,
 		},
 		"command-name with filtered parent": {
 			entry: Entry{
@@ -624,8 +624,8 @@ func TestShouldFilterLocalCommand(t *testing.T) {
 					Content: []ContentItem{{Type: "text", Text: "<command-name>/clear</command-name>"}},
 				},
 			},
-			filteredUUIDs: map[string]bool{"meta-1": true},
-			expected:     true,
+			filteredUUIDs:   map[string]bool{"meta-1": true},
+			expected:        true,
 			expectUUIDAdded: "cmd-1",
 		},
 		"command-name without filtered parent": {
@@ -638,7 +638,7 @@ func TestShouldFilterLocalCommand(t *testing.T) {
 				},
 			},
 			filteredUUIDs: make(map[string]bool),
-			expected:     false,
+			expected:      false,
 		},
 		"local-command-stdout with filtered parent": {
 			entry: Entry{
@@ -650,7 +650,7 @@ func TestShouldFilterLocalCommand(t *testing.T) {
 				},
 			},
 			filteredUUIDs: map[string]bool{"cmd-1": true},
-			expected:     true,
+			expected:      true,
 		},
 		"local-command-stdout without filtered parent": {
 			entry: Entry{
@@ -662,7 +662,7 @@ func TestShouldFilterLocalCommand(t *testing.T) {
 				},
 			},
 			filteredUUIDs: make(map[string]bool),
-			expected:     false,
+			expected:      false,
 		},
 	}
 

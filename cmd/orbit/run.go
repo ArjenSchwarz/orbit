@@ -1,0 +1,194 @@
+package main
+
+import (
+	"flag"
+	"fmt"
+	"log"
+	"os"
+	"os/exec"
+	"path/filepath"
+	"strings"
+
+	"github.com/arjenschwarz/orbit/internal/config"
+	"github.com/arjenschwarz/orbit/internal/orbit"
+)
+
+// runCommand executes the orbit run subcommand.
+// It orchestrates Claude Code sessions to implement spec phases sequentially.
+func runCommand(args []string) error {
+	fs := flag.NewFlagSet("run", flag.ExitOnError)
+
+	tasksFile := fs.String("tasks-file", "", "Path to rune tasks file (auto-detects from branch if not specified)")
+	logDir := fs.String("log-dir", "", "Base directory for session logs (default: .orbit next to tasks file)")
+	skipPermissions := fs.Bool("skip-permissions", true, "Run Claude with --dangerously-skip-permissions")
+	verbose := fs.Bool("verbose", false, "Enable verbose output")
+	dryRun := fs.Bool("dry-run", false, "Show what would be executed without running")
+	showVersion := fs.Bool("version", false, "Show version and exit")
+	commandFlag := fs.String("command", "", "Custom prompt for Claude phases")
+	postCommandFlag := fs.String("post-command", "", "Command after all tasks complete")
+	noPostCommand := fs.Bool("no-post-command", false, "Skip post-completion command")
+	dateSubdirs := fs.Bool("date-subdirs", false, "Use timestamped subdirectories for logs")
+	noContinueSession := fs.Bool("no-continue-session", false, "Start fresh sessions instead of resuming")
+
+	fs.Usage = func() {
+		fmt.Fprintf(os.Stderr, "Usage: orbit run [options]\n\n")
+		fmt.Fprintf(os.Stderr, "Orchestrate Claude Code sessions to implement spec phases sequentially.\n")
+		fmt.Fprintf(os.Stderr, "Handles session lifecycle, error recovery, and log management.\n\n")
+		fmt.Fprintf(os.Stderr, "Options:\n")
+		fs.PrintDefaults()
+		fmt.Fprintf(os.Stderr, "\nExamples:\n")
+		fmt.Fprintf(os.Stderr, "  orbit run                                  # Auto-detect tasks from current branch\n")
+		fmt.Fprintf(os.Stderr, "  orbit run --tasks-file specs/my-feature/tasks.md\n")
+		fmt.Fprintf(os.Stderr, "  orbit run --verbose --log-dir ./logs\n")
+		fmt.Fprintf(os.Stderr, "  orbit run --dry-run                        # Preview without executing\n")
+	}
+
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+
+	if *showVersion {
+		fmt.Printf("orbit version %s\n", version)
+		return nil
+	}
+
+	// Get working directory
+	workingDir, err := os.Getwd()
+	if err != nil {
+		return fmt.Errorf("failed to get working directory: %w", err)
+	}
+
+	// Get branch name
+	branchName, err := getGitBranch()
+	if err != nil {
+		return fmt.Errorf("failed to get git branch: %w", err)
+	}
+
+	// Auto-detect tasks file if not specified
+	if *tasksFile == "" {
+		detected, err := detectTasksFile(branchName)
+		if err != nil {
+			return fmt.Errorf("failed to auto-detect tasks file: %w\nUse --tasks-file to specify manually", err)
+		}
+		*tasksFile = detected
+		if *verbose {
+			log.Printf("Auto-detected tasks file: %s", *tasksFile)
+		}
+	}
+
+	// Validate tasks file exists
+	if _, err := os.Stat(*tasksFile); os.IsNotExist(err) {
+		return fmt.Errorf("tasks file not found: %s", *tasksFile)
+	}
+
+	// Set default log directory to .orbit next to tasks file
+	actualLogDir := *logDir
+	if actualLogDir == "" {
+		actualLogDir = filepath.Join(filepath.Dir(*tasksFile), ".orbit")
+	}
+
+	// Load configuration (Viper handles merging of home/project configs and env vars)
+	cfg := config.Load(workingDir)
+
+	// Apply CLI flag overrides
+	command, postCommand := resolveCommands(cfg, *commandFlag, *postCommandFlag, *noPostCommand)
+
+	// Resolve date-subdirs: CLI flag can enable (overrides config)
+	dateSubdirsValue := cfg.DateSubdirs
+	if *dateSubdirs {
+		dateSubdirsValue = true
+	}
+
+	// Resolve continue-session: CLI flag can disable (overrides config)
+	continueSessionValue := cfg.ContinueSession
+	if *noContinueSession {
+		continueSessionValue = false
+	}
+
+	// Create and run orchestrator
+	orbitCfg := orbit.Config{
+		TasksFile:       *tasksFile,
+		LogDir:          actualLogDir,
+		BranchName:      branchName,
+		SkipPermissions: *skipPermissions,
+		Verbose:         *verbose,
+		DryRun:          *dryRun,
+		WorkingDir:      workingDir,
+		Command:         command,
+		PostCommand:     postCommand,
+		DateSubdirs:     dateSubdirsValue,
+		ContinueSession: continueSessionValue,
+	}
+
+	o, err := orbit.New(orbitCfg)
+	if err != nil {
+		return fmt.Errorf("failed to initialize Orbit: %w", err)
+	}
+	defer o.Close()
+
+	if err := o.Run(); err != nil {
+		return err
+	}
+
+	log.Println("Orbit completed successfully")
+	return nil
+}
+
+// getGitBranch returns the current git branch name.
+func getGitBranch() (string, error) {
+	cmd := exec.Command("git", "rev-parse", "--abbrev-ref", "HEAD")
+	output, err := cmd.Output()
+	if err != nil {
+		return "", fmt.Errorf("not in a git repository or git not available: %w", err)
+	}
+	return strings.TrimSpace(string(output)), nil
+}
+
+// resolveCommands applies CLI flag overrides to config values.
+// Priority: CLI flags > config (which includes env vars > project > home > defaults).
+func resolveCommands(cfg *config.Config, commandFlag, postCommandFlag string, noPostCommand bool) (command, postCommand string) {
+	// Resolve effective command (priority: flag > config/env > default)
+	command = cfg.Command // Already has default from Viper
+	if commandFlag != "" {
+		command = commandFlag
+	}
+
+	// Resolve effective post-command (priority: flag > config/env > default)
+	postCommand = cfg.PostCommand
+	if cfg.IsPostCommandDisabled() {
+		postCommand = "" // Config explicitly disabled
+	}
+	if postCommandFlag != "" {
+		postCommand = postCommandFlag
+	}
+	if noPostCommand {
+		postCommand = "" // Flag disables
+	}
+
+	return command, postCommand
+}
+
+// detectTasksFile attempts to find a tasks file based on the branch name.
+func detectTasksFile(branchName string) (string, error) {
+	// Strip prefix before first slash (e.g., "feature/my-feature" -> "my-feature")
+	name := branchName
+	if _, after, found := strings.Cut(branchName, "/"); found {
+		name = after
+	}
+
+	// Try various paths
+	candidates := []string{
+		filepath.Join("specs", name, "tasks.md"),
+		filepath.Join("specs", name, "TASKS.md"),
+		filepath.Join("specs", branchName, "tasks.md"),
+		filepath.Join("specs", branchName, "TASKS.md"),
+	}
+
+	for _, candidate := range candidates {
+		if _, err := os.Stat(candidate); err == nil {
+			return candidate, nil
+		}
+	}
+
+	return "", fmt.Errorf("could not find tasks file for branch '%s'\nTried: %s", branchName, strings.Join(candidates, ", "))
+}

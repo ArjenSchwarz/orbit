@@ -107,10 +107,10 @@ func stripProjectDir(filePath, projectDir string) string {
 // renderGroup represents a group of related entries for rendering.
 // This enables grouping consecutive Read/Edit tool calls into a single block.
 type renderGroup struct {
-	Type    string       // "user", "assistant", "read_group", or "edit_group"
-	Entries []Entry      // Original entries (for user/assistant)
-	Reads   []readItem   // Grouped Read calls (for read_group)
-	Edits   []editItem   // Grouped Edit calls (for edit_group)
+	Type    string     // "user", "assistant", "read_group", or "edit_group"
+	Entries []Entry    // Original entries (for user/assistant)
+	Reads   []readItem // Grouped Read calls (for read_group)
+	Edits   []editItem // Grouped Edit calls (for edit_group)
 }
 
 // readItem represents a single Read tool call with its result.

@@ -27,8 +27,8 @@ type ParseWarning struct {
 // Malformed lines and unknown entry types are skipped with warnings.
 func ParseJSONL(r io.Reader) (*ParseResult, error) {
 	scanner := bufio.NewScanner(r)
-	buf := make([]byte, 0, 64*1024)       // 64KB initial
-	scanner.Buffer(buf, 10*1024*1024)     // 10MB max
+	buf := make([]byte, 0, 64*1024)   // 64KB initial
+	scanner.Buffer(buf, 10*1024*1024) // 10MB max
 
 	result := &ParseResult{
 		Entries:  []Entry{},

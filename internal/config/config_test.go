@@ -485,3 +485,123 @@ func TestIsPostCommandDisabled(t *testing.T) {
 		})
 	}
 }
+
+// Tests for serve configuration (ServePort, ServeBind)
+
+func TestLoad_ServeDefaults(t *testing.T) {
+	// Create empty temp directory without config
+	tmpDir := t.TempDir()
+	homeDir := t.TempDir()
+
+	// Isolate from real home config
+	t.Setenv("HOME", homeDir)
+
+	cfg := Load(tmpDir)
+
+	if cfg.ServePort != DefaultServePort {
+		t.Errorf("expected default ServePort %d, got %d", DefaultServePort, cfg.ServePort)
+	}
+	if cfg.ServeBind != DefaultServeBind {
+		t.Errorf("expected default ServeBind %q, got %q", DefaultServeBind, cfg.ServeBind)
+	}
+}
+
+func TestLoad_ServeFromConfig(t *testing.T) {
+	tmpDir := t.TempDir()
+	homeDir := t.TempDir()
+
+	t.Setenv("HOME", homeDir)
+
+	// Write project config with serve values
+	projectConfig := `serve-port: 9000
+serve-bind: "0.0.0.0"
+`
+	if err := os.WriteFile(filepath.Join(tmpDir, ".orbit.yaml"), []byte(projectConfig), 0644); err != nil {
+		t.Fatalf("failed to write project config: %v", err)
+	}
+
+	cfg := Load(tmpDir)
+
+	if cfg.ServePort != 9000 {
+		t.Errorf("expected ServePort 9000, got %d", cfg.ServePort)
+	}
+	if cfg.ServeBind != "0.0.0.0" {
+		t.Errorf("expected ServeBind %q, got %q", "0.0.0.0", cfg.ServeBind)
+	}
+}
+
+func TestLoad_ServeEnvOverride(t *testing.T) {
+	tmpDir := t.TempDir()
+	homeDir := t.TempDir()
+
+	t.Setenv("HOME", homeDir)
+
+	// Write project config with serve values
+	projectConfig := `serve-port: 9000
+serve-bind: "0.0.0.0"
+`
+	if err := os.WriteFile(filepath.Join(tmpDir, ".orbit.yaml"), []byte(projectConfig), 0644); err != nil {
+		t.Fatalf("failed to write project config: %v", err)
+	}
+
+	// Set environment variables to override
+	t.Setenv("ORBIT_SERVE_PORT", "3000")
+	t.Setenv("ORBIT_SERVE_BIND", "192.168.1.1")
+
+	cfg := Load(tmpDir)
+
+	if cfg.ServePort != 3000 {
+		t.Errorf("expected ServePort 3000 from env var, got %d", cfg.ServePort)
+	}
+	if cfg.ServeBind != "192.168.1.1" {
+		t.Errorf("expected ServeBind %q from env var, got %q", "192.168.1.1", cfg.ServeBind)
+	}
+}
+
+func TestLoad_ServeHomeConfigMerge(t *testing.T) {
+	tmpDir := t.TempDir()
+	homeDir := t.TempDir()
+
+	t.Setenv("HOME", homeDir)
+
+	// Home config sets both serve options
+	homeConfig := `serve-port: 8888
+serve-bind: "127.0.0.1"
+`
+	if err := os.WriteFile(filepath.Join(homeDir, ".orbit.yaml"), []byte(homeConfig), 0644); err != nil {
+		t.Fatalf("failed to write home config: %v", err)
+	}
+
+	// Project config only overrides port
+	projectConfig := `serve-port: 9999
+`
+	if err := os.WriteFile(filepath.Join(tmpDir, ".orbit.yaml"), []byte(projectConfig), 0644); err != nil {
+		t.Fatalf("failed to write project config: %v", err)
+	}
+
+	cfg := Load(tmpDir)
+
+	// Project port should override home port
+	if cfg.ServePort != 9999 {
+		t.Errorf("expected ServePort 9999 from project config, got %d", cfg.ServePort)
+	}
+	// Home bind should be preserved since project didn't override
+	if cfg.ServeBind != "127.0.0.1" {
+		t.Errorf("expected ServeBind %q from home config, got %q", "127.0.0.1", cfg.ServeBind)
+	}
+}
+
+func TestLoad_ServeInvalidEnvPort(t *testing.T) {
+	tmpDir := t.TempDir()
+	homeDir := t.TempDir()
+
+	t.Setenv("HOME", homeDir)
+	t.Setenv("ORBIT_SERVE_PORT", "invalid")
+
+	cfg := Load(tmpDir)
+
+	// Invalid port should fall back to default
+	if cfg.ServePort != DefaultServePort {
+		t.Errorf("expected default ServePort %d for invalid env, got %d", DefaultServePort, cfg.ServePort)
+	}
+}

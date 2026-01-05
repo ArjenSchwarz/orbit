@@ -16,6 +16,7 @@ import (
 	"github.com/arjenschwarz/orbit/internal/display"
 	orberrors "github.com/arjenschwarz/orbit/internal/errors"
 	"github.com/arjenschwarz/orbit/internal/logs"
+	"github.com/arjenschwarz/orbit/internal/registry"
 	"github.com/arjenschwarz/orbit/internal/rune"
 	"github.com/google/uuid"
 )
@@ -49,14 +50,17 @@ type Config struct {
 
 // Orbit orchestrates Claude Code sessions to implement spec phases.
 type Orbit struct {
-	config         Config
-	runeClient     *rune.Client
-	claudeClient   claudeRunner
-	logManager     *logs.Manager
-	phaseSummaries []rune.PhaseSummary
-	spinner        *display.Spinner
-	shutdownCtx    context.Context
-	shutdownCancel context.CancelFunc
+	config              Config
+	runeClient          *rune.Client
+	claudeClient        claudeRunner
+	logManager          *logs.Manager
+	phaseSummaries      []rune.PhaseSummary
+	spinner             *display.Spinner
+	shutdownCtx         context.Context
+	shutdownCancel      context.CancelFunc
+	registry            *registry.Registry // Web interface run registry
+	runID               string             // UUID of the current run in registry
+	currentPhaseRunCount int               // Track retry count for current phase
 }
 
 // New creates a new Orbit instance.
@@ -94,6 +98,23 @@ func New(config Config) (*Orbit, error) {
 	ctx, cancel := signal.NotifyContext(context.Background(),
 		os.Interrupt, syscall.SIGTERM)
 
+	// Initialize registry for web interface integration
+	// Failures are non-fatal (requirement 3.7)
+	var reg *registry.Registry
+	if !config.DryRun {
+		homeDir, err := os.UserHomeDir()
+		if err == nil {
+			registryDir := homeDir + "/.orbit/runs"
+			reg, err = registry.New(registryDir)
+			if err != nil {
+				log.Printf("Warning: failed to initialize registry: %v", err)
+				reg = nil
+			}
+		} else {
+			log.Printf("Warning: failed to get home directory for registry: %v", err)
+		}
+	}
+
 	return &Orbit{
 		config:         config,
 		runeClient:     runeClient,
@@ -102,6 +123,7 @@ func New(config Config) (*Orbit, error) {
 		spinner:        spin,
 		shutdownCtx:    ctx,
 		shutdownCancel: cancel,
+		registry:       reg,
 	}, nil
 }
 
@@ -124,6 +146,14 @@ func (o *Orbit) Run() error {
 	// Display phase overview at startup
 	if err := o.displayPhaseOverview(); err != nil {
 		log.Printf("Warning: could not display phase overview: %v", err)
+	}
+
+	// Register run in web interface registry (req 3.1)
+	if runID, err := o.registerRun(); err == nil && runID != "" {
+		o.runID = runID
+		if o.config.Verbose {
+			log.Printf("Registered run: %s", runID)
+		}
 	}
 
 	for {
@@ -194,6 +224,9 @@ func (o *Orbit) complete() error {
 		}
 		log.Println("Post-completion command finished")
 	}
+
+	// Update registry status to completed (req 3.2)
+	o.updateRunStatus(registry.StatusCompleted)
 
 	if o.logManager != nil {
 		if err := o.logManager.Complete(); err != nil {
@@ -268,10 +301,18 @@ func (o *Orbit) displayPhaseOverview() error {
 // runPhaseWithRetry executes a phase with retry logic for transient errors.
 func (o *Orbit) runPhaseWithRetry(phase int) error {
 	var lastErr error
+	o.currentPhaseRunCount = 0
 
 	for attempt := range maxRetries {
+		o.currentPhaseRunCount++
+
+		// Update phase status to running (req 3.5)
+		o.updatePhaseStatus(phase, registry.PhaseStatusRunning, o.currentPhaseRunCount)
+
 		err := o.runPhase(phase)
 		if err == nil {
+			// Update phase status to completed (req 3.6)
+			o.updatePhaseStatus(phase, registry.PhaseStatusCompleted, o.currentPhaseRunCount)
 			return nil
 		}
 
@@ -329,6 +370,9 @@ func (o *Orbit) runPhaseWithRetry(phase int) error {
 			o.spinner.Stop()
 		}
 	}
+
+	// Update phase status to failed after max retries (req 3.6)
+	o.updatePhaseStatus(phase, registry.PhaseStatusFailed, o.currentPhaseRunCount)
 
 	return fmt.Errorf("max retries exceeded: %w", lastErr)
 }
@@ -572,6 +616,10 @@ func (o *Orbit) fail(err error) error {
 	if o.spinner != nil {
 		o.spinner.Stop()
 	}
+
+	// Update registry status to failed (req 3.3)
+	o.updateRunStatus(registry.StatusFailed)
+
 	if o.logManager != nil {
 		_ = o.logManager.Fail(err)
 		// Print index links even on failure for debugging
@@ -605,4 +653,81 @@ func isSessionInvalidError(result *claude.SessionResult) bool {
 	}
 
 	return false
+}
+
+// registerRun creates a new registry entry for this orchestration run.
+// Returns the run ID and any error. Errors are logged but not fatal (req 3.7).
+func (o *Orbit) registerRun() (string, error) {
+	if o.registry == nil {
+		return "", nil
+	}
+
+	entry := registry.NewRunEntry()
+	entry.Name = o.config.BranchName
+	entry.Repository = registry.GetRepository(o.config.WorkingDir)
+	entry.Branch = o.config.BranchName
+	entry.Status = registry.StatusRunning
+	entry.StartedAt = time.Now()
+
+	// Set log directory
+	if o.logManager != nil {
+		entry.LogDir = o.logManager.SessionDir()
+	} else {
+		entry.LogDir = o.config.LogDir
+	}
+
+	// Set PID for auto-registered runs
+	pid := os.Getpid()
+	entry.PID = &pid
+
+	if err := o.registry.Register(entry); err != nil {
+		log.Printf("Warning: failed to register run: %v", err)
+		return "", nil
+	}
+
+	return entry.ID, nil
+}
+
+// updatePhaseStatus updates the phase status in the registry.
+// Failures are logged but not fatal (req 3.7).
+func (o *Orbit) updatePhaseStatus(phaseNum int, status registry.PhaseStatus, runCount int) {
+	if o.registry == nil || o.runID == "" {
+		return
+	}
+
+	phase := registry.Phase{
+		Number:   phaseNum,
+		Status:   status,
+		RunCount: runCount,
+	}
+
+	if err := o.registry.UpdatePhase(o.runID, phase); err != nil {
+		log.Printf("Warning: failed to update phase status: %v", err)
+	}
+}
+
+// updateRunStatus updates the run status in the registry.
+// Failures are logged but not fatal (req 3.7).
+func (o *Orbit) updateRunStatus(status registry.RunStatus) {
+	if o.registry == nil || o.runID == "" {
+		return
+	}
+
+	entry, err := o.registry.Get(o.runID)
+	if err != nil {
+		log.Printf("Warning: failed to get run for status update: %v", err)
+		return
+	}
+	if entry == nil {
+		log.Printf("Warning: run entry not found for status update: %s", o.runID)
+		return
+	}
+
+	entry.Status = status
+	now := time.Now()
+	entry.FinishedAt = &now
+
+	if err := o.registry.Register(entry); err != nil {
+		log.Printf("Warning: failed to update run status: %v", err)
+	}
 }
