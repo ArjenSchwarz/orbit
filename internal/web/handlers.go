@@ -20,10 +20,14 @@ import (
 //go:embed templates/*
 var templatesFS embed.FS
 
+// CSSVersion is used for cache busting. Bump when CSS changes.
+const CSSVersion = "2"
+
 // TemplateData is the base data for all templates.
 type TemplateData struct {
 	Title      string
 	CurrentURL string
+	CSSVersion string
 }
 
 // DashboardData is passed to dashboard.html.
@@ -52,13 +56,14 @@ type RunSummary struct {
 // RunDetailData is passed to run_detail.html.
 type RunDetailData struct {
 	TemplateData
-	Run        *registry.RunEntry
-	Phases     []PhaseView
-	Duration   string
-	StartedAt  string
-	FinishedAt string
-	Summary    *logs.Summary
-	Missing    bool
+	Run               *registry.RunEntry
+	Phases            []PhaseView
+	Duration          string
+	StartedAt         string
+	FinishedAt        string
+	Summary           *logs.Summary
+	Missing           bool
+	HasPostCompletion bool
 }
 
 // PhaseView represents a phase for display.
@@ -72,13 +77,14 @@ type PhaseView struct {
 // TranscriptData is passed to transcript.html.
 type TranscriptData struct {
 	TemplateData
-	RunID     string
-	RunName   string
-	Phase     int
-	RunNumber int
-	Content   template.HTML
-	PrevPhase *int
-	NextPhase *int
+	RunID            string
+	RunName          string
+	Phase            int
+	RunNumber        int
+	Content          template.HTML
+	PrevPhase        *int
+	NextPhase        *int
+	IsPostCompletion bool
 }
 
 // ErrorData is passed to error.html.
@@ -136,6 +142,7 @@ func (s *Server) buildDashboardData(entries []*registry.RunEntry, currentURL str
 			TemplateData: TemplateData{
 				Title:      "Dashboard",
 				CurrentURL: currentURL,
+				CSSVersion: CSSVersion,
 			},
 			Empty: true,
 		}
@@ -188,6 +195,7 @@ func (s *Server) buildDashboardData(entries []*registry.RunEntry, currentURL str
 		TemplateData: TemplateData{
 			Title:      "Dashboard",
 			CurrentURL: currentURL,
+			CSSVersion: CSSVersion,
 		},
 		Repositories: groups,
 		Empty:        false,
@@ -238,6 +246,7 @@ func (s *Server) buildRunDetailData(entry *registry.RunEntry, currentURL string)
 		TemplateData: TemplateData{
 			Title:      entry.Name,
 			CurrentURL: currentURL,
+			CSSVersion: CSSVersion,
 		},
 		Run:       entry,
 		StartedAt: entry.StartedAt.Format("Jan 2, 2006 15:04:05"),
@@ -275,6 +284,9 @@ func (s *Server) buildRunDetailData(entry *registry.RunEntry, currentURL string)
 		})
 	}
 
+	// Check for post-completion transcript
+	data.HasPostCompletion = s.hasPostCompletionTranscript(entry.LogDir)
+
 	return data
 }
 
@@ -294,28 +306,46 @@ func (s *Server) hasTranscriptFile(logDir string, phase int) bool {
 	return false
 }
 
+// hasPostCompletionTranscript checks if a post-completion transcript exists.
+func (s *Server) hasPostCompletionTranscript(logDir string) bool {
+	patterns := []string{
+		"post-completion-session-transcript.jsonl",
+		"post-completion-run-*-session-transcript.jsonl",
+	}
+
+	for _, pattern := range patterns {
+		matches, _ := filepath.Glob(filepath.Join(logDir, pattern))
+		if len(matches) > 0 {
+			return true
+		}
+	}
+	return false
+}
+
+// findPostCompletionTranscript finds the post-completion transcript file.
+func (s *Server) findPostCompletionTranscript(logDir string, runNumber int) string {
+	// Try run-specific file first
+	if runNumber > 1 {
+		runPath := filepath.Join(logDir, fmt.Sprintf("post-completion-run-%d-session-transcript.jsonl", runNumber))
+		if _, err := os.Stat(runPath); err == nil {
+			return runPath
+		}
+	}
+
+	// Try generic post-completion file
+	path := filepath.Join(logDir, "post-completion-session-transcript.jsonl")
+	if _, err := os.Stat(path); err == nil {
+		return path
+	}
+
+	return ""
+}
+
 // handleTranscript renders the transcript page.
 func (s *Server) handleTranscript(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
 	phaseStr := r.PathValue("phase")
 	runStr := r.PathValue("run")
-
-	// Parse phase number
-	phase, err := strconv.Atoi(phaseStr)
-	if err != nil || phase < 1 {
-		s.handleNotFound(w, r)
-		return
-	}
-
-	// Parse optional run number (default to 1)
-	runNumber := 1
-	if runStr != "" {
-		runNumber, err = strconv.Atoi(runStr)
-		if err != nil || runNumber < 1 {
-			s.handleNotFound(w, r)
-			return
-		}
-	}
 
 	entry, err := s.registry.Get(id)
 	if err != nil {
@@ -327,8 +357,39 @@ func (s *Server) handleTranscript(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Find transcript file
-	transcriptPath := s.findTranscriptFile(entry.LogDir, phase, runNumber)
+	// Parse optional run number (default to 1)
+	runNumber := 1
+	if runStr != "" {
+		var parseErr error
+		runNumber, parseErr = strconv.Atoi(runStr)
+		if parseErr != nil || runNumber < 1 {
+			s.handleNotFound(w, r)
+			return
+		}
+	}
+
+	// Handle post-completion transcript
+	isPostCompletion := phaseStr == "post"
+
+	var transcriptPath string
+	var phase int
+	var title string
+
+	if isPostCompletion {
+		transcriptPath = s.findPostCompletionTranscript(entry.LogDir, runNumber)
+		title = "Post-Completion Transcript"
+	} else {
+		// Parse phase number
+		var parseErr error
+		phase, parseErr = strconv.Atoi(phaseStr)
+		if parseErr != nil || phase < 1 {
+			s.handleNotFound(w, r)
+			return
+		}
+		transcriptPath = s.findTranscriptFile(entry.LogDir, phase, runNumber)
+		title = fmt.Sprintf("Phase %d Transcript", phase)
+	}
+
 	if transcriptPath == "" {
 		s.handleNotFound(w, r)
 		return
@@ -354,38 +415,50 @@ func (s *Server) handleTranscript(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Build navigation
+	// Build navigation (only for phase transcripts)
 	var prevPhase, nextPhase *int
-	for _, p := range entry.Phases {
-		if p.Number == phase-1 {
-			prev := p.Number
-			prevPhase = &prev
-		}
-		if p.Number == phase+1 {
-			next := p.Number
-			nextPhase = &next
+	if !isPostCompletion {
+		for _, p := range entry.Phases {
+			if p.Number == phase-1 {
+				prev := p.Number
+				prevPhase = &prev
+			}
+			if p.Number == phase+1 {
+				next := p.Number
+				nextPhase = &next
+			}
 		}
 	}
 
 	// Render transcript content
 	opts := transcript.RenderOptions{
-		Title:      fmt.Sprintf("Phase %d Transcript", phase),
+		Title:      title,
 		ProjectDir: entry.LogDir,
 	}
 	content := transcript.RenderHTMLFragment(result.Entries, opts)
 
+	// Build page title
+	var pageTitle string
+	if isPostCompletion {
+		pageTitle = fmt.Sprintf("%s - Post-Completion", entry.Name)
+	} else {
+		pageTitle = fmt.Sprintf("%s - Phase %d", entry.Name, phase)
+	}
+
 	data := TranscriptData{
 		TemplateData: TemplateData{
-			Title:      fmt.Sprintf("%s - Phase %d", entry.Name, phase),
+			Title:      pageTitle,
 			CurrentURL: r.URL.Path,
+			CSSVersion: CSSVersion,
 		},
-		RunID:     entry.ID,
-		RunName:   entry.Name,
-		Phase:     phase,
-		RunNumber: runNumber,
-		Content:   template.HTML(content),
-		PrevPhase: prevPhase,
-		NextPhase: nextPhase,
+		RunID:            entry.ID,
+		RunName:          entry.Name,
+		Phase:            phase,
+		RunNumber:        runNumber,
+		Content:          template.HTML(content),
+		PrevPhase:        prevPhase,
+		NextPhase:        nextPhase,
+		IsPostCompletion: isPostCompletion,
 	}
 
 	s.renderTemplate(w, "layout.html", "transcript.html", data)
@@ -421,6 +494,7 @@ func (s *Server) handleError(w http.ResponseWriter, r *http.Request, code int, m
 		TemplateData: TemplateData{
 			Title:      fmt.Sprintf("%d Error", code),
 			CurrentURL: r.URL.Path,
+			CSSVersion: CSSVersion,
 		},
 		Code:    code,
 		Message: message,

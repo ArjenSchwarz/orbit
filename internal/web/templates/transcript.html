@@ -16,7 +16,11 @@
         {{end}}
     </nav>
 
+    {{if .IsPostCompletion}}
+    <h2>{{.RunName}} - Post-Completion</h2>
+    {{else}}
     <h2>{{.RunName}} - Phase {{.Phase}}</h2>
+    {{end}}
     {{if gt .RunNumber 1}}
     <p>Run {{.RunNumber}}</p>
     {{end}}

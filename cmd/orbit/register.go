@@ -117,6 +117,7 @@ func registerCommand(args []string) error {
 
 // resolvePath resolves the input path to an absolute log directory path.
 // When path is ".", it looks for ".orbit/" in the current directory.
+// When path points to a directory with a ".orbit" subdirectory, it uses that.
 func resolvePath(path string) (string, error) {
 	if path == "." {
 		cwd, err := os.Getwd()
@@ -136,6 +137,13 @@ func resolvePath(path string) (string, error) {
 	absPath, err := filepath.Abs(path)
 	if err != nil {
 		return "", fmt.Errorf("failed to resolve path: %w", err)
+	}
+
+	// If path has a .orbit subdirectory, use that instead
+	// This allows users to pass specs/feature-name instead of specs/feature-name/.orbit
+	orbitSubdir := filepath.Join(absPath, ".orbit")
+	if info, err := os.Stat(orbitSubdir); err == nil && info.IsDir() {
+		return orbitSubdir, nil
 	}
 
 	return absPath, nil

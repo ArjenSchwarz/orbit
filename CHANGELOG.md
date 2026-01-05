@@ -9,6 +9,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Post-completion transcript viewing in web interface:
+  - `hasPostCompletionTranscript()` method to detect post-completion transcript files
+  - `findPostCompletionTranscript()` method to locate transcript files
+  - Post-completion section in run detail page with link to transcript
+  - Support for `/runs/{id}/transcript/post` URL pattern
+  - `IsPostCompletion` field in `TranscriptData` for template conditional rendering
+- CSS cache busting with version query parameter:
+  - `CSSVersion` constant for cache invalidation (bump when CSS changes)
+  - `CSSVersion` field in `TemplateData` propagated to all page templates
+  - CSS link updated to include `?v={{.CSSVersion}}` query parameter
+- Transcript styling in web interface:
+  - Full transcript CSS from standalone HTML renderer added to `style.css`
+  - Message styles (user/assistant with distinct colors)
+  - Thinking block styles with amber accent
+  - Tool use/result styles with collapsible details
+  - Markdown content styles (headings, lists, code, blockquotes)
+  - Patch/diff styles with colored additions/deletions
+  - Navigation bar styles with mobile responsive layout
+  - Dark mode support for all transcript elements
+- Auto-detection of `.orbit` subdirectory in `orbit register`:
+  - When registering a specs directory, automatically uses `.orbit` subdirectory if present
+  - Allows `orbit register specs/feature` instead of `orbit register specs/feature/.orbit`
+
+### Added
+
 - Auto-registration integration for web interface (Phase 6):
   - Orbit runs automatically register with the web interface registry on start
   - Registry entry created with status "running", PID, and log directory

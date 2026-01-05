@@ -73,6 +73,16 @@
 {{else}}
 <p class="empty-state">No phases recorded yet.</p>
 {{end}}
+
+{{if .HasPostCompletion}}
+<h3>Post-Completion</h3>
+<div class="phase-list">
+    <div class="phase-item">
+        <span class="phase-number">Post-Completion</span>
+        <a href="/runs/{{.Run.ID}}/transcript/post" class="btn">View Transcript</a>
+    </div>
+</div>
+{{end}}
 {{end}}
 
 {{define "run_status_content"}}
