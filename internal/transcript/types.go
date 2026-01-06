@@ -5,6 +5,15 @@ import (
 	"encoding/json"
 )
 
+// Format represents the detected log format.
+type Format int
+
+const (
+	FormatUnknown Format = iota
+	FormatClaude
+	FormatCodex
+)
+
 // Entry represents a single line in the Claude session JSONL.
 type Entry struct {
 	Type            string         `json:"type"`

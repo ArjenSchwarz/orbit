@@ -1,0 +1,15 @@
+{"timestamp":"2026-01-04T13:22:15.725Z","type":"session_meta","payload":{"id":"edge-case-session","cwd":"/test"}}
+{"timestamp":"2026-01-04T13:22:16.000Z","type":"response_item","payload":{"type":"message","role":"user","content":[{"type":"input_text","text":"Test edge cases"}]}}
+this is not valid json - should be skipped with warning
+{"timestamp":"2026-01-04T13:22:17.000Z","type":"response_item","payload":{"type":"function_call","name":"shell_command","arguments":"{\"command\":\"echo test\"}","call_id":"call_orphaned"}}
+{"timestamp":"2026-01-04T13:22:18.000Z","type":"response_item","payload":{"type":"function_call_output","call_id":"call_nonexistent","output":"This output has no matching function_call"}}
+{"timestamp":"2026-01-04T13:22:19.000Z","type":"unknown_event_type","payload":{"data":"should be skipped"}}
+{"timestamp":"2026-01-04T13:22:20.000Z","type":"response_item","payload":{"type":"message","role":"assistant","content":[]}}
+{"timestamp":"2026-01-04T13:22:21.000Z","type":"response_item","payload":{"type":"message","role":"assistant","content":[{"type":"output_text","text":""}]}}
+{"timestamp":"2026-01-04T13:22:22.000Z","type":"event_msg","payload":{"type":"unknown_event_msg_type","data":"should be skipped"}}
+{"timestamp":"2026-01-04T13:22:23.000Z","type":"response_item","payload":{"type":"function_call","name":"multi_output_tool","arguments":"{}","call_id":"call_multi"}}
+{"timestamp":"2026-01-04T13:22:23.100Z","type":"response_item","payload":{"type":"function_call_output","call_id":"call_multi","output":"First output chunk"}}
+{"timestamp":"2026-01-04T13:22:23.200Z","type":"response_item","payload":{"type":"function_call_output","call_id":"call_multi","output":"Second output chunk"}}
+{"timestamp":"2026-01-04T13:22:23.300Z","type":"response_item","payload":{"type":"function_call_output","call_id":"call_multi","output":"Third output chunk"}}
+{"timestamp":"2026-01-04T13:22:24.000Z","type":"response_item","payload":{"type":"message","role":"assistant","content":[{"type":"output_text","text":"Done with edge case tests"}]}}
+{"incomplete json line

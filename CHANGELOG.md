@@ -9,6 +9,74 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Final integration tests for Codex support (Phase 6):
+  - CLI integration tests for Codex session conversion to Markdown
+  - CLI integration tests for Codex session conversion to HTML
+  - Integration tests for Codex reasoning block rendering
+  - Integration tests for apsis with Codex file path input
+  - Integration tests for mixed Claude/Codex session listing (`apsis --list`)
+  - Integration tests verifying correct source indicators (`[claude]` / `[codex]`)
+  - Integration tests verifying timestamp-based sorting with Claude-first tie-breaking
+  - Full test suite verification: all existing and new tests pass
+  - Linter verification: no lint errors or warnings
+- Error handling and negative tests for Codex support (Phase 5):
+  - Negative tests for empty file, whitespace-only file, invalid first line JSON, and unknown format type errors
+  - Negative tests for malformed middle line warnings with line number validation
+  - Negative tests for all-lines-malformed errors and truncated last line handling
+  - Negative tests for Codex-specific error cases: orphaned output warnings, missing type/payload fields, unrecognized event types
+  - Negative tests for session discovery: invalid UUID search behavior, symlink to missing path, broken symlinks, empty file filtering
+  - Warning summary output: "Parsed with N warning(s)" printed to stderr after parsing
+  - Tool name display tests verifying shell_command and other Codex tool names are preserved exactly
+  - Arguments JSON parsing tests verifying complex structures and raw fallback for invalid JSON
+- Codex session discovery and unified session listing (Phase 4):
+  - `findCodexSession()` function for searching `~/.codex/sessions/` by UUID
+  - Case-insensitive UUID matching with exact 36-character validation
+  - `walkDirFollowSymlinks()` function with cycle detection for symlink-safe directory traversal
+  - `getCodexSessionTimestamp()` function to extract timestamp from Codex `session_meta` events with file mtime fallback
+  - `listCodexSessions()` function to enumerate all Codex sessions with UUID extraction from filenames
+  - `listClaudeSessions()` function extracted from `listSessions()` for modular session discovery
+  - `listAllSessions()` function merging Claude and Codex sessions with unified sorting
+  - `sortSessionsByTimestamp()` with Claude-first tie-breaking for identical timestamps
+  - Updated `SessionInfo` struct with `Source` field ("claude" or "codex")
+  - Updated `listSessions()` to display unified listing with source indicator (`[claude]` or `[codex]`)
+  - Updated `resolveInput()` to check Claude location first, then Codex location for session ID resolution
+  - Unit tests for all session discovery functions: UUID matching, directory traversal, empty/non-existent directories, symlink following, cycle detection, timestamp extraction, unified listing, Claude-first priority
+- Parser integration for Codex format (Phase 3):
+  - `ParseJSONL()` now auto-detects format and dispatches to appropriate parser (Claude or Codex)
+  - `parseClaudeJSONL()` internal function extracted from previous `ParseJSONL()` implementation
+  - `readFirstNonEmptyLineFromBufReader()` function for buffered reader position-preserving line reading
+  - Streaming architecture preserved using `io.MultiReader` to combine first line with remaining content
+  - Unit tests for format dispatch: Claude format detection, Codex format detection, error propagation
+  - Integration tests for Codex to Markdown/HTML rendering pipeline
+  - Golden file tests for Codex rendering consistency (`testdata/codex/basic.jsonl`, `testdata/codex/reasoning.jsonl`)
+- Codex JSONL parser implementation (Phase 2):
+  - `codex_types.go` with Codex struct definitions: `CodexEntry`, `CodexResponseItem`, `CodexContent`, `CodexSummary`, `CodexEventMsg`, `CodexSessionMeta`
+  - `codex_parser.go` with `ParseCodexJSONL()` function and entry conversion functions
+  - Entry consolidation logic that groups consecutive assistant events into single entries
+  - Function call linking via `call_id` between `function_call` and `function_call_output` events
+  - Support for multiple outputs per function call (streaming tool results)
+  - Reasoning extraction from both `reasoning` response items and `agent_reasoning` event messages
+  - Metadata event filtering: skips `session_meta`, `turn_context`, `token_count`, `user_message`, and `ghost_snapshot` events
+  - Orphaned output handling with warnings for unmatched `function_call_output` entries
+  - Unknown content type fallback to raw JSON text rendering
+  - Test data files: `codex_valid.jsonl` and `codex_edge_cases.jsonl`
+  - Unit tests for all Codex type unmarshaling with missing/extra field handling
+  - Unit tests for parser covering message conversion, function call linking, reasoning extraction, event filtering, entry consolidation, malformed lines, and edge cases
+  - Property-based tests using pgregory.net/rapid for format detection idempotence, text preservation in normalization, and tool call linking correctness
+- Format detection for Codex log support (Phase 1):
+  - `Format` enum type with `FormatUnknown`, `FormatClaude`, and `FormatCodex` values in types.go
+  - `DetectFormat()` function to automatically detect log format from first non-empty JSONL line
+  - Claude format detection for `user` and `assistant` type values
+  - Codex format detection for `session_meta`, `response_item`, `event_msg`, and `turn_context` type values
+  - UTF-8 BOM stripping for cross-platform compatibility
+  - `readFirstNonEmptyLine()` helper function for robust format detection
+  - Error messages following requirements: "empty file", "failed to parse first line as JSON", "unrecognized log format: type field value '{value}'"
+  - Unit tests covering Claude detection, Codex detection, empty file, whitespace-only, invalid JSON, BOM handling, and unrecognized types
+- Codex log format support specification documents:
+  - `specs/codex-support/requirements.md` with 9 requirement sections covering format detection, Codex session discovery, session listing, JSONL parsing, content type mapping, metadata event filtering, tool name display, output compatibility, and error handling
+  - `specs/codex-support/design.md` with architecture, components, data models, error handling, and testing strategy including property-based testing and golden file tests
+  - `specs/codex-support/decision_log.md` with 9 design decisions (transparent CLI interface, unified session listing, warn-and-continue error handling, reasoning summary display, metadata filtering, Apsis-only scope, Claude-first discovery priority, authentic tool names, robust format detection)
+  - `specs/codex-support/tasks.md` with 6 implementation phases and 26 tasks following TDD approach
 - Post-completion transcript viewing in web interface:
   - `hasPostCompletionTranscript()` method to detect post-completion transcript files
   - `findPostCompletionTranscript()` method to locate transcript files
@@ -87,6 +155,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- `ParseJSONL()` empty file handling: now returns `"empty file"` error instead of empty result (breaking change for callers expecting empty result)
 - Removed placeholder `serveCommand` from `cmd/orbit/main.go`
 - Removed unused `fmt` import from `cmd/orbit/main.go`
 

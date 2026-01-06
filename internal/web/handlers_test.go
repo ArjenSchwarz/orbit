@@ -211,8 +211,8 @@ func TestHandleTranscript(t *testing.T) {
 	// Create log directory with a transcript file
 	logDir := t.TempDir()
 	transcriptFile := filepath.Join(logDir, "phase-1-transcript.jsonl")
-	transcriptContent := `{"type":"summary","cwd":"/test","session_id":"test-session"}
-{"type":"user","message":{"role":"user","content":[{"type":"text","text":"Hello"}]}}
+	// Note: First line must be a valid Claude format type for format detection
+	transcriptContent := `{"type":"user","message":{"role":"user","content":[{"type":"text","text":"Hello"}]},"cwd":"/test","session_id":"test-session"}
 {"type":"assistant","message":{"role":"assistant","content":[{"type":"text","text":"Hi there!"}]}}`
 	if err := os.WriteFile(transcriptFile, []byte(transcriptContent), 0644); err != nil {
 		t.Fatalf("failed to write transcript: %v", err)

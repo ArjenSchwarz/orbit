@@ -3,11 +3,15 @@
 package main
 
 import (
+	"bufio"
+	"encoding/json"
 	"flag"
 	"fmt"
 	"io"
+	"io/fs"
 	"os"
 	"path/filepath"
+	"regexp"
 	"sort"
 	"strings"
 	"time"
@@ -35,6 +39,7 @@ type SessionInfo struct {
 	ID        string
 	CreatedAt time.Time
 	Size      int64
+	Source    string // "claude" or "codex"
 }
 
 func main() {
@@ -195,6 +200,7 @@ func isInputFromPipe() bool {
 }
 
 // resolveInput determines the input source and returns a reader and session ID.
+// It checks Claude location first, then Codex location.
 func resolveInput(arg string, projectPath string) (io.ReadCloser, string, error) {
 	// If no argument, read from stdin
 	if arg == "" {
@@ -215,44 +221,285 @@ func resolveInput(arg string, projectPath string) (io.ReadCloser, string, error)
 		return f, sessionID, nil
 	}
 
-	// Treat as session ID - look up in Claude projects directory
-	claudeProjectPath := claude.BuildProjectPath(projectPath)
+	// Treat as session ID - check Claude location first, then Codex
 	homeDir, err := os.UserHomeDir()
 	if err != nil {
 		return nil, "", fmt.Errorf("failed to get home directory: %w", err)
 	}
 
-	sessionFile := filepath.Join(homeDir, ".claude", "projects", claudeProjectPath, arg+".jsonl")
-	f, err := os.Open(sessionFile)
-	if err != nil {
-		if os.IsNotExist(err) {
-			return nil, "", fmt.Errorf("session not found: %s\nExpected file: %s", arg, sessionFile)
-		}
-		return nil, "", fmt.Errorf("failed to open session file: %w", err)
+	// Try Claude location first
+	claudeProjectPath := claude.BuildProjectPath(projectPath)
+	claudeSessionFile := filepath.Join(homeDir, ".claude", "projects", claudeProjectPath, arg+".jsonl")
+	if f, err := os.Open(claudeSessionFile); err == nil {
+		return f, arg, nil
 	}
 
-	return f, arg, nil
+	// Try Codex location second
+	codexPath, err := findCodexSession(homeDir, arg)
+	if err != nil {
+		return nil, "", fmt.Errorf("failed to search Codex sessions: %w", err)
+	}
+	if codexPath != "" {
+		f, err := os.Open(codexPath)
+		if err != nil {
+			return nil, "", fmt.Errorf("failed to open Codex session file: %w", err)
+		}
+		return f, arg, nil
+	}
+
+	// Not found in either location
+	return nil, "", fmt.Errorf("session not found: %s", arg)
 }
 
-// listSessions lists all sessions for a project.
+// listSessions lists all sessions for a project from both Claude and Codex sources.
 func listSessions(projectPath string) error {
+	sessions, err := listAllSessions(projectPath)
+	if err != nil {
+		return err
+	}
+
+	if len(sessions) == 0 {
+		fmt.Println("no sessions found")
+		return nil
+	}
+
+	// Print sessions with source indicator
+	for _, s := range sessions {
+		fmt.Printf("[%s]\t%s\t%s\t%s\n", s.Source, s.ID, s.CreatedAt.Format(time.RFC3339), formatSize(s.Size))
+	}
+
+	return nil
+}
+
+// formatSize formats a file size in human-readable format.
+func formatSize(bytes int64) string {
+	const unit = 1024
+	if bytes < unit {
+		return fmt.Sprintf("%d B", bytes)
+	}
+	div, exp := int64(unit), 0
+	for n := bytes / unit; n >= unit; n /= unit {
+		div *= unit
+		exp++
+	}
+	return fmt.Sprintf("%.1f %cB", float64(bytes)/float64(div), "KMGTPE"[exp])
+}
+
+// uuidPattern matches standard UUID format: 8-4-4-4-12 hex digits (case-insensitive)
+var uuidPattern = regexp.MustCompile(`(?i)[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}`)
+
+// findCodexSession searches ~/.codex/sessions/ for a session by UUID.
+// Returns the path to the session file if found, empty string if not found.
+// The homeDir parameter allows testing with a mock home directory.
+func findCodexSession(homeDir, sessionID string) (string, error) {
+	// Validate sessionID is a proper UUID (36 chars with hyphens)
+	if len(sessionID) != 36 || !uuidPattern.MatchString(sessionID) {
+		return "", nil // Not a valid UUID, skip Codex search
+	}
+
+	// Normalize sessionID for case-insensitive matching
+	normalizedID := strings.ToLower(sessionID)
+
+	codexDir := filepath.Join(homeDir, ".codex", "sessions")
+
+	// Check directory exists (resolve symlinks first)
+	realDir, err := filepath.EvalSymlinks(codexDir)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return "", nil // No error, just not found
+		}
+		return "", err
+	}
+
+	var foundPath string
+	err = walkDirFollowSymlinks(realDir, func(path string, d fs.DirEntry, err error) error {
+		if err != nil || d.IsDir() || !strings.HasSuffix(path, ".jsonl") {
+			return nil
+		}
+
+		// Extract UUID from filename and match exactly (case-insensitive)
+		filename := filepath.Base(path)
+		if match := uuidPattern.FindString(filename); strings.ToLower(match) == normalizedID {
+			foundPath = path
+			return filepath.SkipAll
+		}
+		return nil
+	})
+
+	return foundPath, err
+}
+
+// walkDirFollowSymlinks walks a directory tree, following symlinks with cycle detection.
+// Unlike filepath.WalkDir, this resolves symlinks to directories while preventing
+// infinite loops from circular symlinks.
+func walkDirFollowSymlinks(root string, fn fs.WalkDirFunc) error {
+	visited := make(map[string]bool)
+	return walkDirFollowSymlinksInternal(root, fn, visited)
+}
+
+func walkDirFollowSymlinksInternal(root string, fn fs.WalkDirFunc, visited map[string]bool) error {
+	// Resolve to absolute path for cycle detection
+	absRoot, err := filepath.Abs(root)
+	if err != nil {
+		return err
+	}
+
+	// Check for cycles
+	if visited[absRoot] {
+		return nil // Already visited, skip to prevent infinite recursion
+	}
+	visited[absRoot] = true
+
+	return filepath.WalkDir(root, func(path string, d fs.DirEntry, err error) error {
+		if err != nil {
+			return fn(path, d, err)
+		}
+
+		// If it's a symlink, resolve it
+		if d.Type()&fs.ModeSymlink != 0 {
+			realPath, err := filepath.EvalSymlinks(path)
+			if err != nil {
+				// Broken symlink - call fn with error and continue
+				return fn(path, d, err)
+			}
+
+			info, err := os.Stat(realPath)
+			if err != nil {
+				return fn(path, d, err)
+			}
+
+			// If symlink points to directory, walk it (with cycle detection)
+			if info.IsDir() {
+				absReal, _ := filepath.Abs(realPath)
+				if visited[absReal] {
+					return nil // Cycle detected, skip
+				}
+				return walkDirFollowSymlinksInternal(realPath, fn, visited)
+			}
+
+			// If symlink points to file, call fn with resolved info
+			return fn(realPath, fs.FileInfoToDirEntry(info), nil)
+		}
+
+		return fn(path, d, err)
+	})
+}
+
+// getCodexSessionTimestamp extracts the timestamp from a Codex session file.
+// It reads the first line looking for a session_meta event with a timestamp field.
+// If the timestamp cannot be extracted or parsed, it falls back to the file modification time.
+func getCodexSessionTimestamp(path string) (time.Time, error) {
+	f, err := os.Open(path)
+	if err != nil {
+		return time.Time{}, err
+	}
+	defer func() { _ = f.Close() }()
+
+	scanner := bufio.NewScanner(f)
+	if scanner.Scan() {
+		var entry struct {
+			Timestamp string `json:"timestamp"`
+			Type      string `json:"type"`
+		}
+		if err := json.Unmarshal(scanner.Bytes(), &entry); err == nil {
+			if entry.Type == "session_meta" && entry.Timestamp != "" {
+				if ts, err := time.Parse(time.RFC3339, entry.Timestamp); err == nil {
+					return ts, nil
+				}
+			}
+		}
+	}
+
+	// Fallback to file modification time
+	info, err := os.Stat(path)
+	if err != nil {
+		return time.Time{}, err
+	}
+	return info.ModTime(), nil
+}
+
+// listCodexSessions returns all Codex sessions from ~/.codex/sessions/.
+// The homeDir parameter allows testing with a mock home directory.
+func listCodexSessions(homeDir string) ([]SessionInfo, error) {
+	codexDir := filepath.Join(homeDir, ".codex", "sessions")
+
+	// Check if directory exists
+	realDir, err := filepath.EvalSymlinks(codexDir)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil, nil // No error, just empty list
+		}
+		return nil, err
+	}
+
+	var sessions []SessionInfo
+	err = walkDirFollowSymlinks(realDir, func(path string, d fs.DirEntry, err error) error {
+		if err != nil || d.IsDir() || !strings.HasSuffix(path, ".jsonl") {
+			return nil
+		}
+
+		// Get file info for size
+		info, err := d.Info()
+		if err != nil {
+			return nil // Skip files we can't stat
+		}
+
+		// Skip empty files
+		if info.Size() == 0 {
+			return nil
+		}
+
+		// Extract session ID from filename (the UUID part)
+		filename := filepath.Base(path)
+		sessionID := strings.TrimSuffix(filename, ".jsonl")
+
+		// If filename contains a UUID, extract just the UUID as the ID
+		if match := uuidPattern.FindString(filename); match != "" {
+			sessionID = match
+		}
+
+		// Get timestamp from session_meta or file mtime
+		createdAt, err := getCodexSessionTimestamp(path)
+		if err != nil {
+			createdAt = info.ModTime()
+		}
+
+		sessions = append(sessions, SessionInfo{
+			ID:        sessionID,
+			CreatedAt: createdAt,
+			Size:      info.Size(),
+			Source:    "codex",
+		})
+
+		return nil
+	})
+
+	if err != nil {
+		return nil, err
+	}
+
+	return sessions, nil
+}
+
+// listClaudeSessions returns all Claude sessions for a project.
+func listClaudeSessions(projectPath string) ([]SessionInfo, error) {
 	claudeProjectPath := claude.BuildProjectPath(projectPath)
 	homeDir, err := os.UserHomeDir()
 	if err != nil {
-		return fmt.Errorf("failed to get home directory: %w", err)
+		return nil, fmt.Errorf("failed to get home directory: %w", err)
 	}
 
 	projectDir := filepath.Join(homeDir, ".claude", "projects", claudeProjectPath)
 
 	// Check if directory exists
 	if _, err := os.Stat(projectDir); os.IsNotExist(err) {
-		return fmt.Errorf("project directory not found: %s", projectDir)
+		return nil, nil // No error, just empty list
 	}
 
 	// Read .jsonl files
 	entries, err := os.ReadDir(projectDir)
 	if err != nil {
-		return fmt.Errorf("failed to read project directory: %w", err)
+		return nil, fmt.Errorf("failed to read project directory: %w", err)
 	}
 
 	var sessions []SessionInfo
@@ -288,39 +535,55 @@ func listSessions(projectPath string) error {
 			ID:        sessionID,
 			CreatedAt: createdAt,
 			Size:      info.Size(),
+			Source:    "claude",
 		})
 	}
 
-	if len(sessions) == 0 {
-		fmt.Printf("No sessions found for project: %s\n", projectPath)
-		return nil
-	}
-
-	// Sort by creation date (oldest first, newest last)
-	sort.Slice(sessions, func(i, j int) bool {
-		return sessions[i].CreatedAt.Before(sessions[j].CreatedAt)
-	})
-
-	// Print sessions
-	for _, s := range sessions {
-		fmt.Printf("%s\t%s\t%s\n", s.ID, s.CreatedAt.Format(time.RFC3339), formatSize(s.Size))
-	}
-
-	return nil
+	return sessions, nil
 }
 
-// formatSize formats a file size in human-readable format.
-func formatSize(bytes int64) string {
-	const unit = 1024
-	if bytes < unit {
-		return fmt.Sprintf("%d B", bytes)
+// listAllSessions returns sessions from both Claude and Codex locations, merged and sorted.
+func listAllSessions(projectPath string) ([]SessionInfo, error) {
+	homeDir, err := os.UserHomeDir()
+	if err != nil {
+		return nil, fmt.Errorf("failed to get home directory: %w", err)
 	}
-	div, exp := int64(unit), 0
-	for n := bytes / unit; n >= unit; n /= unit {
-		div *= unit
-		exp++
+
+	// Get Claude sessions
+	claudeSessions, err := listClaudeSessions(projectPath)
+	if err != nil {
+		// Log warning but continue with Codex sessions
+		fmt.Fprintf(os.Stderr, "Warning: could not list Claude sessions: %v\n", err)
 	}
-	return fmt.Sprintf("%.1f %cB", float64(bytes)/float64(div), "KMGTPE"[exp])
+
+	// Get Codex sessions
+	codexSessions, err := listCodexSessions(homeDir)
+	if err != nil {
+		// Log warning but continue with Claude sessions
+		fmt.Fprintf(os.Stderr, "Warning: could not list Codex sessions: %v\n", err)
+	}
+
+	// Merge sessions
+	allSessions := make([]SessionInfo, 0, len(claudeSessions)+len(codexSessions))
+	allSessions = append(allSessions, claudeSessions...)
+	allSessions = append(allSessions, codexSessions...)
+
+	// Sort by timestamp (oldest first) with Claude first for ties
+	sortSessionsByTimestamp(allSessions)
+
+	return allSessions, nil
+}
+
+// sortSessionsByTimestamp sorts sessions by creation time (oldest first).
+// When timestamps are equal, Claude sessions come before Codex sessions.
+func sortSessionsByTimestamp(sessions []SessionInfo) {
+	sort.Slice(sessions, func(i, j int) bool {
+		if sessions[i].CreatedAt.Equal(sessions[j].CreatedAt) {
+			// Claude comes before Codex for tie-breaking
+			return sessions[i].Source == "claude" && sessions[j].Source != "claude"
+		}
+		return sessions[i].CreatedAt.Before(sessions[j].CreatedAt)
+	})
 }
 
 // convert reads JSONL from input and writes formatted output (Markdown or HTML).
@@ -330,9 +593,14 @@ func convert(input io.Reader, output io.Writer, sessionID string, format string)
 		return fmt.Errorf("failed to parse transcript: %w", err)
 	}
 
-	// Write warnings to stderr
+	// Write warnings to stderr with line numbers
 	for _, w := range result.Warnings {
 		fmt.Fprintf(os.Stderr, "Warning: line %d: %s\n", w.Line, w.Message)
+	}
+
+	// Report warning summary if any warnings occurred
+	if len(result.Warnings) > 0 {
+		fmt.Fprintf(os.Stderr, "Parsed with %d warning(s)\n", len(result.Warnings))
 	}
 
 	// Handle empty file

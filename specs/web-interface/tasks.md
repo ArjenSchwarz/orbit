@@ -205,12 +205,12 @@ references:
 
 ## Phase 7: Live Updates
 
-- [ ] 15. Implement connection failure handling
+- [x] 15. Implement connection failure handling
   - htmx error events, consecutive failure counter, status indicator
   - Requirements: [11.5](requirements.md#11.5), [11.6](requirements.md#11.6)
-  - [ ] 15.1. Add connection status element to layout.html
+  - [x] 15.1. Add connection status element to layout.html
     - Hidden div with Connection lost message
-  - [ ] 15.2. Add htmx error event handlers
+  - [x] 15.2. Add htmx error event handlers
     - Track failures, show/hide status on threshold
-  - [ ] 15.3. Add CSS for connection status indicator
+  - [x] 15.3. Add CSS for connection status indicator
     - Fixed position, error styling, show on disconnected class

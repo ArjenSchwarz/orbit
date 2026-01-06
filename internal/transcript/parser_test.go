@@ -37,24 +37,21 @@ func TestParseJSONL_ValidInput(t *testing.T) {
 	}
 }
 
-func TestParseJSONL_EmptyFile(t *testing.T) {
+func TestParseJSONL_EmptyFileFromFile(t *testing.T) {
 	f, err := os.Open(filepath.Join("testdata", "empty.jsonl"))
 	if err != nil {
 		t.Fatalf("failed to open test file: %v", err)
 	}
 	defer func() { _ = f.Close() }()
 
-	result, err := ParseJSONL(f)
-	if err != nil {
-		t.Fatalf("ParseJSONL returned error: %v", err)
+	// Empty files now return an error during format detection
+	_, err = ParseJSONL(f)
+	if err == nil {
+		t.Fatal("expected error for empty file")
 	}
 
-	if len(result.Entries) != 0 {
-		t.Errorf("expected empty entries, got %d", len(result.Entries))
-	}
-
-	if len(result.Warnings) != 0 {
-		t.Errorf("expected no warnings, got %d", len(result.Warnings))
+	if err.Error() != "empty file" {
+		t.Errorf("expected error 'empty file', got %q", err.Error())
 	}
 }
 
@@ -766,5 +763,945 @@ func TestHasLocalCommandStdoutContent(t *testing.T) {
 				t.Errorf("hasLocalCommandStdoutContent() = %v, want %v", got, tc.expected)
 			}
 		})
+	}
+}
+
+// Tests for format detection (Codex support)
+
+func TestDetectFormat_ClaudeUserType(t *testing.T) {
+	input := `{"type":"user","timestamp":"2025-12-23T10:30:00+11:00","message":{"role":"user","content":"Hello"}}`
+	format, firstLine, err := DetectFormat(strings.NewReader(input))
+	if err != nil {
+		t.Fatalf("DetectFormat returned error: %v", err)
+	}
+	if format != FormatClaude {
+		t.Errorf("expected FormatClaude, got %v", format)
+	}
+	if len(firstLine) == 0 {
+		t.Error("expected non-empty first line")
+	}
+}
+
+func TestDetectFormat_ClaudeAssistantType(t *testing.T) {
+	input := `{"type":"assistant","timestamp":"2025-12-23T10:30:00+11:00","message":{"role":"assistant","content":[{"type":"text","text":"Hi"}]}}`
+	format, _, err := DetectFormat(strings.NewReader(input))
+	if err != nil {
+		t.Fatalf("DetectFormat returned error: %v", err)
+	}
+	if format != FormatClaude {
+		t.Errorf("expected FormatClaude, got %v", format)
+	}
+}
+
+func TestDetectFormat_CodexSessionMeta(t *testing.T) {
+	input := `{"timestamp":"2026-01-04T13:22:15.725Z","type":"session_meta","payload":{"id":"019b892c-3a14-7773-bd76-6465a8a0b634"}}`
+	format, _, err := DetectFormat(strings.NewReader(input))
+	if err != nil {
+		t.Fatalf("DetectFormat returned error: %v", err)
+	}
+	if format != FormatCodex {
+		t.Errorf("expected FormatCodex, got %v", format)
+	}
+}
+
+func TestDetectFormat_CodexResponseItem(t *testing.T) {
+	input := `{"timestamp":"2026-01-04T13:22:15.725Z","type":"response_item","payload":{"type":"message","role":"user","content":[]}}`
+	format, _, err := DetectFormat(strings.NewReader(input))
+	if err != nil {
+		t.Fatalf("DetectFormat returned error: %v", err)
+	}
+	if format != FormatCodex {
+		t.Errorf("expected FormatCodex, got %v", format)
+	}
+}
+
+func TestDetectFormat_CodexEventMsg(t *testing.T) {
+	input := `{"timestamp":"2026-01-04T13:22:15.725Z","type":"event_msg","payload":{"type":"agent_reasoning","text":"thinking"}}`
+	format, _, err := DetectFormat(strings.NewReader(input))
+	if err != nil {
+		t.Fatalf("DetectFormat returned error: %v", err)
+	}
+	if format != FormatCodex {
+		t.Errorf("expected FormatCodex, got %v", format)
+	}
+}
+
+func TestDetectFormat_CodexTurnContext(t *testing.T) {
+	input := `{"timestamp":"2026-01-04T13:22:15.725Z","type":"turn_context","payload":{}}`
+	format, _, err := DetectFormat(strings.NewReader(input))
+	if err != nil {
+		t.Fatalf("DetectFormat returned error: %v", err)
+	}
+	if format != FormatCodex {
+		t.Errorf("expected FormatCodex, got %v", format)
+	}
+}
+
+func TestDetectFormat_EmptyFile(t *testing.T) {
+	input := ""
+	_, _, err := DetectFormat(strings.NewReader(input))
+	if err == nil {
+		t.Fatal("expected error for empty file")
+	}
+	if err.Error() != "empty file" {
+		t.Errorf("expected error 'empty file', got %q", err.Error())
+	}
+}
+
+func TestDetectFormat_WhitespaceOnly(t *testing.T) {
+	input := "   \n\n   \n"
+	_, _, err := DetectFormat(strings.NewReader(input))
+	if err == nil {
+		t.Fatal("expected error for whitespace-only file")
+	}
+	if err.Error() != "empty file" {
+		t.Errorf("expected error 'empty file', got %q", err.Error())
+	}
+}
+
+func TestDetectFormat_InvalidJSON(t *testing.T) {
+	input := `{not valid json}`
+	_, _, err := DetectFormat(strings.NewReader(input))
+	if err == nil {
+		t.Fatal("expected error for invalid JSON")
+	}
+	if !strings.Contains(err.Error(), "failed to parse first line as JSON") {
+		t.Errorf("expected error containing 'failed to parse first line as JSON', got %q", err.Error())
+	}
+}
+
+func TestDetectFormat_UnrecognizedType(t *testing.T) {
+	input := `{"type":"unknown_type","timestamp":"2025-12-23T10:30:00+11:00"}`
+	_, _, err := DetectFormat(strings.NewReader(input))
+	if err == nil {
+		t.Fatal("expected error for unrecognized type")
+	}
+	if !strings.Contains(err.Error(), "unrecognized log format: type field value 'unknown_type'") {
+		t.Errorf("expected error containing 'unrecognized log format: type field value', got %q", err.Error())
+	}
+}
+
+func TestDetectFormat_MissingTypeField(t *testing.T) {
+	input := `{"timestamp":"2025-12-23T10:30:00+11:00","message":"hello"}`
+	_, _, err := DetectFormat(strings.NewReader(input))
+	if err == nil {
+		t.Fatal("expected error for missing type field")
+	}
+	if !strings.Contains(err.Error(), "unrecognized log format: type field value ''") {
+		t.Errorf("expected error about empty type field, got %q", err.Error())
+	}
+}
+
+func TestDetectFormat_BOMHandling(t *testing.T) {
+	// UTF-8 BOM: EF BB BF
+	bom := []byte{0xEF, 0xBB, 0xBF}
+	json := `{"type":"user","timestamp":"2025-12-23T10:30:00+11:00","message":{"role":"user","content":"Hello"}}`
+	input := append(bom, []byte(json)...)
+
+	format, firstLine, err := DetectFormat(strings.NewReader(string(input)))
+	if err != nil {
+		t.Fatalf("DetectFormat returned error: %v", err)
+	}
+	if format != FormatClaude {
+		t.Errorf("expected FormatClaude, got %v", format)
+	}
+	// First line should have BOM stripped
+	if strings.HasPrefix(string(firstLine), "\xEF\xBB\xBF") {
+		t.Error("BOM was not stripped from first line")
+	}
+}
+
+func TestDetectFormat_SkipsEmptyLines(t *testing.T) {
+	input := "\n\n   \n{\"type\":\"user\",\"timestamp\":\"2025-12-23T10:30:00+11:00\"}\n"
+	format, _, err := DetectFormat(strings.NewReader(input))
+	if err != nil {
+		t.Fatalf("DetectFormat returned error: %v", err)
+	}
+	if format != FormatClaude {
+		t.Errorf("expected FormatClaude, got %v", format)
+	}
+}
+
+func TestReadFirstNonEmptyLine_ReturnsFirstLine(t *testing.T) {
+	input := "first line\nsecond line\n"
+	line, err := readFirstNonEmptyLine(strings.NewReader(input))
+	if err != nil {
+		t.Fatalf("readFirstNonEmptyLine returned error: %v", err)
+	}
+	if string(line) != "first line" {
+		t.Errorf("expected 'first line', got %q", string(line))
+	}
+}
+
+func TestReadFirstNonEmptyLine_SkipsEmptyLines(t *testing.T) {
+	input := "\n\n   \nactual content\n"
+	line, err := readFirstNonEmptyLine(strings.NewReader(input))
+	if err != nil {
+		t.Fatalf("readFirstNonEmptyLine returned error: %v", err)
+	}
+	if string(line) != "actual content" {
+		t.Errorf("expected 'actual content', got %q", string(line))
+	}
+}
+
+func TestReadFirstNonEmptyLine_EmptyFile(t *testing.T) {
+	input := ""
+	_, err := readFirstNonEmptyLine(strings.NewReader(input))
+	if err == nil {
+		t.Fatal("expected error for empty file")
+	}
+}
+
+func TestReadFirstNonEmptyLine_WhitespaceOnly(t *testing.T) {
+	input := "   \n   \n   "
+	_, err := readFirstNonEmptyLine(strings.NewReader(input))
+	if err == nil {
+		t.Fatal("expected error for whitespace-only file")
+	}
+}
+
+// Tests for ParseJSONL format dispatch (Phase 3)
+
+func TestParseJSONL_AutoDetectsClaudeFormat(t *testing.T) {
+	// Claude format starts with user or assistant type
+	input := `{"type":"user","timestamp":"2025-12-23T10:30:00+11:00","message":{"role":"user","content":"Hello"}}
+{"type":"assistant","timestamp":"2025-12-23T10:30:05+11:00","message":{"role":"assistant","content":[{"type":"text","text":"Hi there!"}]}}`
+
+	result, err := ParseJSONL(strings.NewReader(input))
+	if err != nil {
+		t.Fatalf("ParseJSONL returned error: %v", err)
+	}
+
+	if len(result.Entries) != 2 {
+		t.Fatalf("expected 2 entries, got %d", len(result.Entries))
+	}
+
+	// Verify entries were parsed correctly
+	if result.Entries[0].Type != "user" {
+		t.Errorf("expected first entry type 'user', got %q", result.Entries[0].Type)
+	}
+	if result.Entries[1].Type != "assistant" {
+		t.Errorf("expected second entry type 'assistant', got %q", result.Entries[1].Type)
+	}
+}
+
+func TestParseJSONL_AutoDetectsCodexFormat(t *testing.T) {
+	// Codex format starts with session_meta
+	input := `{"timestamp":"2026-01-04T13:22:15.725Z","type":"session_meta","payload":{"id":"test-session-id","cwd":"/test"}}
+{"timestamp":"2026-01-04T13:22:16.000Z","type":"response_item","payload":{"type":"message","role":"user","content":[{"type":"input_text","text":"Hello from Codex"}]}}
+{"timestamp":"2026-01-04T13:22:17.000Z","type":"response_item","payload":{"type":"message","role":"assistant","content":[{"type":"output_text","text":"Hi from assistant"}]}}`
+
+	result, err := ParseJSONL(strings.NewReader(input))
+	if err != nil {
+		t.Fatalf("ParseJSONL returned error: %v", err)
+	}
+
+	if len(result.Entries) != 2 {
+		t.Fatalf("expected 2 entries, got %d", len(result.Entries))
+	}
+
+	// Verify entries were parsed and normalized correctly
+	if result.Entries[0].Type != "user" {
+		t.Errorf("expected first entry type 'user', got %q", result.Entries[0].Type)
+	}
+	if result.Entries[1].Type != "assistant" {
+		t.Errorf("expected second entry type 'assistant', got %q", result.Entries[1].Type)
+	}
+
+	// Verify session ID was extracted
+	if result.Entries[0].SessionID != "test-session-id" {
+		t.Errorf("expected session ID 'test-session-id', got %q", result.Entries[0].SessionID)
+	}
+}
+
+func TestParseJSONL_CodexResponseItemFirst(t *testing.T) {
+	// Codex format can also start with response_item
+	input := `{"timestamp":"2026-01-04T13:22:16.000Z","type":"response_item","payload":{"type":"message","role":"user","content":[{"type":"input_text","text":"Hello from Codex"}]}}`
+
+	result, err := ParseJSONL(strings.NewReader(input))
+	if err != nil {
+		t.Fatalf("ParseJSONL returned error: %v", err)
+	}
+
+	if len(result.Entries) != 1 {
+		t.Fatalf("expected 1 entry, got %d", len(result.Entries))
+	}
+
+	if result.Entries[0].Type != "user" {
+		t.Errorf("expected entry type 'user', got %q", result.Entries[0].Type)
+	}
+}
+
+func TestParseJSONL_CodexEventMsgFirst(t *testing.T) {
+	// Codex format can start with event_msg
+	input := `{"timestamp":"2026-01-04T13:22:21.499Z","type":"event_msg","payload":{"type":"agent_reasoning","text":"Thinking about the problem..."}}
+{"timestamp":"2026-01-04T13:22:22.000Z","type":"response_item","payload":{"type":"message","role":"assistant","content":[{"type":"output_text","text":"Here's my response"}]}}`
+
+	result, err := ParseJSONL(strings.NewReader(input))
+	if err != nil {
+		t.Fatalf("ParseJSONL returned error: %v", err)
+	}
+
+	if len(result.Entries) != 1 {
+		t.Fatalf("expected 1 entry, got %d", len(result.Entries))
+	}
+
+	// Agent reasoning and output should be consolidated into one assistant entry
+	if result.Entries[0].Type != "assistant" {
+		t.Errorf("expected entry type 'assistant', got %q", result.Entries[0].Type)
+	}
+}
+
+func TestParseJSONL_CodexTurnContextFirst(t *testing.T) {
+	// Codex format can start with turn_context (which is skipped)
+	input := `{"timestamp":"2026-01-04T13:22:15.000Z","type":"turn_context","payload":{"context":"internal"}}
+{"timestamp":"2026-01-04T13:22:16.000Z","type":"response_item","payload":{"type":"message","role":"user","content":[{"type":"input_text","text":"Hello"}]}}`
+
+	result, err := ParseJSONL(strings.NewReader(input))
+	if err != nil {
+		t.Fatalf("ParseJSONL returned error: %v", err)
+	}
+
+	if len(result.Entries) != 1 {
+		t.Fatalf("expected 1 entry, got %d", len(result.Entries))
+	}
+
+	if result.Entries[0].Type != "user" {
+		t.Errorf("expected entry type 'user', got %q", result.Entries[0].Type)
+	}
+}
+
+func TestParseJSONL_EmptyFileError(t *testing.T) {
+	input := ""
+	_, err := ParseJSONL(strings.NewReader(input))
+	if err == nil {
+		t.Fatal("expected error for empty file")
+	}
+	if err.Error() != "empty file" {
+		t.Errorf("expected error 'empty file', got %q", err.Error())
+	}
+}
+
+func TestParseJSONL_WhitespaceOnlyError(t *testing.T) {
+	input := "   \n\n   \n"
+	_, err := ParseJSONL(strings.NewReader(input))
+	if err == nil {
+		t.Fatal("expected error for whitespace-only file")
+	}
+	if err.Error() != "empty file" {
+		t.Errorf("expected error 'empty file', got %q", err.Error())
+	}
+}
+
+func TestParseJSONL_InvalidJSONError(t *testing.T) {
+	input := `{not valid json}`
+	_, err := ParseJSONL(strings.NewReader(input))
+	if err == nil {
+		t.Fatal("expected error for invalid JSON")
+	}
+	if !strings.Contains(err.Error(), "failed to parse first line as JSON") {
+		t.Errorf("expected error containing 'failed to parse first line as JSON', got %q", err.Error())
+	}
+}
+
+func TestParseJSONL_UnrecognizedFormatError(t *testing.T) {
+	input := `{"type":"unknown_format_type","data":"test"}`
+	_, err := ParseJSONL(strings.NewReader(input))
+	if err == nil {
+		t.Fatal("expected error for unrecognized format")
+	}
+	if !strings.Contains(err.Error(), "unrecognized log format") {
+		t.Errorf("expected error containing 'unrecognized log format', got %q", err.Error())
+	}
+}
+
+func TestParseJSONL_BOMHandledCorrectly(t *testing.T) {
+	// UTF-8 BOM: EF BB BF
+	bom := []byte{0xEF, 0xBB, 0xBF}
+	json := `{"type":"user","timestamp":"2025-12-23T10:30:00+11:00","message":{"role":"user","content":"Hello"}}`
+	input := append(bom, []byte(json)...)
+
+	result, err := ParseJSONL(strings.NewReader(string(input)))
+	if err != nil {
+		t.Fatalf("ParseJSONL returned error: %v", err)
+	}
+
+	if len(result.Entries) != 1 {
+		t.Fatalf("expected 1 entry, got %d", len(result.Entries))
+	}
+}
+
+func TestParseJSONL_SkipsEmptyLinesBeforeDetection(t *testing.T) {
+	input := "\n\n   \n{\"type\":\"user\",\"timestamp\":\"2025-12-23T10:30:00+11:00\",\"message\":{\"role\":\"user\",\"content\":\"Hello\"}}\n"
+
+	result, err := ParseJSONL(strings.NewReader(input))
+	if err != nil {
+		t.Fatalf("ParseJSONL returned error: %v", err)
+	}
+
+	if len(result.Entries) != 1 {
+		t.Fatalf("expected 1 entry, got %d", len(result.Entries))
+	}
+}
+
+func TestParseJSONL_CodexErrorPropagation(t *testing.T) {
+	// Codex format with all lines invalid (except first which determines format)
+	input := `{"timestamp":"2026-01-04T13:22:15.725Z","type":"session_meta","payload":{"id":"test","cwd":"/test"}}
+invalid json line 1
+invalid json line 2`
+
+	_, err := ParseJSONL(strings.NewReader(input))
+	// Should fail because no valid entries found (session_meta is skipped)
+	if err == nil {
+		t.Fatal("expected error when no valid entries found")
+	}
+	if !strings.Contains(err.Error(), "no valid entries found") {
+		t.Errorf("expected error containing 'no valid entries found', got %q", err.Error())
+	}
+}
+
+func TestParseJSONL_CodexValidFile(t *testing.T) {
+	f, err := os.Open(filepath.Join("testdata", "codex_valid.jsonl"))
+	if err != nil {
+		t.Fatalf("failed to open test file: %v", err)
+	}
+	defer func() { _ = f.Close() }()
+
+	result, err := ParseJSONL(f)
+	if err != nil {
+		t.Fatalf("ParseJSONL returned error: %v", err)
+	}
+
+	// Should have user and assistant entries (metadata events filtered)
+	if len(result.Entries) == 0 {
+		t.Error("expected at least one entry")
+	}
+
+	// Verify entry types
+	for _, entry := range result.Entries {
+		if entry.Type != "user" && entry.Type != "assistant" {
+			t.Errorf("unexpected entry type: %s", entry.Type)
+		}
+	}
+}
+
+func TestParseJSONL_CodexEdgeCases(t *testing.T) {
+	f, err := os.Open(filepath.Join("testdata", "codex_edge_cases.jsonl"))
+	if err != nil {
+		t.Fatalf("failed to open test file: %v", err)
+	}
+	defer func() { _ = f.Close() }()
+
+	result, err := ParseJSONL(f)
+	if err != nil {
+		t.Fatalf("ParseJSONL returned error: %v", err)
+	}
+
+	// Should have warnings for malformed lines and unknown types
+	if len(result.Warnings) == 0 {
+		t.Error("expected warnings for edge cases")
+	}
+
+	// Should still parse valid entries
+	if len(result.Entries) == 0 {
+		t.Error("expected some valid entries despite edge cases")
+	}
+}
+
+// Integration tests for Codex to Markdown/HTML rendering (Phase 3 - Task 13)
+
+func TestCodexToMarkdown_FullPipeline(t *testing.T) {
+	f, err := os.Open(filepath.Join("testdata", "codex_valid.jsonl"))
+	if err != nil {
+		t.Fatalf("failed to open test file: %v", err)
+	}
+	defer func() { _ = f.Close() }()
+
+	// Parse JSONL
+	result, err := ParseJSONL(f)
+	if err != nil {
+		t.Fatalf("ParseJSONL returned error: %v", err)
+	}
+
+	// Render to Markdown
+	opts := RenderOptions{
+		Title:     "Codex Session",
+		SessionID: "test-session",
+	}
+	md := RenderMarkdown(result.Entries, opts)
+
+	// Verify basic structure
+	if !strings.Contains(md, "# Codex Session") {
+		t.Error("expected title in markdown output")
+	}
+	if !strings.Contains(md, "**Session ID:** `test-session`") {
+		t.Error("expected session ID in markdown output")
+	}
+
+	// Verify user message is present
+	if !strings.Contains(md, "## 👤 User") {
+		t.Error("expected user message header in markdown output")
+	}
+
+	// Verify assistant message is present
+	if !strings.Contains(md, "## 🤖 Assistant") {
+		t.Error("expected assistant message header in markdown output")
+	}
+
+	// Verify tool call is present (shell_command)
+	if !strings.Contains(md, "shell_command") {
+		t.Error("expected shell_command tool in markdown output")
+	}
+
+	// Verify thinking block is present (from reasoning)
+	if !strings.Contains(md, "💭 Thinking") {
+		t.Error("expected thinking block in markdown output")
+	}
+}
+
+func TestCodexToHTML_FullPipeline(t *testing.T) {
+	f, err := os.Open(filepath.Join("testdata", "codex_valid.jsonl"))
+	if err != nil {
+		t.Fatalf("failed to open test file: %v", err)
+	}
+	defer func() { _ = f.Close() }()
+
+	// Parse JSONL
+	result, err := ParseJSONL(f)
+	if err != nil {
+		t.Fatalf("ParseJSONL returned error: %v", err)
+	}
+
+	// Render to HTML
+	opts := RenderOptions{
+		Title:     "Codex Session",
+		SessionID: "test-session",
+	}
+	html := RenderHTML(result.Entries, opts)
+
+	// Verify HTML document structure
+	if !strings.Contains(html, "<!DOCTYPE html>") {
+		t.Error("expected HTML doctype")
+	}
+	if !strings.Contains(html, "<html lang=\"en\">") {
+		t.Error("expected html tag")
+	}
+	if !strings.Contains(html, "<title>Codex Session</title>") {
+		t.Error("expected title tag")
+	}
+
+	// Verify user message is present
+	if !strings.Contains(html, "class=\"message user\"") {
+		t.Error("expected user message section in HTML output")
+	}
+
+	// Verify assistant message is present
+	if !strings.Contains(html, "class=\"message assistant\"") {
+		t.Error("expected assistant message section in HTML output")
+	}
+
+	// Verify tool call is present
+	if !strings.Contains(html, "shell_command") {
+		t.Error("expected shell_command tool in HTML output")
+	}
+}
+
+func TestCodexToHTMLFragment_FullPipeline(t *testing.T) {
+	f, err := os.Open(filepath.Join("testdata", "codex_valid.jsonl"))
+	if err != nil {
+		t.Fatalf("failed to open test file: %v", err)
+	}
+	defer func() { _ = f.Close() }()
+
+	// Parse JSONL
+	result, err := ParseJSONL(f)
+	if err != nil {
+		t.Fatalf("ParseJSONL returned error: %v", err)
+	}
+
+	// Render to HTML fragment
+	opts := RenderOptions{
+		Title:     "Codex Session",
+		SessionID: "test-session",
+	}
+	fragment := RenderHTMLFragment(result.Entries, opts)
+
+	// Verify NO document structure
+	if strings.Contains(fragment, "<!DOCTYPE html>") {
+		t.Error("fragment should not contain HTML doctype")
+	}
+	if strings.Contains(fragment, "<html") {
+		t.Error("fragment should not contain html tag")
+	}
+
+	// Verify content is present
+	if !strings.Contains(fragment, "class=\"message user\"") {
+		t.Error("expected user message section in HTML fragment")
+	}
+	if !strings.Contains(fragment, "class=\"message assistant\"") {
+		t.Error("expected assistant message section in HTML fragment")
+	}
+}
+
+func TestCodexToMarkdown_ToolCalls(t *testing.T) {
+	// Test that Codex tool calls are properly rendered in markdown
+	input := `{"timestamp":"2026-01-04T13:22:15.725Z","type":"session_meta","payload":{"id":"test-session","cwd":"/test"}}
+{"timestamp":"2026-01-04T13:22:16.000Z","type":"response_item","payload":{"type":"function_call","name":"shell_command","arguments":"{\"command\":\"ls -la\"}","call_id":"call_123"}}
+{"timestamp":"2026-01-04T13:22:16.100Z","type":"response_item","payload":{"type":"function_call_output","call_id":"call_123","output":"file1.txt\nfile2.txt"}}`
+
+	result, err := ParseJSONL(strings.NewReader(input))
+	if err != nil {
+		t.Fatalf("ParseJSONL returned error: %v", err)
+	}
+
+	md := RenderMarkdown(result.Entries, RenderOptions{})
+
+	// Verify tool call name is present
+	if !strings.Contains(md, "shell_command") {
+		t.Error("expected shell_command in markdown output")
+	}
+
+	// Verify tool result is present
+	if !strings.Contains(md, "file1.txt") {
+		t.Error("expected tool output in markdown")
+	}
+}
+
+func TestCodexToMarkdown_Reasoning(t *testing.T) {
+	// Test that Codex reasoning blocks are rendered as thinking
+	input := `{"timestamp":"2026-01-04T13:22:15.725Z","type":"session_meta","payload":{"id":"test-session","cwd":"/test"}}
+{"timestamp":"2026-01-04T13:22:16.000Z","type":"response_item","payload":{"type":"reasoning","summary":[{"type":"summary_text","text":"Analyzing the problem..."}],"encrypted_content":"encrypted"}}`
+
+	result, err := ParseJSONL(strings.NewReader(input))
+	if err != nil {
+		t.Fatalf("ParseJSONL returned error: %v", err)
+	}
+
+	md := RenderMarkdown(result.Entries, RenderOptions{})
+
+	// Verify thinking block is present
+	if !strings.Contains(md, "💭 Thinking") {
+		t.Error("expected thinking block in markdown output")
+	}
+
+	// Verify reasoning text is present
+	if !strings.Contains(md, "Analyzing the problem") {
+		t.Error("expected reasoning text in markdown output")
+	}
+
+	// Verify encrypted content is NOT present
+	if strings.Contains(md, "encrypted_content") || strings.Contains(md, "encrypted_data") {
+		t.Error("encrypted content should not appear in output")
+	}
+}
+
+func TestCodexToMarkdown_AgentReasoning(t *testing.T) {
+	// Test that agent_reasoning events are rendered as thinking
+	input := `{"timestamp":"2026-01-04T13:22:15.725Z","type":"session_meta","payload":{"id":"test-session","cwd":"/test"}}
+{"timestamp":"2026-01-04T13:22:16.000Z","type":"event_msg","payload":{"type":"agent_reasoning","text":"**Planning the approach**"}}`
+
+	result, err := ParseJSONL(strings.NewReader(input))
+	if err != nil {
+		t.Fatalf("ParseJSONL returned error: %v", err)
+	}
+
+	md := RenderMarkdown(result.Entries, RenderOptions{})
+
+	// Verify thinking block is present
+	if !strings.Contains(md, "💭 Thinking") {
+		t.Error("expected thinking block in markdown output")
+	}
+
+	// Verify agent reasoning text is present
+	if !strings.Contains(md, "Planning the approach") {
+		t.Error("expected agent reasoning text in markdown output")
+	}
+}
+
+func TestCodexToMarkdown_AgentMessage(t *testing.T) {
+	// Test that agent_message events are rendered as text
+	input := `{"timestamp":"2026-01-04T13:22:15.725Z","type":"session_meta","payload":{"id":"test-session","cwd":"/test"}}
+{"timestamp":"2026-01-04T13:22:16.000Z","type":"event_msg","payload":{"type":"agent_message","message":"I found 2 files in the directory."}}`
+
+	result, err := ParseJSONL(strings.NewReader(input))
+	if err != nil {
+		t.Fatalf("ParseJSONL returned error: %v", err)
+	}
+
+	md := RenderMarkdown(result.Entries, RenderOptions{})
+
+	// Verify message text is present
+	if !strings.Contains(md, "I found 2 files") {
+		t.Error("expected agent message text in markdown output")
+	}
+}
+
+func TestCodexToMarkdown_MultipleToolOutputs(t *testing.T) {
+	// Test that multiple outputs for the same function_call are rendered
+	input := `{"timestamp":"2026-01-04T13:22:15.725Z","type":"session_meta","payload":{"id":"test-session","cwd":"/test"}}
+{"timestamp":"2026-01-04T13:22:16.000Z","type":"response_item","payload":{"type":"function_call","name":"shell_command","arguments":"{}","call_id":"call_multi"}}
+{"timestamp":"2026-01-04T13:22:16.100Z","type":"response_item","payload":{"type":"function_call_output","call_id":"call_multi","output":"First chunk"}}
+{"timestamp":"2026-01-04T13:22:16.200Z","type":"response_item","payload":{"type":"function_call_output","call_id":"call_multi","output":"Second chunk"}}
+{"timestamp":"2026-01-04T13:22:16.300Z","type":"response_item","payload":{"type":"function_call_output","call_id":"call_multi","output":"Third chunk"}}`
+
+	result, err := ParseJSONL(strings.NewReader(input))
+	if err != nil {
+		t.Fatalf("ParseJSONL returned error: %v", err)
+	}
+
+	md := RenderMarkdown(result.Entries, RenderOptions{})
+
+	// Verify all chunks are present
+	if !strings.Contains(md, "First chunk") {
+		t.Error("expected first chunk in markdown output")
+	}
+	if !strings.Contains(md, "Second chunk") {
+		t.Error("expected second chunk in markdown output")
+	}
+	if !strings.Contains(md, "Third chunk") {
+		t.Error("expected third chunk in markdown output")
+	}
+}
+
+func TestCodexToHTML_ThinkingBlock(t *testing.T) {
+	// Test that thinking blocks are properly styled in HTML
+	input := `{"timestamp":"2026-01-04T13:22:15.725Z","type":"session_meta","payload":{"id":"test-session","cwd":"/test"}}
+{"timestamp":"2026-01-04T13:22:16.000Z","type":"event_msg","payload":{"type":"agent_reasoning","text":"Thinking about this..."}}`
+
+	result, err := ParseJSONL(strings.NewReader(input))
+	if err != nil {
+		t.Fatalf("ParseJSONL returned error: %v", err)
+	}
+
+	html := RenderHTML(result.Entries, RenderOptions{})
+
+	// Verify thinking block class is present
+	if !strings.Contains(html, "thinking-block") {
+		t.Error("expected thinking-block class in HTML output")
+	}
+
+	// Verify thinking content is present
+	if !strings.Contains(html, "Thinking about this") {
+		t.Error("expected thinking content in HTML output")
+	}
+}
+
+// --- Phase 5: Error Handling and Negative Tests ---
+
+func TestParseJSONL_EmptyFileError_Negative(t *testing.T) {
+	// Test empty file returns proper error message (req 1.6)
+	input := ""
+	_, err := ParseJSONL(strings.NewReader(input))
+	if err == nil {
+		t.Fatal("expected error for empty file")
+	}
+	if err.Error() != "empty file" {
+		t.Errorf("expected exact error message 'empty file', got %q", err.Error())
+	}
+}
+
+func TestParseJSONL_WhitespaceOnlyError_Negative(t *testing.T) {
+	// Test whitespace-only file returns "empty file" error (req 1.6)
+	tests := []struct {
+		name  string
+		input string
+	}{
+		{"spaces only", "   "},
+		{"newlines only", "\n\n\n"},
+		{"mixed whitespace", "   \n\n   \n   "},
+		{"tabs and spaces", "\t  \t\n  \t"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			_, err := ParseJSONL(strings.NewReader(tt.input))
+			if err == nil {
+				t.Fatal("expected error for whitespace-only file")
+			}
+			if err.Error() != "empty file" {
+				t.Errorf("expected exact error message 'empty file', got %q", err.Error())
+			}
+		})
+	}
+}
+
+func TestParseJSONL_InvalidFirstLineJSONError_Negative(t *testing.T) {
+	// Test invalid JSON on first line returns proper error (req 1.4)
+	tests := []struct {
+		name  string
+		input string
+	}{
+		{"malformed braces", "{not valid json}"},
+		{"missing quotes", `{type: user}`},
+		{"truncated json", `{"type":"user"`},
+		{"random text", "hello world"},
+		{"html content", "<html><body></body></html>"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			_, err := ParseJSONL(strings.NewReader(tt.input))
+			if err == nil {
+				t.Fatal("expected error for invalid JSON")
+			}
+			if !strings.Contains(err.Error(), "failed to parse first line as JSON") {
+				t.Errorf("expected error containing 'failed to parse first line as JSON', got %q", err.Error())
+			}
+		})
+	}
+}
+
+func TestParseJSONL_UnknownFormatTypeError_Negative(t *testing.T) {
+	// Test unknown type field value returns proper error (req 1.5)
+	tests := []struct {
+		name         string
+		input        string
+		expectedType string
+	}{
+		{"unknown_type", `{"type":"unknown_type"}`, "unknown_type"},
+		{"empty_type", `{"type":""}`, ""},
+		{"numeric_type", `{"type":"123"}`, "123"},
+		{"system_type", `{"type":"system"}`, "system"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			_, err := ParseJSONL(strings.NewReader(tt.input))
+			if err == nil {
+				t.Fatal("expected error for unrecognized format type")
+			}
+			expectedMsg := "unrecognized log format: type field value '" + tt.expectedType + "'"
+			if !strings.Contains(err.Error(), expectedMsg) {
+				t.Errorf("expected error containing %q, got %q", expectedMsg, err.Error())
+			}
+		})
+	}
+}
+
+func TestParseJSONL_MissingTypeFieldError_Negative(t *testing.T) {
+	// Test missing type field returns proper error (req 1.5)
+	input := `{"timestamp":"2025-12-23T10:30:00+11:00","message":"hello"}`
+	_, err := ParseJSONL(strings.NewReader(input))
+	if err == nil {
+		t.Fatal("expected error for missing type field")
+	}
+	if !strings.Contains(err.Error(), "unrecognized log format: type field value ''") {
+		t.Errorf("expected error about empty type field, got %q", err.Error())
+	}
+}
+
+func TestParseJSONL_MalformedMiddleLineWarning_Negative(t *testing.T) {
+	// Test malformed line in middle generates warning but continues parsing (req 9.1)
+	input := `{"type":"user","timestamp":"2025-12-23T10:30:00+11:00","message":{"role":"user","content":"First"}}
+{not valid json in the middle}
+{"type":"assistant","timestamp":"2025-12-23T10:30:05+11:00","message":{"role":"assistant","content":[{"type":"text","text":"Second"}]}}`
+
+	result, err := ParseJSONL(strings.NewReader(input))
+	if err != nil {
+		t.Fatalf("ParseJSONL should not return error for malformed middle line: %v", err)
+	}
+
+	// Should have parsed both valid entries
+	if len(result.Entries) != 2 {
+		t.Errorf("expected 2 entries, got %d", len(result.Entries))
+	}
+
+	// Should have warning for malformed line
+	if len(result.Warnings) != 1 {
+		t.Fatalf("expected 1 warning, got %d: %v", len(result.Warnings), result.Warnings)
+	}
+
+	// Warning should include line number (req 9.4)
+	if result.Warnings[0].Line != 2 {
+		t.Errorf("expected warning on line 2, got line %d", result.Warnings[0].Line)
+	}
+
+	// Warning message should describe the issue
+	if !strings.Contains(result.Warnings[0].Message, "failed to parse JSON") {
+		t.Errorf("expected warning about JSON parsing, got %q", result.Warnings[0].Message)
+	}
+}
+
+func TestParseJSONL_CodexAllLinesMalformedError_Negative(t *testing.T) {
+	// Test all lines malformed returns error (req 9.5)
+	// First line must be valid Codex type for format detection
+	input := `{"timestamp":"2026-01-04T13:22:15.725Z","type":"session_meta","payload":{"id":"test"}}
+not valid json line 1
+also not valid json line 2
+still not valid json line 3`
+
+	_, err := ParseJSONL(strings.NewReader(input))
+	if err == nil {
+		t.Fatal("expected error when no valid entries found")
+	}
+	if !strings.Contains(err.Error(), "no valid entries found") {
+		t.Errorf("expected error containing 'no valid entries found', got %q", err.Error())
+	}
+}
+
+func TestParseJSONL_TruncatedLastLineWarning_Negative(t *testing.T) {
+	// Test truncated/incomplete last line is handled gracefully (req 9.6)
+	// Note: This test simulates a truncated file by not closing a JSON object
+	input := `{"type":"user","timestamp":"2025-12-23T10:30:00+11:00","message":{"role":"user","content":"Valid"}}
+{"type":"assistant","timestamp":"2025-12-23T10:30:05+11:00","message":{"role":"assistant","content":[{"type":"text","text":"Trunca`
+
+	result, err := ParseJSONL(strings.NewReader(input))
+	// Should not fail, but should warn about truncated line
+	if err != nil {
+		t.Fatalf("ParseJSONL should handle truncated last line gracefully: %v", err)
+	}
+
+	// Should have parsed the valid entry
+	if len(result.Entries) < 1 {
+		t.Error("expected at least 1 valid entry")
+	}
+
+	// Should have warning for truncated line
+	if len(result.Warnings) < 1 {
+		t.Error("expected warning for truncated/malformed last line")
+	}
+}
+
+func TestDetectFormat_EmptyFile_Negative(t *testing.T) {
+	// Test DetectFormat on empty file
+	_, _, err := DetectFormat(strings.NewReader(""))
+	if err == nil {
+		t.Fatal("expected error for empty file")
+	}
+	if err.Error() != "empty file" {
+		t.Errorf("expected exact error 'empty file', got %q", err.Error())
+	}
+}
+
+func TestDetectFormat_WhitespaceOnly_Negative(t *testing.T) {
+	// Test DetectFormat on whitespace-only file
+	_, _, err := DetectFormat(strings.NewReader("   \n\n   \n"))
+	if err == nil {
+		t.Fatal("expected error for whitespace-only file")
+	}
+	if err.Error() != "empty file" {
+		t.Errorf("expected exact error 'empty file', got %q", err.Error())
+	}
+}
+
+func TestDetectFormat_InvalidJSON_Negative(t *testing.T) {
+	// Test DetectFormat on invalid JSON
+	_, _, err := DetectFormat(strings.NewReader("{invalid json}"))
+	if err == nil {
+		t.Fatal("expected error for invalid JSON")
+	}
+	if !strings.Contains(err.Error(), "failed to parse first line as JSON") {
+		t.Errorf("expected error containing 'failed to parse first line as JSON', got %q", err.Error())
+	}
+}
+
+func TestDetectFormat_UnknownType_Negative(t *testing.T) {
+	// Test DetectFormat on unknown type value
+	_, _, err := DetectFormat(strings.NewReader(`{"type":"completely_unknown"}`))
+	if err == nil {
+		t.Fatal("expected error for unknown type")
+	}
+	if !strings.Contains(err.Error(), "unrecognized log format: type field value 'completely_unknown'") {
+		t.Errorf("expected specific error about unknown type, got %q", err.Error())
 	}
 }

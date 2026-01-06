@@ -1,0 +1,4 @@
+{"timestamp":"2026-01-04T13:22:15.725Z","type":"session_meta","payload":{"id":"codex-reasoning-session","cwd":"/test"}}
+{"timestamp":"2026-01-04T13:22:16.000Z","type":"response_item","payload":{"type":"message","role":"user","content":[{"type":"input_text","text":"Analyze the code"}]}}
+{"timestamp":"2026-01-04T13:22:56.849Z","type":"response_item","payload":{"type":"reasoning","summary":[{"type":"summary_text","text":"**Analyzing the code structure**\nThe code follows standard patterns and has good separation of concerns."}],"encrypted_content":"encrypted_data_here"}}
+{"timestamp":"2026-01-04T13:23:30.000Z","type":"response_item","payload":{"type":"message","role":"assistant","content":[{"type":"output_text","text":"The code is well-structured with clear separation of concerns."}]}}

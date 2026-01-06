@@ -2,6 +2,7 @@ package transcript
 
 import (
 	"bufio"
+	"bytes"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -9,6 +10,110 @@ import (
 	"strings"
 	"time"
 )
+
+// utf8BOM is the byte sequence for UTF-8 Byte Order Mark.
+var utf8BOM = []byte{0xEF, 0xBB, 0xBF}
+
+// claudeTypes are the type values that indicate Claude Code format.
+var claudeTypes = map[string]bool{
+	"user":      true,
+	"assistant": true,
+}
+
+// codexTypes are the type values that indicate Codex format.
+var codexTypes = map[string]bool{
+	"session_meta":  true,
+	"response_item": true,
+	"event_msg":     true,
+	"turn_context":  true,
+}
+
+// DetectFormat examines the first non-empty line to determine the log format.
+// Returns the detected format, the first line bytes (with BOM stripped), and any error.
+// The first line is returned to allow reuse without re-reading.
+func DetectFormat(r io.Reader) (Format, []byte, error) {
+	firstLine, err := readFirstNonEmptyLine(r)
+	if err != nil {
+		if errors.Is(err, io.EOF) {
+			return FormatUnknown, nil, fmt.Errorf("empty file")
+		}
+		return FormatUnknown, nil, err
+	}
+
+	// Strip BOM if present
+	firstLine = stripBOM(firstLine)
+
+	// Detect format from line content
+	format, err := detectFormatFromLine(firstLine)
+	if err != nil {
+		return FormatUnknown, nil, err
+	}
+
+	return format, firstLine, nil
+}
+
+// readFirstNonEmptyLineFromBufReader reads lines until finding a non-empty line.
+// Uses bufio.Reader directly to preserve reader position for subsequent reads.
+// Returns io.EOF if no non-empty line is found.
+func readFirstNonEmptyLineFromBufReader(r *bufio.Reader) ([]byte, error) {
+	for {
+		line, err := r.ReadBytes('\n')
+		if err != nil && err != io.EOF {
+			return nil, err
+		}
+
+		line = bytes.TrimSpace(line)
+		if len(line) > 0 {
+			return line, nil
+		}
+
+		// If we hit EOF while looking for a non-empty line, check if we found anything
+		if err == io.EOF {
+			if len(line) == 0 {
+				return nil, io.EOF
+			}
+			return line, nil
+		}
+	}
+}
+
+// readFirstNonEmptyLine reads lines until finding a non-empty line.
+// Returns io.EOF if no non-empty line is found.
+// Note: This wraps readFirstNonEmptyLineFromBufReader for compatibility with DetectFormat.
+func readFirstNonEmptyLine(r io.Reader) ([]byte, error) {
+	br, ok := r.(*bufio.Reader)
+	if !ok {
+		br = bufio.NewReader(r)
+	}
+	return readFirstNonEmptyLineFromBufReader(br)
+}
+
+// stripBOM removes UTF-8 BOM prefix if present.
+func stripBOM(data []byte) []byte {
+	if bytes.HasPrefix(data, utf8BOM) {
+		return data[len(utf8BOM):]
+	}
+	return data
+}
+
+// detectFormatFromLine determines the format from a single JSON line.
+func detectFormatFromLine(line []byte) (Format, error) {
+	var obj struct {
+		Type string `json:"type"`
+	}
+	if err := json.Unmarshal(line, &obj); err != nil {
+		return FormatUnknown, fmt.Errorf("failed to parse first line as JSON: %w", err)
+	}
+
+	if claudeTypes[obj.Type] {
+		return FormatClaude, nil
+	}
+	if codexTypes[obj.Type] {
+		return FormatCodex, nil
+	}
+
+	return FormatUnknown, fmt.Errorf("unrecognized log format: type field value '%s'", obj.Type)
+}
 
 // ParseResult contains the parsed entries and any warnings encountered.
 type ParseResult struct {
@@ -23,9 +128,47 @@ type ParseWarning struct {
 }
 
 // ParseJSONL reads JSONL from the provided reader and returns parsed entries.
-// It uses a 64KB initial buffer with a 10MB maximum per line.
-// Malformed lines and unknown entry types are skipped with warnings.
+// Automatically detects format (Claude or Codex) and delegates to appropriate parser.
+// Preserves streaming architecture to avoid memory issues with large files.
 func ParseJSONL(r io.Reader) (*ParseResult, error) {
+	bufReader := bufio.NewReader(r)
+
+	// Read first line for format detection (preserves streaming)
+	// Using readFirstNonEmptyLineFromBufReader directly to preserve reader position
+	firstLine, err := readFirstNonEmptyLineFromBufReader(bufReader)
+	if err != nil {
+		if errors.Is(err, io.EOF) {
+			return nil, fmt.Errorf("empty file")
+		}
+		return nil, fmt.Errorf("failed to read first line: %w", err)
+	}
+
+	// Strip BOM if present
+	firstLine = stripBOM(firstLine)
+
+	// Detect format from first line
+	format, err := detectFormatFromLine(firstLine)
+	if err != nil {
+		return nil, err
+	}
+
+	// Combine first line with remaining content for streaming parse
+	combined := io.MultiReader(bytes.NewReader(append(firstLine, '\n')), bufReader)
+
+	// Delegate to appropriate parser
+	switch format {
+	case FormatCodex:
+		return ParseCodexJSONL(combined)
+	case FormatClaude:
+		return parseClaudeJSONL(combined)
+	default:
+		return nil, fmt.Errorf("unrecognized log format")
+	}
+}
+
+// parseClaudeJSONL parses Claude Code format JSONL.
+// This is the existing Claude parsing logic extracted to a separate function.
+func parseClaudeJSONL(r io.Reader) (*ParseResult, error) {
 	scanner := bufio.NewScanner(r)
 	buf := make([]byte, 0, 64*1024)   // 64KB initial
 	scanner.Buffer(buf, 10*1024*1024) // 10MB max
