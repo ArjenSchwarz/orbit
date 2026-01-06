@@ -9,6 +9,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Codex log format support specification documents:
+  - `specs/codex-support/requirements.md` with 9 requirement sections covering format detection, Codex session discovery, session listing, JSONL parsing, content type mapping, metadata event filtering, tool name display, output compatibility, and error handling
+  - `specs/codex-support/design.md` with architecture, components, data models, error handling, and testing strategy including property-based testing and golden file tests
+  - `specs/codex-support/decision_log.md` with 9 design decisions (transparent CLI interface, unified session listing, warn-and-continue error handling, reasoning summary display, metadata filtering, Apsis-only scope, Claude-first discovery priority, authentic tool names, robust format detection)
+  - `specs/codex-support/tasks.md` with 6 implementation phases and 26 tasks following TDD approach
 - Post-completion transcript viewing in web interface:
   - `hasPostCompletionTranscript()` method to detect post-completion transcript files
   - `findPostCompletionTranscript()` method to locate transcript files
