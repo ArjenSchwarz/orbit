@@ -1121,3 +1121,224 @@ func TestResolveInput_NotFound(t *testing.T) {
 		t.Errorf("expected 'session not found' error, got: %v", err)
 	}
 }
+
+// --- Phase 5: Error Handling and Negative Tests for Session Discovery ---
+
+func TestFindCodexSession_InvalidUUIDSearch_Negative(t *testing.T) {
+	// Test that invalid UUIDs don't cause false matches (req 2.3)
+	tmpDir := t.TempDir()
+	sessionsDir := filepath.Join(tmpDir, ".codex", "sessions", "2026", "01", "05")
+	if err := os.MkdirAll(sessionsDir, 0755); err != nil {
+		t.Fatal(err)
+	}
+
+	// Create a session file with valid UUID
+	validUUID := "019b892c-3a14-7773-bd76-6465a8a0b634"
+	if err := os.WriteFile(filepath.Join(sessionsDir, "session-"+validUUID+".jsonl"), []byte("{}"), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	// Test invalid UUID patterns that should NOT match
+	invalidIDs := []struct {
+		name string
+		id   string
+	}{
+		{"short string", "abc123"},
+		{"partial uuid", "019b892c"},
+		{"uuid without hyphens", "019b892c3a147773bd766465a8a0b634"},
+		{"uuid with extra chars", "019b892c-3a14-7773-bd76-6465a8a0b634-extra"},
+		{"different uuid", "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"},
+		{"partial match string", "019b892c-3a14"},
+	}
+
+	for _, tc := range invalidIDs {
+		t.Run(tc.name, func(t *testing.T) {
+			foundPath, err := findCodexSession(tmpDir, tc.id)
+			if err != nil {
+				t.Fatalf("findCodexSession should not error: %v", err)
+			}
+			if foundPath != "" {
+				t.Errorf("invalid UUID %q should not match, but got path: %s", tc.id, foundPath)
+			}
+		})
+	}
+}
+
+func TestFindCodexSession_SymlinkToMissingPath_Negative(t *testing.T) {
+	// Test symlink pointing to non-existent path is handled gracefully (req 2.8)
+	tmpDir := t.TempDir()
+
+	// Create .codex directory
+	codexDir := filepath.Join(tmpDir, ".codex")
+	if err := os.MkdirAll(codexDir, 0755); err != nil {
+		t.Fatal(err)
+	}
+
+	// Create symlink pointing to non-existent directory
+	symlinkPath := filepath.Join(codexDir, "sessions")
+	if err := os.Symlink("/nonexistent/path/that/does/not/exist", symlinkPath); err != nil {
+		t.Fatalf("failed to create symlink: %v", err)
+	}
+
+	// Should not crash or hang, should return not found
+	sessionUUID := "019b892c-3a14-7773-bd76-6465a8a0b634"
+	foundPath, err := findCodexSession(tmpDir, sessionUUID)
+	if err != nil {
+		t.Fatalf("findCodexSession should handle broken symlink gracefully: %v", err)
+	}
+	if foundPath != "" {
+		t.Errorf("expected empty path for broken symlink, got: %s", foundPath)
+	}
+}
+
+func TestWalkDirFollowSymlinks_BrokenSymlink_Negative(t *testing.T) {
+	// Test walkDirFollowSymlinks handles broken symlinks gracefully
+	tmpDir := t.TempDir()
+
+	// Create a directory with a broken symlink
+	if err := os.MkdirAll(filepath.Join(tmpDir, "subdir"), 0755); err != nil {
+		t.Fatal(err)
+	}
+
+	// Create valid file
+	validFile := filepath.Join(tmpDir, "valid.txt")
+	if err := os.WriteFile(validFile, []byte("test"), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	// Create broken symlink
+	brokenLink := filepath.Join(tmpDir, "subdir", "broken.txt")
+	if err := os.Symlink("/nonexistent/file", brokenLink); err != nil {
+		t.Fatalf("failed to create broken symlink: %v", err)
+	}
+
+	// Walk should complete without crashing
+	var foundFiles []string
+	err := walkDirFollowSymlinks(tmpDir, func(path string, d os.DirEntry, err error) error {
+		// Callback may receive error for broken symlink - that's OK
+		if err != nil {
+			return nil // Continue walking
+		}
+		if !d.IsDir() {
+			foundFiles = append(foundFiles, path)
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatalf("walkDirFollowSymlinks should handle broken symlinks: %v", err)
+	}
+
+	// Should have found the valid file
+	if len(foundFiles) < 1 {
+		t.Error("expected to find at least 1 valid file")
+	}
+}
+
+func TestListCodexSessions_IgnoresEmptyFiles_Negative(t *testing.T) {
+	// Test that empty files are ignored during discovery (req 2.7)
+	tmpDir := t.TempDir()
+	sessionsDir := filepath.Join(tmpDir, ".codex", "sessions", "2026", "01", "05")
+	if err := os.MkdirAll(sessionsDir, 0755); err != nil {
+		t.Fatal(err)
+	}
+
+	// Create empty file
+	emptyFile := filepath.Join(sessionsDir, "empty-session.jsonl")
+	if err := os.WriteFile(emptyFile, []byte(""), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	// Create valid file
+	validUUID := "019b892c-3a14-7773-bd76-6465a8a0b634"
+	validSession := `{"timestamp":"2026-01-05T00:22:15.725Z","type":"session_meta","payload":{"id":"019b892c-3a14-7773-bd76-6465a8a0b634"}}`
+	validFile := filepath.Join(sessionsDir, "session-"+validUUID+".jsonl")
+	if err := os.WriteFile(validFile, []byte(validSession), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	sessions, err := listCodexSessions(tmpDir)
+	if err != nil {
+		t.Fatalf("listCodexSessions failed: %v", err)
+	}
+
+	// Should only have 1 session (the valid one, not the empty one)
+	if len(sessions) != 1 {
+		t.Errorf("expected 1 session (empty file ignored), got %d", len(sessions))
+	}
+}
+
+func TestConvert_EmptyFile_Negative(t *testing.T) {
+	// Test convert on empty file returns proper error
+	var output bytes.Buffer
+	err := convert(strings.NewReader(""), &output, "empty-session", "md")
+
+	if err == nil {
+		t.Fatal("expected error for empty file")
+	}
+	if !strings.Contains(err.Error(), "empty file") {
+		t.Errorf("expected error containing 'empty file', got: %v", err)
+	}
+}
+
+func TestConvert_InvalidJSONFile_Negative(t *testing.T) {
+	// Test convert on invalid JSON returns proper error
+	var output bytes.Buffer
+	err := convert(strings.NewReader("{invalid json}"), &output, "test-session", "md")
+
+	if err == nil {
+		t.Fatal("expected error for invalid JSON")
+	}
+	if !strings.Contains(err.Error(), "failed to parse first line as JSON") {
+		t.Errorf("expected error about JSON parsing, got: %v", err)
+	}
+}
+
+func TestConvert_UnknownFormatType_Negative(t *testing.T) {
+	// Test convert on unknown format type returns proper error
+	var output bytes.Buffer
+	err := convert(strings.NewReader(`{"type":"unknown_format"}`), &output, "test-session", "md")
+
+	if err == nil {
+		t.Fatal("expected error for unknown format type")
+	}
+	if !strings.Contains(err.Error(), "unrecognized log format") {
+		t.Errorf("expected error about unrecognized format, got: %v", err)
+	}
+}
+
+func TestConvert_WarningSummaryOutput(t *testing.T) {
+	// Test that warnings are reported with line numbers and summary (req 9.4)
+	// Input with malformed middle line
+	input := `{"type":"user","timestamp":"2025-12-23T10:30:00+11:00","message":{"role":"user","content":"First"}}
+{not valid json in the middle}
+{"type":"assistant","timestamp":"2025-12-23T10:30:05+11:00","message":{"role":"assistant","content":[{"type":"text","text":"Second"}]}}`
+
+	// Capture stderr
+	oldStderr := os.Stderr
+	r, w, _ := os.Pipe()
+	os.Stderr = w
+
+	var output bytes.Buffer
+	err := convert(strings.NewReader(input), &output, "test-session", "md")
+
+	// Restore stderr and capture output
+	_ = w.Close()
+	os.Stderr = oldStderr
+	var stderrBuf bytes.Buffer
+	_, _ = stderrBuf.ReadFrom(r)
+	stderrOutput := stderrBuf.String()
+
+	if err != nil {
+		t.Fatalf("convert should succeed with malformed middle line: %v", err)
+	}
+
+	// Verify warning format: "Warning: line N: message"
+	if !strings.Contains(stderrOutput, "Warning: line 2:") {
+		t.Errorf("expected warning with line number format, got: %s", stderrOutput)
+	}
+
+	// Verify warning summary: "Parsed with N warning(s)"
+	if !strings.Contains(stderrOutput, "Parsed with 1 warning(s)") {
+		t.Errorf("expected warning summary 'Parsed with 1 warning(s)', got: %s", stderrOutput)
+	}
+}

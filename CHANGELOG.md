@@ -9,6 +9,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Error handling and negative tests for Codex support (Phase 5):
+  - Negative tests for empty file, whitespace-only file, invalid first line JSON, and unknown format type errors
+  - Negative tests for malformed middle line warnings with line number validation
+  - Negative tests for all-lines-malformed errors and truncated last line handling
+  - Negative tests for Codex-specific error cases: orphaned output warnings, missing type/payload fields, unrecognized event types
+  - Negative tests for session discovery: invalid UUID search behavior, symlink to missing path, broken symlinks, empty file filtering
+  - Warning summary output: "Parsed with N warning(s)" printed to stderr after parsing
+  - Tool name display tests verifying shell_command and other Codex tool names are preserved exactly
+  - Arguments JSON parsing tests verifying complex structures and raw fallback for invalid JSON
 - Codex session discovery and unified session listing (Phase 4):
   - `findCodexSession()` function for searching `~/.codex/sessions/` by UUID
   - Case-insensitive UUID matching with exact 36-character validation

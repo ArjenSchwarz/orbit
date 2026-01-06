@@ -1485,3 +1485,223 @@ func TestCodexToHTML_ThinkingBlock(t *testing.T) {
 		t.Error("expected thinking content in HTML output")
 	}
 }
+
+// --- Phase 5: Error Handling and Negative Tests ---
+
+func TestParseJSONL_EmptyFileError_Negative(t *testing.T) {
+	// Test empty file returns proper error message (req 1.6)
+	input := ""
+	_, err := ParseJSONL(strings.NewReader(input))
+	if err == nil {
+		t.Fatal("expected error for empty file")
+	}
+	if err.Error() != "empty file" {
+		t.Errorf("expected exact error message 'empty file', got %q", err.Error())
+	}
+}
+
+func TestParseJSONL_WhitespaceOnlyError_Negative(t *testing.T) {
+	// Test whitespace-only file returns "empty file" error (req 1.6)
+	tests := []struct {
+		name  string
+		input string
+	}{
+		{"spaces only", "   "},
+		{"newlines only", "\n\n\n"},
+		{"mixed whitespace", "   \n\n   \n   "},
+		{"tabs and spaces", "\t  \t\n  \t"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			_, err := ParseJSONL(strings.NewReader(tt.input))
+			if err == nil {
+				t.Fatal("expected error for whitespace-only file")
+			}
+			if err.Error() != "empty file" {
+				t.Errorf("expected exact error message 'empty file', got %q", err.Error())
+			}
+		})
+	}
+}
+
+func TestParseJSONL_InvalidFirstLineJSONError_Negative(t *testing.T) {
+	// Test invalid JSON on first line returns proper error (req 1.4)
+	tests := []struct {
+		name  string
+		input string
+	}{
+		{"malformed braces", "{not valid json}"},
+		{"missing quotes", `{type: user}`},
+		{"truncated json", `{"type":"user"`},
+		{"random text", "hello world"},
+		{"html content", "<html><body></body></html>"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			_, err := ParseJSONL(strings.NewReader(tt.input))
+			if err == nil {
+				t.Fatal("expected error for invalid JSON")
+			}
+			if !strings.Contains(err.Error(), "failed to parse first line as JSON") {
+				t.Errorf("expected error containing 'failed to parse first line as JSON', got %q", err.Error())
+			}
+		})
+	}
+}
+
+func TestParseJSONL_UnknownFormatTypeError_Negative(t *testing.T) {
+	// Test unknown type field value returns proper error (req 1.5)
+	tests := []struct {
+		name         string
+		input        string
+		expectedType string
+	}{
+		{"unknown_type", `{"type":"unknown_type"}`, "unknown_type"},
+		{"empty_type", `{"type":""}`, ""},
+		{"numeric_type", `{"type":"123"}`, "123"},
+		{"system_type", `{"type":"system"}`, "system"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			_, err := ParseJSONL(strings.NewReader(tt.input))
+			if err == nil {
+				t.Fatal("expected error for unrecognized format type")
+			}
+			expectedMsg := "unrecognized log format: type field value '" + tt.expectedType + "'"
+			if !strings.Contains(err.Error(), expectedMsg) {
+				t.Errorf("expected error containing %q, got %q", expectedMsg, err.Error())
+			}
+		})
+	}
+}
+
+func TestParseJSONL_MissingTypeFieldError_Negative(t *testing.T) {
+	// Test missing type field returns proper error (req 1.5)
+	input := `{"timestamp":"2025-12-23T10:30:00+11:00","message":"hello"}`
+	_, err := ParseJSONL(strings.NewReader(input))
+	if err == nil {
+		t.Fatal("expected error for missing type field")
+	}
+	if !strings.Contains(err.Error(), "unrecognized log format: type field value ''") {
+		t.Errorf("expected error about empty type field, got %q", err.Error())
+	}
+}
+
+func TestParseJSONL_MalformedMiddleLineWarning_Negative(t *testing.T) {
+	// Test malformed line in middle generates warning but continues parsing (req 9.1)
+	input := `{"type":"user","timestamp":"2025-12-23T10:30:00+11:00","message":{"role":"user","content":"First"}}
+{not valid json in the middle}
+{"type":"assistant","timestamp":"2025-12-23T10:30:05+11:00","message":{"role":"assistant","content":[{"type":"text","text":"Second"}]}}`
+
+	result, err := ParseJSONL(strings.NewReader(input))
+	if err != nil {
+		t.Fatalf("ParseJSONL should not return error for malformed middle line: %v", err)
+	}
+
+	// Should have parsed both valid entries
+	if len(result.Entries) != 2 {
+		t.Errorf("expected 2 entries, got %d", len(result.Entries))
+	}
+
+	// Should have warning for malformed line
+	if len(result.Warnings) != 1 {
+		t.Fatalf("expected 1 warning, got %d: %v", len(result.Warnings), result.Warnings)
+	}
+
+	// Warning should include line number (req 9.4)
+	if result.Warnings[0].Line != 2 {
+		t.Errorf("expected warning on line 2, got line %d", result.Warnings[0].Line)
+	}
+
+	// Warning message should describe the issue
+	if !strings.Contains(result.Warnings[0].Message, "failed to parse JSON") {
+		t.Errorf("expected warning about JSON parsing, got %q", result.Warnings[0].Message)
+	}
+}
+
+func TestParseJSONL_CodexAllLinesMalformedError_Negative(t *testing.T) {
+	// Test all lines malformed returns error (req 9.5)
+	// First line must be valid Codex type for format detection
+	input := `{"timestamp":"2026-01-04T13:22:15.725Z","type":"session_meta","payload":{"id":"test"}}
+not valid json line 1
+also not valid json line 2
+still not valid json line 3`
+
+	_, err := ParseJSONL(strings.NewReader(input))
+	if err == nil {
+		t.Fatal("expected error when no valid entries found")
+	}
+	if !strings.Contains(err.Error(), "no valid entries found") {
+		t.Errorf("expected error containing 'no valid entries found', got %q", err.Error())
+	}
+}
+
+func TestParseJSONL_TruncatedLastLineWarning_Negative(t *testing.T) {
+	// Test truncated/incomplete last line is handled gracefully (req 9.6)
+	// Note: This test simulates a truncated file by not closing a JSON object
+	input := `{"type":"user","timestamp":"2025-12-23T10:30:00+11:00","message":{"role":"user","content":"Valid"}}
+{"type":"assistant","timestamp":"2025-12-23T10:30:05+11:00","message":{"role":"assistant","content":[{"type":"text","text":"Trunca`
+
+	result, err := ParseJSONL(strings.NewReader(input))
+	// Should not fail, but should warn about truncated line
+	if err != nil {
+		t.Fatalf("ParseJSONL should handle truncated last line gracefully: %v", err)
+	}
+
+	// Should have parsed the valid entry
+	if len(result.Entries) < 1 {
+		t.Error("expected at least 1 valid entry")
+	}
+
+	// Should have warning for truncated line
+	if len(result.Warnings) < 1 {
+		t.Error("expected warning for truncated/malformed last line")
+	}
+}
+
+func TestDetectFormat_EmptyFile_Negative(t *testing.T) {
+	// Test DetectFormat on empty file
+	_, _, err := DetectFormat(strings.NewReader(""))
+	if err == nil {
+		t.Fatal("expected error for empty file")
+	}
+	if err.Error() != "empty file" {
+		t.Errorf("expected exact error 'empty file', got %q", err.Error())
+	}
+}
+
+func TestDetectFormat_WhitespaceOnly_Negative(t *testing.T) {
+	// Test DetectFormat on whitespace-only file
+	_, _, err := DetectFormat(strings.NewReader("   \n\n   \n"))
+	if err == nil {
+		t.Fatal("expected error for whitespace-only file")
+	}
+	if err.Error() != "empty file" {
+		t.Errorf("expected exact error 'empty file', got %q", err.Error())
+	}
+}
+
+func TestDetectFormat_InvalidJSON_Negative(t *testing.T) {
+	// Test DetectFormat on invalid JSON
+	_, _, err := DetectFormat(strings.NewReader("{invalid json}"))
+	if err == nil {
+		t.Fatal("expected error for invalid JSON")
+	}
+	if !strings.Contains(err.Error(), "failed to parse first line as JSON") {
+		t.Errorf("expected error containing 'failed to parse first line as JSON', got %q", err.Error())
+	}
+}
+
+func TestDetectFormat_UnknownType_Negative(t *testing.T) {
+	// Test DetectFormat on unknown type value
+	_, _, err := DetectFormat(strings.NewReader(`{"type":"completely_unknown"}`))
+	if err == nil {
+		t.Fatal("expected error for unknown type")
+	}
+	if !strings.Contains(err.Error(), "unrecognized log format: type field value 'completely_unknown'") {
+		t.Errorf("expected specific error about unknown type, got %q", err.Error())
+	}
+}

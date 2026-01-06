@@ -593,9 +593,14 @@ func convert(input io.Reader, output io.Writer, sessionID string, format string)
 		return fmt.Errorf("failed to parse transcript: %w", err)
 	}
 
-	// Write warnings to stderr
+	// Write warnings to stderr with line numbers
 	for _, w := range result.Warnings {
 		fmt.Fprintf(os.Stderr, "Warning: line %d: %s\n", w.Line, w.Message)
+	}
+
+	// Report warning summary if any warnings occurred
+	if len(result.Warnings) > 0 {
+		fmt.Fprintf(os.Stderr, "Parsed with %d warning(s)\n", len(result.Warnings))
 	}
 
 	// Handle empty file

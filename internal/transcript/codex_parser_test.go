@@ -500,3 +500,300 @@ func TestPropertyToolCallLinkingCorrect(t *testing.T) {
 		}
 	})
 }
+
+// --- Phase 5: Error Handling and Negative Tests for Codex ---
+
+func TestParseCodexJSONL_OrphanedOutputWarning_Negative(t *testing.T) {
+	// Test orphaned function_call_output generates warning (req 4.7)
+	input := `{"timestamp":"2026-01-04T13:22:15.725Z","type":"session_meta","payload":{"id":"test-session"}}
+{"timestamp":"2026-01-04T13:22:16.000Z","type":"response_item","payload":{"type":"function_call_output","call_id":"orphan_call_123","output":"orphaned output data"}}`
+
+	result, err := ParseCodexJSONL(strings.NewReader(input))
+	require.NoError(t, err)
+
+	// Orphaned output should still be rendered
+	require.Len(t, result.Entries, 1)
+	entry := result.Entries[0]
+	assert.Equal(t, "assistant", entry.Type)
+	require.NotNil(t, entry.Message)
+	require.Len(t, entry.Message.Content, 1)
+
+	toolResult := entry.Message.Content[0]
+	assert.Equal(t, "tool_result", toolResult.Type)
+	assert.Equal(t, "orphan_call_123", toolResult.ToolUseID)
+	assert.Equal(t, "orphaned output data", toolResult.Content)
+
+	// Should have warning about orphaned output
+	require.Len(t, result.Warnings, 1)
+	assert.Contains(t, result.Warnings[0].Message, "no matching function_call for call_id")
+	assert.Contains(t, result.Warnings[0].Message, "orphan_call_123")
+	// Warning should include line number
+	assert.Equal(t, 2, result.Warnings[0].Line)
+}
+
+func TestParseCodexJSONL_AllLinesMalformedError_Negative(t *testing.T) {
+	// Test all lines malformed after session_meta returns error (req 9.5)
+	input := `{"timestamp":"2026-01-04T13:22:15.725Z","type":"session_meta","payload":{"id":"test"}}
+{invalid json line 1}
+{invalid json line 2}
+{invalid json line 3}`
+
+	_, err := ParseCodexJSONL(strings.NewReader(input))
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "no valid entries found")
+}
+
+func TestParseCodexJSONL_MalformedMiddleLineWarning_Negative(t *testing.T) {
+	// Test malformed line generates warning with line number (req 9.4)
+	input := `{"timestamp":"2026-01-04T13:22:15.725Z","type":"session_meta","payload":{"id":"test"}}
+{"timestamp":"2026-01-04T13:22:16.000Z","type":"response_item","payload":{"type":"message","role":"user","content":[{"type":"input_text","text":"Valid before"}]}}
+{not valid JSON in line 3}
+{"timestamp":"2026-01-04T13:22:18.000Z","type":"response_item","payload":{"type":"message","role":"assistant","content":[{"type":"output_text","text":"Valid after"}]}}`
+
+	result, err := ParseCodexJSONL(strings.NewReader(input))
+	require.NoError(t, err)
+
+	// Should have parsed valid entries
+	require.Len(t, result.Entries, 2)
+
+	// Should have warning for malformed line
+	require.Len(t, result.Warnings, 1)
+	assert.Equal(t, 3, result.Warnings[0].Line)
+	assert.Contains(t, result.Warnings[0].Message, "failed to parse JSON")
+}
+
+func TestParseCodexJSONL_MissingTypeFieldWarning_Negative(t *testing.T) {
+	// Test missing type field generates warning (req 9.2)
+	input := `{"timestamp":"2026-01-04T13:22:15.725Z","type":"session_meta","payload":{"id":"test"}}
+{"timestamp":"2026-01-04T13:22:16.000Z","payload":{"something":"data"}}
+{"timestamp":"2026-01-04T13:22:17.000Z","type":"response_item","payload":{"type":"message","role":"user","content":[{"type":"input_text","text":"Valid"}]}}`
+
+	result, err := ParseCodexJSONL(strings.NewReader(input))
+	require.NoError(t, err)
+
+	// Should have warning about missing type field
+	require.Len(t, result.Warnings, 1)
+	assert.Equal(t, 2, result.Warnings[0].Line)
+	assert.Contains(t, result.Warnings[0].Message, "missing required field: type")
+}
+
+func TestParseCodexJSONL_MissingPayloadWarning_Negative(t *testing.T) {
+	// Test missing payload field generates warning (req 9.2)
+	input := `{"timestamp":"2026-01-04T13:22:15.725Z","type":"session_meta","payload":{"id":"test"}}
+{"timestamp":"2026-01-04T13:22:16.000Z","type":"response_item"}
+{"timestamp":"2026-01-04T13:22:17.000Z","type":"response_item","payload":{"type":"message","role":"user","content":[{"type":"input_text","text":"Valid"}]}}`
+
+	result, err := ParseCodexJSONL(strings.NewReader(input))
+	require.NoError(t, err)
+
+	// Should have warning about missing payload
+	require.Len(t, result.Warnings, 1)
+	assert.Equal(t, 2, result.Warnings[0].Line)
+	assert.Contains(t, result.Warnings[0].Message, "missing required field: payload")
+}
+
+func TestParseCodexJSONL_UnrecognizedEventTypeWarning_Negative(t *testing.T) {
+	// Test unrecognized event type generates warning (req 4.11)
+	input := `{"timestamp":"2026-01-04T13:22:15.725Z","type":"session_meta","payload":{"id":"test"}}
+{"timestamp":"2026-01-04T13:22:16.000Z","type":"future_unknown_event","payload":{"data":"some"}}
+{"timestamp":"2026-01-04T13:22:17.000Z","type":"response_item","payload":{"type":"message","role":"user","content":[{"type":"input_text","text":"Valid"}]}}`
+
+	result, err := ParseCodexJSONL(strings.NewReader(input))
+	require.NoError(t, err)
+
+	// Should have parsed valid entry
+	require.Len(t, result.Entries, 1)
+
+	// Should have warning about unrecognized event type
+	require.Len(t, result.Warnings, 1)
+	assert.Equal(t, 2, result.Warnings[0].Line)
+	assert.Contains(t, result.Warnings[0].Message, "unrecognized event type")
+	assert.Contains(t, result.Warnings[0].Message, "future_unknown_event")
+}
+
+func TestParseCodexJSONL_UnrecognizedResponseItemTypeWarning_Negative(t *testing.T) {
+	// Test unrecognized response_item type generates warning
+	input := `{"timestamp":"2026-01-04T13:22:15.725Z","type":"session_meta","payload":{"id":"test"}}
+{"timestamp":"2026-01-04T13:22:16.000Z","type":"response_item","payload":{"type":"future_response_type","data":"unknown"}}
+{"timestamp":"2026-01-04T13:22:17.000Z","type":"response_item","payload":{"type":"message","role":"user","content":[{"type":"input_text","text":"Valid"}]}}`
+
+	result, err := ParseCodexJSONL(strings.NewReader(input))
+	require.NoError(t, err)
+
+	// Should have warning about unrecognized response_item type
+	require.Len(t, result.Warnings, 1)
+	assert.Contains(t, result.Warnings[0].Message, "unrecognized response_item type")
+}
+
+func TestParseCodexJSONL_UnrecognizedEventMsgTypeWarning_Negative(t *testing.T) {
+	// Test unrecognized event_msg type generates warning
+	input := `{"timestamp":"2026-01-04T13:22:15.725Z","type":"session_meta","payload":{"id":"test"}}
+{"timestamp":"2026-01-04T13:22:16.000Z","type":"event_msg","payload":{"type":"future_event_type","data":"unknown"}}
+{"timestamp":"2026-01-04T13:22:17.000Z","type":"response_item","payload":{"type":"message","role":"user","content":[{"type":"input_text","text":"Valid"}]}}`
+
+	result, err := ParseCodexJSONL(strings.NewReader(input))
+	require.NoError(t, err)
+
+	// Should have warning about unrecognized event_msg type
+	require.Len(t, result.Warnings, 1)
+	assert.Contains(t, result.Warnings[0].Message, "unrecognized event_msg type")
+}
+
+func TestParseCodexJSONL_WarningLineNumberFormat_Negative(t *testing.T) {
+	// Verify warning message format includes line number correctly (req 9.4)
+	input := `{"timestamp":"2026-01-04T13:22:15.725Z","type":"session_meta","payload":{"id":"test"}}
+{"valid":"but_unknown","type":"weird_type"}
+{"timestamp":"2026-01-04T13:22:17.000Z","type":"response_item","payload":{"type":"message","role":"user","content":[{"type":"input_text","text":"Valid"}]}}`
+
+	result, err := ParseCodexJSONL(strings.NewReader(input))
+	require.NoError(t, err)
+
+	require.Len(t, result.Warnings, 1)
+	// Line numbers should be accurate (1-indexed)
+	assert.Equal(t, 2, result.Warnings[0].Line)
+}
+
+// --- Tool Name Display Tests (Phase 5, Task 24) ---
+
+func TestParseCodexJSONL_ToolNameDisplay_ShellCommand(t *testing.T) {
+	// Test shell_command displays as shell_command (not mapped to Bash) (req 7.1)
+	input := `{"timestamp":"2026-01-04T13:22:15.725Z","type":"session_meta","payload":{"id":"test"}}
+{"timestamp":"2026-01-04T13:22:16.000Z","type":"response_item","payload":{"type":"function_call","name":"shell_command","arguments":"{\"command\":\"ls -la\"}","call_id":"call_shell"}}`
+
+	result, err := ParseCodexJSONL(strings.NewReader(input))
+	require.NoError(t, err)
+	require.Len(t, result.Entries, 1)
+
+	toolUse := result.Entries[0].Message.Content[0]
+	assert.Equal(t, "tool_use", toolUse.Type)
+	// Tool name should be preserved exactly as shell_command (not mapped to Bash)
+	assert.Equal(t, "shell_command", toolUse.Name)
+	assert.Equal(t, "call_shell", toolUse.ID)
+}
+
+func TestParseCodexJSONL_ToolNameDisplay_PreservesOriginalNames(t *testing.T) {
+	// Test various Codex tool names are preserved exactly (req 7.1)
+	tests := []struct {
+		name             string
+		codexToolName    string
+		expectedToolName string
+	}{
+		{"shell_command", "shell_command", "shell_command"},
+		{"container_exec", "container_exec", "container_exec"},
+		{"read_file", "read_file", "read_file"},
+		{"write_to_file", "write_to_file", "write_to_file"},
+		{"edit_file", "edit_file", "edit_file"},
+		{"list_directory", "list_directory", "list_directory"},
+		{"search_codebase", "search_codebase", "search_codebase"},
+		{"python", "python", "python"},
+		{"custom_mcp_tool", "custom_mcp_tool", "custom_mcp_tool"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			input := fmt.Sprintf(`{"timestamp":"2026-01-04T13:22:15.725Z","type":"session_meta","payload":{"id":"test"}}
+{"timestamp":"2026-01-04T13:22:16.000Z","type":"response_item","payload":{"type":"function_call","name":"%s","arguments":"{}","call_id":"call_1"}}`,
+				tt.codexToolName)
+
+			result, err := ParseCodexJSONL(strings.NewReader(input))
+			require.NoError(t, err)
+			require.Len(t, result.Entries, 1)
+
+			toolUse := result.Entries[0].Message.Content[0]
+			assert.Equal(t, tt.expectedToolName, toolUse.Name)
+		})
+	}
+}
+
+func TestParseCodexJSONL_ArgumentsJSONParsing(t *testing.T) {
+	// Test arguments JSON parsing to extract command field (req 7.2)
+	input := `{"timestamp":"2026-01-04T13:22:15.725Z","type":"session_meta","payload":{"id":"test"}}
+{"timestamp":"2026-01-04T13:22:16.000Z","type":"response_item","payload":{"type":"function_call","name":"shell_command","arguments":"{\"command\":\"git status\",\"cwd\":\"/tmp\"}","call_id":"call_1"}}`
+
+	result, err := ParseCodexJSONL(strings.NewReader(input))
+	require.NoError(t, err)
+	require.Len(t, result.Entries, 1)
+
+	toolUse := result.Entries[0].Message.Content[0]
+	assert.Equal(t, "tool_use", toolUse.Type)
+
+	// Input should be parsed JSON with command field accessible
+	inputMap, ok := toolUse.Input.(map[string]any)
+	require.True(t, ok, "Input should be a map")
+	assert.Equal(t, "git status", inputMap["command"])
+	assert.Equal(t, "/tmp", inputMap["cwd"])
+}
+
+func TestParseCodexJSONL_ArgumentsJSONParsing_ComplexStructure(t *testing.T) {
+	// Test arguments with nested JSON structure (req 7.2)
+	input := `{"timestamp":"2026-01-04T13:22:15.725Z","type":"session_meta","payload":{"id":"test"}}
+{"timestamp":"2026-01-04T13:22:16.000Z","type":"response_item","payload":{"type":"function_call","name":"read_file","arguments":"{\"file_path\":\"/path/to/file.txt\",\"encoding\":\"utf-8\",\"options\":{\"limit\":100}}","call_id":"call_1"}}`
+
+	result, err := ParseCodexJSONL(strings.NewReader(input))
+	require.NoError(t, err)
+	require.Len(t, result.Entries, 1)
+
+	toolUse := result.Entries[0].Message.Content[0]
+	inputMap, ok := toolUse.Input.(map[string]any)
+	require.True(t, ok)
+
+	assert.Equal(t, "/path/to/file.txt", inputMap["file_path"])
+	assert.Equal(t, "utf-8", inputMap["encoding"])
+
+	// Nested options should also be parsed
+	options, ok := inputMap["options"].(map[string]any)
+	require.True(t, ok, "options should be a map")
+	assert.Equal(t, float64(100), options["limit"]) // JSON numbers become float64
+}
+
+func TestParseCodexJSONL_RawArgumentsFallback(t *testing.T) {
+	// Test raw arguments fallback for invalid JSON (req 7.3)
+	input := `{"timestamp":"2026-01-04T13:22:15.725Z","type":"session_meta","payload":{"id":"test"}}
+{"timestamp":"2026-01-04T13:22:16.000Z","type":"response_item","payload":{"type":"function_call","name":"shell_command","arguments":"not valid json at all","call_id":"call_1"}}`
+
+	result, err := ParseCodexJSONL(strings.NewReader(input))
+	require.NoError(t, err)
+	require.Len(t, result.Entries, 1)
+
+	toolUse := result.Entries[0].Message.Content[0]
+	assert.Equal(t, "tool_use", toolUse.Type)
+	assert.Equal(t, "shell_command", toolUse.Name)
+
+	// Invalid JSON arguments should be stored as raw string
+	rawArgs, ok := toolUse.Input.(string)
+	require.True(t, ok, "Input should be a string for invalid JSON")
+	assert.Equal(t, "not valid json at all", rawArgs)
+}
+
+func TestParseCodexJSONL_EmptyArguments(t *testing.T) {
+	// Test empty arguments string
+	input := `{"timestamp":"2026-01-04T13:22:15.725Z","type":"session_meta","payload":{"id":"test"}}
+{"timestamp":"2026-01-04T13:22:16.000Z","type":"response_item","payload":{"type":"function_call","name":"shell_command","arguments":"","call_id":"call_1"}}`
+
+	result, err := ParseCodexJSONL(strings.NewReader(input))
+	require.NoError(t, err)
+	require.Len(t, result.Entries, 1)
+
+	toolUse := result.Entries[0].Message.Content[0]
+	assert.Equal(t, "tool_use", toolUse.Type)
+	// Empty string is valid (though not valid JSON), stored as-is
+	assert.Equal(t, "", toolUse.Input)
+}
+
+func TestParseCodexJSONL_EmptyJSONObjectArguments(t *testing.T) {
+	// Test empty JSON object arguments "{}"
+	input := `{"timestamp":"2026-01-04T13:22:15.725Z","type":"session_meta","payload":{"id":"test"}}
+{"timestamp":"2026-01-04T13:22:16.000Z","type":"response_item","payload":{"type":"function_call","name":"some_tool","arguments":"{}","call_id":"call_1"}}`
+
+	result, err := ParseCodexJSONL(strings.NewReader(input))
+	require.NoError(t, err)
+	require.Len(t, result.Entries, 1)
+
+	toolUse := result.Entries[0].Message.Content[0]
+	assert.Equal(t, "tool_use", toolUse.Type)
+
+	// Empty JSON object should be parsed
+	inputMap, ok := toolUse.Input.(map[string]any)
+	require.True(t, ok, "Input should be a map")
+	assert.Empty(t, inputMap)
+}

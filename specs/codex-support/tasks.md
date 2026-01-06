@@ -194,7 +194,7 @@ references:
 
 ## Phase 5: Error Handling and Negative Tests
 
-- [ ] 22. Write negative test cases for error handling
+- [x] 22. Write negative test cases for error handling
   - Test empty file error
   - Test whitespace-only error
   - Test invalid first line JSON error
@@ -207,14 +207,14 @@ references:
   - Requirements: [9.1](requirements.md#9.1), [9.2](requirements.md#9.2), [9.3](requirements.md#9.3), [9.4](requirements.md#9.4), [9.5](requirements.md#9.5), [9.6](requirements.md#9.6)
   - References: internal/transcript/parser_test.go, cmd/apsis/main_test.go
 
-- [ ] 23. Implement warning collection and error messages
+- [x] 23. Implement warning collection and error messages
   - Ensure ParseResult.Warnings is populated correctly
   - Format warning messages with line numbers: line N: message
   - Report total warnings to stderr: parsed with N warning(s)
   - Requirements: [9.1](requirements.md#9.1), [9.2](requirements.md#9.2), [9.3](requirements.md#9.3), [9.4](requirements.md#9.4), [9.5](requirements.md#9.5), [9.6](requirements.md#9.6)
   - References: internal/transcript/codex_parser.go, cmd/apsis/main.go
 
-- [ ] 24. Write tests for tool name display
+- [x] 24. Write tests for tool name display
   - Test shell_command displays as shell_command (not mapped to Bash)
   - Test arguments JSON parsing to extract command field
   - Test raw arguments fallback for invalid JSON
