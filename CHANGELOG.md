@@ -9,6 +9,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Final integration tests for Codex support (Phase 6):
+  - CLI integration tests for Codex session conversion to Markdown
+  - CLI integration tests for Codex session conversion to HTML
+  - Integration tests for Codex reasoning block rendering
+  - Integration tests for apsis with Codex file path input
+  - Integration tests for mixed Claude/Codex session listing (`apsis --list`)
+  - Integration tests verifying correct source indicators (`[claude]` / `[codex]`)
+  - Integration tests verifying timestamp-based sorting with Claude-first tie-breaking
+  - Full test suite verification: all existing and new tests pass
+  - Linter verification: no lint errors or warnings
 - Error handling and negative tests for Codex support (Phase 5):
   - Negative tests for empty file, whitespace-only file, invalid first line JSON, and unknown format type errors
   - Negative tests for malformed middle line warnings with line number validation

@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -1340,5 +1341,404 @@ func TestConvert_WarningSummaryOutput(t *testing.T) {
 	// Verify warning summary: "Parsed with N warning(s)"
 	if !strings.Contains(stderrOutput, "Parsed with 1 warning(s)") {
 		t.Errorf("expected warning summary 'Parsed with 1 warning(s)', got: %s", stderrOutput)
+	}
+}
+
+// --- Phase 6: CLI Integration Tests for Codex Support ---
+
+// TestConvert_CodexSessionToMarkdown tests the full pipeline: Codex JSONL -> ParseJSONL -> RenderMarkdown
+func TestConvert_CodexSessionToMarkdown(t *testing.T) {
+	// Valid Codex session input (mimics codex_valid.jsonl structure)
+	input := `{"timestamp":"2026-01-04T13:22:15.725Z","type":"session_meta","payload":{"id":"019b892c-3a14-7773-bd76-6465a8a0b634","cwd":"/Users/arjen/projects/orbit"}}
+{"timestamp":"2026-01-04T13:22:15.800Z","type":"response_item","payload":{"type":"message","role":"user","content":[{"type":"input_text","text":"List all files in the current directory"}]}}
+{"timestamp":"2026-01-04T13:22:21.499Z","type":"event_msg","payload":{"type":"agent_reasoning","text":"**Preparing to list files**"}}
+{"timestamp":"2026-01-04T13:22:21.885Z","type":"response_item","payload":{"type":"function_call","name":"shell_command","arguments":"{\"command\":\"ls -la\"}","call_id":"call_abc123"}}
+{"timestamp":"2026-01-04T13:22:21.912Z","type":"response_item","payload":{"type":"function_call_output","call_id":"call_abc123","output":"Exit code: 0\nOutput:\nfile1.txt\nfile2.txt"}}
+{"timestamp":"2026-01-04T13:23:16.617Z","type":"event_msg","payload":{"type":"agent_message","message":"I found 2 files in the directory."}}
+{"timestamp":"2026-01-04T13:23:30.000Z","type":"response_item","payload":{"type":"message","role":"assistant","content":[{"type":"output_text","text":"The directory contains 2 files."}]}}`
+
+	var output bytes.Buffer
+	err := convert(strings.NewReader(input), &output, "codex-test-session", "md")
+	if err != nil {
+		t.Fatalf("convert failed for Codex session: %v", err)
+	}
+
+	result := output.String()
+
+	// Verify header
+	if !strings.Contains(result, "# Session Transcript") {
+		t.Error("output should contain Session Transcript header")
+	}
+
+	// Verify session ID
+	if !strings.Contains(result, "`codex-test-session`") {
+		t.Error("output should contain session ID")
+	}
+
+	// Verify user message
+	if !strings.Contains(result, "## 👤 User") {
+		t.Error("output should contain User heading")
+	}
+	if !strings.Contains(result, "List all files in the current directory") {
+		t.Error("output should contain user message text")
+	}
+
+	// Verify tool use (shell_command)
+	if !strings.Contains(result, "shell_command") {
+		t.Error("output should contain shell_command tool name")
+	}
+	if !strings.Contains(result, "ls -la") {
+		t.Error("output should contain command arguments")
+	}
+
+	// Verify tool result
+	if !strings.Contains(result, "file1.txt") || !strings.Contains(result, "file2.txt") {
+		t.Error("output should contain tool result with file names")
+	}
+
+	// Verify assistant message
+	if !strings.Contains(result, "## 🤖 Assistant") {
+		t.Error("output should contain Assistant heading")
+	}
+	if !strings.Contains(result, "The directory contains 2 files") {
+		t.Error("output should contain assistant message text")
+	}
+}
+
+// TestConvert_CodexSessionToHTML tests the full pipeline: Codex JSONL -> ParseJSONL -> RenderHTML
+func TestConvert_CodexSessionToHTML(t *testing.T) {
+	input := `{"timestamp":"2026-01-04T13:22:15.725Z","type":"session_meta","payload":{"id":"019b892c-3a14-7773-bd76-6465a8a0b634"}}
+{"timestamp":"2026-01-04T13:22:15.800Z","type":"response_item","payload":{"type":"message","role":"user","content":[{"type":"input_text","text":"Hello from Codex!"}]}}
+{"timestamp":"2026-01-04T13:22:30.000Z","type":"response_item","payload":{"type":"message","role":"assistant","content":[{"type":"output_text","text":"Hello! How can I help you today?"}]}}`
+
+	var output bytes.Buffer
+	err := convert(strings.NewReader(input), &output, "codex-html-session", "html")
+	if err != nil {
+		t.Fatalf("convert failed for Codex HTML: %v", err)
+	}
+
+	result := output.String()
+
+	// Check HTML structure
+	if !strings.Contains(result, "<!DOCTYPE html>") {
+		t.Error("output should contain DOCTYPE")
+	}
+	if !strings.Contains(result, "<title>Session Transcript</title>") {
+		t.Error("output should contain title")
+	}
+	if !strings.Contains(result, "<code>codex-html-session</code>") {
+		t.Error("output should contain session ID")
+	}
+
+	// Check user message
+	if !strings.Contains(result, `class="message user"`) {
+		t.Error("output should contain user message class")
+	}
+	if !strings.Contains(result, "Hello from Codex!") {
+		t.Error("output should contain user message text")
+	}
+
+	// Check assistant message
+	if !strings.Contains(result, `class="message assistant"`) {
+		t.Error("output should contain assistant message class")
+	}
+	if !strings.Contains(result, "Hello! How can I help you today?") {
+		t.Error("output should contain assistant message text")
+	}
+}
+
+// TestConvert_CodexReasoningBlocks tests that Codex reasoning blocks are rendered correctly
+func TestConvert_CodexReasoningBlocks(t *testing.T) {
+	input := `{"timestamp":"2026-01-04T13:22:15.725Z","type":"session_meta","payload":{"id":"019b892c-3a14-7773-bd76-6465a8a0b634"}}
+{"timestamp":"2026-01-04T13:22:15.800Z","type":"response_item","payload":{"type":"message","role":"user","content":[{"type":"input_text","text":"Think about this problem"}]}}
+{"timestamp":"2026-01-04T13:22:56.849Z","type":"response_item","payload":{"type":"reasoning","summary":[{"type":"summary_text","text":"**Analyzing the problem**\nLet me think through this step by step."}],"encrypted_content":"encrypted_data_here"}}
+{"timestamp":"2026-01-04T13:23:00.000Z","type":"event_msg","payload":{"type":"agent_reasoning","text":"**Additional reasoning context**"}}
+{"timestamp":"2026-01-04T13:23:30.000Z","type":"response_item","payload":{"type":"message","role":"assistant","content":[{"type":"output_text","text":"Here is my analysis."}]}}`
+
+	var output bytes.Buffer
+	err := convert(strings.NewReader(input), &output, "reasoning-session", "md")
+	if err != nil {
+		t.Fatalf("convert failed: %v", err)
+	}
+
+	result := output.String()
+
+	// Verify reasoning summary is rendered (not encrypted content)
+	if !strings.Contains(result, "Analyzing the problem") {
+		t.Error("output should contain reasoning summary text")
+	}
+	if strings.Contains(result, "encrypted_data_here") {
+		t.Error("output should NOT contain encrypted content")
+	}
+
+	// Verify agent_reasoning is also rendered
+	if !strings.Contains(result, "Additional reasoning context") {
+		t.Error("output should contain agent_reasoning text")
+	}
+}
+
+// TestIntegration_ApsisWithCodexFile tests apsis reading from a Codex JSONL file path
+func TestIntegration_ApsisWithCodexFile(t *testing.T) {
+	// Create a temporary Codex session file
+	tmpDir := t.TempDir()
+	sessionFile := filepath.Join(tmpDir, "codex-session-019b892c-3a14-7773-bd76-6465a8a0b634.jsonl")
+	content := `{"timestamp":"2026-01-04T13:22:15.725Z","type":"session_meta","payload":{"id":"019b892c-3a14-7773-bd76-6465a8a0b634"}}
+{"timestamp":"2026-01-04T13:22:15.800Z","type":"response_item","payload":{"type":"message","role":"user","content":[{"type":"input_text","text":"Integration test message"}]}}
+{"timestamp":"2026-01-04T13:22:30.000Z","type":"response_item","payload":{"type":"message","role":"assistant","content":[{"type":"output_text","text":"Integration test response"}]}}`
+	if err := os.WriteFile(sessionFile, []byte(content), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	// Test resolving input from file path
+	reader, sessionID, err := resolveInput(sessionFile, "/some/project")
+	if err != nil {
+		t.Fatalf("resolveInput failed: %v", err)
+	}
+	defer func() { _ = reader.Close() }()
+
+	// Session ID should be extracted from filename
+	expected := "codex-session-019b892c-3a14-7773-bd76-6465a8a0b634"
+	if sessionID != expected {
+		t.Errorf("expected session ID %q, got %q", expected, sessionID)
+	}
+
+	// Test convert
+	var output bytes.Buffer
+	f, _ := os.Open(sessionFile)
+	defer func() { _ = f.Close() }()
+	err = convert(f, &output, sessionID, "md")
+	if err != nil {
+		t.Fatalf("convert failed: %v", err)
+	}
+
+	result := output.String()
+	if !strings.Contains(result, "Integration test message") {
+		t.Error("output should contain user message")
+	}
+	if !strings.Contains(result, "Integration test response") {
+		t.Error("output should contain assistant response")
+	}
+}
+
+// TestIntegration_ListMixedSessions tests listing sessions from both Claude and Codex
+func TestIntegration_ListMixedSessions(t *testing.T) {
+	tmpDir := t.TempDir()
+	homeDir := filepath.Join(tmpDir, "home")
+
+	// Create Claude sessions directory
+	claudeProjectDir := filepath.Join(homeDir, ".claude", "projects", "-test-project")
+	if err := os.MkdirAll(claudeProjectDir, 0755); err != nil {
+		t.Fatal(err)
+	}
+
+	// Create Codex sessions directory with date structure
+	codexSessionsDir := filepath.Join(homeDir, ".codex", "sessions", "2026", "01", "05")
+	if err := os.MkdirAll(codexSessionsDir, 0755); err != nil {
+		t.Fatal(err)
+	}
+
+	// Create Claude sessions with different timestamps
+	claudeSession1 := `{"type":"user","timestamp":"2026-01-05T10:00:00Z","message":{"role":"user","content":[{"type":"text","text":"Claude session 1"}]}}`
+	claudeSession2 := `{"type":"user","timestamp":"2026-01-05T14:00:00Z","message":{"role":"user","content":[{"type":"text","text":"Claude session 2"}]}}`
+	if err := os.WriteFile(filepath.Join(claudeProjectDir, "claude-session-1.jsonl"), []byte(claudeSession1), 0644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(claudeProjectDir, "claude-session-2.jsonl"), []byte(claudeSession2), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	// Create Codex sessions with different timestamps
+	codexSession1 := `{"timestamp":"2026-01-05T08:00:00Z","type":"session_meta","payload":{"id":"019b892c-3a14-7773-bd76-6465a8a0b634"}}`
+	codexSession2 := `{"timestamp":"2026-01-05T12:00:00Z","type":"session_meta","payload":{"id":"abcd1234-5678-90ab-cdef-1234567890ab"}}`
+	if err := os.WriteFile(filepath.Join(codexSessionsDir, "session-019b892c-3a14-7773-bd76-6465a8a0b634.jsonl"), []byte(codexSession1), 0644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(codexSessionsDir, "session-abcd1234-5678-90ab-cdef-1234567890ab.jsonl"), []byte(codexSession2), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	// Override home directory for testing
+	origHomeDir := os.Getenv("HOME")
+	if err := os.Setenv("HOME", homeDir); err != nil {
+		t.Fatalf("failed to set HOME: %v", err)
+	}
+	defer func() { _ = os.Setenv("HOME", origHomeDir) }()
+
+	// Get all sessions
+	sessions, err := listAllSessions("/test/project")
+	if err != nil {
+		t.Fatalf("listAllSessions failed: %v", err)
+	}
+
+	// Verify we have 4 sessions total (2 Claude + 2 Codex)
+	if len(sessions) != 4 {
+		t.Fatalf("expected 4 sessions, got %d", len(sessions))
+	}
+
+	// Verify sources are correctly identified
+	claudeCount := 0
+	codexCount := 0
+	for _, s := range sessions {
+		switch s.Source {
+		case "claude":
+			claudeCount++
+		case "codex":
+			codexCount++
+		default:
+			t.Errorf("unexpected source: %s", s.Source)
+		}
+	}
+	if claudeCount != 2 {
+		t.Errorf("expected 2 Claude sessions, got %d", claudeCount)
+	}
+	if codexCount != 2 {
+		t.Errorf("expected 2 Codex sessions, got %d", codexCount)
+	}
+
+	// Verify sessions are sorted by timestamp (oldest first)
+	// Expected order by timestamp:
+	// 1. Codex 08:00 (019b892c...)
+	// 2. Claude 10:00 (claude-session-1)
+	// 3. Codex 12:00 (abcd1234...)
+	// 4. Claude 14:00 (claude-session-2)
+	expectedOrder := []struct {
+		source string
+		hour   int
+	}{
+		{"codex", 8},
+		{"claude", 10},
+		{"codex", 12},
+		{"claude", 14},
+	}
+
+	for i, expected := range expectedOrder {
+		if sessions[i].Source != expected.source {
+			t.Errorf("position %d: expected source %s, got %s", i, expected.source, sessions[i].Source)
+		}
+		if sessions[i].CreatedAt.Hour() != expected.hour {
+			t.Errorf("position %d: expected hour %d, got %d", i, expected.hour, sessions[i].CreatedAt.Hour())
+		}
+	}
+}
+
+// TestIntegration_ListWithOnlyCodexSessions tests listing when only Codex sessions exist
+func TestIntegration_ListWithOnlyCodexSessions(t *testing.T) {
+	tmpDir := t.TempDir()
+	homeDir := filepath.Join(tmpDir, "home")
+
+	// Create only Codex sessions (no Claude project directory)
+	codexSessionsDir := filepath.Join(homeDir, ".codex", "sessions", "2026", "01", "05")
+	if err := os.MkdirAll(codexSessionsDir, 0755); err != nil {
+		t.Fatal(err)
+	}
+
+	// Create multiple Codex sessions
+	sessions := []struct {
+		uuid      string
+		timestamp string
+	}{
+		{"019b892c-3a14-7773-bd76-6465a8a0b634", "2026-01-05T08:00:00Z"},
+		{"abcd1234-5678-90ab-cdef-1234567890ab", "2026-01-05T09:00:00Z"},
+		{"11112222-3333-4444-5555-666677778888", "2026-01-05T10:00:00Z"},
+	}
+
+	for _, s := range sessions {
+		content := fmt.Sprintf(`{"timestamp":"%s","type":"session_meta","payload":{"id":"%s"}}`, s.timestamp, s.uuid)
+		filename := filepath.Join(codexSessionsDir, "session-"+s.uuid+".jsonl")
+		if err := os.WriteFile(filename, []byte(content), 0644); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	// Override home directory
+	origHomeDir := os.Getenv("HOME")
+	if err := os.Setenv("HOME", homeDir); err != nil {
+		t.Fatalf("failed to set HOME: %v", err)
+	}
+	defer func() { _ = os.Setenv("HOME", origHomeDir) }()
+
+	// List sessions
+	result, err := listAllSessions("/nonexistent/project")
+	if err != nil {
+		t.Fatalf("listAllSessions failed: %v", err)
+	}
+
+	if len(result) != 3 {
+		t.Fatalf("expected 3 sessions, got %d", len(result))
+	}
+
+	// All should be Codex
+	for _, s := range result {
+		if s.Source != "codex" {
+			t.Errorf("expected source 'codex', got %q", s.Source)
+		}
+	}
+}
+
+// TestIntegration_SessionOutputFormat tests that session listing output format is correct
+func TestIntegration_SessionOutputFormat(t *testing.T) {
+	tmpDir := t.TempDir()
+	homeDir := filepath.Join(tmpDir, "home")
+
+	// Create Claude session
+	claudeProjectDir := filepath.Join(homeDir, ".claude", "projects", "-test-project")
+	if err := os.MkdirAll(claudeProjectDir, 0755); err != nil {
+		t.Fatal(err)
+	}
+	claudeSession := `{"type":"user","timestamp":"2026-01-05T10:00:00Z","message":{"role":"user","content":[{"type":"text","text":"test"}]}}`
+	if err := os.WriteFile(filepath.Join(claudeProjectDir, "test-session.jsonl"), []byte(claudeSession), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	// Create Codex session
+	codexSessionsDir := filepath.Join(homeDir, ".codex", "sessions", "2026", "01", "05")
+	if err := os.MkdirAll(codexSessionsDir, 0755); err != nil {
+		t.Fatal(err)
+	}
+	codexSession := `{"timestamp":"2026-01-05T09:00:00Z","type":"session_meta","payload":{"id":"019b892c-3a14-7773-bd76-6465a8a0b634"}}`
+	if err := os.WriteFile(filepath.Join(codexSessionsDir, "session-019b892c-3a14-7773-bd76-6465a8a0b634.jsonl"), []byte(codexSession), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	// Override home directory
+	origHomeDir := os.Getenv("HOME")
+	if err := os.Setenv("HOME", homeDir); err != nil {
+		t.Fatalf("failed to set HOME: %v", err)
+	}
+	defer func() { _ = os.Setenv("HOME", origHomeDir) }()
+
+	// Capture stdout
+	oldStdout := os.Stdout
+	r, w, _ := os.Pipe()
+	os.Stdout = w
+
+	// Run listSessions
+	err := listSessions("/test/project")
+
+	// Restore stdout
+	_ = w.Close()
+	os.Stdout = oldStdout
+	var stdoutBuf bytes.Buffer
+	_, _ = stdoutBuf.ReadFrom(r)
+	output := stdoutBuf.String()
+
+	if err != nil {
+		t.Fatalf("listSessions failed: %v", err)
+	}
+
+	// Verify output contains source indicators
+	if !strings.Contains(output, "[claude]") {
+		t.Error("output should contain [claude] source indicator")
+	}
+	if !strings.Contains(output, "[codex]") {
+		t.Error("output should contain [codex] source indicator")
+	}
+
+	// Verify output contains session IDs
+	if !strings.Contains(output, "test-session") {
+		t.Error("output should contain Claude session ID")
+	}
+	if !strings.Contains(output, "019b892c-3a14-7773-bd76-6465a8a0b634") {
+		t.Error("output should contain Codex session UUID")
 	}
 }

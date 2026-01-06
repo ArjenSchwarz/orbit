@@ -223,14 +223,14 @@ references:
 
 ## Phase 6: Final Integration
 
-- [ ] 25. Run full test suite and fix any issues
+- [x] 25. Run full test suite and fix any issues
   - Run make test
   - Run make lint
   - Fix any test failures
   - Fix any lint errors
   - References: Makefile
 
-- [ ] 26. Add integration test for CLI with Codex session
+- [x] 26. Add integration test for CLI with Codex session
   - Test apsis with Codex session ID resolution
   - Test apsis --list with mixed Claude and Codex sessions
   - Requirements: [2.3](requirements.md#2.3), [3.1](requirements.md#3.1)
