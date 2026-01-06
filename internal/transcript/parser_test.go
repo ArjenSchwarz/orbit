@@ -870,14 +870,16 @@ func TestDetectFormat_InvalidJSON(t *testing.T) {
 	}
 }
 
-func TestDetectFormat_UnrecognizedType(t *testing.T) {
+func TestDetectFormat_UnknownTypeDefaultsToClaude(t *testing.T) {
+	// Unknown types should default to Claude format, since Claude logs can contain
+	// many internal types like queue-operation, system, etc.
 	input := `{"type":"unknown_type","timestamp":"2025-12-23T10:30:00+11:00"}`
-	_, _, err := DetectFormat(strings.NewReader(input))
-	if err == nil {
-		t.Fatal("expected error for unrecognized type")
+	format, _, err := DetectFormat(strings.NewReader(input))
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
 	}
-	if !strings.Contains(err.Error(), "unrecognized log format: type field value 'unknown_type'") {
-		t.Errorf("expected error containing 'unrecognized log format: type field value', got %q", err.Error())
+	if format != FormatClaude {
+		t.Errorf("expected FormatClaude for unknown type, got %v", format)
 	}
 }
 
@@ -887,8 +889,8 @@ func TestDetectFormat_MissingTypeField(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected error for missing type field")
 	}
-	if !strings.Contains(err.Error(), "unrecognized log format: type field value ''") {
-		t.Errorf("expected error about empty type field, got %q", err.Error())
+	if !strings.Contains(err.Error(), "missing type field") {
+		t.Errorf("expected error about missing type field, got %q", err.Error())
 	}
 }
 
@@ -1104,14 +1106,17 @@ func TestParseJSONL_InvalidJSONError(t *testing.T) {
 	}
 }
 
-func TestParseJSONL_UnrecognizedFormatError(t *testing.T) {
+func TestParseJSONL_UnknownTypeDefaultsToClaude(t *testing.T) {
+	// Unknown types should be treated as Claude format and parsed.
+	// Since the type isn't user/assistant, no entries should be returned.
 	input := `{"type":"unknown_format_type","data":"test"}`
-	_, err := ParseJSONL(strings.NewReader(input))
-	if err == nil {
-		t.Fatal("expected error for unrecognized format")
+	result, err := ParseJSONL(strings.NewReader(input))
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
 	}
-	if !strings.Contains(err.Error(), "unrecognized log format") {
-		t.Errorf("expected error containing 'unrecognized log format', got %q", err.Error())
+	// No entries because unknown_format_type isn't user/assistant
+	if len(result.Entries) != 0 {
+		t.Errorf("expected 0 entries for unknown type, got %d", len(result.Entries))
 	}
 }
 
@@ -1551,30 +1556,42 @@ func TestParseJSONL_InvalidFirstLineJSONError_Negative(t *testing.T) {
 	}
 }
 
-func TestParseJSONL_UnknownFormatTypeError_Negative(t *testing.T) {
-	// Test unknown type field value returns proper error (req 1.5)
+func TestParseJSONL_UnknownTypeDefaultsToClaude_Negative(t *testing.T) {
+	// Unknown types default to Claude format and parse successfully.
+	// Non-user/assistant entries are skipped, so result should have no entries.
 	tests := []struct {
-		name         string
-		input        string
-		expectedType string
+		name  string
+		input string
 	}{
-		{"unknown_type", `{"type":"unknown_type"}`, "unknown_type"},
-		{"empty_type", `{"type":""}`, ""},
-		{"numeric_type", `{"type":"123"}`, "123"},
-		{"system_type", `{"type":"system"}`, "system"},
+		{"unknown_type", `{"type":"unknown_type"}`},
+		{"numeric_type", `{"type":"123"}`},
+		{"system_type", `{"type":"system"}`},
+		{"queue_operation", `{"type":"queue-operation"}`},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			_, err := ParseJSONL(strings.NewReader(tt.input))
-			if err == nil {
-				t.Fatal("expected error for unrecognized format type")
+			result, err := ParseJSONL(strings.NewReader(tt.input))
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
 			}
-			expectedMsg := "unrecognized log format: type field value '" + tt.expectedType + "'"
-			if !strings.Contains(err.Error(), expectedMsg) {
-				t.Errorf("expected error containing %q, got %q", expectedMsg, err.Error())
+			// No entries because these types aren't user/assistant
+			if len(result.Entries) != 0 {
+				t.Errorf("expected 0 entries, got %d", len(result.Entries))
 			}
 		})
+	}
+}
+
+func TestParseJSONL_EmptyTypeFieldError_Negative(t *testing.T) {
+	// Empty type field should fail with missing type field error
+	input := `{"type":""}`
+	_, err := ParseJSONL(strings.NewReader(input))
+	if err == nil {
+		t.Fatal("expected error for empty type field")
+	}
+	if !strings.Contains(err.Error(), "missing type field") {
+		t.Errorf("expected error about missing type field, got %q", err.Error())
 	}
 }
 
@@ -1585,8 +1602,8 @@ func TestParseJSONL_MissingTypeFieldError_Negative(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected error for missing type field")
 	}
-	if !strings.Contains(err.Error(), "unrecognized log format: type field value ''") {
-		t.Errorf("expected error about empty type field, got %q", err.Error())
+	if !strings.Contains(err.Error(), "missing type field") {
+		t.Errorf("expected error about missing type field, got %q", err.Error())
 	}
 }
 
@@ -1695,13 +1712,13 @@ func TestDetectFormat_InvalidJSON_Negative(t *testing.T) {
 	}
 }
 
-func TestDetectFormat_UnknownType_Negative(t *testing.T) {
-	// Test DetectFormat on unknown type value
-	_, _, err := DetectFormat(strings.NewReader(`{"type":"completely_unknown"}`))
-	if err == nil {
-		t.Fatal("expected error for unknown type")
+func TestDetectFormat_UnknownType_DefaultsToClaude_Negative(t *testing.T) {
+	// Unknown types should default to Claude format
+	format, _, err := DetectFormat(strings.NewReader(`{"type":"completely_unknown"}`))
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
 	}
-	if !strings.Contains(err.Error(), "unrecognized log format: type field value 'completely_unknown'") {
-		t.Errorf("expected specific error about unknown type, got %q", err.Error())
+	if format != FormatClaude {
+		t.Errorf("expected FormatClaude for unknown type, got %v", format)
 	}
 }

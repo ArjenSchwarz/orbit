@@ -14,13 +14,9 @@ import (
 // utf8BOM is the byte sequence for UTF-8 Byte Order Mark.
 var utf8BOM = []byte{0xEF, 0xBB, 0xBF}
 
-// claudeTypes are the type values that indicate Claude Code format.
-var claudeTypes = map[string]bool{
-	"user":      true,
-	"assistant": true,
-}
-
 // codexTypes are the type values that indicate Codex format.
+// Claude logs can contain many internal types (queue-operation, system, etc.) so
+// we check for Codex types first and fall back to Claude for any other valid JSON.
 var codexTypes = map[string]bool{
 	"session_meta":  true,
 	"response_item": true,
@@ -97,6 +93,10 @@ func stripBOM(data []byte) []byte {
 }
 
 // detectFormatFromLine determines the format from a single JSON line.
+// Detection strategy: Check for Codex-specific types first, then fall back to Claude.
+// Claude logs can contain many internal types (queue-operation, system, etc.) so we
+// cannot enumerate all valid Claude types. Instead, any valid JSON with a type field
+// that isn't a Codex type is assumed to be Claude format.
 func detectFormatFromLine(line []byte) (Format, error) {
 	var obj struct {
 		Type string `json:"type"`
@@ -105,14 +105,18 @@ func detectFormatFromLine(line []byte) (Format, error) {
 		return FormatUnknown, fmt.Errorf("failed to parse first line as JSON: %w", err)
 	}
 
-	if claudeTypes[obj.Type] {
-		return FormatClaude, nil
-	}
+	// Check for Codex format first (has specific, identifiable types)
 	if codexTypes[obj.Type] {
 		return FormatCodex, nil
 	}
 
-	return FormatUnknown, fmt.Errorf("unrecognized log format: type field value '%s'", obj.Type)
+	// Any valid JSON with a type field is assumed to be Claude format
+	// Claude logs can start with various internal types like queue-operation
+	if obj.Type != "" {
+		return FormatClaude, nil
+	}
+
+	return FormatUnknown, fmt.Errorf("unrecognized log format: missing type field")
 }
 
 // ParseResult contains the parsed entries and any warnings encountered.

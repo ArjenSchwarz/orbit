@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -1294,16 +1295,30 @@ func TestConvert_InvalidJSONFile_Negative(t *testing.T) {
 	}
 }
 
-func TestConvert_UnknownFormatType_Negative(t *testing.T) {
-	// Test convert on unknown format type returns proper error
+func TestConvert_UnknownTypeDefaultsToClaude_Negative(t *testing.T) {
+	// Unknown types default to Claude format. Since the type isn't user/assistant,
+	// no entries are returned and we get "Session contains no entries" on stderr.
+
+	// Capture stderr
+	oldStderr := os.Stderr
+	r, w, _ := os.Pipe()
+	os.Stderr = w
+
 	var output bytes.Buffer
 	err := convert(strings.NewReader(`{"type":"unknown_format"}`), &output, "test-session", "md")
 
-	if err == nil {
-		t.Fatal("expected error for unknown format type")
+	// Restore stderr and capture output
+	_ = w.Close()
+	os.Stderr = oldStderr
+	stderrContent, _ := io.ReadAll(r)
+
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
 	}
-	if !strings.Contains(err.Error(), "unrecognized log format") {
-		t.Errorf("expected error about unrecognized format, got: %v", err)
+
+	// Check stderr contains the "no entries" message
+	if !strings.Contains(string(stderrContent), "Session contains no entries") {
+		t.Errorf("expected stderr to contain 'Session contains no entries', got: %s", stderrContent)
 	}
 }
 
