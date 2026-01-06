@@ -1,0 +1,6 @@
+{"timestamp":"2026-01-04T13:22:15.725Z","type":"session_meta","payload":{"id":"codex-test-session","timestamp":"2026-01-04T13:22:15.725Z","cwd":"/Users/test/project"}}
+{"timestamp":"2026-01-04T13:22:15.800Z","type":"response_item","payload":{"type":"message","role":"user","content":[{"type":"input_text","text":"List all files in the directory"}]}}
+{"timestamp":"2026-01-04T13:22:21.499Z","type":"event_msg","payload":{"type":"agent_reasoning","text":"**Preparing to list files**\nI will use the shell_command tool to list the directory contents."}}
+{"timestamp":"2026-01-04T13:22:21.885Z","type":"response_item","payload":{"type":"function_call","name":"shell_command","arguments":"{\"command\":\"ls -la\"}","call_id":"call_abc123"}}
+{"timestamp":"2026-01-04T13:22:21.912Z","type":"response_item","payload":{"type":"function_call_output","call_id":"call_abc123","output":"total 32\ndrwxr-xr-x  5 test staff  160 Jan  4 14:22 .\ndrwxr-xr-x 10 test staff  320 Jan  4 14:20 ..\n-rw-r--r--  1 test staff 1234 Jan  4 14:22 file1.txt\n-rw-r--r--  1 test staff 5678 Jan  4 14:22 file2.txt"}}
+{"timestamp":"2026-01-04T13:23:30.000Z","type":"response_item","payload":{"type":"message","role":"assistant","content":[{"type":"output_text","text":"The directory contains 2 files: file1.txt and file2.txt."}]}}

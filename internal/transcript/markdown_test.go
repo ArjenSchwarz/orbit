@@ -1374,6 +1374,49 @@ func TestRenderMarkdown_GoldenCollapsible_ShortOutput(t *testing.T) {
 	testGoldenCollapsible(t, "short_output")
 }
 
+// Golden file tests for Codex format (Phase 3)
+
+func TestRenderMarkdown_GoldenCodex_Basic(t *testing.T) {
+	testGoldenCodex(t, "basic")
+}
+
+func TestRenderMarkdown_GoldenCodex_Reasoning(t *testing.T) {
+	testGoldenCodex(t, "reasoning")
+}
+
+func testGoldenCodex(t *testing.T, name string) {
+	t.Helper()
+
+	// Read JSONL input
+	jsonlPath := filepath.Join("testdata", "codex", name+".jsonl")
+	f, err := os.Open(jsonlPath)
+	if err != nil {
+		t.Fatalf("failed to open test file %s: %v", jsonlPath, err)
+	}
+	defer func() { _ = f.Close() }()
+
+	parseResult, err := ParseJSONL(f)
+	if err != nil {
+		t.Fatalf("ParseJSONL returned error: %v", err)
+	}
+
+	// Render to Markdown
+	actual := RenderMarkdown(parseResult.Entries, RenderOptions{})
+
+	// Read golden file
+	goldenPath := filepath.Join("testdata", "codex", name+".md.golden")
+	goldenBytes, err := os.ReadFile(goldenPath)
+	if err != nil {
+		t.Fatalf("failed to read golden file %s: %v", goldenPath, err)
+	}
+	expected := string(goldenBytes)
+
+	// Compare
+	if actual != expected {
+		t.Errorf("output does not match golden file\n--- expected ---\n%s\n--- actual ---\n%s", expected, actual)
+	}
+}
+
 func testGoldenCollapsible(t *testing.T, name string) {
 	t.Helper()
 

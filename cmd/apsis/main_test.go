@@ -183,13 +183,13 @@ func TestConvert(t *testing.T) {
 func TestConvert_EmptyFile(t *testing.T) {
 	var output bytes.Buffer
 	err := convert(strings.NewReader(""), &output, "empty-session", "md")
-	if err != nil {
-		t.Fatalf("convert failed on empty file: %v", err)
-	}
 
-	// Output should be empty (only message written to stderr)
-	if output.Len() > 0 {
-		t.Error("output should be empty for empty file")
+	// Empty files now return an error during format detection
+	if err == nil {
+		t.Fatal("expected error for empty file")
+	}
+	if !strings.Contains(err.Error(), "empty file") {
+		t.Errorf("expected error containing 'empty file', got: %v", err)
 	}
 }
 

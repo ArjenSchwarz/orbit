@@ -101,14 +101,14 @@ references:
 
 ## Phase 3: Parser Integration
 
-- [ ] 11. Write unit tests for updated ParseJSONL with format dispatch
+- [x] 11. Write unit tests for updated ParseJSONL with format dispatch
   - Test auto-detection and delegation to Claude parser
   - Test auto-detection and delegation to Codex parser
   - Test error propagation
   - Requirements: [1.1](requirements.md#1.1), [1.7](requirements.md#1.7)
   - References: internal/transcript/parser_test.go
 
-- [ ] 12. Update ParseJSONL to detect format and dispatch to appropriate parser
+- [x] 12. Update ParseJSONL to detect format and dispatch to appropriate parser
   - Refactor existing Claude parsing to parseClaudeJSONL
   - Add format detection using DetectFormat
   - Use io.MultiReader for streaming
@@ -116,13 +116,13 @@ references:
   - Requirements: [1.1](requirements.md#1.1), [1.7](requirements.md#1.7)
   - References: internal/transcript/parser.go
 
-- [ ] 13. Write integration tests for Codex to Markdown/HTML rendering
+- [x] 13. Write integration tests for Codex to Markdown/HTML rendering
   - Test full pipeline: Codex JSONL to RenderMarkdown
   - Test full pipeline: Codex JSONL to RenderHTML
   - Requirements: [8.1](requirements.md#8.1), [8.2](requirements.md#8.2), [8.3](requirements.md#8.3), [8.4](requirements.md#8.4)
   - References: internal/transcript/parser_test.go
 
-- [ ] 14. Create golden file tests for rendering consistency
+- [x] 14. Create golden file tests for rendering consistency
   - Create codex_simple.jsonl test input
   - Create codex_with_tools.jsonl test input
   - Create codex_reasoning.jsonl test input

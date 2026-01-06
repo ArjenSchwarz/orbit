@@ -9,6 +9,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Parser integration for Codex format (Phase 3):
+  - `ParseJSONL()` now auto-detects format and dispatches to appropriate parser (Claude or Codex)
+  - `parseClaudeJSONL()` internal function extracted from previous `ParseJSONL()` implementation
+  - `readFirstNonEmptyLineFromBufReader()` function for buffered reader position-preserving line reading
+  - Streaming architecture preserved using `io.MultiReader` to combine first line with remaining content
+  - Unit tests for format dispatch: Claude format detection, Codex format detection, error propagation
+  - Integration tests for Codex to Markdown/HTML rendering pipeline
+  - Golden file tests for Codex rendering consistency (`testdata/codex/basic.jsonl`, `testdata/codex/reasoning.jsonl`)
 - Codex JSONL parser implementation (Phase 2):
   - `codex_types.go` with Codex struct definitions: `CodexEntry`, `CodexResponseItem`, `CodexContent`, `CodexSummary`, `CodexEventMsg`, `CodexSessionMeta`
   - `codex_parser.go` with `ParseCodexJSONL()` function and entry conversion functions
@@ -115,6 +123,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- `ParseJSONL()` empty file handling: now returns `"empty file"` error instead of empty result (breaking change for callers expecting empty result)
 - Removed placeholder `serveCommand` from `cmd/orbit/main.go`
 - Removed unused `fmt` import from `cmd/orbit/main.go`
 
