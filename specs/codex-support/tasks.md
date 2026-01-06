@@ -8,13 +8,13 @@ references:
 
 ## Phase 1: Types and Format Detection
 
-- [ ] 1. Add Format enum and helper types to types.go
+- [x] 1. Add Format enum and helper types to types.go
   - Add Format enum (FormatUnknown, FormatClaude, FormatCodex)
   - Add ParseWarning struct
   - Requirements: [1.1](requirements.md#1.1), [1.2](requirements.md#1.2), [1.3](requirements.md#1.3)
   - References: internal/transcript/types.go
 
-- [ ] 2. Write unit tests for format detection
+- [x] 2. Write unit tests for format detection
   - Test Claude format detection
   - Test Codex format detection
   - Test empty file
@@ -25,7 +25,7 @@ references:
   - Requirements: [1.1](requirements.md#1.1), [1.2](requirements.md#1.2), [1.3](requirements.md#1.3), [1.4](requirements.md#1.4), [1.5](requirements.md#1.5), [1.6](requirements.md#1.6), [1.8](requirements.md#1.8)
   - References: internal/transcript/parser_test.go
 
-- [ ] 3. Implement DetectFormat and readFirstNonEmptyLine functions
+- [x] 3. Implement DetectFormat and readFirstNonEmptyLine functions
   - Implement format detection from first non-empty line
   - Handle BOM stripping
   - Return appropriate errors

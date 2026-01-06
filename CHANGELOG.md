@@ -9,6 +9,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Format detection for Codex log support (Phase 1):
+  - `Format` enum type with `FormatUnknown`, `FormatClaude`, and `FormatCodex` values in types.go
+  - `DetectFormat()` function to automatically detect log format from first non-empty JSONL line
+  - Claude format detection for `user` and `assistant` type values
+  - Codex format detection for `session_meta`, `response_item`, `event_msg`, and `turn_context` type values
+  - UTF-8 BOM stripping for cross-platform compatibility
+  - `readFirstNonEmptyLine()` helper function for robust format detection
+  - Error messages following requirements: "empty file", "failed to parse first line as JSON", "unrecognized log format: type field value '{value}'"
+  - Unit tests covering Claude detection, Codex detection, empty file, whitespace-only, invalid JSON, BOM handling, and unrecognized types
 - Codex log format support specification documents:
   - `specs/codex-support/requirements.md` with 9 requirement sections covering format detection, Codex session discovery, session listing, JSONL parsing, content type mapping, metadata event filtering, tool name display, output compatibility, and error handling
   - `specs/codex-support/design.md` with architecture, components, data models, error handling, and testing strategy including property-based testing and golden file tests

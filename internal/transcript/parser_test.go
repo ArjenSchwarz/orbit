@@ -768,3 +768,197 @@ func TestHasLocalCommandStdoutContent(t *testing.T) {
 		})
 	}
 }
+
+// Tests for format detection (Codex support)
+
+func TestDetectFormat_ClaudeUserType(t *testing.T) {
+	input := `{"type":"user","timestamp":"2025-12-23T10:30:00+11:00","message":{"role":"user","content":"Hello"}}`
+	format, firstLine, err := DetectFormat(strings.NewReader(input))
+	if err != nil {
+		t.Fatalf("DetectFormat returned error: %v", err)
+	}
+	if format != FormatClaude {
+		t.Errorf("expected FormatClaude, got %v", format)
+	}
+	if len(firstLine) == 0 {
+		t.Error("expected non-empty first line")
+	}
+}
+
+func TestDetectFormat_ClaudeAssistantType(t *testing.T) {
+	input := `{"type":"assistant","timestamp":"2025-12-23T10:30:00+11:00","message":{"role":"assistant","content":[{"type":"text","text":"Hi"}]}}`
+	format, _, err := DetectFormat(strings.NewReader(input))
+	if err != nil {
+		t.Fatalf("DetectFormat returned error: %v", err)
+	}
+	if format != FormatClaude {
+		t.Errorf("expected FormatClaude, got %v", format)
+	}
+}
+
+func TestDetectFormat_CodexSessionMeta(t *testing.T) {
+	input := `{"timestamp":"2026-01-04T13:22:15.725Z","type":"session_meta","payload":{"id":"019b892c-3a14-7773-bd76-6465a8a0b634"}}`
+	format, _, err := DetectFormat(strings.NewReader(input))
+	if err != nil {
+		t.Fatalf("DetectFormat returned error: %v", err)
+	}
+	if format != FormatCodex {
+		t.Errorf("expected FormatCodex, got %v", format)
+	}
+}
+
+func TestDetectFormat_CodexResponseItem(t *testing.T) {
+	input := `{"timestamp":"2026-01-04T13:22:15.725Z","type":"response_item","payload":{"type":"message","role":"user","content":[]}}`
+	format, _, err := DetectFormat(strings.NewReader(input))
+	if err != nil {
+		t.Fatalf("DetectFormat returned error: %v", err)
+	}
+	if format != FormatCodex {
+		t.Errorf("expected FormatCodex, got %v", format)
+	}
+}
+
+func TestDetectFormat_CodexEventMsg(t *testing.T) {
+	input := `{"timestamp":"2026-01-04T13:22:15.725Z","type":"event_msg","payload":{"type":"agent_reasoning","text":"thinking"}}`
+	format, _, err := DetectFormat(strings.NewReader(input))
+	if err != nil {
+		t.Fatalf("DetectFormat returned error: %v", err)
+	}
+	if format != FormatCodex {
+		t.Errorf("expected FormatCodex, got %v", format)
+	}
+}
+
+func TestDetectFormat_CodexTurnContext(t *testing.T) {
+	input := `{"timestamp":"2026-01-04T13:22:15.725Z","type":"turn_context","payload":{}}`
+	format, _, err := DetectFormat(strings.NewReader(input))
+	if err != nil {
+		t.Fatalf("DetectFormat returned error: %v", err)
+	}
+	if format != FormatCodex {
+		t.Errorf("expected FormatCodex, got %v", format)
+	}
+}
+
+func TestDetectFormat_EmptyFile(t *testing.T) {
+	input := ""
+	_, _, err := DetectFormat(strings.NewReader(input))
+	if err == nil {
+		t.Fatal("expected error for empty file")
+	}
+	if err.Error() != "empty file" {
+		t.Errorf("expected error 'empty file', got %q", err.Error())
+	}
+}
+
+func TestDetectFormat_WhitespaceOnly(t *testing.T) {
+	input := "   \n\n   \n"
+	_, _, err := DetectFormat(strings.NewReader(input))
+	if err == nil {
+		t.Fatal("expected error for whitespace-only file")
+	}
+	if err.Error() != "empty file" {
+		t.Errorf("expected error 'empty file', got %q", err.Error())
+	}
+}
+
+func TestDetectFormat_InvalidJSON(t *testing.T) {
+	input := `{not valid json}`
+	_, _, err := DetectFormat(strings.NewReader(input))
+	if err == nil {
+		t.Fatal("expected error for invalid JSON")
+	}
+	if !strings.Contains(err.Error(), "failed to parse first line as JSON") {
+		t.Errorf("expected error containing 'failed to parse first line as JSON', got %q", err.Error())
+	}
+}
+
+func TestDetectFormat_UnrecognizedType(t *testing.T) {
+	input := `{"type":"unknown_type","timestamp":"2025-12-23T10:30:00+11:00"}`
+	_, _, err := DetectFormat(strings.NewReader(input))
+	if err == nil {
+		t.Fatal("expected error for unrecognized type")
+	}
+	if !strings.Contains(err.Error(), "unrecognized log format: type field value 'unknown_type'") {
+		t.Errorf("expected error containing 'unrecognized log format: type field value', got %q", err.Error())
+	}
+}
+
+func TestDetectFormat_MissingTypeField(t *testing.T) {
+	input := `{"timestamp":"2025-12-23T10:30:00+11:00","message":"hello"}`
+	_, _, err := DetectFormat(strings.NewReader(input))
+	if err == nil {
+		t.Fatal("expected error for missing type field")
+	}
+	if !strings.Contains(err.Error(), "unrecognized log format: type field value ''") {
+		t.Errorf("expected error about empty type field, got %q", err.Error())
+	}
+}
+
+func TestDetectFormat_BOMHandling(t *testing.T) {
+	// UTF-8 BOM: EF BB BF
+	bom := []byte{0xEF, 0xBB, 0xBF}
+	json := `{"type":"user","timestamp":"2025-12-23T10:30:00+11:00","message":{"role":"user","content":"Hello"}}`
+	input := append(bom, []byte(json)...)
+
+	format, firstLine, err := DetectFormat(strings.NewReader(string(input)))
+	if err != nil {
+		t.Fatalf("DetectFormat returned error: %v", err)
+	}
+	if format != FormatClaude {
+		t.Errorf("expected FormatClaude, got %v", format)
+	}
+	// First line should have BOM stripped
+	if strings.HasPrefix(string(firstLine), "\xEF\xBB\xBF") {
+		t.Error("BOM was not stripped from first line")
+	}
+}
+
+func TestDetectFormat_SkipsEmptyLines(t *testing.T) {
+	input := "\n\n   \n{\"type\":\"user\",\"timestamp\":\"2025-12-23T10:30:00+11:00\"}\n"
+	format, _, err := DetectFormat(strings.NewReader(input))
+	if err != nil {
+		t.Fatalf("DetectFormat returned error: %v", err)
+	}
+	if format != FormatClaude {
+		t.Errorf("expected FormatClaude, got %v", format)
+	}
+}
+
+func TestReadFirstNonEmptyLine_ReturnsFirstLine(t *testing.T) {
+	input := "first line\nsecond line\n"
+	line, err := readFirstNonEmptyLine(strings.NewReader(input))
+	if err != nil {
+		t.Fatalf("readFirstNonEmptyLine returned error: %v", err)
+	}
+	if string(line) != "first line" {
+		t.Errorf("expected 'first line', got %q", string(line))
+	}
+}
+
+func TestReadFirstNonEmptyLine_SkipsEmptyLines(t *testing.T) {
+	input := "\n\n   \nactual content\n"
+	line, err := readFirstNonEmptyLine(strings.NewReader(input))
+	if err != nil {
+		t.Fatalf("readFirstNonEmptyLine returned error: %v", err)
+	}
+	if string(line) != "actual content" {
+		t.Errorf("expected 'actual content', got %q", string(line))
+	}
+}
+
+func TestReadFirstNonEmptyLine_EmptyFile(t *testing.T) {
+	input := ""
+	_, err := readFirstNonEmptyLine(strings.NewReader(input))
+	if err == nil {
+		t.Fatal("expected error for empty file")
+	}
+}
+
+func TestReadFirstNonEmptyLine_WhitespaceOnly(t *testing.T) {
+	input := "   \n   \n   "
+	_, err := readFirstNonEmptyLine(strings.NewReader(input))
+	if err == nil {
+		t.Fatal("expected error for whitespace-only file")
+	}
+}

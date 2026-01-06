@@ -2,6 +2,7 @@ package transcript
 
 import (
 	"bufio"
+	"bytes"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -9,6 +10,93 @@ import (
 	"strings"
 	"time"
 )
+
+// utf8BOM is the byte sequence for UTF-8 Byte Order Mark.
+var utf8BOM = []byte{0xEF, 0xBB, 0xBF}
+
+// claudeTypes are the type values that indicate Claude Code format.
+var claudeTypes = map[string]bool{
+	"user":      true,
+	"assistant": true,
+}
+
+// codexTypes are the type values that indicate Codex format.
+var codexTypes = map[string]bool{
+	"session_meta":  true,
+	"response_item": true,
+	"event_msg":     true,
+	"turn_context":  true,
+}
+
+// DetectFormat examines the first non-empty line to determine the log format.
+// Returns the detected format, the first line bytes (with BOM stripped), and any error.
+// The first line is returned to allow reuse without re-reading.
+func DetectFormat(r io.Reader) (Format, []byte, error) {
+	firstLine, err := readFirstNonEmptyLine(r)
+	if err != nil {
+		if errors.Is(err, io.EOF) {
+			return FormatUnknown, nil, fmt.Errorf("empty file")
+		}
+		return FormatUnknown, nil, err
+	}
+
+	// Strip BOM if present
+	firstLine = stripBOM(firstLine)
+
+	// Detect format from line content
+	format, err := detectFormatFromLine(firstLine)
+	if err != nil {
+		return FormatUnknown, nil, err
+	}
+
+	return format, firstLine, nil
+}
+
+// readFirstNonEmptyLine reads lines until finding a non-empty line.
+// Returns io.EOF if no non-empty line is found.
+func readFirstNonEmptyLine(r io.Reader) ([]byte, error) {
+	scanner := bufio.NewScanner(r)
+	for scanner.Scan() {
+		line := bytes.TrimSpace(scanner.Bytes())
+		if len(line) > 0 {
+			// Return a copy since scanner reuses the buffer
+			result := make([]byte, len(line))
+			copy(result, line)
+			return result, nil
+		}
+	}
+	if err := scanner.Err(); err != nil {
+		return nil, err
+	}
+	return nil, io.EOF
+}
+
+// stripBOM removes UTF-8 BOM prefix if present.
+func stripBOM(data []byte) []byte {
+	if bytes.HasPrefix(data, utf8BOM) {
+		return data[len(utf8BOM):]
+	}
+	return data
+}
+
+// detectFormatFromLine determines the format from a single JSON line.
+func detectFormatFromLine(line []byte) (Format, error) {
+	var obj struct {
+		Type string `json:"type"`
+	}
+	if err := json.Unmarshal(line, &obj); err != nil {
+		return FormatUnknown, fmt.Errorf("failed to parse first line as JSON: %w", err)
+	}
+
+	if claudeTypes[obj.Type] {
+		return FormatClaude, nil
+	}
+	if codexTypes[obj.Type] {
+		return FormatCodex, nil
+	}
+
+	return FormatUnknown, fmt.Errorf("unrecognized log format: type field value '%s'", obj.Type)
+}
 
 // ParseResult contains the parsed entries and any warnings encountered.
 type ParseResult struct {
