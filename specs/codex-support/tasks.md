@@ -138,7 +138,7 @@ references:
 
 ## Phase 4: Session Discovery
 
-- [ ] 15. Write unit tests for Codex session discovery
+- [x] 15. Write unit tests for Codex session discovery
   - Test UUID matching with exact 36-char match
   - Test directory traversal
   - Test empty directory
@@ -148,27 +148,27 @@ references:
   - Requirements: [2.1](requirements.md#2.1), [2.2](requirements.md#2.2), [2.3](requirements.md#2.3), [2.4](requirements.md#2.4), [2.5](requirements.md#2.5), [2.6](requirements.md#2.6), [2.7](requirements.md#2.7), [2.8](requirements.md#2.8)
   - References: cmd/apsis/main_test.go
 
-- [ ] 16. Implement findCodexSession with UUID matching and symlink handling
+- [x] 16. Implement findCodexSession with UUID matching and symlink handling
   - Implement uuidPattern regex (case-insensitive)
   - Implement findCodexSession function
   - Implement walkDirFollowSymlinks with cycle detection using visited map
   - Requirements: [2.1](requirements.md#2.1), [2.2](requirements.md#2.2), [2.3](requirements.md#2.3), [2.4](requirements.md#2.4), [2.5](requirements.md#2.5), [2.6](requirements.md#2.6), [2.7](requirements.md#2.7), [2.8](requirements.md#2.8)
   - References: cmd/apsis/main.go
 
-- [ ] 17. Write unit tests for getCodexSessionTimestamp
+- [x] 17. Write unit tests for getCodexSessionTimestamp
   - Test timestamp extraction from session_meta
   - Test fallback to file mtime
   - Requirements: [3.3](requirements.md#3.3)
   - References: cmd/apsis/main_test.go
 
-- [ ] 18. Implement getCodexSessionTimestamp function
+- [x] 18. Implement getCodexSessionTimestamp function
   - Extract timestamp from first session_meta event
   - Parse ISO 8601 timestamp
   - Fallback to file modification time on parse failure
   - Requirements: [3.3](requirements.md#3.3)
   - References: cmd/apsis/main.go
 
-- [ ] 19. Write unit tests for unified session listing
+- [x] 19. Write unit tests for unified session listing
   - Test listing sessions from both Claude and Codex locations
   - Test source indicator display
   - Test sorting by timestamp
@@ -176,7 +176,7 @@ references:
   - Requirements: [3.1](requirements.md#3.1), [3.2](requirements.md#3.2), [3.3](requirements.md#3.3), [3.4](requirements.md#3.4), [3.5](requirements.md#3.5), [3.6](requirements.md#3.6)
   - References: cmd/apsis/main_test.go
 
-- [ ] 20. Implement listCodexSessions and update listSessions for unified listing
+- [x] 20. Implement listCodexSessions and update listSessions for unified listing
   - Implement listCodexSessions using walkDirFollowSymlinks
   - Extend SessionInfo with Source field
   - Merge Claude and Codex sessions
@@ -185,7 +185,7 @@ references:
   - Requirements: [3.1](requirements.md#3.1), [3.2](requirements.md#3.2), [3.3](requirements.md#3.3), [3.4](requirements.md#3.4), [3.5](requirements.md#3.5), [3.6](requirements.md#3.6)
   - References: cmd/apsis/main.go
 
-- [ ] 21. Update resolveInput to check both Claude and Codex locations
+- [x] 21. Update resolveInput to check both Claude and Codex locations
   - Check Claude location first
   - Check Codex location second
   - Return appropriate reader

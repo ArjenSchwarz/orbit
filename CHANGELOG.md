@@ -9,6 +9,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Codex session discovery and unified session listing (Phase 4):
+  - `findCodexSession()` function for searching `~/.codex/sessions/` by UUID
+  - Case-insensitive UUID matching with exact 36-character validation
+  - `walkDirFollowSymlinks()` function with cycle detection for symlink-safe directory traversal
+  - `getCodexSessionTimestamp()` function to extract timestamp from Codex `session_meta` events with file mtime fallback
+  - `listCodexSessions()` function to enumerate all Codex sessions with UUID extraction from filenames
+  - `listClaudeSessions()` function extracted from `listSessions()` for modular session discovery
+  - `listAllSessions()` function merging Claude and Codex sessions with unified sorting
+  - `sortSessionsByTimestamp()` with Claude-first tie-breaking for identical timestamps
+  - Updated `SessionInfo` struct with `Source` field ("claude" or "codex")
+  - Updated `listSessions()` to display unified listing with source indicator (`[claude]` or `[codex]`)
+  - Updated `resolveInput()` to check Claude location first, then Codex location for session ID resolution
+  - Unit tests for all session discovery functions: UUID matching, directory traversal, empty/non-existent directories, symlink following, cycle detection, timestamp extraction, unified listing, Claude-first priority
 - Parser integration for Codex format (Phase 3):
   - `ParseJSONL()` now auto-detects format and dispatches to appropriate parser (Claude or Codex)
   - `parseClaudeJSONL()` internal function extracted from previous `ParseJSONL()` implementation
