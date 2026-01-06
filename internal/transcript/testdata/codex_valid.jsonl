@@ -1,0 +1,16 @@
+{"timestamp":"2026-01-04T13:22:15.725Z","type":"session_meta","payload":{"id":"019b892c-3a14-7773-bd76-6465a8a0b634","timestamp":"2026-01-04T13:22:15.725Z","cwd":"/Users/arjen/projects/orbit"}}
+{"timestamp":"2026-01-04T13:22:15.800Z","type":"response_item","payload":{"type":"message","role":"user","content":[{"type":"input_text","text":"List all files in the current directory"}]}}
+{"timestamp":"2026-01-04T13:22:21.499Z","type":"event_msg","payload":{"type":"agent_reasoning","text":"**Preparing to list files**\nI'll use the shell_command tool to list the directory contents."}}
+{"timestamp":"2026-01-04T13:22:21.885Z","type":"response_item","payload":{"type":"function_call","name":"shell_command","arguments":"{\"command\":\"ls -la\"}","call_id":"call_abc123"}}
+{"timestamp":"2026-01-04T13:22:21.912Z","type":"response_item","payload":{"type":"function_call_output","call_id":"call_abc123","output":"Exit code: 0\nOutput:\ntotal 32\ndrwxr-xr-x  5 arjen staff  160 Jan  4 14:22 .\ndrwxr-xr-x 10 arjen staff  320 Jan  4 14:20 ..\n-rw-r--r--  1 arjen staff 1234 Jan  4 14:22 file1.txt\n-rw-r--r--  1 arjen staff 5678 Jan  4 14:22 file2.txt"}}
+{"timestamp":"2026-01-04T13:22:56.849Z","type":"response_item","payload":{"type":"reasoning","summary":[{"type":"summary_text","text":"**Analyzing the directory listing**\nThe output shows 2 regular files in the directory."}],"encrypted_content":"encrypted_data_here"}}
+{"timestamp":"2026-01-04T13:23:16.617Z","type":"event_msg","payload":{"type":"agent_message","message":"I found 2 files in the current directory:\n- file1.txt (1234 bytes)\n- file2.txt (5678 bytes)"}}
+{"timestamp":"2026-01-04T13:23:30.000Z","type":"response_item","payload":{"type":"message","role":"assistant","content":[{"type":"output_text","text":"The directory contains 2 files: file1.txt and file2.txt."}]}}
+{"timestamp":"2026-01-04T13:24:00.000Z","type":"response_item","payload":{"type":"message","role":"user","content":[{"type":"input_text","text":"Show me the contents of file1.txt"}]}}
+{"timestamp":"2026-01-04T13:24:10.000Z","type":"response_item","payload":{"type":"function_call","name":"shell_command","arguments":"{\"command\":\"cat file1.txt\"}","call_id":"call_def456"}}
+{"timestamp":"2026-01-04T13:24:10.100Z","type":"response_item","payload":{"type":"function_call_output","call_id":"call_def456","output":"Exit code: 0\nOutput:\nHello, World!\nThis is file1.txt content."}}
+{"timestamp":"2026-01-04T13:24:20.000Z","type":"response_item","payload":{"type":"message","role":"assistant","content":[{"type":"output_text","text":"Here are the contents of file1.txt:\n\nHello, World!\nThis is file1.txt content."}]}}
+{"timestamp":"2026-01-04T13:25:00.000Z","type":"turn_context","payload":{"context":"internal_context_data"}}
+{"timestamp":"2026-01-04T13:25:01.000Z","type":"event_msg","payload":{"type":"token_count","input_tokens":150,"output_tokens":75}}
+{"timestamp":"2026-01-04T13:25:02.000Z","type":"event_msg","payload":{"type":"user_message","message":"Show me the contents of file1.txt"}}
+{"timestamp":"2026-01-04T13:25:03.000Z","type":"response_item","payload":{"type":"ghost_snapshot","snapshot_data":"git_hash_here"}}

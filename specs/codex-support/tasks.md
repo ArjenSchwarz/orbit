@@ -34,7 +34,7 @@ references:
 
 ## Phase 2: Codex Types and Parser
 
-- [ ] 4. Create codex_types.go with Codex struct definitions
+- [x] 4. Create codex_types.go with Codex struct definitions
   - Add CodexEntry struct
   - Add CodexResponseItem struct
   - Add CodexContent struct
@@ -44,20 +44,20 @@ references:
   - Requirements: [4.1](requirements.md#4.1)
   - References: internal/transcript/codex_types.go
 
-- [ ] 5. Write unit tests for Codex type unmarshaling
+- [x] 5. Write unit tests for Codex type unmarshaling
   - Test JSON unmarshaling for each Codex type
   - Test missing fields handling
   - Test extra fields handling
   - Requirements: [4.1](requirements.md#4.1)
   - References: internal/transcript/codex_types_test.go
 
-- [ ] 6. Create test data files for Codex parsing
+- [x] 6. Create test data files for Codex parsing
   - Create codex_valid.jsonl with all event types
   - Create codex_edge_cases.jsonl with malformed lines and edge cases
   - Requirements: [4.1](requirements.md#4.1), [4.7](requirements.md#4.7), [4.8](requirements.md#4.8), [4.11](requirements.md#4.11), [9.1](requirements.md#9.1), [9.2](requirements.md#9.2)
   - References: internal/transcript/testdata/codex_valid.jsonl, internal/transcript/testdata/codex_edge_cases.jsonl
 
-- [ ] 7. Write unit tests for ParseCodexJSONL
+- [x] 7. Write unit tests for ParseCodexJSONL
   - Test message conversion
   - Test function call linking
   - Test reasoning extraction
@@ -68,7 +68,7 @@ references:
   - Requirements: [4.2](requirements.md#4.2), [4.3](requirements.md#4.3), [4.4](requirements.md#4.4), [4.5](requirements.md#4.5), [4.6](requirements.md#4.6), [4.7](requirements.md#4.7), [4.8](requirements.md#4.8), [4.9](requirements.md#4.9), [4.10](requirements.md#4.10), [4.11](requirements.md#4.11), [5.1](requirements.md#5.1), [5.2](requirements.md#5.2), [5.3](requirements.md#5.3), [5.4](requirements.md#5.4), [5.5](requirements.md#5.5), [5.6](requirements.md#5.6), [5.7](requirements.md#5.7), [6.1](requirements.md#6.1), [6.2](requirements.md#6.2), [6.3](requirements.md#6.3), [6.4](requirements.md#6.4), [6.5](requirements.md#6.5)
   - References: internal/transcript/codex_parser_test.go
 
-- [ ] 8. Implement ParseCodexJSONL and entry conversion functions
+- [x] 8. Implement ParseCodexJSONL and entry conversion functions
   - Implement codexParser struct
   - Implement parseEntry function
   - Implement convertMessage function
@@ -82,7 +82,7 @@ references:
   - Requirements: [4.2](requirements.md#4.2), [4.3](requirements.md#4.3), [4.4](requirements.md#4.4), [4.5](requirements.md#4.5), [4.6](requirements.md#4.6), [4.7](requirements.md#4.7), [4.8](requirements.md#4.8), [4.9](requirements.md#4.9), [4.10](requirements.md#4.10), [4.11](requirements.md#4.11), [5.1](requirements.md#5.1), [5.2](requirements.md#5.2), [5.3](requirements.md#5.3), [5.4](requirements.md#5.4), [5.5](requirements.md#5.5), [5.6](requirements.md#5.6), [5.7](requirements.md#5.7)
   - References: internal/transcript/codex_parser.go
 
-- [ ] 9. Implement metadata event filtering
+- [x] 9. Implement metadata event filtering
   - Skip session_meta events during transcript rendering
   - Skip turn_context events
   - Skip token_count events
@@ -91,7 +91,7 @@ references:
   - Requirements: [6.1](requirements.md#6.1), [6.2](requirements.md#6.2), [6.3](requirements.md#6.3), [6.4](requirements.md#6.4), [6.5](requirements.md#6.5)
   - References: internal/transcript/codex_parser.go
 
-- [ ] 10. Write property-based tests for format detection and entry normalization
+- [x] 10. Write property-based tests for format detection and entry normalization
   - Test format detection idempotence
   - Test text preservation during normalization
   - Test tool call linking invariant

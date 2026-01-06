@@ -9,6 +9,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Codex JSONL parser implementation (Phase 2):
+  - `codex_types.go` with Codex struct definitions: `CodexEntry`, `CodexResponseItem`, `CodexContent`, `CodexSummary`, `CodexEventMsg`, `CodexSessionMeta`
+  - `codex_parser.go` with `ParseCodexJSONL()` function and entry conversion functions
+  - Entry consolidation logic that groups consecutive assistant events into single entries
+  - Function call linking via `call_id` between `function_call` and `function_call_output` events
+  - Support for multiple outputs per function call (streaming tool results)
+  - Reasoning extraction from both `reasoning` response items and `agent_reasoning` event messages
+  - Metadata event filtering: skips `session_meta`, `turn_context`, `token_count`, `user_message`, and `ghost_snapshot` events
+  - Orphaned output handling with warnings for unmatched `function_call_output` entries
+  - Unknown content type fallback to raw JSON text rendering
+  - Test data files: `codex_valid.jsonl` and `codex_edge_cases.jsonl`
+  - Unit tests for all Codex type unmarshaling with missing/extra field handling
+  - Unit tests for parser covering message conversion, function call linking, reasoning extraction, event filtering, entry consolidation, malformed lines, and edge cases
+  - Property-based tests using pgregory.net/rapid for format detection idempotence, text preservation in normalization, and tool call linking correctness
 - Format detection for Codex log support (Phase 1):
   - `Format` enum type with `FormatUnknown`, `FormatClaude`, and `FormatCodex` values in types.go
   - `DetectFormat()` function to automatically detect log format from first non-empty JSONL line
