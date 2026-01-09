@@ -478,7 +478,7 @@ func TestErrorClassification_IsUsedCorrectly(t *testing.T) {
 
 	for name, tc := range tests {
 		t.Run(name, func(t *testing.T) {
-			classified := orberrors.Classify(1, tc.stderr, "")
+			classified := orberrors.Classify(1, tc.stderr, "", nil)
 			if classified.Type != tc.wantType {
 				t.Errorf("type: got %v, want %v", classified.Type, tc.wantType)
 			}

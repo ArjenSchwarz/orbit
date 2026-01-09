@@ -72,7 +72,36 @@ func TestClassify(t *testing.T) {
 
 	for name, tc := range tests {
 		t.Run(name, func(t *testing.T) {
-			got := Classify(tc.exitCode, tc.stderr, tc.stdout)
+			got := Classify(tc.exitCode, tc.stderr, tc.stdout, nil)
+			if got.Type != tc.wantType {
+				t.Errorf("got type %v, want %v", got.Type, tc.wantType)
+			}
+		})
+	}
+}
+
+func TestClassify_WithErrors(t *testing.T) {
+	tests := map[string]struct {
+		errors   []string
+		wantType ErrorType
+	}{
+		"streaming mode error": {
+			errors:   []string{"only prompt commands are supported in streaming mode"},
+			wantType: ErrUnknown, // Currently not classified as retryable
+		},
+		"rate limit in errors": {
+			errors:   []string{"rate limit exceeded"},
+			wantType: ErrRateLimit,
+		},
+		"connection in errors": {
+			errors:   []string{"connection refused"},
+			wantType: ErrConnection,
+		},
+	}
+
+	for name, tc := range tests {
+		t.Run(name, func(t *testing.T) {
+			got := Classify(1, "", "", tc.errors)
 			if got.Type != tc.wantType {
 				t.Errorf("got type %v, want %v", got.Type, tc.wantType)
 			}

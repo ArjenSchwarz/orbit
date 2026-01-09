@@ -50,8 +50,10 @@ func (e *ClassifiedError) Unwrap() error {
 }
 
 // Classify examines error output and classifies it by type.
-func Classify(exitCode int, stderr, stdout string) *ClassifiedError {
-	combined := strings.ToLower(stderr + stdout)
+// The errMsgs parameter contains error messages from Claude's JSON output.
+func Classify(exitCode int, stderr, stdout string, errMsgs []string) *ClassifiedError {
+	// Combine all error sources for pattern matching
+	combined := strings.ToLower(stderr + stdout + strings.Join(errMsgs, " "))
 
 	// Check for rate limiting
 	if strings.Contains(combined, "rate limit") ||
@@ -91,8 +93,11 @@ func Classify(exitCode int, stderr, stdout string) *ClassifiedError {
 		}
 	}
 
-	// Unknown error
-	msg := stderr
+	// Unknown error - prefer error messages from JSON, then stderr, then stdout
+	msg := strings.Join(errMsgs, "; ")
+	if msg == "" {
+		msg = stderr
+	}
 	if msg == "" {
 		msg = stdout
 	}

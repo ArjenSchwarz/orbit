@@ -6,19 +6,22 @@ import (
 	"encoding/json"
 	"os/exec"
 	"time"
+
+	"github.com/arjenschwarz/orbit/internal/debug"
 )
 
 // Result represents the JSON output from claude -p --output-format json.
 type Result struct {
-	Type         string  `json:"type"`
-	Subtype      string  `json:"subtype"`
-	TotalCostUSD float64 `json:"total_cost_usd"`
-	IsError      bool    `json:"is_error"`
-	DurationMS   int64   `json:"duration_ms"`
-	DurationAPI  int64   `json:"duration_api_ms"`
-	NumTurns     int     `json:"num_turns"`
-	Result       string  `json:"result"`
-	SessionID    string  `json:"session_id"`
+	Type         string   `json:"type"`
+	Subtype      string   `json:"subtype"`
+	TotalCostUSD float64  `json:"total_cost_usd"`
+	IsError      bool     `json:"is_error"`
+	DurationMS   int64    `json:"duration_ms"`
+	DurationAPI  int64    `json:"duration_api_ms"`
+	NumTurns     int      `json:"num_turns"`
+	Result       string   `json:"result"`
+	SessionID    string   `json:"session_id"`
+	Errors       []string `json:"errors"` // Error messages from Claude CLI
 }
 
 // SessionResult contains the results of a Claude session.
@@ -31,6 +34,7 @@ type SessionResult struct {
 	IsError   bool
 	RawJSON   []byte
 	Stderr    string
+	Errors    []string // Error messages from Claude CLI JSON output
 }
 
 // Config holds client configuration.
@@ -38,17 +42,20 @@ type Config struct {
 	SkipPermissions bool
 	WorkingDir      string
 	Prompt          string // Prompt for phase execution
+	Debug           bool   // Enable debug logging
 }
 
 // Client wraps the Claude Code CLI for programmatic access.
 type Client struct {
 	config Config
+	debug  *debug.Logger
 }
 
 // NewClient creates a new Claude client.
 func NewClient(config Config) *Client {
 	return &Client{
 		config: config,
+		debug:  debug.New(config.Debug, "claude"),
 	}
 }
 
@@ -85,6 +92,10 @@ func (c *Client) buildRunPhaseArgs(sessionID string, resume bool) []string {
 func (c *Client) RunPhase(sessionID string, resume bool) (*SessionResult, error) {
 	args := c.buildRunPhaseArgs(sessionID, resume)
 
+	// Debug: log command before execution
+	c.debug.LogSession(sessionID, resume, "starting")
+	c.debug.LogCmd("claude", args, c.config.WorkingDir)
+
 	cmd := exec.Command("claude", args...)
 	if c.config.WorkingDir != "" {
 		cmd.Dir = c.config.WorkingDir
@@ -94,7 +105,20 @@ func (c *Client) RunPhase(sessionID string, resume bool) (*SessionResult, error)
 	cmd.Stdout = &stdout
 	cmd.Stderr = &stderr
 
+	startTime := time.Now()
 	err := cmd.Run()
+	duration := time.Since(startTime)
+
+	// Debug: log command result
+	exitCode := 0
+	if err != nil {
+		if exitErr, ok := err.(*exec.ExitError); ok {
+			exitCode = exitErr.ExitCode()
+		} else {
+			exitCode = -1
+		}
+	}
+	c.debug.LogCmdResult(exitCode, stdout.String(), stderr.String(), duration)
 
 	result := &SessionResult{
 		RawJSON: stdout.Bytes(),
@@ -104,17 +128,25 @@ func (c *Client) RunPhase(sessionID string, resume bool) (*SessionResult, error)
 	// Parse JSON output if available
 	if len(stdout.Bytes()) > 0 {
 		var parsed Result
-		if jsonErr := json.Unmarshal(stdout.Bytes(), &parsed); jsonErr == nil {
+		jsonErr := json.Unmarshal(stdout.Bytes(), &parsed)
+		c.debug.LogJSON(jsonErr == nil, jsonErr)
+		if jsonErr == nil {
 			result.SessionID = parsed.SessionID
 			result.Cost = parsed.TotalCostUSD
 			result.Duration = time.Duration(parsed.DurationMS) * time.Millisecond
 			result.NumTurns = parsed.NumTurns
 			result.Output = parsed.Result
 			result.IsError = parsed.IsError
+			result.Errors = parsed.Errors
+			c.debug.Log("Parsed result: session_id=%s cost=%.4f duration=%s turns=%d is_error=%v errors=%v",
+				result.SessionID, result.Cost, result.Duration, result.NumTurns, result.IsError, result.Errors)
 		}
+	} else {
+		c.debug.Log("No stdout to parse")
 	}
 
 	if err != nil {
+		c.debug.Log("Command failed: %v", err)
 		// Return the result with error information for classification
 		if exitErr, ok := err.(*exec.ExitError); ok {
 			result.IsError = true
@@ -125,6 +157,7 @@ func (c *Client) RunPhase(sessionID string, resume bool) (*SessionResult, error)
 		return result, err
 	}
 
+	c.debug.LogSession(result.SessionID, resume, "completed")
 	return result, nil
 }
 
@@ -154,6 +187,14 @@ func (c *Client) RunCustomPromptWithSession(prompt, sessionID string, resume boo
 		args = append(args, "--dangerously-skip-permissions")
 	}
 
+	// Debug: log command before execution
+	if sessionID != "" {
+		c.debug.LogSession(sessionID, resume, "starting custom prompt")
+	} else {
+		c.debug.Log("Starting custom prompt (no session ID)")
+	}
+	c.debug.LogCmd("claude", args, c.config.WorkingDir)
+
 	cmd := exec.Command("claude", args...)
 	if c.config.WorkingDir != "" {
 		cmd.Dir = c.config.WorkingDir
@@ -163,7 +204,20 @@ func (c *Client) RunCustomPromptWithSession(prompt, sessionID string, resume boo
 	cmd.Stdout = &stdout
 	cmd.Stderr = &stderr
 
+	startTime := time.Now()
 	err := cmd.Run()
+	duration := time.Since(startTime)
+
+	// Debug: log command result
+	exitCode := 0
+	if err != nil {
+		if exitErr, ok := err.(*exec.ExitError); ok {
+			exitCode = exitErr.ExitCode()
+		} else {
+			exitCode = -1
+		}
+	}
+	c.debug.LogCmdResult(exitCode, stdout.String(), stderr.String(), duration)
 
 	result := &SessionResult{
 		RawJSON: stdout.Bytes(),
@@ -173,17 +227,25 @@ func (c *Client) RunCustomPromptWithSession(prompt, sessionID string, resume boo
 	// Parse JSON output if available
 	if len(stdout.Bytes()) > 0 {
 		var parsed Result
-		if jsonErr := json.Unmarshal(stdout.Bytes(), &parsed); jsonErr == nil {
+		jsonErr := json.Unmarshal(stdout.Bytes(), &parsed)
+		c.debug.LogJSON(jsonErr == nil, jsonErr)
+		if jsonErr == nil {
 			result.SessionID = parsed.SessionID
 			result.Cost = parsed.TotalCostUSD
 			result.Duration = time.Duration(parsed.DurationMS) * time.Millisecond
 			result.NumTurns = parsed.NumTurns
 			result.Output = parsed.Result
 			result.IsError = parsed.IsError
+			result.Errors = parsed.Errors
+			c.debug.Log("Parsed result: session_id=%s cost=%.4f duration=%s turns=%d is_error=%v errors=%v",
+				result.SessionID, result.Cost, result.Duration, result.NumTurns, result.IsError, result.Errors)
 		}
+	} else {
+		c.debug.Log("No stdout to parse")
 	}
 
 	if err != nil {
+		c.debug.Log("Custom prompt command failed: %v", err)
 		result.IsError = true
 		if exitErr, ok := err.(*exec.ExitError); ok {
 			if result.Stderr == "" {
@@ -193,5 +255,6 @@ func (c *Client) RunCustomPromptWithSession(prompt, sessionID string, resume boo
 		return result, err
 	}
 
+	c.debug.LogSession(result.SessionID, resume, "custom prompt completed")
 	return result, nil
 }

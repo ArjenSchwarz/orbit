@@ -6,6 +6,9 @@ import (
 	"fmt"
 	"os/exec"
 	"strings"
+	"time"
+
+	"github.com/arjenschwarz/orbit/internal/debug"
 )
 
 // Status represents a task's completion status.
@@ -75,13 +78,20 @@ type PhaseSummary struct {
 // Client wraps the rune CLI for programmatic access.
 type Client struct {
 	tasksFile string
+	debug     *debug.Logger
 }
 
 // NewClient creates a new rune client.
 func NewClient(tasksFile string) *Client {
 	return &Client{
 		tasksFile: tasksFile,
+		debug:     debug.New(false, "rune"),
 	}
+}
+
+// SetDebug enables or disables debug logging.
+func (c *Client) SetDebug(enabled bool) {
+	c.debug = debug.New(enabled, "rune")
 }
 
 // TasksFile returns the configured tasks file path.
@@ -92,26 +102,46 @@ func (c *Client) TasksFile() string {
 // ListPending returns all pending (incomplete) tasks.
 func (c *Client) ListPending() ([]Task, error) {
 	args := []string{"list", c.tasksFile, "--filter", "pending", "--format", "json"}
-	cmd := exec.Command("rune", args...)
 
+	c.debug.LogCmd("rune", args, "")
+
+	startTime := time.Now()
+	cmd := exec.Command("rune", args...)
 	output, err := cmd.Output()
+	duration := time.Since(startTime)
+
 	if err != nil {
+		exitCode := -1
+		stderr := ""
+		if exitErr, ok := err.(*exec.ExitError); ok {
+			exitCode = exitErr.ExitCode()
+			stderr = string(exitErr.Stderr)
+		}
+		c.debug.LogCmdResult(exitCode, string(output), stderr, duration)
+		c.debug.Log("ListPending failed: %v", err)
 		if exitErr, ok := err.(*exec.ExitError); ok {
 			return nil, fmt.Errorf("rune list failed: %s", string(exitErr.Stderr))
 		}
 		return nil, fmt.Errorf("rune list failed: %w", err)
 	}
 
+	c.debug.LogCmdResult(0, string(output), "", duration)
+
 	// Handle empty output (no pending tasks)
 	trimmed := strings.TrimSpace(string(output))
 	if trimmed == "" || trimmed == "[]" || trimmed == "null" {
+		c.debug.Log("ListPending: no pending tasks (empty output)")
 		return []Task{}, nil
 	}
 
 	var result ListResult
 	if err := json.Unmarshal(output, &result); err != nil {
+		c.debug.LogJSON(false, err)
 		return nil, fmt.Errorf("failed to parse rune output: %w", err)
 	}
+
+	c.debug.LogJSON(true, nil)
+	c.debug.Log("ListPending: found %d pending tasks", len(result.Tasks))
 
 	return result.Tasks, nil
 }
@@ -119,32 +149,55 @@ func (c *Client) ListPending() ([]Task, error) {
 // GetNextPhase returns the next incomplete phase with all its tasks.
 func (c *Client) GetNextPhase() (*NextPhaseResult, error) {
 	args := []string{"next", c.tasksFile, "--phase", "--format", "json"}
-	cmd := exec.Command("rune", args...)
 
+	c.debug.LogCmd("rune", args, "")
+
+	startTime := time.Now()
+	cmd := exec.Command("rune", args...)
 	output, err := cmd.Output()
+	duration := time.Since(startTime)
+
 	if err != nil {
+		exitCode := -1
+		stderr := ""
 		if exitErr, ok := err.(*exec.ExitError); ok {
-			stderr := string(exitErr.Stderr)
+			exitCode = exitErr.ExitCode()
+			stderr = string(exitErr.Stderr)
+		}
+		c.debug.LogCmdResult(exitCode, string(output), stderr, duration)
+
+		if exitErr, ok := err.(*exec.ExitError); ok {
+			stderrStr := string(exitErr.Stderr)
 			// Check if this is "all tasks complete" message
-			if strings.Contains(strings.ToLower(stderr), "complete") ||
-				strings.Contains(strings.ToLower(stderr), "no tasks") {
+			if strings.Contains(strings.ToLower(stderrStr), "complete") ||
+				strings.Contains(strings.ToLower(stderrStr), "no tasks") {
+				c.debug.Log("GetNextPhase: all tasks complete (detected from stderr)")
 				return &NextPhaseResult{AllComplete: true}, nil
 			}
-			return nil, fmt.Errorf("rune next failed: %s", stderr)
+			c.debug.Log("GetNextPhase failed: %s", stderrStr)
+			return nil, fmt.Errorf("rune next failed: %s", stderrStr)
 		}
+		c.debug.Log("GetNextPhase failed: %v", err)
 		return nil, fmt.Errorf("rune next failed: %w", err)
 	}
+
+	c.debug.LogCmdResult(0, string(output), "", duration)
 
 	// Handle empty output
 	trimmed := strings.TrimSpace(string(output))
 	if trimmed == "" || trimmed == "null" {
+		c.debug.Log("GetNextPhase: all tasks complete (empty output)")
 		return &NextPhaseResult{AllComplete: true}, nil
 	}
 
 	var result NextPhaseResult
 	if err := json.Unmarshal(output, &result); err != nil {
+		c.debug.LogJSON(false, err)
 		return nil, fmt.Errorf("failed to parse rune output: %w", err)
 	}
+
+	c.debug.LogJSON(true, nil)
+	c.debug.Log("GetNextPhase: phase=%s tasks=%d", result.PhaseName, len(result.Tasks))
 
 	return &result, nil
 }
@@ -184,25 +237,46 @@ func (c *Client) GetCurrentPhaseNumber() (int, error) {
 // ListAll returns all tasks regardless of status.
 func (c *Client) ListAll() ([]Task, error) {
 	args := []string{"list", c.tasksFile, "--format", "json"}
-	cmd := exec.Command("rune", args...)
 
+	c.debug.LogCmd("rune", args, "")
+
+	startTime := time.Now()
+	cmd := exec.Command("rune", args...)
 	output, err := cmd.Output()
+	duration := time.Since(startTime)
+
 	if err != nil {
+		exitCode := -1
+		stderr := ""
+		if exitErr, ok := err.(*exec.ExitError); ok {
+			exitCode = exitErr.ExitCode()
+			stderr = string(exitErr.Stderr)
+		}
+		c.debug.LogCmdResult(exitCode, string(output), stderr, duration)
+		c.debug.Log("ListAll failed: %v", err)
+
 		if exitErr, ok := err.(*exec.ExitError); ok {
 			return nil, fmt.Errorf("rune list failed: %s", string(exitErr.Stderr))
 		}
 		return nil, fmt.Errorf("rune list failed: %w", err)
 	}
 
+	c.debug.LogCmdResult(0, string(output), "", duration)
+
 	trimmed := strings.TrimSpace(string(output))
 	if trimmed == "" || trimmed == "[]" || trimmed == "null" {
+		c.debug.Log("ListAll: no tasks (empty output)")
 		return []Task{}, nil
 	}
 
 	var result ListResult
 	if err := json.Unmarshal(output, &result); err != nil {
+		c.debug.LogJSON(false, err)
 		return nil, fmt.Errorf("failed to parse rune output: %w", err)
 	}
+
+	c.debug.LogJSON(true, nil)
+	c.debug.Log("ListAll: found %d tasks", len(result.Tasks))
 
 	return result.Tasks, nil
 }
