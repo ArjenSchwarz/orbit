@@ -13,6 +13,7 @@ import (
 
 	output "github.com/ArjenSchwarz/go-output/v2"
 	"github.com/arjenschwarz/orbit/internal/claude"
+	"github.com/arjenschwarz/orbit/internal/debug"
 	"github.com/arjenschwarz/orbit/internal/display"
 	orberrors "github.com/arjenschwarz/orbit/internal/errors"
 	"github.com/arjenschwarz/orbit/internal/logs"
@@ -41,6 +42,7 @@ type Config struct {
 	SkipPermissions bool
 	Verbose         bool
 	DryRun          bool
+	Debug           bool   // Enable debug logging for troubleshooting
 	WorkingDir      string
 	Command         string // Custom phase command
 	PostCommand     string // Post-completion command (empty = disabled)
@@ -50,28 +52,49 @@ type Config struct {
 
 // Orbit orchestrates Claude Code sessions to implement spec phases.
 type Orbit struct {
-	config              Config
-	runeClient          *rune.Client
-	claudeClient        claudeRunner
-	logManager          *logs.Manager
-	phaseSummaries      []rune.PhaseSummary
-	spinner             *display.Spinner
-	shutdownCtx         context.Context
-	shutdownCancel      context.CancelFunc
-	registry            *registry.Registry // Web interface run registry
-	runID               string             // UUID of the current run in registry
-	currentPhaseRunCount int               // Track retry count for current phase
+	config               Config
+	runeClient           *rune.Client
+	claudeClient         claudeRunner
+	logManager           *logs.Manager
+	phaseSummaries       []rune.PhaseSummary
+	spinner              *display.Spinner
+	shutdownCtx          context.Context
+	shutdownCancel       context.CancelFunc
+	registry             *registry.Registry // Web interface run registry
+	runID                string             // UUID of the current run in registry
+	currentPhaseRunCount int                // Track retry count for current phase
+	debug                *debug.Logger      // Debug logger
 }
 
 // New creates a new Orbit instance.
 func New(config Config) (*Orbit, error) {
+	// Create debug logger
+	dbg := debug.New(config.Debug, "orbit")
+
 	runeClient := rune.NewClient(config.TasksFile)
+	runeClient.SetDebug(config.Debug)
 
 	claudeClient := claude.NewClient(claude.Config{
 		SkipPermissions: config.SkipPermissions,
 		WorkingDir:      config.WorkingDir,
 		Prompt:          config.Command,
+		Debug:           config.Debug,
 	})
+
+	// Log configuration if debug enabled
+	if config.Debug {
+		dbg.LogConfig("TasksFile", config.TasksFile)
+		dbg.LogConfig("LogDir", config.LogDir)
+		dbg.LogConfig("BranchName", config.BranchName)
+		dbg.LogConfig("SkipPermissions", config.SkipPermissions)
+		dbg.LogConfig("Verbose", config.Verbose)
+		dbg.LogConfig("DryRun", config.DryRun)
+		dbg.LogConfig("WorkingDir", config.WorkingDir)
+		dbg.LogConfig("Command", config.Command)
+		dbg.LogConfig("PostCommand", config.PostCommand)
+		dbg.LogConfig("DateSubdirs", config.DateSubdirs)
+		dbg.LogConfig("ContinueSession", config.ContinueSession)
+	}
 
 	var logManager *logs.Manager
 	if !config.DryRun {
@@ -124,6 +147,7 @@ func New(config Config) (*Orbit, error) {
 		shutdownCtx:    ctx,
 		shutdownCancel: cancel,
 		registry:       reg,
+		debug:          dbg,
 	}, nil
 }
 
@@ -160,15 +184,19 @@ func (o *Orbit) Run() error {
 		// Check for shutdown signal between phases
 		select {
 		case <-o.shutdownCtx.Done():
+			o.debug.Log("Shutdown signal received")
 			return o.fail(fmt.Errorf("interrupted by user"))
 		default:
 		}
 
 		// Check for remaining tasks
+		o.debug.Log("Checking for pending tasks...")
 		pending, err := o.runeClient.ListPending()
 		if err != nil {
+			o.debug.Log("Failed to list pending tasks: %v", err)
 			return o.fail(fmt.Errorf("failed to check pending tasks: %w", err))
 		}
+		o.debug.Log("Found %d pending tasks", len(pending))
 
 		if len(pending) == 0 {
 			log.Println("All tasks complete!")
@@ -176,10 +204,13 @@ func (o *Orbit) Run() error {
 		}
 
 		// Get the next phase info
+		o.debug.Log("Getting next phase...")
 		nextPhase, err := o.runeClient.GetNextPhase()
 		if err != nil {
+			o.debug.Log("Failed to get next phase: %v", err)
 			return o.fail(fmt.Errorf("failed to get next phase: %w", err))
 		}
+		o.debug.Log("Next phase: name=%s tasks=%d all_complete=%v", nextPhase.PhaseName, len(nextPhase.Tasks), nextPhase.AllComplete)
 
 		if nextPhase.AllComplete {
 			log.Println("All phases complete!")
@@ -303,29 +334,38 @@ func (o *Orbit) runPhaseWithRetry(phase int) error {
 	var lastErr error
 	o.currentPhaseRunCount = 0
 
+	o.debug.Log("Starting phase %d with up to %d retries", phase, maxRetries)
+
 	for attempt := range maxRetries {
 		o.currentPhaseRunCount++
+		o.debug.Log("Phase %d attempt %d/%d", phase, attempt+1, maxRetries)
 
 		// Update phase status to running (req 3.5)
 		o.updatePhaseStatus(phase, registry.PhaseStatusRunning, o.currentPhaseRunCount)
 
 		err := o.runPhase(phase)
 		if err == nil {
+			o.debug.Log("Phase %d completed successfully on attempt %d", phase, attempt+1)
 			// Update phase status to completed (req 3.6)
 			o.updatePhaseStatus(phase, registry.PhaseStatusCompleted, o.currentPhaseRunCount)
 			return nil
 		}
 
+		o.debug.Log("Phase %d attempt %d failed: %v", phase, attempt+1, err)
+
 		// Classify the error
 		classified, ok := err.(*orberrors.ClassifiedError)
 		if !ok {
+			o.debug.Log("Error is not a ClassifiedError, not retrying: %T", err)
 			// Unknown error type, don't retry
 			return err
 		}
 
+		o.debug.LogError(classified.Type.String(), classified.Message, classified.Type.IsRetryable())
 		lastErr = err
 
 		if !classified.Type.IsRetryable() {
+			o.debug.Log("Error type %s is not retryable, stopping", classified.Type)
 			// Non-retryable error
 			return err
 		}
@@ -357,6 +397,8 @@ func (o *Orbit) runPhaseWithRetry(phase int) error {
 			waitTime = orberrors.BackoffDuration(attempt)
 		}
 
+		o.debug.LogRetry(attempt+1, maxRetries, classified.Type.String(), waitTime.String())
+
 		// Resume spinner with wait countdown during retry wait
 		if o.spinner != nil {
 			o.spinner.UpdateWait(waitTime)
@@ -371,6 +413,7 @@ func (o *Orbit) runPhaseWithRetry(phase int) error {
 		}
 	}
 
+	o.debug.Log("Phase %d failed after %d attempts", phase, maxRetries)
 	// Update phase status to failed after max retries (req 3.6)
 	o.updatePhaseStatus(phase, registry.PhaseStatusFailed, o.currentPhaseRunCount)
 
@@ -380,6 +423,7 @@ func (o *Orbit) runPhaseWithRetry(phase int) error {
 // runPhase executes a single phase.
 func (o *Orbit) runPhase(phase int) error {
 	startTime := time.Now()
+	o.debug.Log("runPhase(%d) starting", phase)
 
 	// Start spinner before Claude execution
 	if o.spinner != nil {
@@ -393,14 +437,19 @@ func (o *Orbit) runPhase(phase int) error {
 		var err error
 		sessionID, isResume, err = o.logManager.StartPhase(phase, o.config.ContinueSession)
 		if err != nil {
+			o.debug.Log("Failed to start phase in log manager: %v", err)
 			return o.fail(fmt.Errorf("failed to start phase: %w", err))
 		}
+		o.debug.LogSession(sessionID, isResume, "obtained from log manager")
 	} else {
 		sessionID = uuid.NewString()
 		isResume = false
+		o.debug.LogSession(sessionID, isResume, "generated new (no log manager)")
 	}
 
+	o.debug.Log("Executing Claude for phase %d...", phase)
 	result, err := o.claudeClient.RunPhase(sessionID, isResume)
+	o.debug.Log("Claude execution completed: err=%v", err)
 
 	// Stop spinner after Claude returns
 	if o.spinner != nil {
@@ -409,38 +458,51 @@ func (o *Orbit) runPhase(phase int) error {
 
 	// Handle resume failure (req 3.7-3.9)
 	if err != nil && isResume && isSessionInvalidError(result) {
+		o.debug.Log("Session resume failed, detected invalid session error")
 		log.Printf("Warning: Session resume failed, starting fresh session")
 		sessionID = uuid.NewString()
+		o.debug.LogSession(sessionID, false, "retrying with fresh session")
 		if o.logManager != nil {
 			if setErr := o.logManager.SetCurrentPhaseSessionID(sessionID); setErr != nil {
 				log.Printf("Warning: failed to update session ID: %v", setErr)
+				o.debug.Log("Failed to update session ID in log manager: %v", setErr)
 			}
 		}
 		result, err = o.claudeClient.RunPhase(sessionID, false)
+		o.debug.Log("Fresh session execution completed: err=%v", err)
 	}
 
 	if err != nil {
+		o.debug.Log("Phase execution failed: %v", err)
+
 		// Save the failed session for debugging
 		if o.logManager != nil && result != nil {
+			o.debug.Log("Saving failed session for debugging")
 			_ = o.logManager.SaveSession(phase, result, startTime)
 		}
 
 		// Classify and return the error
-		classified := orberrors.Classify(1, result.Stderr, result.Output)
+		o.debug.Log("Classifying error from stderr=%d bytes, output=%d bytes, errors=%v",
+			len(result.Stderr), len(result.Output), result.Errors)
+		classified := orberrors.Classify(1, result.Stderr, result.Output, result.Errors)
+		o.debug.LogError(classified.Type.String(), classified.Message, classified.Type.IsRetryable())
 		return classified
 	}
 
 	// Reconcile session ID if Claude returned a different one (req 2.5, 2.6)
 	if o.logManager != nil && result.SessionID != sessionID {
+		o.debug.Log("Session ID changed: expected=%s got=%s", sessionID, result.SessionID)
 		o.logManager.ReconcileSessionID(result.SessionID)
 	}
 
 	// Check if Claude reported an error in its output
 	if result.IsError {
+		o.debug.Log("Claude reported error in output (IsError=true)")
 		if o.logManager != nil {
 			_ = o.logManager.SaveSession(phase, result, startTime)
 		}
-		classified := orberrors.Classify(1, result.Stderr, result.Output)
+		classified := orberrors.Classify(1, result.Stderr, result.Output, result.Errors)
+		o.debug.LogError(classified.Type.String(), classified.Message, classified.Type.IsRetryable())
 		return classified
 	}
 
@@ -448,12 +510,17 @@ func (o *Orbit) runPhase(phase int) error {
 	if o.logManager != nil {
 		if err := o.logManager.SaveSession(phase, result, startTime); err != nil {
 			log.Printf("Warning: failed to save session log: %v", err)
+			o.debug.Log("Failed to save session log: %v", err)
 		}
 		// Complete phase (req 2.7)
 		if err := o.logManager.CompletePhase(); err != nil {
 			log.Printf("Warning: failed to complete phase: %v", err)
+			o.debug.Log("Failed to complete phase in log manager: %v", err)
 		}
 	}
+
+	o.debug.Log("Phase %d completed successfully: cost=$%.4f duration=%s turns=%d",
+		phase, result.Cost, result.Duration, result.NumTurns)
 
 	if o.config.Verbose {
 		log.Printf("Phase %d: cost=$%.4f, duration=%s, turns=%d",
@@ -466,6 +533,7 @@ func (o *Orbit) runPhase(phase int) error {
 // runPostCommand executes the post-completion command.
 func (o *Orbit) runPostCommand() error {
 	startTime := time.Now()
+	o.debug.Log("runPostCommand starting")
 
 	// Start spinner for post-completion
 	if o.spinner != nil {
@@ -479,11 +547,15 @@ func (o *Orbit) runPostCommand() error {
 		var err error
 		sessionID, isResume, err = o.logManager.StartPostCompletion(o.config.ContinueSession)
 		if err != nil {
+			o.debug.Log("Failed to start post-completion in log manager: %v", err)
 			return o.fail(fmt.Errorf("failed to start post-completion: %w", err))
 		}
+		o.debug.LogSession(sessionID, isResume, "post-completion obtained from log manager")
 	}
 
+	o.debug.Log("Executing post-completion command...")
 	result, err := o.claudeClient.RunCustomPromptWithSession(o.config.PostCommand, sessionID, isResume)
+	o.debug.Log("Post-completion execution completed: err=%v", err)
 
 	// Stop spinner after Claude returns
 	if o.spinner != nil {
@@ -492,36 +564,46 @@ func (o *Orbit) runPostCommand() error {
 
 	// Handle resume failure
 	if err != nil && isResume && isSessionInvalidError(result) {
+		o.debug.Log("Post-completion session resume failed, detected invalid session error")
 		log.Printf("Warning: Post-completion session resume failed, starting fresh session")
 		sessionID = uuid.NewString()
+		o.debug.LogSession(sessionID, false, "post-completion retrying with fresh session")
 		if o.logManager != nil {
 			if setErr := o.logManager.SetPostCompletionSessionID(sessionID); setErr != nil {
 				log.Printf("Warning: failed to update post-completion session ID: %v", setErr)
+				o.debug.Log("Failed to update post-completion session ID: %v", setErr)
 			}
 		}
 		result, err = o.claudeClient.RunCustomPromptWithSession(o.config.PostCommand, sessionID, false)
+		o.debug.Log("Fresh post-completion execution completed: err=%v", err)
 	}
 
 	if err != nil {
+		o.debug.Log("Post-completion execution failed: %v", err)
 		// Save the failed session for debugging
 		if o.logManager != nil && result != nil {
+			o.debug.Log("Saving failed post-completion session for debugging")
 			_ = o.logManager.SavePostCompletionSession(result, startTime)
 		}
-		classified := orberrors.Classify(1, result.Stderr, result.Output)
+		classified := orberrors.Classify(1, result.Stderr, result.Output, result.Errors)
+		o.debug.LogError(classified.Type.String(), classified.Message, classified.Type.IsRetryable())
 		return classified
 	}
 
 	// Reconcile session ID if Claude returned a different one
 	if o.logManager != nil && result.SessionID != sessionID {
+		o.debug.Log("Post-completion session ID changed: expected=%s got=%s", sessionID, result.SessionID)
 		o.logManager.ReconcilePostCompletionSessionID(result.SessionID)
 	}
 
 	// Check if Claude reported an error in its output
 	if result.IsError {
+		o.debug.Log("Claude reported error in post-completion output (IsError=true)")
 		if o.logManager != nil {
 			_ = o.logManager.SavePostCompletionSession(result, startTime)
 		}
-		classified := orberrors.Classify(1, result.Stderr, result.Output)
+		classified := orberrors.Classify(1, result.Stderr, result.Output, result.Errors)
+		o.debug.LogError(classified.Type.String(), classified.Message, classified.Type.IsRetryable())
 		return classified
 	}
 
@@ -529,12 +611,17 @@ func (o *Orbit) runPostCommand() error {
 	if o.logManager != nil {
 		if err := o.logManager.SavePostCompletionSession(result, startTime); err != nil {
 			log.Printf("Warning: failed to save post-completion log: %v", err)
+			o.debug.Log("Failed to save post-completion log: %v", err)
 		}
 		// Complete post-completion
 		if err := o.logManager.CompletePostCompletion(); err != nil {
 			log.Printf("Warning: failed to complete post-completion: %v", err)
+			o.debug.Log("Failed to complete post-completion in log manager: %v", err)
 		}
 	}
+
+	o.debug.Log("Post-completion completed successfully: cost=$%.4f duration=%s turns=%d",
+		result.Cost, result.Duration, result.NumTurns)
 
 	if o.config.Verbose {
 		log.Printf("Post-completion: cost=$%.4f, duration=%s, turns=%d",

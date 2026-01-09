@@ -22,6 +22,7 @@ func runCommand(args []string) error {
 	logDir := fs.String("log-dir", "", "Base directory for session logs (default: .orbit next to tasks file)")
 	skipPermissions := fs.Bool("skip-permissions", true, "Run Claude with --dangerously-skip-permissions")
 	verbose := fs.Bool("verbose", false, "Enable verbose output")
+	debug := fs.Bool("debug", false, "Enable debug logging (detailed CLI execution info)")
 	dryRun := fs.Bool("dry-run", false, "Show what would be executed without running")
 	showVersion := fs.Bool("version", false, "Show version and exit")
 	commandFlag := fs.String("command", "", "Custom prompt for Claude phases")
@@ -105,6 +106,12 @@ func runCommand(args []string) error {
 		continueSessionValue = false
 	}
 
+	// Resolve debug: CLI flag can enable (overrides config)
+	debugValue := cfg.Debug
+	if *debug {
+		debugValue = true
+	}
+
 	// Create and run orchestrator
 	orbitCfg := orbit.Config{
 		TasksFile:       *tasksFile,
@@ -112,6 +119,7 @@ func runCommand(args []string) error {
 		BranchName:      branchName,
 		SkipPermissions: *skipPermissions,
 		Verbose:         *verbose,
+		Debug:           debugValue,
 		DryRun:          *dryRun,
 		WorkingDir:      workingDir,
 		Command:         command,

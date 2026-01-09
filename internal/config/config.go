@@ -29,6 +29,7 @@ type Config struct {
 	ContinueSession bool
 	ServePort       int
 	ServeBind       string
+	Debug           bool // Enable debug logging for troubleshooting
 
 	// postCommandExplicit tracks whether post-command was explicitly set in config.
 	// This allows distinguishing "not set" (use default) from "set to empty" (disabled).
@@ -58,6 +59,7 @@ func Load(workingDir string) *Config {
 	v.SetDefault("continue-session", true)
 	v.SetDefault("serve-port", DefaultServePort)
 	v.SetDefault("serve-bind", DefaultServeBind)
+	v.SetDefault("debug", false)
 
 	// Config file name (without extension)
 	v.SetConfigName(".orbit")
@@ -115,6 +117,7 @@ func Load(workingDir string) *Config {
 	continueSession := v.GetBool("continue-session")
 	servePort := v.GetInt("serve-port")
 	serveBind := v.GetString("serve-bind")
+	debug := v.GetBool("debug")
 
 	// Apply environment variable overrides (highest priority)
 	// Using os.LookupEnv to detect both set values and explicitly empty values
@@ -140,6 +143,9 @@ func Load(workingDir string) *Config {
 	if envServeBind, exists := os.LookupEnv("ORBIT_SERVE_BIND"); exists {
 		serveBind = envServeBind
 	}
+	if envDebug, exists := os.LookupEnv("ORBIT_DEBUG"); exists {
+		debug = envDebug == "true" || envDebug == "1"
+	}
 
 	return &Config{
 		Command:             command,
@@ -148,6 +154,7 @@ func Load(workingDir string) *Config {
 		ContinueSession:     continueSession,
 		ServePort:           servePort,
 		ServeBind:           serveBind,
+		Debug:               debug,
 		postCommandExplicit: postCommandExplicit,
 	}
 }
