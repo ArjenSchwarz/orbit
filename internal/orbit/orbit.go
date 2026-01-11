@@ -42,7 +42,7 @@ type Config struct {
 	SkipPermissions bool
 	Verbose         bool
 	DryRun          bool
-	Debug           bool   // Enable debug logging for troubleshooting
+	Debug           bool // Enable debug logging for troubleshooting
 	WorkingDir      string
 	Command         string // Custom phase command
 	PostCommand     string // Post-completion command (empty = disabled)

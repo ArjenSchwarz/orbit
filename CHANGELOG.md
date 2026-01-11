@@ -9,6 +9,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- `internal/variants` package for multi-variant spec implementation support (Phase 1):
+  - `types.go` with core types: `VariantStatus` enum (pending, running, completed, failed, canceled), `Variant` struct with metrics, `VariantsMetadata` for variants.json, `Config` for variant execution settings
+  - `git.go` with `GitClient` interface and `Git` implementation for git operations:
+    - `GetCurrentBranch()`, `GetHeadCommit()` for repository state
+    - `CreateBranch()`, `DeleteBranch()` for branch management
+    - `CreateWorktree()`, `RemoveWorktree()` for worktree lifecycle
+    - `GetDiff()` for comparing variant changes from base commit
+    - `Rebase()` for applying variant changes to original branch
+    - `BranchHasDiverged()`, `HasUncommittedChanges()` for state validation
+    - Context support for cancellation of long-running operations
+  - `git_test.go` with unit tests using real git operations in temp directories
+  - `mock_git.go` with `MockGit` implementation for unit testing without real git:
+    - Configurable return values for all GitClient methods
+    - Call tracking for verification in tests
+    - Per-call error overrides for complex test scenarios
+    - Thread-safe with mutex protection
 - Final integration tests for Codex support (Phase 6):
   - CLI integration tests for Codex session conversion to Markdown
   - CLI integration tests for Codex session conversion to HTML
