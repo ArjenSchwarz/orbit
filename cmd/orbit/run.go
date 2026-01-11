@@ -11,6 +11,7 @@ import (
 
 	"github.com/arjenschwarz/orbit/internal/config"
 	"github.com/arjenschwarz/orbit/internal/orbit"
+	"gopkg.in/yaml.v3"
 )
 
 // runCommand executes the orbit run subcommand.
@@ -31,6 +32,14 @@ func runCommand(args []string) error {
 	dateSubdirs := fs.Bool("date-subdirs", false, "Use timestamped subdirectories for logs")
 	noContinueSession := fs.Bool("no-continue-session", false, "Start fresh sessions instead of resuming")
 
+	// Variant flags for multi-spec comparison
+	variantCount := fs.Int("variants", 0, "Number of implementation variants to run (0 = single-run mode)")
+	parallel := fs.Bool("parallel", false, "Run variants in parallel")
+	maxParallel := fs.Int("max-parallel", 3, "Maximum parallel variants")
+	branchPrefix := fs.String("branch-prefix", "orbit-impl", "Branch naming prefix for variants")
+	guidanceFile := fs.String("guidance-file", "", "YAML file with per-variant guidance")
+	compareCommand := fs.String("compare-command", "", "Custom comparison command")
+
 	fs.Usage = func() {
 		fmt.Fprintf(os.Stderr, "Usage: orbit run [options]\n\n")
 		fmt.Fprintf(os.Stderr, "Orchestrate Claude Code sessions to implement spec phases sequentially.\n")
@@ -42,6 +51,9 @@ func runCommand(args []string) error {
 		fmt.Fprintf(os.Stderr, "  orbit run --tasks-file specs/my-feature/tasks.md\n")
 		fmt.Fprintf(os.Stderr, "  orbit run --verbose --log-dir ./logs\n")
 		fmt.Fprintf(os.Stderr, "  orbit run --dry-run                        # Preview without executing\n")
+		fmt.Fprintf(os.Stderr, "  orbit run --variants 3                     # Run 3 implementation variants\n")
+		fmt.Fprintf(os.Stderr, "  orbit run --variants 2 --parallel          # Run 2 variants in parallel\n")
+		fmt.Fprintf(os.Stderr, "  orbit run --variants 3 --guidance-file guidance.yaml\n")
 	}
 
 	if err := fs.Parse(args); err != nil {
@@ -112,6 +124,24 @@ func runCommand(args []string) error {
 		debugValue = true
 	}
 
+	// Parse guidance file if provided
+	var guidance []string
+	if *guidanceFile != "" {
+		var err error
+		guidance, err = parseGuidanceFile(*guidanceFile, *variantCount)
+		if err != nil {
+			return fmt.Errorf("failed to parse guidance file: %w", err)
+		}
+	}
+
+	// Validate variant configuration
+	if *variantCount < 0 {
+		return fmt.Errorf("--variants must be non-negative")
+	}
+	if *maxParallel < 1 {
+		return fmt.Errorf("--max-parallel must be at least 1")
+	}
+
 	// Create and run orchestrator
 	orbitCfg := orbit.Config{
 		TasksFile:       *tasksFile,
@@ -126,6 +156,12 @@ func runCommand(args []string) error {
 		PostCommand:     postCommand,
 		DateSubdirs:     dateSubdirsValue,
 		ContinueSession: continueSessionValue,
+		VariantCount:    *variantCount,
+		Parallel:        *parallel,
+		MaxParallel:     *maxParallel,
+		BranchPrefix:    *branchPrefix,
+		Guidance:        guidance,
+		CompareCommand:  *compareCommand,
 	}
 
 	o, err := orbit.New(orbitCfg)
@@ -199,4 +235,57 @@ func detectTasksFile(branchName string) (string, error) {
 	}
 
 	return "", fmt.Errorf("could not find tasks file for branch '%s'\nTried: %s", branchName, strings.Join(candidates, ", "))
+}
+
+// guidanceFileSchema represents the YAML schema for per-variant guidance.
+type guidanceFileSchema struct {
+	Variants []struct {
+		ID       int    `yaml:"id"`
+		Guidance string `yaml:"guidance"`
+	} `yaml:"variants"`
+	GlobalGuidance string `yaml:"global_guidance"`
+}
+
+// parseGuidanceFile parses a YAML guidance file and returns per-variant guidance strings.
+// The returned slice is indexed by variant ID-1 (0-indexed).
+func parseGuidanceFile(filePath string, variantCount int) ([]string, error) {
+	data, err := os.ReadFile(filePath)
+	if err != nil {
+		return nil, fmt.Errorf("read guidance file: %w", err)
+	}
+
+	var schema guidanceFileSchema
+	if err := yaml.Unmarshal(data, &schema); err != nil {
+		return nil, fmt.Errorf("parse guidance YAML: %w", err)
+	}
+
+	// Validate variant count matches if variants are specified
+	if len(schema.Variants) > 0 && variantCount > 0 && len(schema.Variants) != variantCount {
+		return nil, fmt.Errorf("guidance file has %d variants but --variants=%d", len(schema.Variants), variantCount)
+	}
+
+	// Build guidance slice indexed by variant ID
+	guidance := make([]string, variantCount)
+	for _, v := range schema.Variants {
+		if v.ID < 1 || v.ID > variantCount {
+			return nil, fmt.Errorf("guidance file variant ID %d is out of range (1-%d)", v.ID, variantCount)
+		}
+		// Combine variant-specific and global guidance
+		if schema.GlobalGuidance != "" {
+			guidance[v.ID-1] = v.Guidance + "\n\n" + schema.GlobalGuidance
+		} else {
+			guidance[v.ID-1] = v.Guidance
+		}
+	}
+
+	// For variants without specific guidance, apply only global guidance
+	if schema.GlobalGuidance != "" {
+		for i := range guidance {
+			if guidance[i] == "" {
+				guidance[i] = schema.GlobalGuidance
+			}
+		}
+	}
+
+	return guidance, nil
 }

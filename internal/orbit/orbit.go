@@ -48,6 +48,14 @@ type Config struct {
 	PostCommand     string // Post-completion command (empty = disabled)
 	DateSubdirs     bool   // If true, use timestamped subdirectories for logs
 	ContinueSession bool   // If true, continue existing Claude sessions when resuming
+
+	// Variant configuration for multi-spec comparison
+	VariantCount   int      // Number of variants (0 = single-run mode)
+	Parallel       bool     // Run variants in parallel
+	MaxParallel    int      // Maximum parallel variants
+	BranchPrefix   string   // Branch naming prefix
+	Guidance       []string // Per-variant guidance from file
+	CompareCommand string   // Custom comparison command
 }
 
 // Orbit orchestrates Claude Code sessions to implement spec phases.

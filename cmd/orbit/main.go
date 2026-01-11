@@ -15,6 +15,10 @@ var knownSubcommands = map[string]bool{
 	"serve":    true,
 	"register": true,
 	"demo":     true,
+	"status":   true,
+	"cleanup":  true,
+	"finalize": true,
+	"compare":  true,
 }
 
 func main() {
@@ -31,6 +35,14 @@ func main() {
 		err = registerCommand(cmdArgs)
 	case "demo":
 		err = RunDemo()
+	case "status":
+		err = statusCommand(cmdArgs)
+	case "cleanup":
+		err = cleanupCommand(cmdArgs)
+	case "finalize":
+		err = finalizeCommand(cmdArgs)
+	case "compare":
+		err = compareCommand(cmdArgs)
 	default:
 		// This shouldn't happen since parseSubcommand defaults to "run"
 		err = runCommand(cmdArgs)

@@ -9,6 +9,41 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- CLI commands for multi-spec comparison feature (Phase 5):
+  - `orbit status <spec-name>` command to display variant implementation status:
+    - Shows base commit, original branch, and start time
+    - Displays table with variant ID, branch, worktree path, and status
+    - Auto-detects spec name from current git branch if not provided
+  - `orbit cleanup <spec-name>` command to remove variant worktrees and branches:
+    - `--keep N` flag to preserve a specific variant while removing others
+    - `--force` flag to skip confirmation prompt
+    - `--dry-run` flag to preview what would be deleted
+    - Confirmation prompt before destructive operations
+  - `orbit finalize <spec-name> --variant N` command to adopt a variant:
+    - Rebases chosen variant onto original branch
+    - Cleans up all variant worktrees and branches after successful rebase
+    - Divergence detection with helpful error messages
+    - Conflict handling with manual resolution instructions
+  - `orbit compare <spec-name>` command to regenerate comparison reports:
+    - Collects diffs for all completed variants
+    - Runs Claude comparison analysis
+    - Generates HTML report with recommendation
+- Variant flags for `orbit run` command:
+  - `--variants N` to specify number of implementation variants
+  - `--parallel` to run variants concurrently
+  - `--max-parallel N` to limit concurrent variants (default: 3)
+  - `--branch-prefix PREFIX` to customize branch naming (default: orbit-impl)
+  - `--guidance-file PATH` for per-variant YAML guidance
+  - `--compare-command CMD` for custom comparison commands
+- Guidance file parsing for per-variant configuration:
+  - YAML schema with `variants` array and `global_guidance` field
+  - Validation of variant IDs against `--variants` count
+  - Global guidance applied to variants without specific guidance
+- Variant configuration in `orbit.Config` struct:
+  - `VariantCount`, `Parallel`, `MaxParallel`, `BranchPrefix` fields
+  - `Guidance` slice for per-variant guidance strings
+  - `CompareCommand` for custom comparison command
+
 - `internal/report` package for HTML comparison report generation (Phase 4):
   - `types.go` with report types: `ReportData` (spec name, variants, comparison result, metadata), `VariantReportData` (per-variant data with diff and metrics), `VariantMetrics` (cost, duration, turns)
   - `templates.go` with embedded HTML templates using `//go:embed`:
