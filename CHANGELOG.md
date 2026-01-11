@@ -9,6 +9,39 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Orbit integration for multi-spec comparison feature (Phase 6):
+  - Variant configuration in `internal/config/config.go`:
+    - `VariantCount`, `Parallel`, `MaxParallel`, `BranchPrefix`, `GuidanceFile`, `CompareCommand`, `GlobalGuidance` fields
+    - Environment variable support: `ORBIT_VARIANT_COUNT`, `ORBIT_PARALLEL`, `ORBIT_MAX_PARALLEL`, `ORBIT_BRANCH_PREFIX`, `ORBIT_GUIDANCE_FILE`, `ORBIT_COMPARE_COMMAND`, `ORBIT_GLOBAL_GUIDANCE`
+    - `DefaultMaxParallel` (3) and `DefaultBranchPrefix` ("orbit-impl") constants
+    - `parsePositiveInt()` helper function for integer environment variable parsing
+  - Variant support in `internal/orbit/orbit.go`:
+    - `variantManager` field for variant lifecycle management
+    - `rawClaudeClient` field for comparison operations
+    - `comparisonResult` field for report generation
+    - `SpecDir` and `RepoRoot` fields in Config for worktree paths
+    - Variant manager initialization when `VariantCount > 0`
+  - `runWithVariants()` method for multi-variant orchestration:
+    - Worktree setup via variant manager
+    - Sequential and parallel variant execution
+    - SIGINT handling with graceful cancellation
+    - Success/failure counting and reporting
+  - `runVariant()` method for single variant execution:
+    - Per-variant Claude client with worktree-specific working directory
+    - Phase loop with retry logic
+    - Metrics accumulation (cost, duration, turns)
+    - Status updates to variant manager
+  - `buildVariantPrompt()` for variant-specific and global guidance injection
+  - `runVariantPhaseWithRetry()` with error classification and backoff
+  - `runComparison()` for comparing successful variants:
+    - Diff gathering via `comparison.NewDiffGatherer`
+    - Claude-based comparison via `comparison.NewComparator`
+    - Result storage for report generation
+  - `generateReport()` and `generatePartialReport()` for HTML report generation:
+    - Report creation via `report.NewGenerator`
+    - Variant metrics and diffs included in report
+    - Partial report for all-failed scenarios
+
 - CLI commands for multi-spec comparison feature (Phase 5):
   - `orbit status <spec-name>` command to display variant implementation status:
     - Shows base commit, original branch, and start time
