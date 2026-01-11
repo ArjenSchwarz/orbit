@@ -9,6 +9,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- `internal/variants` package Manager implementation (Phase 2):
+  - `manager.go` with `Manager` struct for variant lifecycle management:
+    - `NewManager()` constructor with validation for spec name, directory, repo root, and git client
+    - `Load()` to read existing `variants.json` metadata
+    - `Save()` with atomic writes using temp file + rename pattern and mutex protection
+    - `ensureGitignore()` to automatically create/update `.orbit/.gitignore` with `worktrees/` entry
+    - `Setup()` to create branches and worktrees for all variants with cleanup on failure
+    - `UpdateStatus()` and `UpdateMetrics()` for tracking variant execution state
+    - `GetVariant()`, `GetVariantsSnapshot()`, and `CountByStatus()` for querying variants
+    - `Cleanup()` to remove worktrees and branches with optional variant preservation
+    - `Finalize()` to rebase chosen variant onto original branch with divergence check
+    - `sanitizeSpecName()` for filesystem-safe spec names
+  - `manager_test.go` with unit tests using mock GitClient:
+    - `TestNewManager` for constructor validation
+    - `TestSetup_*` for worktree creation, reuse, divergence detection, dirty directory check, gitignore handling
+    - `TestUpdateStatus` and `TestSave_*` for status persistence and atomic/concurrent writes
+    - `TestGetVariantsSnapshot_ReturnsCopy` and `TestCountByStatus` for query methods
+    - `TestCleanup_*` for full cleanup and variant preservation
+    - `TestFinalize_*` for rebase and divergence handling
+    - `TestLoad_ParsesExistingMetadata` for metadata loading
+    - `TestSanitizeSpecName` for filesystem safety
+
 - `internal/variants` package for multi-variant spec implementation support (Phase 1):
   - `types.go` with core types: `VariantStatus` enum (pending, running, completed, failed, canceled), `Variant` struct with metrics, `VariantsMetadata` for variants.json, `Config` for variant execution settings
   - `git.go` with `GitClient` interface and `Git` implementation for git operations:

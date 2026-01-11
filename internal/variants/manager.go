@@ -1,0 +1,498 @@
+package variants
+
+import (
+	"context"
+	"encoding/json"
+	"errors"
+	"fmt"
+	"os"
+	"path/filepath"
+	"strings"
+	"sync"
+	"time"
+
+	"github.com/google/uuid"
+)
+
+// Manager handles variant lifecycle including worktree creation, status tracking, and cleanup.
+type Manager struct {
+	config       Config
+	specName     string
+	specDir      string // Path to specs/{spec-name}
+	repoRoot     string // Git repository root
+	metadata     *VariantsMetadata
+	metadataPath string // specs/{spec}/.orbit/variants.json
+	worktreeDir  string // specs/{spec}/.orbit/worktrees/
+	mu           sync.Mutex
+	git          GitClient
+}
+
+// NewManager creates a variant manager for a spec.
+func NewManager(cfg Config, specName, specDir, repoRoot string, git GitClient) (*Manager, error) {
+	if specName == "" {
+		return nil, errors.New("spec name is required")
+	}
+	if specDir == "" {
+		return nil, errors.New("spec directory is required")
+	}
+	if repoRoot == "" {
+		return nil, errors.New("repository root is required")
+	}
+	if git == nil {
+		return nil, errors.New("git client is required")
+	}
+	if cfg.Count < 1 {
+		return nil, errors.New("variant count must be at least 1")
+	}
+
+	orbitDir := filepath.Join(specDir, ".orbit")
+	return &Manager{
+		config:       cfg,
+		specName:     specName,
+		specDir:      specDir,
+		repoRoot:     repoRoot,
+		metadataPath: filepath.Join(orbitDir, "variants.json"),
+		worktreeDir:  filepath.Join(orbitDir, "worktrees"),
+		git:          git,
+	}, nil
+}
+
+// Load reads existing variants.json if present.
+func (m *Manager) Load() error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	data, err := os.ReadFile(m.metadataPath)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil // No existing metadata, which is fine
+		}
+		return fmt.Errorf("read variants.json: %w", err)
+	}
+
+	var metadata VariantsMetadata
+	if err := json.Unmarshal(data, &metadata); err != nil {
+		return fmt.Errorf("unmarshal variants.json: %w", err)
+	}
+
+	m.metadata = &metadata
+	return nil
+}
+
+// Save persists the current metadata to variants.json using atomic write.
+func (m *Manager) Save() error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	return m.saveLocked()
+}
+
+// saveLocked performs the save without acquiring the mutex (caller must hold it).
+func (m *Manager) saveLocked() error {
+	if m.metadata == nil {
+		return errors.New("no metadata to save")
+	}
+
+	data, err := json.MarshalIndent(m.metadata, "", "  ")
+	if err != nil {
+		return fmt.Errorf("marshal metadata: %w", err)
+	}
+
+	// Ensure directory exists
+	dir := filepath.Dir(m.metadataPath)
+	if err := os.MkdirAll(dir, 0755); err != nil {
+		return fmt.Errorf("create directory: %w", err)
+	}
+
+	// Write to temp file first for atomic operation
+	tmpPath := m.metadataPath + ".tmp"
+	if err := os.WriteFile(tmpPath, data, 0644); err != nil {
+		return fmt.Errorf("write temp file: %w", err)
+	}
+
+	// Atomic rename
+	if err := os.Rename(tmpPath, m.metadataPath); err != nil {
+		_ = os.Remove(tmpPath) // Clean up on failure
+		return fmt.Errorf("rename to final: %w", err)
+	}
+
+	return nil
+}
+
+// ensureGitignore creates or updates .orbit/.gitignore to ignore worktrees.
+func (m *Manager) ensureGitignore() error {
+	gitignorePath := filepath.Join(m.specDir, ".orbit", ".gitignore")
+
+	// Check if file exists and already contains the entry
+	content, err := os.ReadFile(gitignorePath)
+	if err == nil {
+		if strings.Contains(string(content), "worktrees/") {
+			return nil // Already configured
+		}
+		// Append to existing file
+		f, err := os.OpenFile(gitignorePath, os.O_APPEND|os.O_WRONLY, 0644)
+		if err != nil {
+			return fmt.Errorf("open .gitignore for append: %w", err)
+		}
+		defer func() { _ = f.Close() }()
+		_, err = f.WriteString("\n# Variant worktrees (managed by orbit)\nworktrees/\n")
+		if err != nil {
+			return fmt.Errorf("append to .gitignore: %w", err)
+		}
+		return nil
+	}
+
+	if !os.IsNotExist(err) {
+		return fmt.Errorf("read .gitignore: %w", err)
+	}
+
+	// Create directory if needed
+	dir := filepath.Dir(gitignorePath)
+	if err := os.MkdirAll(dir, 0755); err != nil {
+		return fmt.Errorf("create .orbit directory: %w", err)
+	}
+
+	// Create new .gitignore
+	content = []byte("# Orbit variant data (auto-generated)\nworktrees/\n")
+	if err := os.WriteFile(gitignorePath, content, 0644); err != nil {
+		return fmt.Errorf("create .gitignore: %w", err)
+	}
+
+	return nil
+}
+
+// Setup creates worktrees and branches for all variants.
+// Returns error if worktrees exist with different base commit.
+func (m *Manager) Setup(ctx context.Context) error {
+	// Check for uncommitted changes
+	hasChanges, err := m.git.HasUncommittedChanges()
+	if err != nil {
+		return fmt.Errorf("check uncommitted changes: %w", err)
+	}
+	if hasChanges {
+		return errors.New("working directory has uncommitted changes; commit or stash before running variants")
+	}
+
+	// Get current state
+	currentBranch, err := m.git.GetCurrentBranch()
+	if err != nil {
+		return fmt.Errorf("get current branch: %w", err)
+	}
+
+	headCommit, err := m.git.GetHeadCommit()
+	if err != nil {
+		return fmt.Errorf("get head commit: %w", err)
+	}
+
+	// Check for existing metadata
+	if m.metadata != nil {
+		// Worktrees exist from a previous run
+		if m.metadata.BaseCommit == headCommit {
+			// Base commit matches - can reuse existing worktrees
+			return nil
+		}
+		// Base commit differs - fail with error
+		return fmt.Errorf("existing worktrees have different base commit (%s vs current %s); run 'orbit cleanup' first",
+			m.metadata.BaseCommit[:8], headCommit[:8])
+	}
+
+	// Ensure .gitignore is in place before creating worktrees
+	if err := m.ensureGitignore(); err != nil {
+		return fmt.Errorf("ensure gitignore: %w", err)
+	}
+
+	// Create worktrees directory
+	if err := os.MkdirAll(m.worktreeDir, 0755); err != nil {
+		return fmt.Errorf("create worktrees directory: %w", err)
+	}
+
+	// Initialize metadata
+	m.metadata = &VariantsMetadata{
+		RunID:          uuid.New().String(),
+		BaseCommit:     headCommit,
+		OriginalBranch: currentBranch,
+		StartedAt:      time.Now().UTC(),
+		Variants:       make([]*Variant, 0, m.config.Count),
+	}
+
+	// Create branches and worktrees for each variant
+	sanitizedSpec := sanitizeSpecName(m.specName)
+	var createdWorktrees []string
+
+	for i := 1; i <= m.config.Count; i++ {
+		branchName := fmt.Sprintf("%s-%d/%s", m.config.BranchPrefix, i, m.specName)
+		worktreePath := filepath.Join(m.worktreeDir, fmt.Sprintf("%s-%d-%s", m.config.BranchPrefix, i, sanitizedSpec))
+
+		// Create branch
+		if err := m.git.CreateBranch(branchName); err != nil {
+			// Cleanup already created worktrees on failure
+			m.cleanupCreated(ctx, createdWorktrees)
+			return fmt.Errorf("create branch for variant %d: %w", i, err)
+		}
+
+		// Create worktree
+		if err := m.git.CreateWorktree(ctx, worktreePath, branchName); err != nil {
+			// Cleanup already created worktrees and this branch
+			_ = m.git.DeleteBranch(branchName)
+			m.cleanupCreated(ctx, createdWorktrees)
+			return fmt.Errorf("create worktree for variant %d: %w", i, err)
+		}
+
+		createdWorktrees = append(createdWorktrees, worktreePath)
+
+		// Get guidance for this variant if available
+		var guidance string
+		if i-1 < len(m.config.Guidance) {
+			guidance = m.config.Guidance[i-1]
+		}
+
+		m.metadata.Variants = append(m.metadata.Variants, &Variant{
+			ID:           i,
+			Branch:       branchName,
+			WorktreePath: worktreePath,
+			Status:       StatusPending,
+			Guidance:     guidance,
+		})
+	}
+
+	// Save initial metadata
+	m.mu.Lock()
+	err = m.saveLocked()
+	m.mu.Unlock()
+
+	if err != nil {
+		m.cleanupCreated(ctx, createdWorktrees)
+		return fmt.Errorf("save metadata: %w", err)
+	}
+
+	return nil
+}
+
+// cleanupCreated removes worktrees that were created during a failed setup.
+func (m *Manager) cleanupCreated(ctx context.Context, paths []string) {
+	for _, path := range paths {
+		_ = m.git.RemoveWorktree(ctx, path)
+	}
+}
+
+// UpdateStatus updates a variant's status and persists to disk.
+func (m *Manager) UpdateStatus(id int, status VariantStatus, err error) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	v := m.getVariantLocked(id)
+	if v == nil {
+		return fmt.Errorf("variant %d not found", id)
+	}
+
+	v.Status = status
+	if err != nil {
+		v.Error = err.Error()
+	} else {
+		v.Error = ""
+	}
+
+	return m.saveLocked()
+}
+
+// UpdateMetrics updates a variant's metrics after completion.
+func (m *Manager) UpdateMetrics(id int, cost float64, duration time.Duration, turns int) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	v := m.getVariantLocked(id)
+	if v == nil {
+		return fmt.Errorf("variant %d not found", id)
+	}
+
+	v.Cost = cost
+	v.Duration = duration
+	v.NumTurns = turns
+
+	return m.saveLocked()
+}
+
+// GetVariant returns a variant by ID.
+func (m *Manager) GetVariant(id int) *Variant {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return m.getVariantLocked(id)
+}
+
+// getVariantLocked finds a variant by ID (caller must hold mutex).
+func (m *Manager) getVariantLocked(id int) *Variant {
+	if m.metadata == nil {
+		return nil
+	}
+	for _, v := range m.metadata.Variants {
+		if v.ID == id {
+			return v
+		}
+	}
+	return nil
+}
+
+// GetVariantsSnapshot returns a copy of the variants slice for safe iteration.
+func (m *Manager) GetVariantsSnapshot() []*Variant {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	if m.metadata == nil {
+		return nil
+	}
+
+	// Return a copy of the slice (not deep copy - variants are still shared)
+	snapshot := make([]*Variant, len(m.metadata.Variants))
+	copy(snapshot, m.metadata.Variants)
+	return snapshot
+}
+
+// CountByStatus returns the count of variants with the given status.
+func (m *Manager) CountByStatus(status VariantStatus) int {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	if m.metadata == nil {
+		return 0
+	}
+
+	count := 0
+	for _, v := range m.metadata.Variants {
+		if v.Status == status {
+			count++
+		}
+	}
+	return count
+}
+
+// Cleanup removes all worktrees and branches.
+// If keepID > 0, preserves that variant.
+func (m *Manager) Cleanup(ctx context.Context, keepID int) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	if m.metadata == nil {
+		return nil // Nothing to clean up
+	}
+
+	var errs []error
+	var keptVariant *Variant
+
+	for _, v := range m.metadata.Variants {
+		if v.ID == keepID {
+			keptVariant = v
+			continue
+		}
+
+		// Remove worktree first
+		if v.WorktreePath != "" {
+			if err := m.git.RemoveWorktree(ctx, v.WorktreePath); err != nil {
+				errs = append(errs, fmt.Errorf("remove worktree for variant %d: %w", v.ID, err))
+			}
+		}
+
+		// Then delete branch
+		if v.Branch != "" {
+			if err := m.git.DeleteBranch(v.Branch); err != nil {
+				errs = append(errs, fmt.Errorf("delete branch for variant %d: %w", v.ID, err))
+			}
+		}
+	}
+
+	if len(errs) > 0 {
+		return errors.Join(errs...)
+	}
+
+	if keepID > 0 && keptVariant != nil {
+		// Update metadata to only contain the kept variant
+		m.metadata.Variants = []*Variant{keptVariant}
+		return m.saveLocked()
+	}
+
+	// Remove variants.json
+	if err := os.Remove(m.metadataPath); err != nil && !os.IsNotExist(err) {
+		return fmt.Errorf("remove variants.json: %w", err)
+	}
+
+	// Try to remove the worktrees directory if empty
+	_ = os.Remove(m.worktreeDir)
+
+	m.metadata = nil
+	return nil
+}
+
+// Finalize rebases the chosen variant onto the original branch.
+func (m *Manager) Finalize(ctx context.Context, variantID int) error {
+	m.mu.Lock()
+	metadata := m.metadata
+	m.mu.Unlock()
+
+	if metadata == nil {
+		return errors.New("no variant metadata found")
+	}
+
+	// Find the variant
+	var variant *Variant
+	for _, v := range metadata.Variants {
+		if v.ID == variantID {
+			variant = v
+			break
+		}
+	}
+	if variant == nil {
+		return fmt.Errorf("variant %d not found", variantID)
+	}
+
+	// Verify original branch has not diverged
+	diverged, err := m.git.BranchHasDiverged(metadata.OriginalBranch, metadata.BaseCommit)
+	if err != nil {
+		return fmt.Errorf("check branch divergence: %w", err)
+	}
+	if diverged {
+		return fmt.Errorf("original branch '%s' has diverged since variants were created; manual merge required",
+			metadata.OriginalBranch)
+	}
+
+	// Rebase variant onto original branch
+	if err := m.git.Rebase(ctx, variant.Branch, metadata.OriginalBranch); err != nil {
+		return fmt.Errorf("rebase variant onto original branch: %w", err)
+	}
+
+	// Cleanup other variants
+	return m.Cleanup(ctx, 0) // Remove all including the finalized one
+}
+
+// GetMetadata returns the current metadata (for status display).
+func (m *Manager) GetMetadata() *VariantsMetadata {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return m.metadata
+}
+
+// sanitizeSpecName makes a spec name safe for filesystem and git branch names.
+func sanitizeSpecName(name string) string {
+	// Replace problematic characters with dashes
+	replacer := strings.NewReplacer(
+		"/", "-",
+		"\\", "-",
+		" ", "-",
+		":", "-",
+		"*", "-",
+		"?", "-",
+		"\"", "-",
+		"<", "-",
+		">", "-",
+		"|", "-",
+	)
+	result := replacer.Replace(name)
+
+	// Collapse multiple dashes
+	for strings.Contains(result, "--") {
+		result = strings.ReplaceAll(result, "--", "-")
+	}
+
+	// Trim leading/trailing dashes
+	result = strings.Trim(result, "-")
+
+	return result
+}
