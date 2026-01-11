@@ -9,6 +9,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- `internal/comparison` package for multi-variant comparison (Phase 3):
+  - `types.go` with comparison types: `Result` (recommendation, confidence, summary, file analyses, observations), `FileAnalysis` (per-file comparison details), `VariantData` (variant input data with diff and metrics), `VariantMetrics` (cost, duration, turns)
+  - `diff.go` with `DiffGatherer` struct for collecting unified diffs from variants using GitClient
+  - `prompt.go` with `buildPrompt()` function to construct Claude comparison prompts with variant diffs and metrics table, `formatDuration()` for duration display, `estimatePromptTokens()` for context size estimation
+  - `compare.go` with `Comparator` struct for orchestrating variant comparison:
+    - `NewComparator()` constructor with Claude client and optional custom command
+    - `Compare()` method with retry loop for JSON validation failures
+    - `parseAndValidate()` for strict JSON parsing with range checking on recommendation and confidence values
+    - `extractJSON()` to handle JSON in plain text or markdown code blocks
+    - `extractJSONObject()` for brace-balanced JSON object extraction with proper string handling
+  - `compare_test.go` with unit tests:
+    - `TestBuildPrompt_IncludesAllVariants` and `TestBuildPrompt_IncludesMetrics` for prompt construction
+    - `TestParseAndValidate_ValidJSON`, `TestParseAndValidate_MissingFields`, `TestParseAndValidate_InvalidConfidence`, `TestParseAndValidate_RecommendationOutOfRange` for validation
+    - `TestExtractJSON_PlainJSON`, `TestExtractJSON_MarkdownCodeBlock`, `TestExtractJSON_PlainCodeBlock`, `TestExtractJSON_JSONInText`, `TestExtractJSON_NoJSON`, `TestExtractJSON_NestedObjects`, `TestExtractJSON_StringWithBraces` for JSON extraction
+    - `TestFormatDuration` and `TestEstimatePromptTokens` for helper functions
+
 - `internal/variants` package Manager implementation (Phase 2):
   - `manager.go` with `Manager` struct for variant lifecycle management:
     - `NewManager()` constructor with validation for spec name, directory, repo root, and git client
