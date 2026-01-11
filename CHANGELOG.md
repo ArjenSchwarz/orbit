@@ -9,6 +9,39 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- `internal/report` package for HTML comparison report generation (Phase 4):
+  - `types.go` with report types: `ReportData` (spec name, variants, comparison result, metadata), `VariantReportData` (per-variant data with diff and metrics), `VariantMetrics` (cost, duration, turns)
+  - `templates.go` with embedded HTML templates using `//go:embed`:
+    - Template helper functions: `formatCost()` for currency formatting, `trimTrailingZeros()` for decimal cleanup, `add()` and `sub()` for template arithmetic
+  - `templates/index.html` main report template with:
+    - Recommendation section with variant recommendation and confidence level
+    - Run metadata section (base commit, original branch, generation time)
+    - Variants overview table with status, cost, duration, and turn metrics
+    - Key observations list from comparison analysis
+    - Per-file analysis with variant assessments and preferences
+    - Collapsible diff sections for each variant implementation
+  - `templates/diff.html` for separate large diff files (>500 lines)
+  - `templates/style.css` with self-contained CSS:
+    - CSS variables for consistent theming
+    - Dark mode support via `prefers-color-scheme` media query
+    - Responsive design for mobile and desktop
+    - Print-friendly styles
+    - Status badges for completed/failed/pending states
+    - Confidence level styling (high/medium/low)
+  - `generator.go` with `Generator` struct for report creation:
+    - `NewGenerator()` constructor with output directory configuration
+    - `Generate()` method creating index.html with automatic HTML escaping via html/template
+    - `processReportData()` for handling large diffs by extracting to separate files
+    - `generateDiffFile()` for creating variant-N.html files in diffs/ subdirectory
+    - `countLines()` helper with 500-line threshold for diff splitting
+  - `generator_test.go` with unit tests:
+    - `TestGenerate_CreatesIndexHTML` verifying report creation with all content
+    - `TestGenerate_EscapesContent` verifying XSS prevention via HTML escaping
+    - `TestGenerate_SplitsLargeDiffs` verifying 500-line threshold behavior
+    - `TestGenerate_IncludesFailedVariants` verifying failed variant error display
+    - `TestGenerate_NoComparison` verifying report generation without comparison result
+    - `TestCountLines`, `TestFormatCost`, `TestTrimTrailingZeros` for helper functions
+
 - `internal/comparison` package for multi-variant comparison (Phase 3):
   - `types.go` with comparison types: `Result` (recommendation, confidence, summary, file analyses, observations), `FileAnalysis` (per-file comparison details), `VariantData` (variant input data with diff and metrics), `VariantMetrics` (cost, duration, turns)
   - `diff.go` with `DiffGatherer` struct for collecting unified diffs from variants using GitClient
