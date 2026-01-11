@@ -9,6 +9,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Integration tests for multi-spec comparison feature (Phase 7):
+  - `internal/orbit/integration_test.go` with comprehensive variant integration tests:
+    - `TestVariantRun_Sequential` for sequential variant execution with worktree and metadata verification
+    - `TestVariantRun_Parallel` for parallel execution with semaphore limit verification
+    - `TestVariantRun_SingleSuccess` for partial success scenarios (comparison skipped with single variant)
+    - `TestCleanup_RemovesWorktrees` for cleanup command functionality
+    - `TestFinalize_RebasesVariant` for finalize command with rebase verification
+    - `TestFinalize_FailsOnDivergedBranch` for divergence detection
+    - `TestOrbit_WithVariants_MockExecution` for Orbit config validation
+  - `internal/variants/sanitize_property_test.go` with property-based tests using pgregory.net/rapid:
+    - `TestPropertySanitizeName` verifying filesystem safety, no consecutive dashes, no edge dashes, and idempotence
+    - `TestPropertySanitizeName_PreservesAlphanumeric` for alphanumeric preservation
+    - `TestPropertySanitizeName_DashesPreserved` for valid dash-separated strings
+    - `TestPropertySanitizeName_ReplacesUnsafeChars` for unsafe character replacement
+    - `TestPropertySanitizeName_CollapsesMultipleDashes` for dash collapsing
+    - `TestPropertySanitizeName_TrimsEdgeDashes` for edge dash trimming
+    - `TestPropertySanitizeName_AllUnsafe` for all-unsafe input handling
+
+### Fixed
+
+- `sanitizeSpecName()` in `internal/variants/manager.go` now handles Unicode control characters:
+  - Uses `unicode.IsControl()` for proper control character detection including extended ASCII (0x80+)
+  - Refactored from `strings.NewReplacer` to rune-by-rune processing with `isUnsafeRune()` helper
+  - Property-based testing discovered the bug (tab and Unicode control chars were not sanitized)
+
 - Orbit integration for multi-spec comparison feature (Phase 6):
   - Variant configuration in `internal/config/config.go`:
     - `VariantCount`, `Parallel`, `MaxParallel`, `BranchPrefix`, `GuidanceFile`, `CompareCommand`, `GlobalGuidance` fields

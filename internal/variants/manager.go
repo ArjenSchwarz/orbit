@@ -10,6 +10,7 @@ import (
 	"strings"
 	"sync"
 	"time"
+	"unicode"
 
 	"github.com/google/uuid"
 )
@@ -471,28 +472,42 @@ func (m *Manager) GetMetadata() *VariantsMetadata {
 
 // sanitizeSpecName makes a spec name safe for filesystem and git branch names.
 func sanitizeSpecName(name string) string {
-	// Replace problematic characters with dashes
-	replacer := strings.NewReplacer(
-		"/", "-",
-		"\\", "-",
-		" ", "-",
-		":", "-",
-		"*", "-",
-		"?", "-",
-		"\"", "-",
-		"<", "-",
-		">", "-",
-		"|", "-",
-	)
-	result := replacer.Replace(name)
+	// Build result, replacing unsafe characters with dashes
+	var result strings.Builder
+	result.Grow(len(name))
+
+	for _, r := range name {
+		// Replace control characters, whitespace, and filesystem-unsafe characters
+		if isUnsafeRune(r) {
+			result.WriteRune('-')
+		} else {
+			result.WriteRune(r)
+		}
+	}
+
+	sanitized := result.String()
 
 	// Collapse multiple dashes
-	for strings.Contains(result, "--") {
-		result = strings.ReplaceAll(result, "--", "-")
+	for strings.Contains(sanitized, "--") {
+		sanitized = strings.ReplaceAll(sanitized, "--", "-")
 	}
 
 	// Trim leading/trailing dashes
-	result = strings.Trim(result, "-")
+	sanitized = strings.Trim(sanitized, "-")
 
-	return result
+	return sanitized
+}
+
+// isUnsafeRune returns true if the rune is unsafe for filesystem/git branch names.
+func isUnsafeRune(r rune) bool {
+	// Control characters (including tabs, newlines, Unicode control chars)
+	if unicode.IsControl(r) {
+		return true
+	}
+	// Filesystem-unsafe characters
+	switch r {
+	case '/', '\\', ' ', ':', '*', '?', '"', '<', '>', '|':
+		return true
+	}
+	return false
 }

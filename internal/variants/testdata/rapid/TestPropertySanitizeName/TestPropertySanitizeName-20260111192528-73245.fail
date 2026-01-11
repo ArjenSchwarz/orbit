@@ -1,0 +1,9 @@
+# 2026/01/11 19:25:28.214758 [TestPropertySanitizeName] [rapid] draw name: "\t"
+# 2026/01/11 19:25:28.214762 [TestPropertySanitizeName] unsafe character in sanitized name: "\t" (char: 	)
+# 
+v0.4.8#10085819045967257442
+0x5555555555555
+0x0
+0xc05c654ab866b
+0x15
+0x0
