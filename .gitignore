@@ -4,6 +4,11 @@
 
 # Orbit orchestration log directories
 **/.orbit/
+
+# Test output
 coverage.html
 coverage.out
 testlog.html
+
+# Rapid property test failure files
+**/testdata/rapid/**/*.fail

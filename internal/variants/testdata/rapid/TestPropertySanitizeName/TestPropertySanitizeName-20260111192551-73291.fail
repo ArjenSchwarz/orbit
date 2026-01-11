@@ -1,9 +1,0 @@
-# 2026/01/11 19:25:51.130331 [TestPropertySanitizeName] [rapid] draw name: "\u0080"
-# 2026/01/11 19:25:51.130339 [TestPropertySanitizeName] unsafe character in sanitized name: "\u0080" (char: )
-# 
-v0.4.8#4895772119059487136
-0x5555555555555
-0x25
-0xe3e05a098777c
-0x21
-0x0

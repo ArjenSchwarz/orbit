@@ -28,6 +28,10 @@ func NewComparator(claudeClient *claude.Client, customCmd string) *Comparator {
 	}
 }
 
+// MaxPromptTokens is the maximum estimated token count for comparison prompts.
+// Claude has ~200k token context, but we leave room for the response.
+const MaxPromptTokens = 150000
+
 // Compare analyzes variants and returns structured results.
 // Uses JSON validation with retry on malformed responses.
 func (c *Comparator) Compare(ctx context.Context, specName string, variants []VariantData) (*Result, error) {
@@ -37,10 +41,17 @@ func (c *Comparator) Compare(ctx context.Context, specName string, variants []Va
 
 	// Custom command support is deferred - only Claude comparison is implemented
 	if c.customCmd != "" {
-		return nil, errors.New("custom comparison commands are not yet supported")
+		return nil, errors.New("custom comparison commands are not supported")
 	}
 
 	originalPrompt := buildPrompt(specName, variants)
+
+	// Check that the prompt fits within context limits (Requirement 5.8)
+	estimatedTokens := estimatePromptTokens(originalPrompt)
+	if estimatedTokens > MaxPromptTokens {
+		return nil, fmt.Errorf("combined diff size (%d estimated tokens) exceeds context limit of %d; variants are too large to compare",
+			estimatedTokens, MaxPromptTokens)
+	}
 	prompt := originalPrompt
 
 	for attempt := 0; attempt < c.maxRetries; attempt++ {

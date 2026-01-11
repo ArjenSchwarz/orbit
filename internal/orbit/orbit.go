@@ -166,6 +166,16 @@ func New(config Config) (*Orbit, error) {
 	// Initialize variant manager if variant mode is enabled
 	var variantMgr *variants.Manager
 	if config.VariantCount > 0 && !config.DryRun {
+		// Validate required config for variant mode
+		if config.SpecDir == "" {
+			cancel()
+			return nil, fmt.Errorf("SpecDir is required for variant mode")
+		}
+		if _, err := os.Stat(config.SpecDir); os.IsNotExist(err) {
+			cancel()
+			return nil, fmt.Errorf("spec directory does not exist: %s", config.SpecDir)
+		}
+
 		variantCfg := variants.Config{
 			Count:        config.VariantCount,
 			Parallel:     config.Parallel,

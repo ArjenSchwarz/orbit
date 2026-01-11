@@ -1,6 +1,7 @@
 package comparison
 
 import (
+	"context"
 	"testing"
 	"time"
 )
@@ -325,6 +326,32 @@ func TestEstimatePromptTokens(t *testing.T) {
 	expected := len(prompt) / 4
 	if tokens != expected {
 		t.Errorf("estimatePromptTokens = %d, want %d", tokens, expected)
+	}
+}
+
+func TestCompare_RejectsOversizedPrompt(t *testing.T) {
+	comp := NewComparator(nil, "")
+
+	// Create variants with diffs large enough to exceed the token limit
+	// MaxPromptTokens is 150000, which at ~4 chars/token is ~600000 chars
+	largeDiff := make([]byte, 400000) // 400k chars = ~100k tokens each
+	for i := range largeDiff {
+		largeDiff[i] = 'x'
+	}
+
+	variants := []VariantData{
+		{ID: 1, Diff: string(largeDiff)},
+		{ID: 2, Diff: string(largeDiff)},
+	}
+
+	ctx := context.Background()
+	_, err := comp.Compare(ctx, "test-spec", variants)
+	if err == nil {
+		t.Fatal("expected error for oversized prompt, got nil")
+	}
+
+	if !containsString(err.Error(), "exceeds context limit") {
+		t.Errorf("expected context limit error, got: %v", err)
 	}
 }
 

@@ -394,6 +394,44 @@ func TestRebase(t *testing.T) {
 	git := NewGit(dir)
 	baseBranch, _ := git.GetCurrentBranch()
 
+	// Create a feature branch with a commit (ahead of base, not diverged)
+	runGit(t, dir, "checkout", "-b", "feature")
+	featureFile := filepath.Join(dir, "feature.txt")
+	if err := os.WriteFile(featureFile, []byte("feature content\n"), 0644); err != nil {
+		t.Fatalf("failed to write file: %v", err)
+	}
+	runGit(t, dir, "add", ".")
+	runGit(t, dir, "commit", "-m", "Add feature")
+
+	// Go back to base branch (don't add any commits - this keeps feature ahead, not diverged)
+	runGit(t, dir, "checkout", baseBranch)
+
+	// "Rebase" feature onto base (really a fast-forward merge of feature into base)
+	ctx := context.Background()
+	err := git.Rebase(ctx, "feature", baseBranch)
+	if err != nil {
+		t.Fatalf("Rebase failed: %v", err)
+	}
+
+	// Verify we're on base branch (target branch) after rebase
+	currentBranch, _ := git.GetCurrentBranch()
+	if currentBranch != baseBranch {
+		t.Errorf("expected to be on %q branch, got %q", baseBranch, currentBranch)
+	}
+
+	// Verify feature.txt exists (merged from feature branch)
+	if _, err := os.Stat(featureFile); os.IsNotExist(err) {
+		t.Error("feature.txt should exist after rebase")
+	}
+}
+
+func TestRebase_FailsWhenDiverged(t *testing.T) {
+	dir, cleanup := setupTestRepo(t)
+	defer cleanup()
+
+	git := NewGit(dir)
+	baseBranch, _ := git.GetCurrentBranch()
+
 	// Create a feature branch with a commit
 	runGit(t, dir, "checkout", "-b", "feature")
 	featureFile := filepath.Join(dir, "feature.txt")
@@ -403,7 +441,7 @@ func TestRebase(t *testing.T) {
 	runGit(t, dir, "add", ".")
 	runGit(t, dir, "commit", "-m", "Add feature")
 
-	// Go back to base branch and add a commit
+	// Go back to base branch and add a conflicting commit (causes divergence)
 	runGit(t, dir, "checkout", baseBranch)
 	baseFile := filepath.Join(dir, "base.txt")
 	if err := os.WriteFile(baseFile, []byte("base content\n"), 0644); err != nil {
@@ -412,26 +450,15 @@ func TestRebase(t *testing.T) {
 	runGit(t, dir, "add", ".")
 	runGit(t, dir, "commit", "-m", "Add base file")
 
-	// Rebase feature onto base
+	// Rebase should fail because branches have diverged (--ff-only will reject)
 	ctx := context.Background()
 	err := git.Rebase(ctx, "feature", baseBranch)
-	if err != nil {
-		t.Fatalf("Rebase failed: %v", err)
+	if err == nil {
+		t.Fatal("Rebase should have failed when branches have diverged")
 	}
 
-	// Verify we're on feature branch
-	currentBranch, _ := git.GetCurrentBranch()
-	if currentBranch != "feature" {
-		t.Errorf("expected to be on 'feature' branch, got %q", currentBranch)
-	}
-
-	// Verify base.txt exists (from base branch)
-	if _, err := os.Stat(baseFile); os.IsNotExist(err) {
-		t.Error("base.txt should exist after rebase")
-	}
-
-	// Verify feature.txt exists
-	if _, err := os.Stat(featureFile); os.IsNotExist(err) {
-		t.Error("feature.txt should exist after rebase")
+	// Verify error message mentions merge failure
+	if !strings.Contains(err.Error(), "merge") {
+		t.Errorf("error should mention merge, got: %v", err)
 	}
 }

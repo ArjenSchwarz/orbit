@@ -141,23 +141,28 @@ func (g *Git) GetDiff(ctx context.Context, worktreePath, baseCommit string) (str
 }
 
 // Rebase rebases source branch onto target branch.
+// It uses a fast-forward merge approach: checks out the target branch, then merges the source.
+// This keeps the repository on the target branch after completion.
+// NOTE: The caller should verify that target branch has not diverged before calling this,
+// as the fast-forward merge will fail if there are conflicting changes.
 func (g *Git) Rebase(ctx context.Context, sourceBranch, targetBranch string) error {
-	// First checkout the source branch
-	checkoutCmd := exec.CommandContext(ctx, "git", "checkout", sourceBranch)
+	// First checkout the target branch (where we want to end up)
+	checkoutCmd := exec.CommandContext(ctx, "git", "checkout", targetBranch)
 	checkoutCmd.Dir = g.repoRoot
 	var stderr bytes.Buffer
 	checkoutCmd.Stderr = &stderr
 	if err := checkoutCmd.Run(); err != nil {
-		return fmt.Errorf("checkout %s: %s", sourceBranch, stderr.String())
+		return fmt.Errorf("checkout %s: %s", targetBranch, stderr.String())
 	}
 
-	// Then rebase onto target
-	rebaseCmd := exec.CommandContext(ctx, "git", "rebase", targetBranch)
-	rebaseCmd.Dir = g.repoRoot
+	// Merge the source branch into target (fast-forward since base hasn't diverged)
+	// Using --ff-only ensures we fail cleanly if a fast-forward isn't possible
+	mergeCmd := exec.CommandContext(ctx, "git", "merge", "--ff-only", sourceBranch)
+	mergeCmd.Dir = g.repoRoot
 	stderr.Reset()
-	rebaseCmd.Stderr = &stderr
-	if err := rebaseCmd.Run(); err != nil {
-		return fmt.Errorf("rebase onto %s: %s", targetBranch, stderr.String())
+	mergeCmd.Stderr = &stderr
+	if err := mergeCmd.Run(); err != nil {
+		return fmt.Errorf("merge %s into %s: %s", sourceBranch, targetBranch, stderr.String())
 	}
 
 	return nil

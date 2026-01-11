@@ -265,23 +265,23 @@ func parseGuidanceFile(filePath string, variantCount int) ([]string, error) {
 	}
 
 	// Build guidance slice indexed by variant ID
+	// First pass: collect variant-specific guidance
 	guidance := make([]string, variantCount)
 	for _, v := range schema.Variants {
 		if v.ID < 1 || v.ID > variantCount {
 			return nil, fmt.Errorf("guidance file variant ID %d is out of range (1-%d)", v.ID, variantCount)
 		}
-		// Combine variant-specific and global guidance
-		if schema.GlobalGuidance != "" {
-			guidance[v.ID-1] = v.Guidance + "\n\n" + schema.GlobalGuidance
-		} else {
-			guidance[v.ID-1] = v.Guidance
-		}
+		guidance[v.ID-1] = v.Guidance
 	}
 
-	// For variants without specific guidance, apply only global guidance
+	// Second pass: apply global guidance to all variants
 	if schema.GlobalGuidance != "" {
 		for i := range guidance {
-			if guidance[i] == "" {
+			if guidance[i] != "" {
+				// Variant has specific guidance, append global
+				guidance[i] = guidance[i] + "\n\n" + schema.GlobalGuidance
+			} else {
+				// No variant-specific guidance, use only global
 				guidance[i] = schema.GlobalGuidance
 			}
 		}

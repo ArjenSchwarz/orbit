@@ -27,7 +27,33 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     - `TestPropertySanitizeName_TrimsEdgeDashes` for edge dash trimming
     - `TestPropertySanitizeName_AllUnsafe` for all-unsafe input handling
 
+### Changed
+
+- `Rebase()` in `internal/variants/git.go` now uses fast-forward merge approach:
+  - Checks out target branch first, then merges source branch with `--ff-only`
+  - Keeps repository on target branch after completion (consistent working directory state)
+  - Fails cleanly if fast-forward is not possible due to divergence
+  - Added `TestRebase_FailsWhenDiverged` test for divergence detection
+
 ### Fixed
+
+- Context size validation in `internal/comparison/compare.go`:
+  - Added `MaxPromptTokens` constant (150000) to enforce context limits
+  - Compare now checks estimated token count before calling Claude API
+  - Returns descriptive error when combined diff size exceeds limit (Requirement 5.8)
+  - Added `TestCompare_RejectsOversizedPrompt` test for validation
+
+- Guidance file parsing in `cmd/orbit/run.go`:
+  - Fixed logic that caused leading newlines when variant-specific guidance was empty
+  - Separated into two passes: collect variant guidance, then apply global guidance
+  - Global guidance now correctly appends to variant guidance or replaces empty guidance
+
+- SpecDir validation in `internal/orbit/orbit.go`:
+  - Added validation for SpecDir when variant mode is enabled
+  - Fails early with clear error if SpecDir is empty or does not exist
+
+- Added rapid property test failure files to `.gitignore`:
+  - Pattern `**/testdata/rapid/**/*.fail` prevents test artifacts from being committed
 
 - `sanitizeSpecName()` in `internal/variants/manager.go` now handles Unicode control characters:
   - Uses `unicode.IsControl()` for proper control character detection including extended ASCII (0x80+)
