@@ -9,6 +9,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Multi-spec comparison feature specification documents:
+  - `specs/multi-spec-comparison/requirements.md` with 13 requirement sections covering variant configuration, git worktree management, variant execution, parallel execution, comparison, report generation, status/cleanup/finalize/compare commands, interrupt handling, performance, and error handling
+  - `specs/multi-spec-comparison/design.md` with architecture, package dependencies, component designs for variants/comparison/report packages, CLI command specifications, and testing strategy
+  - `specs/multi-spec-comparison/design-2026-01-11.md` with initial design draft
+  - `specs/multi-spec-comparison/decision_log.md` with 11 design decisions (backwards compatibility, worktree reuse strategy, worktree location, dirty working directory handling, parallel retry independence, report format, comparison prompt strategy, partial failure handling, cleanup safety, finalize operation, and sanitization strategy)
+  - `specs/multi-spec-comparison/tasks.md` with 7 implementation phases and detailed task breakdowns
+
 - Integration tests for multi-spec comparison feature (Phase 7):
   - `internal/orbit/integration_test.go` with comprehensive variant integration tests:
     - `TestVariantRun_Sequential` for sequential variant execution with worktree and metadata verification
