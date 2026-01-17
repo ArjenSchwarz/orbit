@@ -323,19 +323,22 @@ func (s *Server) hasPostCompletionTranscript(logDir string) bool {
 }
 
 // findPostCompletionTranscript finds the post-completion transcript file.
+// File naming convention follows logs/manager.go:
+// - Run 1: post-completion-session-transcript.jsonl
+// - Run 2+: post-completion-run-N-session-transcript.jsonl
 func (s *Server) findPostCompletionTranscript(logDir string, runNumber int) string {
-	// Try run-specific file first
 	if runNumber > 1 {
+		// Run 2+ uses numbered format
 		runPath := filepath.Join(logDir, fmt.Sprintf("post-completion-run-%d-session-transcript.jsonl", runNumber))
 		if _, err := os.Stat(runPath); err == nil {
 			return runPath
 		}
-	}
-
-	// Try generic post-completion file
-	path := filepath.Join(logDir, "post-completion-session-transcript.jsonl")
-	if _, err := os.Stat(path); err == nil {
-		return path
+	} else {
+		// Run 1 uses generic format
+		path := filepath.Join(logDir, "post-completion-session-transcript.jsonl")
+		if _, err := os.Stat(path); err == nil {
+			return path
+		}
 	}
 
 	return ""
@@ -366,8 +369,11 @@ func (s *Server) handleTranscript(w http.ResponseWriter, r *http.Request) {
 	var title string
 
 	if isPostCompletion {
-		// For post-completion, default to latest run or 1
-		runNumber = s.getLatestPostCompletionRun(entry.LogDir)
+		// Use entry's run number for file naming (not filesystem scan)
+		runNumber = entry.RunNumber
+		if runNumber == 0 {
+			runNumber = 1 // Default for legacy entries without RunNumber
+		}
 		if runStr != "" {
 			var parseErr error
 			runNumber, parseErr = strconv.Atoi(runStr)
@@ -387,8 +393,12 @@ func (s *Server) handleTranscript(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
-		// Default run number to latest for this phase
-		runNumber = s.getPhaseRunCount(entry, phase)
+		// Use entry's run number for file naming (not phase retry count)
+		// RunNumber determines file naming convention (1 = generic, 2+ = numbered)
+		runNumber = entry.RunNumber
+		if runNumber == 0 {
+			runNumber = 1 // Default for legacy entries without RunNumber
+		}
 		if runStr != "" {
 			runNumber, parseErr = strconv.Atoi(runStr)
 			if parseErr != nil || runNumber < 1 {
@@ -475,55 +485,23 @@ func (s *Server) handleTranscript(w http.ResponseWriter, r *http.Request) {
 	s.renderTemplate(w, "layout.html", "transcript.html", data)
 }
 
-// getPhaseRunCount returns the run count for a phase from the registry entry.
-// Defaults to 1 if the phase is not found.
-func (s *Server) getPhaseRunCount(entry *registry.RunEntry, phase int) int {
-	for _, p := range entry.Phases {
-		if p.Number == phase {
-			if p.RunCount > 0 {
-				return p.RunCount
-			}
-			return 1
-		}
-	}
-	return 1
-}
-
-// getLatestPostCompletionRun scans for the highest post-completion run number.
-// Returns 1 if no numbered runs are found.
-func (s *Server) getLatestPostCompletionRun(logDir string) int {
-	pattern := filepath.Join(logDir, "post-completion-run-*-session-transcript.jsonl")
-	matches, err := filepath.Glob(pattern)
-	if err != nil || len(matches) == 0 {
-		return 1
-	}
-
-	// Find highest run number
-	highest := 1
-	for _, match := range matches {
-		base := filepath.Base(match)
-		var runNum int
-		if _, err := fmt.Sscanf(base, "post-completion-run-%d-session-transcript.jsonl", &runNum); err == nil {
-			if runNum > highest {
-				highest = runNum
-			}
-		}
-	}
-	return highest
-}
-
-// findTranscriptFile finds the transcript file for a phase and run.
+// findTranscriptFile finds the transcript file for a phase based on run number.
+// File naming convention follows logs/manager.go:
+// - Run 1: phase-N-transcript.jsonl
+// - Run 2+: phase-N-run-M-transcript.jsonl
 func (s *Server) findTranscriptFile(logDir string, phase, runNumber int) string {
-	// Try run-specific file first
-	runPath := filepath.Join(logDir, fmt.Sprintf("phase-%d-run-%d-transcript.jsonl", phase, runNumber))
-	if _, err := os.Stat(runPath); err == nil {
-		return runPath
-	}
-
-	// Try generic phase file
-	phasePath := filepath.Join(logDir, fmt.Sprintf("phase-%d-transcript.jsonl", phase))
-	if _, err := os.Stat(phasePath); err == nil {
-		return phasePath
+	if runNumber > 1 {
+		// Run 2+ uses numbered format
+		runPath := filepath.Join(logDir, fmt.Sprintf("phase-%d-run-%d-transcript.jsonl", phase, runNumber))
+		if _, err := os.Stat(runPath); err == nil {
+			return runPath
+		}
+	} else {
+		// Run 1 uses generic format
+		phasePath := filepath.Join(logDir, fmt.Sprintf("phase-%d-transcript.jsonl", phase))
+		if _, err := os.Stat(phasePath); err == nil {
+			return phasePath
+		}
 	}
 
 	return ""

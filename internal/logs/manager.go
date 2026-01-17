@@ -152,6 +152,11 @@ func (m *Manager) SessionDir() string {
 	return m.sessionDir
 }
 
+// RunNumber returns the current run number for file naming purposes.
+func (m *Manager) RunNumber() int {
+	return m.summary.RunNumber
+}
+
 // loadExistingSummary loads an existing summary.json from the session directory.
 func (m *Manager) loadExistingSummary() error {
 	path := filepath.Join(m.sessionDir, "summary.json")

@@ -7,6 +7,7 @@ import (
 	"log"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"strings"
 	"syscall"
 	"time"
@@ -756,11 +757,25 @@ func (o *Orbit) registerRun() (string, error) {
 	entry.Status = registry.StatusRunning
 	entry.StartedAt = time.Now()
 
-	// Set log directory
+	// Set log directory (convert to absolute path for web interface access)
+	var logDir string
 	if o.logManager != nil {
-		entry.LogDir = o.logManager.SessionDir()
+		logDir = o.logManager.SessionDir()
 	} else {
-		entry.LogDir = o.config.LogDir
+		logDir = o.config.LogDir
+	}
+	absLogDir, err := filepath.Abs(logDir)
+	if err != nil {
+		log.Printf("Warning: failed to get absolute path for log dir: %v", err)
+		absLogDir = logDir // Fall back to original
+	}
+	entry.LogDir = absLogDir
+
+	// Set run number for file naming (defaults to 1 if no log manager)
+	if o.logManager != nil {
+		entry.RunNumber = o.logManager.RunNumber()
+	} else {
+		entry.RunNumber = 1
 	}
 
 	// Set PID for auto-registered runs

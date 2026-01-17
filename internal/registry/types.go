@@ -46,6 +46,7 @@ type RunEntry struct {
 	Branch        string     `json:"branch"`
 	PID           *int       `json:"pid,omitempty"`
 	Phases        []Phase    `json:"phases,omitempty"`
+	RunNumber     int        `json:"run_number,omitempty"` // Orbit run number for file naming (1 = first run)
 }
 
 // NewRunEntry creates a new RunEntry with default values.
