@@ -470,11 +470,24 @@ func (m *Manager) Finalize(ctx context.Context, variantID int) error {
 	return m.Cleanup(ctx, 0) // Remove all including the finalized one
 }
 
-// GetMetadata returns the current metadata (for status display).
+// GetMetadata returns a copy of the current metadata (for status display).
+// Returns nil if no metadata is loaded.
 func (m *Manager) GetMetadata() *VariantsMetadata {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	return m.metadata
+
+	if m.metadata == nil {
+		return nil
+	}
+
+	// Return a defensive copy to prevent callers from modifying internal state
+	metaCopy := *m.metadata
+	metaCopy.Variants = make([]*Variant, len(m.metadata.Variants))
+	for i, v := range m.metadata.Variants {
+		variantCopy := *v
+		metaCopy.Variants[i] = &variantCopy
+	}
+	return &metaCopy
 }
 
 // sanitizeSpecName makes a spec name safe for filesystem and git branch names.
