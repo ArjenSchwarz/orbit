@@ -93,6 +93,9 @@ func (g *Git) CreateWorktree(ctx context.Context, path, branch string) error {
 	var stderr bytes.Buffer
 	cmd.Stderr = &stderr
 	if err := cmd.Run(); err != nil {
+		if ctx.Err() != nil {
+			return fmt.Errorf("create worktree cancelled: %w", ctx.Err())
+		}
 		return fmt.Errorf("create worktree at %s for branch %s: %s", path, branch, stderr.String())
 	}
 	return nil
@@ -106,6 +109,9 @@ func (g *Git) RemoveWorktree(ctx context.Context, path string) error {
 	var stderr bytes.Buffer
 	cmd.Stderr = &stderr
 	if err := cmd.Run(); err != nil {
+		if ctx.Err() != nil {
+			return fmt.Errorf("remove worktree cancelled: %w", ctx.Err())
+		}
 		return fmt.Errorf("remove worktree at %s: %s", path, stderr.String())
 	}
 	return nil
@@ -131,6 +137,9 @@ func (g *Git) GetDiff(ctx context.Context, worktreePath, baseCommit string) (str
 	cmd.Dir = worktreePath
 	out, err := cmd.Output()
 	if err != nil {
+		if ctx.Err() != nil {
+			return "", fmt.Errorf("get diff cancelled: %w", ctx.Err())
+		}
 		var stderr bytes.Buffer
 		if exitErr, ok := err.(*exec.ExitError); ok {
 			stderr.Write(exitErr.Stderr)
@@ -152,6 +161,9 @@ func (g *Git) Rebase(ctx context.Context, sourceBranch, targetBranch string) err
 	var stderr bytes.Buffer
 	checkoutCmd.Stderr = &stderr
 	if err := checkoutCmd.Run(); err != nil {
+		if ctx.Err() != nil {
+			return fmt.Errorf("checkout cancelled: %w", ctx.Err())
+		}
 		return fmt.Errorf("checkout %s: %s", targetBranch, stderr.String())
 	}
 
@@ -162,6 +174,9 @@ func (g *Git) Rebase(ctx context.Context, sourceBranch, targetBranch string) err
 	stderr.Reset()
 	mergeCmd.Stderr = &stderr
 	if err := mergeCmd.Run(); err != nil {
+		if ctx.Err() != nil {
+			return fmt.Errorf("merge cancelled: %w", ctx.Err())
+		}
 		return fmt.Errorf("merge %s into %s: %s", sourceBranch, targetBranch, stderr.String())
 	}
 
@@ -169,6 +184,10 @@ func (g *Git) Rebase(ctx context.Context, sourceBranch, targetBranch string) err
 }
 
 // BranchHasDiverged checks if branch has new commits since baseCommit.
+// Returns true if the branch has moved forward from baseCommit, meaning
+// a fast-forward merge would not be possible without first rebasing.
+// This is used to detect if the original branch has been modified while
+// variant implementations were in progress.
 func (g *Git) BranchHasDiverged(branch, baseCommit string) (bool, error) {
 	// Get the commit that branch points to
 	cmd := exec.Command("git", "rev-parse", branch)

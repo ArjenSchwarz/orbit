@@ -333,7 +333,8 @@ func (m *Manager) getVariantLocked(id int) *Variant {
 	return nil
 }
 
-// GetVariantsSnapshot returns a copy of the variants slice for safe iteration.
+// GetVariantsSnapshot returns a deep copy of the variants slice for safe iteration.
+// Callers receive independent copies and can safely read fields without locks.
 func (m *Manager) GetVariantsSnapshot() []*Variant {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -342,9 +343,12 @@ func (m *Manager) GetVariantsSnapshot() []*Variant {
 		return nil
 	}
 
-	// Return a copy of the slice (not deep copy - variants are still shared)
+	// Deep copy each variant to ensure complete thread safety
 	snapshot := make([]*Variant, len(m.metadata.Variants))
-	copy(snapshot, m.metadata.Variants)
+	for i, v := range m.metadata.Variants {
+		variantCopy := *v // Copy the struct
+		snapshot[i] = &variantCopy
+	}
 	return snapshot
 }
 
