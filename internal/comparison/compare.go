@@ -39,6 +39,13 @@ func (c *Comparator) Compare(ctx context.Context, specName string, variants []Va
 		return nil, errors.New("at least 2 variants required for comparison")
 	}
 
+	// Validate that variants have non-empty diffs
+	for _, v := range variants {
+		if strings.TrimSpace(v.Diff) == "" {
+			return nil, fmt.Errorf("variant %d has empty diff", v.ID)
+		}
+	}
+
 	// Custom command support is deferred - only Claude comparison is implemented
 	if c.customCmd != "" {
 		return nil, errors.New("custom comparison commands are not supported")
@@ -158,8 +165,8 @@ func extractJSON(response string) (string, error) {
 }
 
 // extractJSONObject extracts a JSON object starting at the beginning of the string.
+// It uses brace matching while respecting string boundaries and escape sequences.
 func extractJSONObject(s string) (string, error) {
-	// Simple brace matching for JSON object extraction
 	depth := 0
 	inString := false
 	escape := false
@@ -186,7 +193,12 @@ func extractJSONObject(s string) (string, error) {
 		case '}':
 			depth--
 			if depth == 0 {
-				return s[:i+1], nil
+				extracted := s[:i+1]
+				// Validate that extracted string is valid JSON
+				if !json.Valid([]byte(extracted)) {
+					return "", errors.New("extracted JSON is not valid")
+				}
+				return extracted, nil
 			}
 		}
 	}

@@ -135,10 +135,13 @@ func (m *Manager) ensureGitignore() error {
 		if err != nil {
 			return fmt.Errorf("open .gitignore for append: %w", err)
 		}
-		defer func() { _ = f.Close() }()
-		_, err = f.WriteString("\n# Variant worktrees (managed by orbit)\nworktrees/\n")
-		if err != nil {
-			return fmt.Errorf("append to .gitignore: %w", err)
+		_, writeErr := f.WriteString("\n# Variant worktrees (managed by orbit)\nworktrees/\n")
+		closeErr := f.Close()
+		if writeErr != nil {
+			return fmt.Errorf("append to .gitignore: %w", writeErr)
+		}
+		if closeErr != nil {
+			return fmt.Errorf("close .gitignore: %w", closeErr)
 		}
 		return nil
 	}
