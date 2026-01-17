@@ -1,0 +1,515 @@
+/* Orbit Comparison Report Styles */
+
+/* CSS Variables for theming */
+:root {
+    --bg-primary: #ffffff;
+    --bg-secondary: #f8f9fa;
+    --bg-card: #ffffff;
+    --bg-code: #f4f4f4;
+    --text-primary: #212529;
+    --text-secondary: #6c757d;
+    --border-color: #dee2e6;
+    --success-color: #198754;
+    --error-color: #dc3545;
+    --warning-color: #ffc107;
+    --info-color: #0d6efd;
+    --link-color: #0d6efd;
+    --link-hover: #0a58ca;
+    --diff-add-bg: #d4edda;
+    --diff-add-text: #155724;
+    --diff-del-bg: #f8d7da;
+    --diff-del-text: #721c24;
+    --diff-hunk-bg: #e7f1ff;
+    --diff-hunk-text: #0c5460;
+}
+
+/* Dark mode */
+@media (prefers-color-scheme: dark) {
+    :root {
+        --bg-primary: #1a1a1a;
+        --bg-secondary: #2d2d2d;
+        --bg-card: #2d2d2d;
+        --bg-code: #2d2d2d;
+        --text-primary: #e9ecef;
+        --text-secondary: #adb5bd;
+        --border-color: #495057;
+        --link-color: #6ea8fe;
+        --link-hover: #9ec5fe;
+        --diff-add-bg: #1e3a1e;
+        --diff-add-text: #75b798;
+        --diff-del-bg: #3d1f1f;
+        --diff-del-text: #ea8685;
+        --diff-hunk-bg: #1e3a5f;
+        --diff-hunk-text: #8bb9e0;
+    }
+}
+
+/* Reset and base styles */
+* {
+    box-sizing: border-box;
+}
+
+body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    line-height: 1.6;
+    color: var(--text-primary);
+    background-color: var(--bg-primary);
+    margin: 0;
+    padding: 0;
+}
+
+/* Container */
+.container {
+    max-width: 1200px;
+    margin: 0 auto;
+    padding: 1rem;
+}
+
+/* Header */
+header {
+    background-color: var(--bg-secondary);
+    border-bottom: 1px solid var(--border-color);
+    padding: 1.5rem 0;
+}
+
+header h1 {
+    margin: 0 0 0.25rem 0;
+    font-size: 1.75rem;
+}
+
+header .subtitle {
+    margin: 0;
+    color: var(--text-secondary);
+    font-size: 1.1rem;
+}
+
+/* Footer */
+footer {
+    margin-top: 3rem;
+    padding: 1.5rem 0;
+    border-top: 1px solid var(--border-color);
+    text-align: center;
+    color: var(--text-secondary);
+    font-size: 0.9rem;
+}
+
+/* Typography */
+h1, h2, h3, h4 {
+    color: var(--text-primary);
+    margin-top: 0;
+}
+
+h2 {
+    font-size: 1.3rem;
+    margin-top: 2rem;
+    margin-bottom: 1rem;
+    border-bottom: 1px solid var(--border-color);
+    padding-bottom: 0.5rem;
+}
+
+h3 {
+    font-size: 1.1rem;
+    margin-bottom: 0.75rem;
+}
+
+/* Links */
+a {
+    color: var(--link-color);
+    text-decoration: none;
+}
+
+a:hover {
+    color: var(--link-hover);
+    text-decoration: underline;
+}
+
+/* Code */
+code {
+    background-color: var(--bg-code);
+    padding: 0.15rem 0.4rem;
+    border-radius: 4px;
+    font-family: "SF Mono", Monaco, "Cascadia Code", Consolas, monospace;
+    font-size: 0.9em;
+}
+
+pre {
+    background-color: var(--bg-code);
+    padding: 1rem;
+    border-radius: 6px;
+    overflow-x: auto;
+    margin: 0;
+}
+
+pre code {
+    padding: 0;
+    background: none;
+}
+
+/* Summary section */
+.summary {
+    background-color: var(--bg-secondary);
+    padding: 1.5rem;
+    border-radius: 8px;
+    margin-bottom: 1.5rem;
+}
+
+.summary h2 {
+    margin-top: 0;
+    border: none;
+}
+
+.recommendation {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    margin-bottom: 1rem;
+    flex-wrap: wrap;
+}
+
+.recommendation-variant {
+    display: flex;
+    flex-direction: column;
+}
+
+.recommendation-variant .label {
+    font-size: 0.8rem;
+    color: var(--text-secondary);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+}
+
+.recommendation-variant .variant-id {
+    font-size: 1.5rem;
+    font-weight: 700;
+    color: var(--success-color);
+}
+
+.confidence {
+    padding: 0.35rem 0.75rem;
+    border-radius: 999px;
+    font-size: 0.85rem;
+    font-weight: 500;
+    text-transform: capitalize;
+}
+
+.confidence-high {
+    background-color: rgba(25, 135, 84, 0.1);
+    color: var(--success-color);
+}
+
+.confidence-medium {
+    background-color: rgba(255, 193, 7, 0.15);
+    color: #997404;
+}
+
+.confidence-low {
+    background-color: rgba(220, 53, 69, 0.1);
+    color: var(--error-color);
+}
+
+.executive-summary {
+    margin: 0;
+    font-size: 1.05rem;
+    line-height: 1.7;
+}
+
+/* Metadata section */
+.metadata {
+    margin-bottom: 1.5rem;
+}
+
+.metadata dl {
+    display: grid;
+    grid-template-columns: auto 1fr;
+    gap: 0.5rem 1.5rem;
+    margin: 0;
+}
+
+.metadata dt {
+    font-weight: 600;
+    color: var(--text-secondary);
+}
+
+.metadata dd {
+    margin: 0;
+}
+
+/* Variants table */
+.variants-table {
+    width: 100%;
+    border-collapse: collapse;
+    margin-bottom: 1.5rem;
+}
+
+.variants-table th,
+.variants-table td {
+    padding: 0.75rem 1rem;
+    text-align: left;
+    border-bottom: 1px solid var(--border-color);
+}
+
+.variants-table th {
+    background-color: var(--bg-secondary);
+    font-weight: 600;
+    font-size: 0.9rem;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+}
+
+.variants-table tbody tr:hover {
+    background-color: var(--bg-secondary);
+}
+
+/* Status badges */
+.status {
+    display: inline-block;
+    padding: 0.2rem 0.6rem;
+    border-radius: 999px;
+    font-size: 0.8rem;
+    font-weight: 500;
+    text-transform: capitalize;
+}
+
+.status-completed {
+    background-color: rgba(25, 135, 84, 0.1);
+    color: var(--success-color);
+}
+
+.status-failed {
+    background-color: rgba(220, 53, 69, 0.1);
+    color: var(--error-color);
+}
+
+.status-pending, .status-running, .status-canceled {
+    background-color: rgba(108, 117, 125, 0.1);
+    color: var(--text-secondary);
+}
+
+.recommended-badge {
+    display: inline-block;
+    padding: 0.15rem 0.5rem;
+    background-color: var(--success-color);
+    color: white;
+    border-radius: 4px;
+    font-size: 0.75rem;
+    font-weight: 600;
+    margin-left: 0.5rem;
+    vertical-align: middle;
+}
+
+/* Observations */
+.observations ul {
+    margin: 0;
+    padding-left: 1.5rem;
+}
+
+.observations li {
+    margin-bottom: 0.5rem;
+}
+
+/* File analyses */
+.file-analysis {
+    background-color: var(--bg-card);
+    border: 1px solid var(--border-color);
+    border-radius: 6px;
+    padding: 1rem;
+    margin-bottom: 1rem;
+}
+
+.file-analysis h3 {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    margin-bottom: 0.75rem;
+    flex-wrap: wrap;
+}
+
+.file-preference {
+    font-size: 0.8rem;
+    font-weight: 500;
+    color: var(--success-color);
+    background-color: rgba(25, 135, 84, 0.1);
+    padding: 0.2rem 0.5rem;
+    border-radius: 4px;
+}
+
+.variant-assessments {
+    display: grid;
+    grid-template-columns: auto 1fr;
+    gap: 0.5rem 1rem;
+    margin: 0;
+}
+
+.variant-assessments dt {
+    font-weight: 600;
+    color: var(--text-secondary);
+}
+
+.variant-assessments dd {
+    margin: 0;
+}
+
+/* Variant diffs */
+.variant-diff {
+    margin-bottom: 2rem;
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    overflow: hidden;
+}
+
+.variant-diff h3 {
+    background-color: var(--bg-secondary);
+    margin: 0;
+    padding: 1rem;
+    border-bottom: 1px solid var(--border-color);
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+}
+
+.variant-error {
+    padding: 1rem;
+    background-color: rgba(220, 53, 69, 0.1);
+    color: var(--error-color);
+}
+
+.diff-external {
+    padding: 1rem;
+}
+
+.no-changes {
+    padding: 1rem;
+    color: var(--text-secondary);
+    font-style: italic;
+    margin: 0;
+}
+
+/* Details/Summary for collapsible diffs */
+details {
+    margin: 0;
+}
+
+details summary {
+    padding: 0.75rem 1rem;
+    cursor: pointer;
+    background-color: var(--bg-secondary);
+    border-bottom: 1px solid var(--border-color);
+    font-weight: 500;
+}
+
+details summary:hover {
+    background-color: var(--bg-code);
+}
+
+details[open] summary {
+    border-bottom: 1px solid var(--border-color);
+}
+
+/* Diff styling */
+.diff {
+    font-size: 0.85rem;
+    line-height: 1.4;
+    white-space: pre;
+    overflow-x: auto;
+    margin: 0;
+    border-radius: 0;
+}
+
+/* Print styles */
+@media print {
+    body {
+        background: white;
+        color: black;
+    }
+
+    header, footer {
+        background: none;
+        border: none;
+    }
+
+    .container {
+        max-width: 100%;
+        padding: 0;
+    }
+
+    details {
+        display: block;
+    }
+
+    details summary {
+        display: none;
+    }
+
+    details > *:not(summary) {
+        display: block !important;
+    }
+
+    .variant-diff {
+        break-inside: avoid;
+    }
+
+    a {
+        color: inherit;
+        text-decoration: underline;
+    }
+
+    a[href]:after {
+        content: " (" attr(href) ")";
+        font-size: 0.8em;
+    }
+
+    a[href^="#"]:after {
+        content: "";
+    }
+}
+
+/* Responsive design */
+@media (max-width: 768px) {
+    .metadata dl {
+        grid-template-columns: 1fr;
+    }
+
+    .metadata dt {
+        margin-top: 0.5rem;
+    }
+
+    .metadata dt:first-child {
+        margin-top: 0;
+    }
+
+    .variants-table {
+        display: block;
+        overflow-x: auto;
+    }
+
+    .recommendation {
+        flex-direction: column;
+        align-items: flex-start;
+    }
+
+    .variant-assessments {
+        grid-template-columns: 1fr;
+    }
+
+    .variant-assessments dt {
+        margin-top: 0.5rem;
+    }
+
+    .variant-assessments dt:first-child {
+        margin-top: 0;
+    }
+}
+
+@media (max-width: 320px) {
+    .container {
+        padding: 0.5rem;
+    }
+
+    header {
+        padding: 1rem 0;
+    }
+
+    header h1 {
+        font-size: 1.4rem;
+    }
+}

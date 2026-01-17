@@ -20,8 +20,8 @@ type codexParser struct {
 
 // pendingCall tracks a function_call waiting for its output.
 type pendingCall struct {
-	callID    string
-	entryIdx  int // Index in entries slice where this call lives
+	callID     string
+	entryIdx   int // Index in entries slice where this call lives
 	contentIdx int // Index in Content slice where tool_use is
 }
 

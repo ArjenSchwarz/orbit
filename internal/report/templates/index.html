@@ -1,0 +1,153 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Comparison Report: {{.SpecName}}</title>
+    <style>
+{{template "style.css"}}
+    </style>
+</head>
+<body>
+    <header>
+        <div class="container">
+            <h1>Comparison Report</h1>
+            <p class="subtitle">{{.SpecName}}</p>
+        </div>
+    </header>
+
+    <main class="container">
+        {{if .Comparison}}
+        <section class="summary">
+            <h2>Recommendation</h2>
+            <div class="recommendation">
+                <div class="recommendation-variant">
+                    <span class="label">Recommended</span>
+                    <span class="variant-id">Variant {{.Comparison.Recommendation}}</span>
+                </div>
+                <div class="confidence confidence-{{.Comparison.Confidence}}">
+                    {{.Comparison.Confidence}} confidence
+                </div>
+            </div>
+            <p class="executive-summary">{{.Comparison.Summary}}</p>
+        </section>
+        {{end}}
+
+        <section class="metadata">
+            <h2>Run Information</h2>
+            <dl>
+                <dt>Base Commit</dt>
+                <dd><code>{{.BaseCommit}}</code></dd>
+                <dt>Original Branch</dt>
+                <dd>{{.OriginalBranch}}</dd>
+                <dt>Generated</dt>
+                <dd>{{.GeneratedAt.Format "2006-01-02 15:04:05"}}</dd>
+            </dl>
+        </section>
+
+        <section class="variants-overview">
+            <h2>Variants Overview</h2>
+            <table class="variants-table">
+                <thead>
+                    <tr>
+                        <th>Variant</th>
+                        <th>Branch</th>
+                        <th>Status</th>
+                        <th>Cost</th>
+                        <th>Duration</th>
+                        <th>Turns</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {{range .Variants}}
+                    <tr class="variant-row status-{{.Status}}">
+                        <td>
+                            <a href="#variant-{{.ID}}">Variant {{.ID}}</a>
+                            {{if and $.Comparison (eq $.Comparison.Recommendation .ID)}}
+                            <span class="recommended-badge">Recommended</span>
+                            {{end}}
+                        </td>
+                        <td><code>{{.Branch}}</code></td>
+                        <td><span class="status status-{{.Status}}">{{.Status}}</span></td>
+                        <td>{{formatCost .Metrics.Cost}}</td>
+                        <td>{{.Metrics.Duration}}</td>
+                        <td>{{.Metrics.NumTurns}}</td>
+                    </tr>
+                    {{end}}
+                </tbody>
+            </table>
+        </section>
+
+        {{if .Comparison}}
+        {{if .Comparison.Observations}}
+        <section class="observations">
+            <h2>Key Observations</h2>
+            <ul>
+                {{range .Comparison.Observations}}
+                <li>{{.}}</li>
+                {{end}}
+            </ul>
+        </section>
+        {{end}}
+
+        {{if .Comparison.FileAnalyses}}
+        <section class="file-analyses">
+            <h2>Per-File Analysis</h2>
+            {{range .Comparison.FileAnalyses}}
+            <div class="file-analysis">
+                <h3>
+                    <code>{{.Path}}</code>
+                    {{if .Preference}}
+                    <span class="file-preference">Variant {{.Preference}} preferred</span>
+                    {{end}}
+                </h3>
+                <dl class="variant-assessments">
+                    {{range $id, $assessment := .Variants}}
+                    <dt>Variant {{$id}}</dt>
+                    <dd>{{$assessment}}</dd>
+                    {{end}}
+                </dl>
+            </div>
+            {{end}}
+        </section>
+        {{end}}
+        {{end}}
+
+        <section class="variant-diffs">
+            <h2>Implementation Diffs</h2>
+            {{range .Variants}}
+            <article class="variant-diff" id="variant-{{.ID}}">
+                <h3>
+                    Variant {{.ID}}
+                    {{if and $.Comparison (eq $.Comparison.Recommendation .ID)}}
+                    <span class="recommended-badge">Recommended</span>
+                    {{end}}
+                </h3>
+                {{if .Error}}
+                <div class="variant-error">
+                    <strong>Error:</strong> {{.Error}}
+                </div>
+                {{else if .DiffFile}}
+                <div class="diff-external">
+                    <p>Diff is large (>500 lines). <a href="{{.DiffFile}}">View full diff</a></p>
+                </div>
+                {{else if .Diff}}
+                <details open>
+                    <summary>Show diff</summary>
+                    <pre class="diff"><code>{{.Diff}}</code></pre>
+                </details>
+                {{else}}
+                <p class="no-changes">No changes from base commit.</p>
+                {{end}}
+            </article>
+            {{end}}
+        </section>
+    </main>
+
+    <footer>
+        <div class="container">
+            <p>Generated by Orbit</p>
+        </div>
+    </footer>
+</body>
+</html>

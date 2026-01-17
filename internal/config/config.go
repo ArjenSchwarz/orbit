@@ -19,6 +19,10 @@ const (
 	DefaultServePort = 8080
 	// DefaultServeBind is the default bind address for the web server.
 	DefaultServeBind = "localhost"
+	// DefaultMaxParallel is the default maximum number of parallel variants.
+	DefaultMaxParallel = 3
+	// DefaultBranchPrefix is the default prefix for variant branch names.
+	DefaultBranchPrefix = "orbit-impl"
 )
 
 // Config holds the resolved configuration values.
@@ -30,6 +34,15 @@ type Config struct {
 	ServePort       int
 	ServeBind       string
 	Debug           bool // Enable debug logging for troubleshooting
+
+	// Variant configuration for multi-spec comparison
+	VariantCount   int    // Number of variants (0 = single-run mode)
+	Parallel       bool   // Run variants in parallel
+	MaxParallel    int    // Maximum parallel variants
+	BranchPrefix   string // Branch naming prefix
+	GuidanceFile   string // Path to YAML file with per-variant guidance
+	CompareCommand string // Custom comparison command (empty = use Claude)
+	GlobalGuidance string // Global guidance applied to all variants
 
 	// postCommandExplicit tracks whether post-command was explicitly set in config.
 	// This allows distinguishing "not set" (use default) from "set to empty" (disabled).
@@ -60,6 +73,14 @@ func Load(workingDir string) *Config {
 	v.SetDefault("serve-port", DefaultServePort)
 	v.SetDefault("serve-bind", DefaultServeBind)
 	v.SetDefault("debug", false)
+	// Variant defaults
+	v.SetDefault("variant-count", 0)
+	v.SetDefault("parallel", false)
+	v.SetDefault("max-parallel", DefaultMaxParallel)
+	v.SetDefault("branch-prefix", DefaultBranchPrefix)
+	v.SetDefault("guidance-file", "")
+	v.SetDefault("compare-command", "")
+	v.SetDefault("global-guidance", "")
 
 	// Config file name (without extension)
 	v.SetConfigName(".orbit")
@@ -118,6 +139,14 @@ func Load(workingDir string) *Config {
 	servePort := v.GetInt("serve-port")
 	serveBind := v.GetString("serve-bind")
 	debug := v.GetBool("debug")
+	// Variant configuration
+	variantCount := v.GetInt("variant-count")
+	parallel := v.GetBool("parallel")
+	maxParallel := v.GetInt("max-parallel")
+	branchPrefix := v.GetString("branch-prefix")
+	guidanceFile := v.GetString("guidance-file")
+	compareCommand := v.GetString("compare-command")
+	globalGuidance := v.GetString("global-guidance")
 
 	// Apply environment variable overrides (highest priority)
 	// Using os.LookupEnv to detect both set values and explicitly empty values
@@ -146,6 +175,32 @@ func Load(workingDir string) *Config {
 	if envDebug, exists := os.LookupEnv("ORBIT_DEBUG"); exists {
 		debug = envDebug == "true" || envDebug == "1"
 	}
+	// Variant environment variable overrides
+	if envVariantCount, exists := os.LookupEnv("ORBIT_VARIANT_COUNT"); exists {
+		if count, err := parsePositiveInt(envVariantCount); err == nil {
+			variantCount = count
+		}
+	}
+	if envParallel, exists := os.LookupEnv("ORBIT_PARALLEL"); exists {
+		parallel = envParallel == "true" || envParallel == "1"
+	}
+	if envMaxParallel, exists := os.LookupEnv("ORBIT_MAX_PARALLEL"); exists {
+		if max, err := parsePositiveInt(envMaxParallel); err == nil {
+			maxParallel = max
+		}
+	}
+	if envBranchPrefix, exists := os.LookupEnv("ORBIT_BRANCH_PREFIX"); exists {
+		branchPrefix = envBranchPrefix
+	}
+	if envGuidanceFile, exists := os.LookupEnv("ORBIT_GUIDANCE_FILE"); exists {
+		guidanceFile = envGuidanceFile
+	}
+	if envCompareCommand, exists := os.LookupEnv("ORBIT_COMPARE_COMMAND"); exists {
+		compareCommand = envCompareCommand
+	}
+	if envGlobalGuidance, exists := os.LookupEnv("ORBIT_GLOBAL_GUIDANCE"); exists {
+		globalGuidance = envGlobalGuidance
+	}
 
 	return &Config{
 		Command:             command,
@@ -155,6 +210,13 @@ func Load(workingDir string) *Config {
 		ServePort:           servePort,
 		ServeBind:           serveBind,
 		Debug:               debug,
+		VariantCount:        variantCount,
+		Parallel:            parallel,
+		MaxParallel:         maxParallel,
+		BranchPrefix:        branchPrefix,
+		GuidanceFile:        guidanceFile,
+		CompareCommand:      compareCommand,
+		GlobalGuidance:      globalGuidance,
 		postCommandExplicit: postCommandExplicit,
 	}
 }
@@ -170,6 +232,19 @@ func parsePort(s string) (int, error) {
 		return 0, fmt.Errorf("port out of range: %d", port)
 	}
 	return port, nil
+}
+
+// parsePositiveInt attempts to parse a string as a positive integer.
+func parsePositiveInt(s string) (int, error) {
+	var n int
+	_, err := fmt.Sscanf(s, "%d", &n)
+	if err != nil {
+		return 0, err
+	}
+	if n < 0 {
+		return 0, fmt.Errorf("value must be non-negative: %d", n)
+	}
+	return n, nil
 }
 
 // IsPostCommandDisabled returns true if post-command was explicitly set to empty.

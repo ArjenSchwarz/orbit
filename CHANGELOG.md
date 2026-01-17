@@ -9,6 +9,219 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Multi-spec comparison feature specification documents:
+  - `specs/multi-spec-comparison/requirements.md` with 13 requirement sections covering variant configuration, git worktree management, variant execution, parallel execution, comparison, report generation, status/cleanup/finalize/compare commands, interrupt handling, performance, and error handling
+  - `specs/multi-spec-comparison/design.md` with architecture, package dependencies, component designs for variants/comparison/report packages, CLI command specifications, and testing strategy
+  - `specs/multi-spec-comparison/design-2026-01-11.md` with initial design draft
+  - `specs/multi-spec-comparison/decision_log.md` with 11 design decisions (backwards compatibility, worktree reuse strategy, worktree location, dirty working directory handling, parallel retry independence, report format, comparison prompt strategy, partial failure handling, cleanup safety, finalize operation, and sanitization strategy)
+  - `specs/multi-spec-comparison/tasks.md` with 7 implementation phases and detailed task breakdowns
+
+- Integration tests for multi-spec comparison feature (Phase 7):
+  - `internal/orbit/integration_test.go` with comprehensive variant integration tests:
+    - `TestVariantRun_Sequential` for sequential variant execution with worktree and metadata verification
+    - `TestVariantRun_Parallel` for parallel execution with semaphore limit verification
+    - `TestVariantRun_SingleSuccess` for partial success scenarios (comparison skipped with single variant)
+    - `TestCleanup_RemovesWorktrees` for cleanup command functionality
+    - `TestFinalize_RebasesVariant` for finalize command with rebase verification
+    - `TestFinalize_FailsOnDivergedBranch` for divergence detection
+    - `TestOrbit_WithVariants_MockExecution` for Orbit config validation
+  - `internal/variants/sanitize_property_test.go` with property-based tests using pgregory.net/rapid:
+    - `TestPropertySanitizeName` verifying filesystem safety, no consecutive dashes, no edge dashes, and idempotence
+    - `TestPropertySanitizeName_PreservesAlphanumeric` for alphanumeric preservation
+    - `TestPropertySanitizeName_DashesPreserved` for valid dash-separated strings
+    - `TestPropertySanitizeName_ReplacesUnsafeChars` for unsafe character replacement
+    - `TestPropertySanitizeName_CollapsesMultipleDashes` for dash collapsing
+    - `TestPropertySanitizeName_TrimsEdgeDashes` for edge dash trimming
+    - `TestPropertySanitizeName_AllUnsafe` for all-unsafe input handling
+
+### Changed
+
+- `Rebase()` in `internal/variants/git.go` now uses fast-forward merge approach:
+  - Checks out target branch first, then merges source branch with `--ff-only`
+  - Keeps repository on target branch after completion (consistent working directory state)
+  - Fails cleanly if fast-forward is not possible due to divergence
+  - Added `TestRebase_FailsWhenDiverged` test for divergence detection
+
+### Fixed
+
+- Context size validation in `internal/comparison/compare.go`:
+  - Added `MaxPromptTokens` constant (150000) to enforce context limits
+  - Compare now checks estimated token count before calling Claude API
+  - Returns descriptive error when combined diff size exceeds limit (Requirement 5.8)
+  - Added `TestCompare_RejectsOversizedPrompt` test for validation
+
+- Guidance file parsing in `cmd/orbit/run.go`:
+  - Fixed logic that caused leading newlines when variant-specific guidance was empty
+  - Separated into two passes: collect variant guidance, then apply global guidance
+  - Global guidance now correctly appends to variant guidance or replaces empty guidance
+
+- SpecDir validation in `internal/orbit/orbit.go`:
+  - Added validation for SpecDir when variant mode is enabled
+  - Fails early with clear error if SpecDir is empty or does not exist
+
+- Added rapid property test failure files to `.gitignore`:
+  - Pattern `**/testdata/rapid/**/*.fail` prevents test artifacts from being committed
+
+- `sanitizeSpecName()` in `internal/variants/manager.go` now handles Unicode control characters:
+  - Uses `unicode.IsControl()` for proper control character detection including extended ASCII (0x80+)
+  - Refactored from `strings.NewReplacer` to rune-by-rune processing with `isUnsafeRune()` helper
+  - Property-based testing discovered the bug (tab and Unicode control chars were not sanitized)
+
+- Orbit integration for multi-spec comparison feature (Phase 6):
+  - Variant configuration in `internal/config/config.go`:
+    - `VariantCount`, `Parallel`, `MaxParallel`, `BranchPrefix`, `GuidanceFile`, `CompareCommand`, `GlobalGuidance` fields
+    - Environment variable support: `ORBIT_VARIANT_COUNT`, `ORBIT_PARALLEL`, `ORBIT_MAX_PARALLEL`, `ORBIT_BRANCH_PREFIX`, `ORBIT_GUIDANCE_FILE`, `ORBIT_COMPARE_COMMAND`, `ORBIT_GLOBAL_GUIDANCE`
+    - `DefaultMaxParallel` (3) and `DefaultBranchPrefix` ("orbit-impl") constants
+    - `parsePositiveInt()` helper function for integer environment variable parsing
+  - Variant support in `internal/orbit/orbit.go`:
+    - `variantManager` field for variant lifecycle management
+    - `rawClaudeClient` field for comparison operations
+    - `comparisonResult` field for report generation
+    - `SpecDir` and `RepoRoot` fields in Config for worktree paths
+    - Variant manager initialization when `VariantCount > 0`
+  - `runWithVariants()` method for multi-variant orchestration:
+    - Worktree setup via variant manager
+    - Sequential and parallel variant execution
+    - SIGINT handling with graceful cancellation
+    - Success/failure counting and reporting
+  - `runVariant()` method for single variant execution:
+    - Per-variant Claude client with worktree-specific working directory
+    - Phase loop with retry logic
+    - Metrics accumulation (cost, duration, turns)
+    - Status updates to variant manager
+  - `buildVariantPrompt()` for variant-specific and global guidance injection
+  - `runVariantPhaseWithRetry()` with error classification and backoff
+  - `runComparison()` for comparing successful variants:
+    - Diff gathering via `comparison.NewDiffGatherer`
+    - Claude-based comparison via `comparison.NewComparator`
+    - Result storage for report generation
+  - `generateReport()` and `generatePartialReport()` for HTML report generation:
+    - Report creation via `report.NewGenerator`
+    - Variant metrics and diffs included in report
+    - Partial report for all-failed scenarios
+
+- CLI commands for multi-spec comparison feature (Phase 5):
+  - `orbit status <spec-name>` command to display variant implementation status:
+    - Shows base commit, original branch, and start time
+    - Displays table with variant ID, branch, worktree path, and status
+    - Auto-detects spec name from current git branch if not provided
+  - `orbit cleanup <spec-name>` command to remove variant worktrees and branches:
+    - `--keep N` flag to preserve a specific variant while removing others
+    - `--force` flag to skip confirmation prompt
+    - `--dry-run` flag to preview what would be deleted
+    - Confirmation prompt before destructive operations
+  - `orbit finalize <spec-name> --variant N` command to adopt a variant:
+    - Rebases chosen variant onto original branch
+    - Cleans up all variant worktrees and branches after successful rebase
+    - Divergence detection with helpful error messages
+    - Conflict handling with manual resolution instructions
+  - `orbit compare <spec-name>` command to regenerate comparison reports:
+    - Collects diffs for all completed variants
+    - Runs Claude comparison analysis
+    - Generates HTML report with recommendation
+- Variant flags for `orbit run` command:
+  - `--variants N` to specify number of implementation variants
+  - `--parallel` to run variants concurrently
+  - `--max-parallel N` to limit concurrent variants (default: 3)
+  - `--branch-prefix PREFIX` to customize branch naming (default: orbit-impl)
+  - `--guidance-file PATH` for per-variant YAML guidance
+  - `--compare-command CMD` for custom comparison commands
+- Guidance file parsing for per-variant configuration:
+  - YAML schema with `variants` array and `global_guidance` field
+  - Validation of variant IDs against `--variants` count
+  - Global guidance applied to variants without specific guidance
+- Variant configuration in `orbit.Config` struct:
+  - `VariantCount`, `Parallel`, `MaxParallel`, `BranchPrefix` fields
+  - `Guidance` slice for per-variant guidance strings
+  - `CompareCommand` for custom comparison command
+
+- `internal/report` package for HTML comparison report generation (Phase 4):
+  - `types.go` with report types: `ReportData` (spec name, variants, comparison result, metadata), `VariantReportData` (per-variant data with diff and metrics), `VariantMetrics` (cost, duration, turns)
+  - `templates.go` with embedded HTML templates using `//go:embed`:
+    - Template helper functions: `formatCost()` for currency formatting, `trimTrailingZeros()` for decimal cleanup, `add()` and `sub()` for template arithmetic
+  - `templates/index.html` main report template with:
+    - Recommendation section with variant recommendation and confidence level
+    - Run metadata section (base commit, original branch, generation time)
+    - Variants overview table with status, cost, duration, and turn metrics
+    - Key observations list from comparison analysis
+    - Per-file analysis with variant assessments and preferences
+    - Collapsible diff sections for each variant implementation
+  - `templates/diff.html` for separate large diff files (>500 lines)
+  - `templates/style.css` with self-contained CSS:
+    - CSS variables for consistent theming
+    - Dark mode support via `prefers-color-scheme` media query
+    - Responsive design for mobile and desktop
+    - Print-friendly styles
+    - Status badges for completed/failed/pending states
+    - Confidence level styling (high/medium/low)
+  - `generator.go` with `Generator` struct for report creation:
+    - `NewGenerator()` constructor with output directory configuration
+    - `Generate()` method creating index.html with automatic HTML escaping via html/template
+    - `processReportData()` for handling large diffs by extracting to separate files
+    - `generateDiffFile()` for creating variant-N.html files in diffs/ subdirectory
+    - `countLines()` helper with 500-line threshold for diff splitting
+  - `generator_test.go` with unit tests:
+    - `TestGenerate_CreatesIndexHTML` verifying report creation with all content
+    - `TestGenerate_EscapesContent` verifying XSS prevention via HTML escaping
+    - `TestGenerate_SplitsLargeDiffs` verifying 500-line threshold behavior
+    - `TestGenerate_IncludesFailedVariants` verifying failed variant error display
+    - `TestGenerate_NoComparison` verifying report generation without comparison result
+    - `TestCountLines`, `TestFormatCost`, `TestTrimTrailingZeros` for helper functions
+
+- `internal/comparison` package for multi-variant comparison (Phase 3):
+  - `types.go` with comparison types: `Result` (recommendation, confidence, summary, file analyses, observations), `FileAnalysis` (per-file comparison details), `VariantData` (variant input data with diff and metrics), `VariantMetrics` (cost, duration, turns)
+  - `diff.go` with `DiffGatherer` struct for collecting unified diffs from variants using GitClient
+  - `prompt.go` with `buildPrompt()` function to construct Claude comparison prompts with variant diffs and metrics table, `formatDuration()` for duration display, `estimatePromptTokens()` for context size estimation
+  - `compare.go` with `Comparator` struct for orchestrating variant comparison:
+    - `NewComparator()` constructor with Claude client and optional custom command
+    - `Compare()` method with retry loop for JSON validation failures
+    - `parseAndValidate()` for strict JSON parsing with range checking on recommendation and confidence values
+    - `extractJSON()` to handle JSON in plain text or markdown code blocks
+    - `extractJSONObject()` for brace-balanced JSON object extraction with proper string handling
+  - `compare_test.go` with unit tests:
+    - `TestBuildPrompt_IncludesAllVariants` and `TestBuildPrompt_IncludesMetrics` for prompt construction
+    - `TestParseAndValidate_ValidJSON`, `TestParseAndValidate_MissingFields`, `TestParseAndValidate_InvalidConfidence`, `TestParseAndValidate_RecommendationOutOfRange` for validation
+    - `TestExtractJSON_PlainJSON`, `TestExtractJSON_MarkdownCodeBlock`, `TestExtractJSON_PlainCodeBlock`, `TestExtractJSON_JSONInText`, `TestExtractJSON_NoJSON`, `TestExtractJSON_NestedObjects`, `TestExtractJSON_StringWithBraces` for JSON extraction
+    - `TestFormatDuration` and `TestEstimatePromptTokens` for helper functions
+
+- `internal/variants` package Manager implementation (Phase 2):
+  - `manager.go` with `Manager` struct for variant lifecycle management:
+    - `NewManager()` constructor with validation for spec name, directory, repo root, and git client
+    - `Load()` to read existing `variants.json` metadata
+    - `Save()` with atomic writes using temp file + rename pattern and mutex protection
+    - `ensureGitignore()` to automatically create/update `.orbit/.gitignore` with `worktrees/` entry
+    - `Setup()` to create branches and worktrees for all variants with cleanup on failure
+    - `UpdateStatus()` and `UpdateMetrics()` for tracking variant execution state
+    - `GetVariant()`, `GetVariantsSnapshot()`, and `CountByStatus()` for querying variants
+    - `Cleanup()` to remove worktrees and branches with optional variant preservation
+    - `Finalize()` to rebase chosen variant onto original branch with divergence check
+    - `sanitizeSpecName()` for filesystem-safe spec names
+  - `manager_test.go` with unit tests using mock GitClient:
+    - `TestNewManager` for constructor validation
+    - `TestSetup_*` for worktree creation, reuse, divergence detection, dirty directory check, gitignore handling
+    - `TestUpdateStatus` and `TestSave_*` for status persistence and atomic/concurrent writes
+    - `TestGetVariantsSnapshot_ReturnsCopy` and `TestCountByStatus` for query methods
+    - `TestCleanup_*` for full cleanup and variant preservation
+    - `TestFinalize_*` for rebase and divergence handling
+    - `TestLoad_ParsesExistingMetadata` for metadata loading
+    - `TestSanitizeSpecName` for filesystem safety
+
+- `internal/variants` package for multi-variant spec implementation support (Phase 1):
+  - `types.go` with core types: `VariantStatus` enum (pending, running, completed, failed, canceled), `Variant` struct with metrics, `VariantsMetadata` for variants.json, `Config` for variant execution settings
+  - `git.go` with `GitClient` interface and `Git` implementation for git operations:
+    - `GetCurrentBranch()`, `GetHeadCommit()` for repository state
+    - `CreateBranch()`, `DeleteBranch()` for branch management
+    - `CreateWorktree()`, `RemoveWorktree()` for worktree lifecycle
+    - `GetDiff()` for comparing variant changes from base commit
+    - `Rebase()` for applying variant changes to original branch
+    - `BranchHasDiverged()`, `HasUncommittedChanges()` for state validation
+    - Context support for cancellation of long-running operations
+  - `git_test.go` with unit tests using real git operations in temp directories
+  - `mock_git.go` with `MockGit` implementation for unit testing without real git:
+    - Configurable return values for all GitClient methods
+    - Call tracking for verification in tests
+    - Per-call error overrides for complex test scenarios
+    - Thread-safe with mutex protection
 - Final integration tests for Codex support (Phase 6):
   - CLI integration tests for Codex session conversion to Markdown
   - CLI integration tests for Codex session conversion to HTML
