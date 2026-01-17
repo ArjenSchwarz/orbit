@@ -20,22 +20,23 @@ var styleCSS string
 var templates *template.Template
 
 func init() {
+	// Parse embedded templates. Panics are acceptable here because:
+	// 1. Templates are embedded at compile time via //go:embed
+	// 2. Parse errors indicate programming bugs, not runtime issues
+	// 3. These would be caught during development/testing, not production
 	var err error
 	templates = template.New("").Funcs(templateFuncs)
 
-	// Parse index template
 	templates, err = templates.New("index.html").Parse(indexTemplateContent)
 	if err != nil {
 		panic("failed to parse index template: " + err.Error())
 	}
 
-	// Parse diff template
 	templates, err = templates.New("diff.html").Parse(diffTemplateContent)
 	if err != nil {
 		panic("failed to parse diff template: " + err.Error())
 	}
 
-	// Define CSS as a template
 	templates, err = templates.New("style.css").Parse(styleCSS)
 	if err != nil {
 		panic("failed to parse style template: " + err.Error())

@@ -142,6 +142,21 @@ func runCommand(args []string) error {
 		return fmt.Errorf("--max-parallel must be at least 1")
 	}
 
+	// Derive SpecDir and RepoRoot for variant mode
+	var specDir, repoRoot string
+	if *variantCount > 0 {
+		// SpecDir is the directory containing the tasks file
+		specDir = filepath.Dir(*tasksFile)
+
+		// RepoRoot is the git repository root
+		cmd := exec.Command("git", "rev-parse", "--show-toplevel")
+		output, err := cmd.Output()
+		if err != nil {
+			return fmt.Errorf("failed to get repository root: %w", err)
+		}
+		repoRoot = strings.TrimSpace(string(output))
+	}
+
 	// Create and run orchestrator
 	orbitCfg := orbit.Config{
 		TasksFile:       *tasksFile,
@@ -162,6 +177,8 @@ func runCommand(args []string) error {
 		BranchPrefix:    *branchPrefix,
 		Guidance:        guidance,
 		CompareCommand:  *compareCommand,
+		SpecDir:         specDir,
+		RepoRoot:        repoRoot,
 	}
 
 	o, err := orbit.New(orbitCfg)

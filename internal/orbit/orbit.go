@@ -1052,7 +1052,14 @@ func (o *Orbit) runVariant(ctx context.Context, v *variants.Variant) error {
 
 	// Create a rune client for this variant's worktree
 	// The tasks file path needs to be adjusted for the worktree
+	// Convert absolute path to relative from repo root, then rebase to worktree
 	tasksFile := o.config.TasksFile
+	if o.config.RepoRoot != "" && filepath.IsAbs(tasksFile) {
+		relPath, err := filepath.Rel(o.config.RepoRoot, tasksFile)
+		if err == nil {
+			tasksFile = filepath.Join(v.WorktreePath, relPath)
+		}
+	}
 	variantRuneClient := rune.NewClient(tasksFile)
 	variantRuneClient.SetDebug(o.config.Debug)
 
