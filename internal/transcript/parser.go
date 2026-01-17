@@ -28,6 +28,12 @@ var codexTypes = map[string]bool{
 	"turn_context":  true,
 }
 
+// infrastructureTypes are entry types that should be skipped during format detection.
+// These are internal Claude infrastructure entries, not part of the conversation.
+var infrastructureTypes = map[string]bool{
+	"queue-operation": true,
+}
+
 // DetectFormat examines the first non-empty line to determine the log format.
 // Returns the detected format, the first line bytes (with BOM stripped), and any error.
 // The first line is returned to allow reuse without re-reading.
@@ -133,27 +139,59 @@ type ParseWarning struct {
 func ParseJSONL(r io.Reader) (*ParseResult, error) {
 	bufReader := bufio.NewReader(r)
 
-	// Read first line for format detection (preserves streaming)
-	// Using readFirstNonEmptyLineFromBufReader directly to preserve reader position
-	firstLine, err := readFirstNonEmptyLineFromBufReader(bufReader)
-	if err != nil {
-		if errors.Is(err, io.EOF) {
-			return nil, fmt.Errorf("empty file")
+	// Collect lines for format detection, skipping infrastructure entries
+	var collectedLines [][]byte
+	var format Format
+	var formatErr error
+
+	for {
+		line, err := readFirstNonEmptyLineFromBufReader(bufReader)
+		if err != nil {
+			if errors.Is(err, io.EOF) {
+				if len(collectedLines) == 0 {
+					return nil, fmt.Errorf("empty file")
+				}
+				return nil, fmt.Errorf("no recognizable format entries found")
+			}
+			return nil, fmt.Errorf("failed to read line: %w", err)
 		}
-		return nil, fmt.Errorf("failed to read first line: %w", err)
+
+		// Strip BOM if present (only relevant for first line)
+		if len(collectedLines) == 0 {
+			line = stripBOM(line)
+		}
+
+		collectedLines = append(collectedLines, line)
+
+		// Try to detect format from this line
+		format, formatErr = detectFormatFromLine(line)
+		if formatErr == nil {
+			// Found a recognizable format
+			break
+		}
+
+		// Check if this is an infrastructure type we should skip
+		var obj struct {
+			Type string `json:"type"`
+		}
+		if json.Unmarshal(line, &obj) == nil && infrastructureTypes[obj.Type] {
+			// Skip infrastructure entries and keep looking
+			continue
+		}
+
+		// Unknown type that's not infrastructure - fail
+		return nil, formatErr
 	}
 
-	// Strip BOM if present
-	firstLine = stripBOM(firstLine)
-
-	// Detect format from first line
-	format, err := detectFormatFromLine(firstLine)
-	if err != nil {
-		return nil, err
+	// Reconstruct collected lines for the parser
+	var linesBuf bytes.Buffer
+	for _, line := range collectedLines {
+		linesBuf.Write(line)
+		linesBuf.WriteByte('\n')
 	}
 
-	// Combine first line with remaining content for streaming parse
-	combined := io.MultiReader(bytes.NewReader(append(firstLine, '\n')), bufReader)
+	// Combine collected lines with remaining content for streaming parse
+	combined := io.MultiReader(&linesBuf, bufReader)
 
 	// Delegate to appropriate parser
 	switch format {
@@ -199,7 +237,7 @@ func parseClaudeJSONL(r io.Reader) (*ParseResult, error) {
 		}
 
 		// Only process known entry types (user, assistant)
-		// Skip unknown types silently per requirement 4.7
+		// Skip infrastructure types (queue-operation) and unknown types silently
 		if entry.Type != "user" && entry.Type != "assistant" {
 			continue
 		}
