@@ -33,8 +33,9 @@ func (d *DiffGatherer) GatherDiffs(ctx context.Context, baseCommit string, varia
 		}
 
 		result = append(result, VariantData{
-			ID:   v.ID,
-			Diff: diff,
+			ID:    v.ID,
+			Diff:  diff,
+			Agent: v.Agent,
 			Metrics: VariantMetrics{
 				Cost:     v.Cost,
 				Duration: v.Duration,

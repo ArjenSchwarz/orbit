@@ -52,6 +52,7 @@
                     <tr>
                         <th>Variant</th>
                         <th>Branch</th>
+                        <th>Agent</th>
                         <th>Status</th>
                         <th>Cost</th>
                         <th>Duration</th>
@@ -68,6 +69,7 @@
                             {{end}}
                         </td>
                         <td><code>{{.Branch}}</code></td>
+                        <td>{{if .Agent}}{{.Agent}}{{else}}-{{end}}</td>
                         <td><span class="status status-{{.Status}}">{{.Status}}</span></td>
                         <td>{{formatCost .Metrics.Cost}}</td>
                         <td>{{.Metrics.Duration}}</td>
@@ -118,7 +120,7 @@
             {{range .Variants}}
             <article class="variant-diff" id="variant-{{.ID}}">
                 <h3>
-                    Variant {{.ID}}
+                    Variant {{.ID}}{{if .Agent}} <span class="agent-badge">{{.Agent}}</span>{{end}}
                     {{if and $.Comparison (eq $.Comparison.Recommendation .ID)}}
                     <span class="recommended-badge">Recommended</span>
                     {{end}}

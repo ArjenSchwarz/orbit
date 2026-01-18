@@ -70,6 +70,7 @@ type Config struct {
 	GlobalGuidance string   // Global guidance applied to all variants
 	SpecDir        string   // Spec directory for variant worktrees
 	RepoRoot       string   // Repository root directory
+	VariantAgents  []string // Per-variant agents (cycles if fewer than variants) [Req 10.1]
 }
 
 // Orbit orchestrates Claude Code sessions to implement spec phases.
@@ -958,6 +959,10 @@ func (o *Orbit) runWithVariants(ctx context.Context) error {
 
 	// Snapshot variants slice under lock to avoid race condition during parallel execution
 	variantList := o.variantManager.GetVariantsSnapshot()
+
+	// Assign agents to variants [Req 10.3]
+	variants.AssignVariantAgents(variantList, o.config.VariantAgents, o.config.Agent)
+
 	log.Printf("Running %d variants...", len(variantList))
 
 	// Create context with cancellation for interrupt handling
@@ -1320,6 +1325,7 @@ func (o *Orbit) generateReport() error {
 			Status:   string(v.Status),
 			Error:    v.Error,
 			Diff:     variantDiffs[v.ID],
+			Agent:    v.Agent,
 			Metrics: report.VariantMetrics{
 				Cost:     v.Cost,
 				Duration: v.Duration.Round(time.Second).String(),
@@ -1368,6 +1374,7 @@ func (o *Orbit) generatePartialReport() error {
 			Branch: v.Branch,
 			Status: string(v.Status),
 			Error:  v.Error,
+			Agent:  v.Agent,
 			Metrics: report.VariantMetrics{
 				Cost:     v.Cost,
 				Duration: v.Duration.Round(time.Second).String(),

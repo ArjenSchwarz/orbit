@@ -29,13 +29,26 @@ const jsonSchema = `{
 func buildPrompt(specName string, variants []VariantData) string {
 	var sb strings.Builder
 
+	// Check if any variant has an agent specified
+	hasAgents := false
+	for _, v := range variants {
+		if v.Agent != "" {
+			hasAgents = true
+			break
+		}
+	}
+
 	// Header
 	sb.WriteString(fmt.Sprintf("You are comparing %d implementation variants of the specification \"%s\".\n\n", len(variants), specName))
 
 	// Variant diffs section
 	sb.WriteString("## Variant Diffs\n\n")
 	for _, v := range variants {
-		sb.WriteString(fmt.Sprintf("### Variant %d\n", v.ID))
+		if v.Agent != "" {
+			sb.WriteString(fmt.Sprintf("### Variant %d (Agent: %s)\n", v.ID, v.Agent))
+		} else {
+			sb.WriteString(fmt.Sprintf("### Variant %d\n", v.ID))
+		}
 		sb.WriteString("<diff>\n")
 		sb.WriteString(v.Diff)
 		if !strings.HasSuffix(v.Diff, "\n") {
@@ -44,14 +57,28 @@ func buildPrompt(specName string, variants []VariantData) string {
 		sb.WriteString("</diff>\n\n")
 	}
 
-	// Metrics table
+	// Metrics table - include Agent column if any variant has an agent
 	sb.WriteString("## Metrics\n\n")
-	sb.WriteString("| Variant | Cost | Duration | Turns |\n")
-	sb.WriteString("|---------|------|----------|-------|\n")
-	for _, v := range variants {
-		cost := fmt.Sprintf("$%.4f", v.Metrics.Cost)
-		duration := formatDuration(v.Metrics.Duration)
-		sb.WriteString(fmt.Sprintf("| %d | %s | %s | %d |\n", v.ID, cost, duration, v.Metrics.NumTurns))
+	if hasAgents {
+		sb.WriteString("| Variant | Agent | Cost | Duration | Turns |\n")
+		sb.WriteString("|---------|-------|------|----------|-------|\n")
+		for _, v := range variants {
+			cost := fmt.Sprintf("$%.4f", v.Metrics.Cost)
+			duration := formatDuration(v.Metrics.Duration)
+			agent := v.Agent
+			if agent == "" {
+				agent = "-"
+			}
+			sb.WriteString(fmt.Sprintf("| %d | %s | %s | %s | %d |\n", v.ID, agent, cost, duration, v.Metrics.NumTurns))
+		}
+	} else {
+		sb.WriteString("| Variant | Cost | Duration | Turns |\n")
+		sb.WriteString("|---------|------|----------|-------|\n")
+		for _, v := range variants {
+			cost := fmt.Sprintf("$%.4f", v.Metrics.Cost)
+			duration := formatDuration(v.Metrics.Duration)
+			sb.WriteString(fmt.Sprintf("| %d | %s | %s | %d |\n", v.ID, cost, duration, v.Metrics.NumTurns))
+		}
 	}
 	sb.WriteString("\n")
 

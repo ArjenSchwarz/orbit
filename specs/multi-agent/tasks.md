@@ -168,25 +168,25 @@ references:
 
 ## Phase 5: Per-Variant Agent Selection
 
-- [ ] 12. Add agent field to variants
+- [x] 12. Add agent field to variants
   - Requirements: [10.3](requirements.md#10.3), [10.5](requirements.md#10.5)
-  - [ ] 12.1. Add tests for variant agent assignment
+  - [x] 12.1. Add tests for variant agent assignment
     - Add tests to internal/variants/ for Agent field population, cycling behavior
     - Requirements: [10.3](requirements.md#10.3), [10.5](requirements.md#10.5)
-  - [ ] 12.2. Extend Variant struct with Agent field
+  - [x] 12.2. Extend Variant struct with Agent field
     - Add Agent string field to Variant struct in internal/variants/types.go
     - Implement assignVariantAgents function
     - Requirements: [10.5](requirements.md#10.5)
 
-- [ ] 13. Add variant-agents flag
+- [x] 13. Add variant-agents flag
   - Requirements: [10.1](requirements.md#10.1), [10.6](requirements.md#10.6), [10.7](requirements.md#10.7)
-  - [ ] 13.1. Add --variant-agents flag to orbit run
+  - [x] 13.1. Add --variant-agents flag to orbit run
     - Modify cmd/orbit/run.go to add --variant-agents flag (comma-separated list)
     - Requirements: [10.1](requirements.md#10.1)
-  - [ ] 13.2. Update comparison report
+  - [x] 13.2. Update comparison report
     - Modify comparison report generation to display agent used per variant
     - Requirements: [10.6](requirements.md#10.6)
-  - [ ] 13.3. Update comparison prompt
+  - [x] 13.3. Update comparison prompt
     - Include agent information in comparison prompt for context
     - Requirements: [10.7](requirements.md#10.7)
 

@@ -47,6 +47,7 @@ func runCommand(args []string) error {
 	branchPrefix := fs.String("branch-prefix", "orbit-impl", "Branch naming prefix for variants")
 	guidanceFile := fs.String("guidance-file", "", "YAML file with per-variant guidance")
 	compareCommand := fs.String("compare-command", "", "Custom comparison command")
+	variantAgentsFlag := fs.String("variant-agents", "", "Comma-separated agent list for variants (cycles if fewer agents than variants)")
 
 	fs.Usage = func() {
 		fmt.Fprintf(os.Stderr, "Usage: orbit run [options]\n\n")
@@ -62,6 +63,7 @@ func runCommand(args []string) error {
 		fmt.Fprintf(os.Stderr, "  orbit run --variants 3                     # Run 3 implementation variants\n")
 		fmt.Fprintf(os.Stderr, "  orbit run --variants 2 --parallel          # Run 2 variants in parallel\n")
 		fmt.Fprintf(os.Stderr, "  orbit run --variants 3 --guidance-file guidance.yaml\n")
+		fmt.Fprintf(os.Stderr, "  orbit run --variants 2 --variant-agents claude-code,codex  # Compare agents\n")
 	}
 
 	if err := fs.Parse(args); err != nil {
@@ -155,6 +157,16 @@ func runCommand(args []string) error {
 		}
 	}
 
+	// Parse variant agents if provided
+	var variantAgents []string
+	if *variantAgentsFlag != "" {
+		variantAgents = strings.Split(*variantAgentsFlag, ",")
+		// Trim whitespace from each agent name
+		for i := range variantAgents {
+			variantAgents[i] = strings.TrimSpace(variantAgents[i])
+		}
+	}
+
 	// Validate variant configuration
 	if *variantCount < 0 {
 		return fmt.Errorf("--variants must be non-negative")
@@ -202,6 +214,7 @@ func runCommand(args []string) error {
 		CompareCommand:  *compareCommand,
 		SpecDir:         specDir,
 		RepoRoot:        repoRoot,
+		VariantAgents:   variantAgents,
 	}
 
 	o, err := orbit.New(orbitCfg)

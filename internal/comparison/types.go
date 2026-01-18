@@ -26,6 +26,7 @@ type VariantData struct {
 	ID      int
 	Diff    string
 	Metrics VariantMetrics
+	Agent   string // Agent used for this variant [Req 10.6]
 }
 
 // VariantMetrics holds execution metrics for a variant.

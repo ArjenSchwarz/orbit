@@ -9,6 +9,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Per-variant agent selection for multi-agent comparison (Phase 5):
+  - `--variant-agents` flag for `orbit run` to specify comma-separated agent list
+  - Agents cycle if fewer agents than variants (e.g., `--variant-agents claude-code,codex` for 4 variants assigns claude-code, codex, claude-code, codex)
+  - `Agent` field added to `Variant` struct for tracking which agent ran each variant
+  - Comparison report displays agent column in variants overview table
+  - Agent badge displayed next to variant ID in implementation diffs section
+  - Comparison prompt includes agent information in variant headers and metrics table
+  - `AssignVariantAgents()` function in `internal/variants/agent.go` for agent assignment logic
+  - CSS styling for `.agent-badge` in report templates
+
 - Agent configuration and CLI integration (Phase 4):
   - `agent:` field in `.orbit.yaml` to set default agent per project
   - `agents:` section in `.orbit.yaml` for per-agent configuration:
