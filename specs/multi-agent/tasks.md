@@ -95,17 +95,17 @@ references:
 
 ## Phase 3: Additional Agents
 
-- [ ] 6. Implement Codex agent
+- [x] 6. Implement Codex agent
   - Requirements: [3.1](requirements.md#3.1), [3.2](requirements.md#3.2), [3.3](requirements.md#3.3), [3.4](requirements.md#3.4), [3.5](requirements.md#3.5)
-  - [ ] 6.1. Add tests for Codex agent
+  - [x] 6.1. Add tests for Codex agent
     - Create internal/agents/codex/agent_test.go testing CLI invocation patterns
     - Tests for: codex exec prompt, --full-auto flag, codex exec resume id
     - Requirements: [3.2](requirements.md#3.2), [3.3](requirements.md#3.3), [3.4](requirements.md#3.4)
-  - [ ] 6.2. Implement Codex agent
+  - [x] 6.2. Implement Codex agent
     - Create internal/agents/codex/agent.go implementing Agent interface
     - DefaultSessionDir: ~/.codex/sessions/ with date-sharded structure
     - Requirements: [3.1](requirements.md#3.1), [3.2](requirements.md#3.2), [3.3](requirements.md#3.3), [3.4](requirements.md#3.4), [3.5](requirements.md#3.5)
-  - [ ] 6.3. Add Codex error classifier
+  - [x] 6.3. Add Codex error classifier
     - Create internal/agents/codex/errors.go with error pattern matching
     - Requirements: [8.2](requirements.md#8.2)
 
