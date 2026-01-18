@@ -8,41 +8,41 @@ references:
 
 ## Phase 1: Foundation
 
-- [ ] 1. Create agent abstraction layer
+- [x] 1. Create agent abstraction layer
   - Create internal/agents/agent.go with Agent interface, SessionExporter interface, SessionInfo, RunOptions, RunResult, CostMetrics types
   - Interface includes Name(), CLICommand(), IsInstalled(), Version(), DefaultSessionDir(), DiscoverSessions(), Run(), Resume()
   - Requirements: [1.1](requirements.md#1.1), [1.2](requirements.md#1.2), [1.3](requirements.md#1.3), [1.4](requirements.md#1.4), [1.5](requirements.md#1.5)
   - References: specs/multi-agent/design.md
-  - [ ] 1.1. Add tests for error classification
+  - [x] 1.1. Add tests for error classification
     - Create internal/agents/errors_test.go with tests for ErrorClass values, String(), IsRetryable(), ClassifiedError
     - Requirements: [8.1](requirements.md#8.1), [8.2](requirements.md#8.2)
-  - [ ] 1.2. Implement error classification
+  - [x] 1.2. Implement error classification
     - Create internal/agents/errors.go with ErrorClass enum, ClassifiedError type, ErrorClassifier interface
     - Requirements: [8.1](requirements.md#8.1), [8.2](requirements.md#8.2)
-  - [ ] 1.3. Add tests for agent registry
+  - [x] 1.3. Add tests for agent registry
     - Create internal/agents/registry_test.go with tests for Register, Get, List, Default functions
     - Requirements: [1.6](requirements.md#1.6)
-  - [ ] 1.4. Implement agent registry
+  - [x] 1.4. Implement agent registry
     - Create internal/agents/registry.go with AgentConfig struct and Register, Get, List, Default functions
     - Requirements: [1.6](requirements.md#1.6)
 
-- [ ] 2. Refactor Claude Code to agent implementation
+- [x] 2. Refactor Claude Code to agent implementation
   - Move internal/claude/ to internal/agents/claudecode/ per Decision 2 (breaking changes acceptable)
   - Requirements: [2.1](requirements.md#2.1)
-  - [ ] 2.1. Add tests for Claude Code agent
+  - [x] 2.1. Add tests for Claude Code agent
     - Create internal/agents/claudecode/agent_test.go testing Name(), CLICommand(), IsInstalled(), Run(), Resume(), CLI argument building
     - Requirements: [2.2](requirements.md#2.2), [2.5](requirements.md#2.5), [2.6](requirements.md#2.6), [2.7](requirements.md#2.7)
-  - [ ] 2.2. Implement Claude Code agent
+  - [x] 2.2. Implement Claude Code agent
     - Create internal/agents/claudecode/agent.go implementing Agent interface, refactor from internal/claude/client.go
     - Register as claude-code in init()
     - Requirements: [2.2](requirements.md#2.2), [2.5](requirements.md#2.5), [2.6](requirements.md#2.6), [2.7](requirements.md#2.7)
-  - [ ] 2.3. Add Claude Code error classifier
+  - [x] 2.3. Add Claude Code error classifier
     - Create internal/agents/claudecode/errors.go with error pattern matching for rate limits, auth, session errors
     - Requirements: [8.2](requirements.md#8.2)
-  - [ ] 2.4. Update orchestrator to use agent interface
+  - [x] 2.4. Update orchestrator to use agent interface
     - Modify internal/orbit/orbit.go to use agents.Agent interface instead of direct claude.Client calls
     - Requirements: [2.3](requirements.md#2.3)
-  - [ ] 2.5. Verify existing orchestrator tests pass
+  - [x] 2.5. Verify existing orchestrator tests pass
     - Run existing tests in internal/orbit/ to ensure refactoring did not break functionality
     - Requirements: [2.4](requirements.md#2.4)
 

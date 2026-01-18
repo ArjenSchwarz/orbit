@@ -104,6 +104,7 @@ func (c *Client) RunPhase(sessionID string, resume bool) (*SessionResult, error)
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout = &stdout
 	cmd.Stderr = &stderr
+	cmd.Stdin = nil // Explicitly close stdin so Claude doesn't wait for input
 
 	startTime := time.Now()
 	err := cmd.Run()
@@ -203,6 +204,7 @@ func (c *Client) RunCustomPromptWithSession(prompt, sessionID string, resume boo
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout = &stdout
 	cmd.Stderr = &stderr
+	cmd.Stdin = nil // Explicitly close stdin so Claude doesn't wait for input
 
 	startTime := time.Now()
 	err := cmd.Run()

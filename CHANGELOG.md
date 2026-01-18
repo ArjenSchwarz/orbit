@@ -9,6 +9,41 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Agent abstraction layer for multi-agent support (Phase 1):
+  - `internal/agents` package with core types and interfaces:
+    - `agent.go` with `Agent` interface defining execution, session, and capability methods
+    - `SessionInfo`, `RunOptions`, `RunResult`, and `CostMetrics` types for agent execution
+    - `SessionExporter` optional interface for agents requiring explicit session export
+  - `errors.go` with unified error classification:
+    - `ErrorClass` enum (Unknown, Retryable, Fatal, SessionInvalid) for orchestrator retry logic
+    - `ClassifiedError` struct wrapping errors with classification metadata and retry-after duration
+    - `ErrorClassifier` interface for agent-specific error pattern recognition
+  - `registry.go` with factory pattern for agent management:
+    - `Register()` function for adding agent factories
+    - `Get()` function returning configured agent instances
+    - `List()` function returning sorted registered agent names
+    - `Default()` function returning "claude-code" as the default agent
+    - `AgentConfig` struct for CLI path, auto-approve, extra args, timeout, and agent-specific options
+  - `internal/agents/claudecode` package with Claude Code agent implementation:
+    - `agent.go` implementing the `Agent` interface with CLI execution
+    - Session discovery via `~/.claude/projects/` directory scanning
+    - Argument building for `--session-id`, `--resume`, `--output-format json`, and `--dangerously-skip-permissions`
+    - JSON output parsing for session ID, cost, and error detection
+    - Auto-registration via `init()` function
+  - `errors.go` with Claude Code-specific error classifier:
+    - Rate limit detection (429, "rate limit", "too many requests")
+    - Authentication error detection (401, "api key", "unauthorized")
+    - Session invalid detection ("session not found", "session expired")
+    - Connection error detection ("timeout", "connection", "dns")
+    - API overload detection (503, "overloaded", "service unavailable")
+    - Retry-after duration parsing from error messages
+  - Comprehensive test coverage for all components
+
+### Changed
+
+- Orbit orchestrator now initializes agent and error classifier (default: Claude Code)
+- Fixed `range maxRetries` syntax errors (Go 1.22+ range-over-int not supported in older versions)
+
 - Multi-agent support specification documents:
   - `specs/multi-agent/requirements.md` with 10 requirement sections covering agent abstraction layer, Claude Code/Codex/Kiro/Copilot agent implementations, agent selection, session discovery and viewing, error handling, agent configuration, and per-variant agent selection
   - `specs/multi-agent/design.md` with architecture, agent interface definition, registry pattern, error classification system, per-agent implementations, format detection extension, CLI integration, and known limitations

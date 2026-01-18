@@ -14,6 +14,8 @@ import (
 	"time"
 
 	output "github.com/ArjenSchwarz/go-output/v2"
+	"github.com/arjenschwarz/orbit/internal/agents"
+	"github.com/arjenschwarz/orbit/internal/agents/claudecode"
 	"github.com/arjenschwarz/orbit/internal/claude"
 	"github.com/arjenschwarz/orbit/internal/comparison"
 	"github.com/arjenschwarz/orbit/internal/debug"
@@ -71,6 +73,8 @@ type Orbit struct {
 	config               Config
 	runeClient           *rune.Client
 	claudeClient         claudeRunner
+	agent                agents.Agent           // Agent interface for multi-agent support
+	errorClassifier      agents.ErrorClassifier // Agent-specific error classifier
 	logManager           *logs.Manager
 	phaseSummaries       []rune.PhaseSummary
 	spinner              *display.Spinner
@@ -99,6 +103,13 @@ func New(config Config) (*Orbit, error) {
 		Prompt:          config.Command,
 		Debug:           config.Debug,
 	})
+
+	// Initialize agent and error classifier (default to Claude Code)
+	agentConfig := agents.AgentConfig{
+		AutoApprove: config.SkipPermissions,
+	}
+	agent := claudecode.New(agentConfig)
+	errorClassifier := claudecode.NewClassifier()
 
 	// Log configuration if debug enabled
 	if config.Debug {
@@ -210,6 +221,8 @@ func New(config Config) (*Orbit, error) {
 		config:          config,
 		runeClient:      runeClient,
 		claudeClient:    claudeClient,
+		agent:           agent,
+		errorClassifier: errorClassifier,
 		logManager:      logManager,
 		spinner:         spin,
 		shutdownCtx:     ctx,
@@ -421,7 +434,7 @@ func (o *Orbit) runPhaseWithRetry(phase int) error {
 
 	o.debug.Log("Starting phase %d with up to %d retries", phase, maxRetries)
 
-	for attempt := range maxRetries {
+	for attempt := 0; attempt < maxRetries; attempt++ {
 		o.currentPhaseRunCount++
 		o.debug.Log("Phase %d attempt %d/%d", phase, attempt+1, maxRetries)
 
@@ -720,7 +733,7 @@ func (o *Orbit) runPostCommand() error {
 func (o *Orbit) runPostCommandWithRetry() error {
 	var lastErr error
 
-	for attempt := range maxRetries {
+	for attempt := 0; attempt < maxRetries; attempt++ {
 		err := o.runPostCommand()
 		if err == nil {
 			return nil
@@ -1157,7 +1170,7 @@ func (o *Orbit) runVariantPhaseWithRetry(ctx context.Context, v *variants.Varian
 	var lastErr error
 	var lastResult *claude.SessionResult
 
-	for attempt := range maxRetries {
+	for attempt := 0; attempt < maxRetries; attempt++ {
 		select {
 		case <-ctx.Done():
 			return nil, ctx.Err()
