@@ -109,32 +109,32 @@ references:
     - Create internal/agents/codex/errors.go with error pattern matching
     - Requirements: [8.2](requirements.md#8.2)
 
-- [ ] 7. Implement Kiro agent
+- [x] 7. Implement Kiro agent
   - Requirements: [4.1](requirements.md#4.1), [4.2](requirements.md#4.2), [4.3](requirements.md#4.3), [4.4](requirements.md#4.4), [4.5](requirements.md#4.5)
-  - [ ] 7.1. Add tests for Kiro agent
+  - [x] 7.1. Add tests for Kiro agent
     - Create internal/agents/kiro/agent_test.go testing CLI invocation and SessionExporter interface
     - Tests for: kiro-cli chat --no-interactive, --trust-all-tools, --resume, ExportSession
     - Requirements: [4.2](requirements.md#4.2), [4.3](requirements.md#4.3), [4.4](requirements.md#4.4), [4.5](requirements.md#4.5)
-  - [ ] 7.2. Implement Kiro agent
+  - [x] 7.2. Implement Kiro agent
     - Create internal/agents/kiro/agent.go implementing Agent and SessionExporter interfaces
     - DefaultSessionDir returns empty (Kiro does not store logs automatically per Decision 7)
     - Requirements: [4.1](requirements.md#4.1), [4.2](requirements.md#4.2), [4.3](requirements.md#4.3), [4.4](requirements.md#4.4), [4.5](requirements.md#4.5)
-  - [ ] 7.3. Add Kiro error classifier
+  - [x] 7.3. Add Kiro error classifier
     - Create internal/agents/kiro/errors.go with error pattern matching
     - Requirements: [8.2](requirements.md#8.2)
 
-- [ ] 8. Implement Copilot agent
+- [x] 8. Implement Copilot agent
   - Requirements: [5.1](requirements.md#5.1), [5.2](requirements.md#5.2), [5.3](requirements.md#5.3), [5.4](requirements.md#5.4), [5.5](requirements.md#5.5)
-  - [ ] 8.1. Add tests for Copilot agent
+  - [x] 8.1. Add tests for Copilot agent
     - Create internal/agents/copilot/agent_test.go testing CLI invocation patterns
     - Tests for: copilot -p prompt, --allow-all-paths, --continue (note: sessionID ignored per Known Limitation)
     - Requirements: [5.2](requirements.md#5.2), [5.3](requirements.md#5.3), [5.4](requirements.md#5.4)
-  - [ ] 8.2. Implement Copilot agent
+  - [x] 8.2. Implement Copilot agent
     - Create internal/agents/copilot/agent.go implementing Agent interface
     - DefaultSessionDir: ~/.copilot/session-state/
     - Document that Resume ignores sessionID (Copilot limitation)
     - Requirements: [5.1](requirements.md#5.1), [5.2](requirements.md#5.2), [5.3](requirements.md#5.3), [5.4](requirements.md#5.4), [5.5](requirements.md#5.5)
-  - [ ] 8.3. Add Copilot error classifier
+  - [x] 8.3. Add Copilot error classifier
     - Create internal/agents/copilot/errors.go with error pattern matching
     - Requirements: [8.2](requirements.md#8.2)
 

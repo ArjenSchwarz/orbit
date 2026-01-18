@@ -34,6 +34,37 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Golden file tests for both Kiro and Copilot parsers
   - Sample session files in `testdata/kiro/` and `testdata/copilot/`
 
+- Kiro agent implementation for multi-agent support (Phase 3):
+  - `internal/agents/kiro/agent.go` implementing Agent and SessionExporter interfaces:
+    - CLI invocation: `kiro-cli chat --no-interactive "<prompt>"`
+    - Auto-approve: `--trust-all-tools` flag when enabled
+    - Session resume: `--resume` flag to continue previous session
+    - `ExportSession()` method to save sessions via `/chat save <filename>` command
+    - DefaultSessionDir returns empty (Kiro doesn't store logs automatically per Decision 7)
+    - Auto-registration via `init()` function
+  - `internal/agents/kiro/errors.go` with Kiro-specific error classifier:
+    - Rate limit detection (429, "rate limit", "throttl")
+    - Authentication error detection ("credentials", "unauthorized", "access denied")
+    - Session invalid detection ("session not found", "no active session")
+    - Connection error detection ("timeout", "connection", "econnrefused")
+    - API overload detection (503, "service unavailable")
+  - `internal/agents/kiro/agent_test.go` with comprehensive unit tests
+
+- Copilot agent implementation for multi-agent support (Phase 3):
+  - `internal/agents/copilot/agent.go` implementing Agent interface:
+    - CLI invocation: `copilot -p "<prompt>"`
+    - Auto-approve: `--allow-all-paths` flag when enabled
+    - Session resume: `--continue` flag (note: sessionID ignored per Known Limitation)
+    - DefaultSessionDir: `~/.copilot/session-state/`
+    - Auto-registration via `init()` function
+  - `internal/agents/copilot/errors.go` with Copilot-specific error classifier:
+    - Rate limit detection (429, "rate limit", "throttled")
+    - Authentication error detection ("not logged in", "gh auth login")
+    - Session invalid detection ("no session to continue", "no previous session")
+    - Connection error detection ("timeout", "connection", "enotfound")
+    - API overload detection (503, "service unavailable")
+  - `internal/agents/copilot/agent_test.go` with comprehensive unit tests
+
 - Agent abstraction layer for multi-agent support (Phase 1):
   - `internal/agents` package with core types and interfaces:
     - `agent.go` with `Agent` interface defining execution, session, and capability methods
