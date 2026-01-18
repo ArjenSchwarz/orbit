@@ -9,6 +9,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Multi-agent support specification documents:
+  - `specs/multi-agent/requirements.md` with 10 requirement sections covering agent abstraction layer, Claude Code/Codex/Kiro/Copilot agent implementations, agent selection, session discovery and viewing, error handling, agent configuration, and per-variant agent selection
+  - `specs/multi-agent/design.md` with architecture, agent interface definition, registry pattern, error classification system, per-agent implementations, format detection extension, CLI integration, and known limitations
+  - `specs/multi-agent/decision_log.md` with 9 design decisions (feature name, breaking changes acceptable, Kiro/Copilot format analysis deferral, timeout configuration, per-variant agent selection requirement, CLI invocation verification, Kiro session log handling, Kiro session export timing, Copilot session format)
+  - `specs/multi-agent/tasks.md` with 6 implementation phases and 16 top-level tasks covering foundation, session parsing, additional agents, configuration/CLI, per-variant selection, and integration/cleanup
+  - `specs/multi-agent/samples/kiro/newlog.json` sample Kiro session file for format analysis
+  - `specs/multi-agent/samples/copilot/events.jsonl` sample Copilot session file for format analysis
+  - `specs/multi-agent/plan.md` original planning document for multi-agent support
+
 - Multi-spec comparison feature specification documents:
   - `specs/multi-spec-comparison/requirements.md` with 13 requirement sections covering variant configuration, git worktree management, variant execution, parallel execution, comparison, report generation, status/cleanup/finalize/compare commands, interrupt handling, performance, and error handling
   - `specs/multi-spec-comparison/design.md` with architecture, package dependencies, component designs for variants/comparison/report packages, CLI command specifications, and testing strategy
