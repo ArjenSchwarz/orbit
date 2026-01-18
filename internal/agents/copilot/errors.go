@@ -10,11 +10,15 @@ import (
 	"github.com/arjenschwarz/orbit/internal/agents"
 )
 
+func init() {
+	agents.RegisterClassifier("copilot", NewClassifier)
+}
+
 // Classifier implements agents.ErrorClassifier for Copilot.
 type Classifier struct{}
 
 // NewClassifier creates a new Copilot error classifier.
-func NewClassifier() *Classifier {
+func NewClassifier() agents.ErrorClassifier {
 	return &Classifier{}
 }
 

@@ -10,11 +10,15 @@ import (
 	"github.com/arjenschwarz/orbit/internal/agents"
 )
 
+func init() {
+	agents.RegisterClassifier("kiro", NewClassifier)
+}
+
 // Classifier implements agents.ErrorClassifier for Kiro.
 type Classifier struct{}
 
 // NewClassifier creates a new Kiro error classifier.
-func NewClassifier() *Classifier {
+func NewClassifier() agents.ErrorClassifier {
 	return &Classifier{}
 }
 

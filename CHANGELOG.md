@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- Kiro agent environment variable bug: `appendEnv()` now includes `os.Environ()` as the base before appending custom environment variables, preventing agent execution failures due to missing PATH and system environment
+- Registered error classifiers for all agents: Kiro, Codex, and Copilot now call `agents.RegisterClassifier()` in their `init()` functions, enabling agent-specific error classification
+- Per-variant agent selection: Variants now use their assigned agent via `agents.Get()` instead of always using the Claude client, enabling true multi-agent comparison with `--variant-agents` flag
+- Linter warning in `internal/agents/codex/errors_test.go`: Removed redundant type assertion in interface check
+
 ### Added
 
 - Kiro session export support in orchestrator:

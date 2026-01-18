@@ -10,11 +10,15 @@ import (
 	"github.com/arjenschwarz/orbit/internal/agents"
 )
 
+func init() {
+	agents.RegisterClassifier("codex", NewClassifier)
+}
+
 // Classifier implements agents.ErrorClassifier for Codex.
 type Classifier struct{}
 
 // NewClassifier creates a new Codex error classifier.
-func NewClassifier() *Classifier {
+func NewClassifier() agents.ErrorClassifier {
 	return &Classifier{}
 }
 

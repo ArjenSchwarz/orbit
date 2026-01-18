@@ -1102,20 +1102,29 @@ func (o *Orbit) runVariantsParallel(ctx context.Context, variantList []*variants
 // runVariant executes all spec phases for a single variant in its worktree.
 func (o *Orbit) runVariant(ctx context.Context, v *variants.Variant) error {
 	startTime := time.Now()
-	log.Printf("Starting variant %d (branch: %s)", v.ID, v.Branch)
+	log.Printf("Starting variant %d (branch: %s, agent: %s)", v.ID, v.Branch, v.Agent)
 
 	// Mark variant as running
 	if err := o.variantManager.UpdateStatus(v.ID, variants.StatusRunning, nil); err != nil {
 		log.Printf("Warning: failed to update variant %d status: %v", v.ID, err)
 	}
 
-	// Create a Claude client for this variant's worktree
-	variantClaudeClient := claude.NewClient(claude.Config{
-		SkipPermissions: o.config.SkipPermissions,
-		WorkingDir:      v.WorktreePath,
-		Prompt:          o.buildVariantPrompt(v),
-		Debug:           o.config.Debug,
-	})
+	// Create the agent for this variant using its assigned agent type
+	agentName := v.Agent
+	if agentName == "" {
+		agentName = "claude-code" // Default to Claude Code
+	}
+
+	variantAgentConfig := agents.AgentConfig{
+		AutoApprove: o.config.SkipPermissions,
+	}
+	variantAgent, err := agents.Get(agentName, variantAgentConfig)
+	if err != nil {
+		return fmt.Errorf("failed to get agent %q for variant %d: %w", agentName, v.ID, err)
+	}
+
+	// Build the prompt for this variant
+	variantPrompt := o.buildVariantPrompt(v)
 
 	// Create a rune client for this variant's worktree
 	// The tasks file path needs to be adjusted for the worktree
@@ -1163,7 +1172,7 @@ func (o *Orbit) runVariant(ctx context.Context, v *variants.Variant) error {
 		log.Printf("Variant %d: running phase %s (%d tasks)", v.ID, nextPhase.PhaseName, len(nextPhase.Tasks))
 
 		// Run the phase with retry
-		phaseResult, err := o.runVariantPhaseWithRetry(ctx, v, variantClaudeClient)
+		phaseResult, err := o.runVariantPhaseWithRetry(ctx, v, variantAgent, variantPrompt)
 		if err != nil {
 			variantErr := fmt.Errorf("phase %s: %w", nextPhase.PhaseName, err)
 			if updateErr := o.variantManager.UpdateStatus(v.ID, variants.StatusFailed, variantErr); updateErr != nil {
@@ -1220,7 +1229,7 @@ func (o *Orbit) buildVariantPrompt(v *variants.Variant) string {
 }
 
 // runVariantPhaseWithRetry executes a single phase with retry logic.
-func (o *Orbit) runVariantPhaseWithRetry(ctx context.Context, v *variants.Variant, claudeClient *claude.Client) (*agents.RunResult, error) {
+func (o *Orbit) runVariantPhaseWithRetry(ctx context.Context, v *variants.Variant, agent agents.Agent, prompt string) (*agents.RunResult, error) {
 	var lastErr error
 	var lastResult *agents.RunResult
 
@@ -1231,16 +1240,22 @@ func (o *Orbit) runVariantPhaseWithRetry(ctx context.Context, v *variants.Varian
 		default:
 		}
 
-		result, err := claudeClient.RunPhase(uuid.NewString(), false)
-		if err == nil && !result.IsError {
+		// Execute the agent with the variant's prompt and working directory
+		opts := agents.RunOptions{
+			Prompt:    prompt,
+			SessionID: uuid.NewString(),
+			WorkDir:   v.WorktreePath,
+		}
+		result, err := agent.Run(ctx, opts)
+		if err == nil && result != nil && !result.IsError {
 			return result, nil
 		}
 
 		lastResult = result
 		if err != nil {
 			lastErr = err
-		} else if result.IsError {
-			lastErr = fmt.Errorf("claude reported error")
+		} else if result != nil && result.IsError {
+			lastErr = fmt.Errorf("agent reported error")
 		}
 
 		// Classify the error

@@ -171,5 +171,5 @@ func TestParseRetryAfter(t *testing.T) {
 }
 
 func TestClassifier_ImplementsInterface(t *testing.T) {
-	var _ agents.ErrorClassifier = NewClassifier()
+	var _ = NewClassifier()
 }

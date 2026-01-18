@@ -4,6 +4,7 @@ package kiro
 import (
 	"bytes"
 	"context"
+	"os"
 	"os/exec"
 	"time"
 
@@ -185,7 +186,7 @@ func (a *Agent) execute(ctx context.Context, opts agents.RunOptions, resume bool
 
 // appendEnv appends environment variables to the current environment.
 func appendEnv(env map[string]string) []string {
-	result := make([]string, 0, len(env))
+	result := os.Environ() // Start with existing environment
 	for k, v := range env {
 		result = append(result, k+"="+v)
 	}
