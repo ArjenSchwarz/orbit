@@ -36,9 +36,17 @@ const (
 // claudeRunner is an interface for running Claude sessions.
 // This allows for mocking in tests.
 type claudeRunner interface {
-	RunPhase(sessionID string, resume bool) (*claude.SessionResult, error)
-	RunCustomPrompt(prompt string) (*claude.SessionResult, error)
-	RunCustomPromptWithSession(prompt, sessionID string, resume bool) (*claude.SessionResult, error)
+	RunPhase(sessionID string, resume bool) (*agents.RunResult, error)
+	RunCustomPrompt(prompt string) (*agents.RunResult, error)
+	RunCustomPromptWithSession(prompt, sessionID string, resume bool) (*agents.RunResult, error)
+}
+
+// getCostUSD extracts the cost in USD from a RunResult, returning 0 if cost is nil.
+func getCostUSD(result *agents.RunResult) float64 {
+	if result == nil || result.Cost == nil {
+		return 0
+	}
+	return result.Cost.CostUSD
 }
 
 // Config holds the orchestrator configuration.
@@ -636,12 +644,25 @@ func (o *Orbit) runPhase(phase int) error {
 		}
 	}
 
+	// Export session for agents that require explicit export (e.g., Kiro) [Decision 8]
+	if exporter, ok := o.agent.(agents.SessionExporter); ok {
+		exportFilename := o.generateSessionExportFilename(phase)
+		o.debug.Log("Exporting session to %s", exportFilename)
+		if err := exporter.ExportSession(o.shutdownCtx, exportFilename); err != nil {
+			// Handle export failures gracefully - log warning but don't fail orchestration
+			log.Printf("Warning: failed to export session: %v", err)
+			o.debug.Log("Session export failed: %v", err)
+		} else {
+			o.debug.Log("Session exported successfully to %s", exportFilename)
+		}
+	}
+
 	o.debug.Log("Phase %d completed successfully: cost=$%.4f duration=%s turns=%d",
-		phase, result.Cost, result.Duration, result.NumTurns)
+		phase, getCostUSD(result), result.Duration, result.NumTurns)
 
 	if o.config.Verbose {
 		log.Printf("Phase %d: cost=$%.4f, duration=%s, turns=%d",
-			phase, result.Cost, result.Duration, result.NumTurns)
+			phase, getCostUSD(result), result.Duration, result.NumTurns)
 	}
 
 	return nil
@@ -738,11 +759,11 @@ func (o *Orbit) runPostCommand() error {
 	}
 
 	o.debug.Log("Post-completion completed successfully: cost=$%.4f duration=%s turns=%d",
-		result.Cost, result.Duration, result.NumTurns)
+		getCostUSD(result), result.Duration, result.NumTurns)
 
 	if o.config.Verbose {
 		log.Printf("Post-completion: cost=$%.4f, duration=%s, turns=%d",
-			result.Cost, result.Duration, result.NumTurns)
+			getCostUSD(result), result.Duration, result.NumTurns)
 	}
 
 	return nil
@@ -835,7 +856,7 @@ func (o *Orbit) fail(err error) error {
 // isSessionInvalidError checks if the result contains a session-related error.
 // This is used to detect when a session resume has failed and a fresh session
 // should be started instead.
-func isSessionInvalidError(result *claude.SessionResult) bool {
+func isSessionInvalidError(result *agents.RunResult) bool {
 	if result == nil {
 		return false
 	}
@@ -857,6 +878,16 @@ func isSessionInvalidError(result *claude.SessionResult) bool {
 	}
 
 	return false
+}
+
+// generateSessionExportFilename creates a filename for session export.
+// The filename is placed in the log directory with the pattern: phase-N-agent-session.json
+func (o *Orbit) generateSessionExportFilename(phase int) string {
+	if o.logManager == nil {
+		// Fallback if no log manager
+		return fmt.Sprintf("phase-%d-%s-session.json", phase, o.agent.Name())
+	}
+	return filepath.Join(o.logManager.SessionDir(), fmt.Sprintf("phase-%d-run-%d-%s-session.json", phase, o.currentPhaseRunCount, o.agent.Name()))
 }
 
 // registerRun creates a new registry entry for this orchestration run.
@@ -1143,7 +1174,7 @@ func (o *Orbit) runVariant(ctx context.Context, v *variants.Variant) error {
 
 		// Accumulate metrics
 		if phaseResult != nil {
-			totalCost += phaseResult.Cost
+			totalCost += getCostUSD(phaseResult)
 			totalTurns += phaseResult.NumTurns
 		}
 	}
@@ -1189,9 +1220,9 @@ func (o *Orbit) buildVariantPrompt(v *variants.Variant) string {
 }
 
 // runVariantPhaseWithRetry executes a single phase with retry logic.
-func (o *Orbit) runVariantPhaseWithRetry(ctx context.Context, v *variants.Variant, claudeClient *claude.Client) (*claude.SessionResult, error) {
+func (o *Orbit) runVariantPhaseWithRetry(ctx context.Context, v *variants.Variant, claudeClient *claude.Client) (*agents.RunResult, error) {
 	var lastErr error
-	var lastResult *claude.SessionResult
+	var lastResult *agents.RunResult
 
 	for attempt := 0; attempt < maxRetries; attempt++ {
 		select {

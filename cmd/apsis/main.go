@@ -16,7 +16,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/arjenschwarz/orbit/internal/claude"
+	"github.com/arjenschwarz/orbit/internal/agents/claudecode"
 	"github.com/arjenschwarz/orbit/internal/transcript"
 )
 
@@ -234,7 +234,7 @@ func resolveInput(arg string, projectPath string) (io.ReadCloser, string, error)
 	}
 
 	// Try Claude location first
-	claudeProjectPath := claude.BuildProjectPath(projectPath)
+	claudeProjectPath := claudecode.BuildProjectPath(projectPath)
 	claudeSessionFile := filepath.Join(homeDir, ".claude", "projects", claudeProjectPath, arg+".jsonl")
 	if f, err := os.Open(claudeSessionFile); err == nil {
 		return f, arg, nil
@@ -489,7 +489,7 @@ func listCodexSessions(homeDir string) ([]SessionInfo, error) {
 
 // listClaudeSessions returns all Claude sessions for a project.
 func listClaudeSessions(projectPath string) ([]SessionInfo, error) {
-	claudeProjectPath := claude.BuildProjectPath(projectPath)
+	claudeProjectPath := claudecode.BuildProjectPath(projectPath)
 	homeDir, err := os.UserHomeDir()
 	if err != nil {
 		return nil, fmt.Errorf("failed to get home directory: %w", err)

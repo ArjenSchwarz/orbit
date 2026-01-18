@@ -8,6 +8,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/arjenschwarz/orbit/internal/agents"
@@ -66,6 +67,16 @@ func (a *Agent) DefaultSessionDir() string {
 		return ""
 	}
 	return filepath.Join(home, ".claude", "projects")
+}
+
+// BuildProjectPath converts a project path to Claude's projects directory format.
+// Example: /Users/foo/project -> -Users-foo-project
+// The leading dash is preserved to match Claude's directory structure.
+func BuildProjectPath(projectPath string) string {
+	// Replace path separators with dashes (leading separator becomes leading dash)
+	p := strings.ReplaceAll(projectPath, "/", "-")
+	p = strings.ReplaceAll(p, "\\", "-")
+	return p
 }
 
 // DiscoverSessions lists sessions for a given project directory.
@@ -210,8 +221,15 @@ func (a *Agent) execute(ctx context.Context, opts agents.RunOptions, resume bool
 		if jsonErr := json.Unmarshal(stdout.Bytes(), &parsed); jsonErr == nil {
 			result.SessionID = parsed.SessionID
 			result.Output = parsed.Result
+			result.NumTurns = parsed.NumTurns
+			result.IsError = parsed.IsError
+			result.Errors = parsed.Errors
 			result.Cost = &agents.CostMetrics{
 				CostUSD: parsed.TotalCostUSD,
+			}
+			// Use duration from API response if available
+			if parsed.DurationMS > 0 {
+				result.Duration = time.Duration(parsed.DurationMS) * time.Millisecond
 			}
 
 			if parsed.IsError {

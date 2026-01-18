@@ -8,7 +8,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/arjenschwarz/orbit/internal/claude"
+	"github.com/arjenschwarz/orbit/internal/agents"
 	orberrors "github.com/arjenschwarz/orbit/internal/errors"
 	"github.com/arjenschwarz/orbit/internal/logs"
 	"github.com/arjenschwarz/orbit/internal/registry"
@@ -16,26 +16,26 @@ import (
 
 // mockClaudeClient implements claudeRunner for testing.
 type mockClaudeClient struct {
-	runPhaseFunc                   func(sessionID string, resume bool) (*claude.SessionResult, error)
-	runCustomPromptFunc            func(prompt string) (*claude.SessionResult, error)
-	runCustomPromptWithSessionFunc func(prompt, sessionID string, resume bool) (*claude.SessionResult, error)
+	runPhaseFunc                   func(sessionID string, resume bool) (*agents.RunResult, error)
+	runCustomPromptFunc            func(prompt string) (*agents.RunResult, error)
+	runCustomPromptWithSessionFunc func(prompt, sessionID string, resume bool) (*agents.RunResult, error)
 }
 
-func (m *mockClaudeClient) RunPhase(sessionID string, resume bool) (*claude.SessionResult, error) {
+func (m *mockClaudeClient) RunPhase(sessionID string, resume bool) (*agents.RunResult, error) {
 	if m.runPhaseFunc != nil {
 		return m.runPhaseFunc(sessionID, resume)
 	}
-	return &claude.SessionResult{}, nil
+	return &agents.RunResult{}, nil
 }
 
-func (m *mockClaudeClient) RunCustomPrompt(prompt string) (*claude.SessionResult, error) {
+func (m *mockClaudeClient) RunCustomPrompt(prompt string) (*agents.RunResult, error) {
 	if m.runCustomPromptFunc != nil {
 		return m.runCustomPromptFunc(prompt)
 	}
-	return &claude.SessionResult{}, nil
+	return &agents.RunResult{}, nil
 }
 
-func (m *mockClaudeClient) RunCustomPromptWithSession(prompt, sessionID string, resume bool) (*claude.SessionResult, error) {
+func (m *mockClaudeClient) RunCustomPromptWithSession(prompt, sessionID string, resume bool) (*agents.RunResult, error) {
 	if m.runCustomPromptWithSessionFunc != nil {
 		return m.runCustomPromptWithSessionFunc(prompt, sessionID, resume)
 	}
@@ -43,7 +43,7 @@ func (m *mockClaudeClient) RunCustomPromptWithSession(prompt, sessionID string, 
 	if m.runCustomPromptFunc != nil {
 		return m.runCustomPromptFunc(prompt)
 	}
-	return &claude.SessionResult{}, nil
+	return &agents.RunResult{}, nil
 }
 
 func TestConfig_Struct(t *testing.T) {
@@ -138,11 +138,11 @@ func TestComplete_PostCommandSkippedWhenEmpty(t *testing.T) {
 func TestRunPostCommandWithRetry_Success(t *testing.T) {
 	callCount := 0
 	mock := &mockClaudeClient{
-		runCustomPromptFunc: func(prompt string) (*claude.SessionResult, error) {
+		runCustomPromptFunc: func(prompt string) (*agents.RunResult, error) {
 			callCount++
-			return &claude.SessionResult{
+			return &agents.RunResult{
 				SessionID: "test-session",
-				Cost:      0.01,
+				Cost:      &agents.CostMetrics{CostUSD: 0.01},
 				Duration:  time.Second,
 				NumTurns:  5,
 				Output:    "Success",
@@ -171,9 +171,9 @@ func TestRunPostCommandWithRetry_Success(t *testing.T) {
 func TestRunPostCommandWithRetry_NonRetryableError(t *testing.T) {
 	callCount := 0
 	mock := &mockClaudeClient{
-		runCustomPromptFunc: func(prompt string) (*claude.SessionResult, error) {
+		runCustomPromptFunc: func(prompt string) (*agents.RunResult, error) {
 			callCount++
-			return &claude.SessionResult{
+			return &agents.RunResult{
 				Stderr:  "unknown error occurred",
 				IsError: true,
 			}, errors.New("exit status 1")
@@ -203,17 +203,17 @@ func TestRunPostCommandWithRetry_RetryableError_EventualSuccess(t *testing.T) {
 
 	callCount := 0
 	mock := &mockClaudeClient{
-		runCustomPromptFunc: func(prompt string) (*claude.SessionResult, error) {
+		runCustomPromptFunc: func(prompt string) (*agents.RunResult, error) {
 			callCount++
 			if callCount < 3 {
 				// Simulate connection error on first two attempts
-				return &claude.SessionResult{
+				return &agents.RunResult{
 					Stderr:  "connection timeout",
 					IsError: true,
 				}, errors.New("connection timeout")
 			}
 			// Success on third attempt
-			return &claude.SessionResult{
+			return &agents.RunResult{
 				SessionID: "test-session",
 				Output:    "Success",
 				IsError:   false,
@@ -243,10 +243,10 @@ func TestRunPostCommandWithRetry_MaxRetriesExceeded(t *testing.T) {
 
 	callCount := 0
 	mock := &mockClaudeClient{
-		runCustomPromptFunc: func(prompt string) (*claude.SessionResult, error) {
+		runCustomPromptFunc: func(prompt string) (*agents.RunResult, error) {
 			callCount++
 			// Always return a connection error
-			return &claude.SessionResult{
+			return &agents.RunResult{
 				Stderr:  "connection refused",
 				IsError: true,
 			}, errors.New("connection refused")
@@ -282,16 +282,16 @@ func TestRunPhaseWithRetry_RateLimitError(t *testing.T) {
 
 	callCount := 0
 	mock := &mockClaudeClient{
-		runPhaseFunc: func(sessionID string, resume bool) (*claude.SessionResult, error) {
+		runPhaseFunc: func(sessionID string, resume bool) (*agents.RunResult, error) {
 			callCount++
 			if callCount == 1 {
 				// Rate limit error on first attempt
-				return &claude.SessionResult{
+				return &agents.RunResult{
 					Stderr:  "rate limit exceeded",
 					IsError: true,
 				}, errors.New("rate limit")
 			}
-			return &claude.SessionResult{
+			return &agents.RunResult{
 				SessionID: "test-session",
 				Output:    "Success",
 				IsError:   false,
@@ -319,16 +319,16 @@ func TestRunPhaseWithRetry_OverloadedError(t *testing.T) {
 
 	callCount := 0
 	mock := &mockClaudeClient{
-		runPhaseFunc: func(sessionID string, resume bool) (*claude.SessionResult, error) {
+		runPhaseFunc: func(sessionID string, resume bool) (*agents.RunResult, error) {
 			callCount++
 			if callCount == 1 {
 				// API overloaded on first attempt
-				return &claude.SessionResult{
+				return &agents.RunResult{
 					Stderr:  "503 service unavailable",
 					IsError: true,
 				}, errors.New("overloaded")
 			}
-			return &claude.SessionResult{
+			return &agents.RunResult{
 				SessionID: "test-session",
 				Output:    "Success",
 				IsError:   false,
@@ -353,81 +353,81 @@ func TestRunPhaseWithRetry_OverloadedError(t *testing.T) {
 
 func TestIsSessionInvalidError(t *testing.T) {
 	tests := map[string]struct {
-		result *claude.SessionResult
+		result *agents.RunResult
 		want   bool
 	}{
 		"session not found in stderr": {
-			result: &claude.SessionResult{
+			result: &agents.RunResult{
 				Stderr: "error: session not found",
 				Output: "",
 			},
 			want: true,
 		},
 		"session not found in output": {
-			result: &claude.SessionResult{
+			result: &agents.RunResult{
 				Stderr: "",
 				Output: "Session not found for the given ID",
 			},
 			want: true,
 		},
 		"invalid session in stderr": {
-			result: &claude.SessionResult{
+			result: &agents.RunResult{
 				Stderr: "invalid session ID provided",
 				Output: "",
 			},
 			want: true,
 		},
 		"invalid session in output": {
-			result: &claude.SessionResult{
+			result: &agents.RunResult{
 				Stderr: "",
 				Output: "error: invalid session - cannot be resumed",
 			},
 			want: true,
 		},
 		"session expired in stderr": {
-			result: &claude.SessionResult{
+			result: &agents.RunResult{
 				Stderr: "session expired",
 				Output: "",
 			},
 			want: true,
 		},
 		"session expired in output": {
-			result: &claude.SessionResult{
+			result: &agents.RunResult{
 				Stderr: "",
 				Output: "error: session expired, please start a new one",
 			},
 			want: true,
 		},
 		"no such session": {
-			result: &claude.SessionResult{
+			result: &agents.RunResult{
 				Stderr: "no such session exists",
 				Output: "",
 			},
 			want: true,
 		},
 		"case insensitive matching": {
-			result: &claude.SessionResult{
+			result: &agents.RunResult{
 				Stderr: "SESSION NOT FOUND",
 				Output: "",
 			},
 			want: true,
 		},
 		"non-session error returns false": {
-			result: &claude.SessionResult{
+			result: &agents.RunResult{
 				Stderr: "rate limit exceeded",
 				Output: "",
 			},
 			want: false,
 		},
 		"connection error returns false": {
-			result: &claude.SessionResult{
+			result: &agents.RunResult{
 				Stderr: "connection timeout",
 				Output: "",
 			},
 			want: false,
 		},
 		"empty result returns false": {
-			result: &claude.SessionResult{
+			result: &agents.RunResult{
 				Stderr: "",
 				Output: "",
 			},
@@ -438,7 +438,7 @@ func TestIsSessionInvalidError(t *testing.T) {
 			want:   false,
 		},
 		"generic error returns false": {
-			result: &claude.SessionResult{
+			result: &agents.RunResult{
 				Stderr: "unknown error occurred",
 				Output: "Something went wrong",
 			},
@@ -503,10 +503,10 @@ func TestRunPhase_SessionContinuation_NewSession(t *testing.T) {
 	var capturedResume bool
 
 	mock := &mockClaudeClient{
-		runPhaseFunc: func(sessionID string, resume bool) (*claude.SessionResult, error) {
+		runPhaseFunc: func(sessionID string, resume bool) (*agents.RunResult, error) {
 			capturedSessionID = sessionID
 			capturedResume = resume
-			return &claude.SessionResult{
+			return &agents.RunResult{
 				SessionID: sessionID, // Return same session ID
 				Output:    "Success",
 				IsError:   false,
@@ -551,12 +551,12 @@ func TestRunPhase_SessionContinuation_WithLogManager(t *testing.T) {
 	}
 
 	mock := &mockClaudeClient{
-		runPhaseFunc: func(sessionID string, resume bool) (*claude.SessionResult, error) {
+		runPhaseFunc: func(sessionID string, resume bool) (*agents.RunResult, error) {
 			calls = append(calls, struct {
 				sessionID string
 				resume    bool
 			}{sessionID, resume})
-			return &claude.SessionResult{
+			return &agents.RunResult{
 				SessionID: sessionID,
 				Output:    "Success",
 				IsError:   false,
@@ -606,7 +606,7 @@ func TestRunPhase_ResumeFallback(t *testing.T) {
 	}
 
 	mock := &mockClaudeClient{
-		runPhaseFunc: func(sessionID string, resume bool) (*claude.SessionResult, error) {
+		runPhaseFunc: func(sessionID string, resume bool) (*agents.RunResult, error) {
 			calls = append(calls, struct {
 				sessionID string
 				resume    bool
@@ -614,14 +614,14 @@ func TestRunPhase_ResumeFallback(t *testing.T) {
 
 			// First call with resume=true should fail with session not found
 			if resume {
-				return &claude.SessionResult{
+				return &agents.RunResult{
 					Stderr:  "session not found",
 					IsError: true,
 				}, errors.New("session not found")
 			}
 
 			// New session should succeed
-			return &claude.SessionResult{
+			return &agents.RunResult{
 				SessionID: sessionID,
 				Output:    "Success",
 				IsError:   false,

@@ -192,27 +192,27 @@ references:
 
 ## Phase 6: Integration and Cleanup
 
-- [ ] 14. Wire Kiro session export in orchestrator
+- [x] 14. Wire Kiro session export in orchestrator
   - Requirements: [4.5](requirements.md#4.5)
-  - [ ] 14.1. Add session export after phases for Kiro
+  - [x] 14.1. Add session export after phases for Kiro
     - Modify internal/orbit/orbit.go to check for SessionExporter interface and call ExportSession after each phase
     - Handle export failures gracefully (log warning, do not fail orchestration)
     - Per Decision 8: Export after each phase completes
     - Requirements: [4.5](requirements.md#4.5)
 
-- [ ] 15. Remove deprecated claude package
+- [x] 15. Remove deprecated claude package
   - Requirements: [2.1](requirements.md#2.1)
-  - [ ] 15.1. Remove internal/claude/ package
+  - [x] 15.1. Remove internal/claude/ package
     - Delete internal/claude/ directory after verifying all imports updated
     - Update any remaining imports across codebase
     - Per Decision 2: Breaking changes acceptable
     - Requirements: [2.1](requirements.md#2.1)
 
-- [ ] 16. Integration testing
+- [x] 16. Integration testing
   - Requirements: [6.1](requirements.md#6.1), [6.2](requirements.md#6.2), [6.3](requirements.md#6.3), [6.4](requirements.md#6.4), [10.1](requirements.md#10.1), [10.3](requirements.md#10.3)
-  - [ ] 16.1. Add integration test for agent selection
+  - [x] 16.1. Add integration test for agent selection
     - Create integration test verifying --agent flag and config file selection work correctly
     - Requirements: [6.1](requirements.md#6.1), [6.2](requirements.md#6.2), [6.3](requirements.md#6.3), [6.4](requirements.md#6.4)
-  - [ ] 16.2. Add integration test for variant agents
+  - [x] 16.2. Add integration test for variant agents
     - Create integration test verifying --variant-agents cycling behavior
     - Requirements: [10.1](requirements.md#10.1), [10.3](requirements.md#10.3)

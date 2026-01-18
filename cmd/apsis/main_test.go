@@ -9,7 +9,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/arjenschwarz/orbit/internal/claude"
+	"github.com/arjenschwarz/orbit/internal/agents/claudecode"
 )
 
 func TestIsFilePath(t *testing.T) {
@@ -99,9 +99,9 @@ func TestBuildClaudePath(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			result := claude.BuildProjectPath(tt.path)
+			result := claudecode.BuildProjectPath(tt.path)
 			if result != tt.expected {
-				t.Errorf("claude.BuildProjectPath(%q) = %q, want %q", tt.path, result, tt.expected)
+				t.Errorf("claudecode.BuildProjectPath(%q) = %q, want %q", tt.path, result, tt.expected)
 			}
 		})
 	}

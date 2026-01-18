@@ -66,6 +66,9 @@ type RunResult struct {
 	RawJSON    []byte
 	Error      error
 	ErrorClass ErrorClass
+	NumTurns   int      // Number of conversation turns
+	IsError    bool     // Whether the agent reported an error condition
+	Errors     []string // Error messages from agent output
 }
 
 // CostMetrics tracks usage costs in agent-specific units.

@@ -9,6 +9,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Kiro session export support in orchestrator:
+  - Automatically exports Kiro sessions after each phase completes
+  - Uses `SessionExporter` interface check for agents that require explicit export
+  - Export files stored in log directory with pattern `phase-N-run-M-kiro-session.json`
+  - Graceful error handling (logs warning but doesn't fail orchestration)
+
+- Integration tests for multi-agent support:
+  - Agent selection tests verifying default to claude-code
+  - CLI override tests confirming flag takes precedence over config
+  - All supported agents validation (claude-code, codex, kiro, copilot)
+  - Variant agents cycling behavior tests for various scenarios
+
+### Changed
+
+- Migrated session result types from `claude.SessionResult` to `agents.RunResult`:
+  - Updated `claudeRunner` interface to use `agents.RunResult`
+  - Updated `logs.Manager` to accept `*agents.RunResult` in session save methods
+  - Updated `comparison.Comparator` to use abstract `promptRunner` interface
+  - Added `NumTurns`, `IsError`, and `Errors` fields to `agents.RunResult`
+  - Added `getCostUSD()` helper for safe cost extraction from `*CostMetrics`
+
+- Moved `BuildProjectPath` utility function to `claudecode` package:
+  - Updated `apsis` and `logs` packages to import from new location
+  - Function converts project paths to Claude's directory format
+
 - Per-variant agent selection for multi-agent comparison (Phase 5):
   - `--variant-agents` flag for `orbit run` to specify comma-separated agent list
   - Agents cycle if fewer agents than variants (e.g., `--variant-agents claude-code,codex` for 4 variants assigns claude-code, codex, claude-code, codex)

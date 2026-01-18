@@ -7,6 +7,7 @@ import (
 	"os/exec"
 	"time"
 
+	"github.com/arjenschwarz/orbit/internal/agents"
 	"github.com/arjenschwarz/orbit/internal/debug"
 )
 
@@ -89,7 +90,7 @@ func (c *Client) buildRunPhaseArgs(sessionID string, resume bool) []string {
 // RunPhase executes a Claude session to run the next phase and commit.
 // - sessionID: UUID for this session (required)
 // - resume: if true, use --resume <id>; if false, use --session-id <id>
-func (c *Client) RunPhase(sessionID string, resume bool) (*SessionResult, error) {
+func (c *Client) RunPhase(sessionID string, resume bool) (*agents.RunResult, error) {
 	args := c.buildRunPhaseArgs(sessionID, resume)
 
 	// Debug: log command before execution
@@ -121,9 +122,11 @@ func (c *Client) RunPhase(sessionID string, resume bool) (*SessionResult, error)
 	}
 	c.debug.LogCmdResult(exitCode, stdout.String(), stderr.String(), duration)
 
-	result := &SessionResult{
-		RawJSON: stdout.Bytes(),
-		Stderr:  stderr.String(),
+	result := &agents.RunResult{
+		RawJSON:  stdout.Bytes(),
+		Stderr:   stderr.String(),
+		ExitCode: exitCode,
+		Duration: duration,
 	}
 
 	// Parse JSON output if available
@@ -133,14 +136,14 @@ func (c *Client) RunPhase(sessionID string, resume bool) (*SessionResult, error)
 		c.debug.LogJSON(jsonErr == nil, jsonErr)
 		if jsonErr == nil {
 			result.SessionID = parsed.SessionID
-			result.Cost = parsed.TotalCostUSD
+			result.Cost = &agents.CostMetrics{CostUSD: parsed.TotalCostUSD}
 			result.Duration = time.Duration(parsed.DurationMS) * time.Millisecond
 			result.NumTurns = parsed.NumTurns
 			result.Output = parsed.Result
 			result.IsError = parsed.IsError
 			result.Errors = parsed.Errors
 			c.debug.Log("Parsed result: session_id=%s cost=%.4f duration=%s turns=%d is_error=%v errors=%v",
-				result.SessionID, result.Cost, result.Duration, result.NumTurns, result.IsError, result.Errors)
+				result.SessionID, result.Cost.CostUSD, result.Duration, result.NumTurns, result.IsError, result.Errors)
 		}
 	} else {
 		c.debug.Log("No stdout to parse")
@@ -155,6 +158,7 @@ func (c *Client) RunPhase(sessionID string, resume bool) (*SessionResult, error)
 				result.Stderr = string(exitErr.Stderr)
 			}
 		}
+		result.Error = err
 		return result, err
 	}
 
@@ -164,14 +168,14 @@ func (c *Client) RunPhase(sessionID string, resume bool) (*SessionResult, error)
 
 // RunCustomPrompt executes a Claude session with a custom prompt.
 // This is a convenience wrapper that starts a new session without session tracking.
-func (c *Client) RunCustomPrompt(prompt string) (*SessionResult, error) {
+func (c *Client) RunCustomPrompt(prompt string) (*agents.RunResult, error) {
 	return c.RunCustomPromptWithSession(prompt, "", false)
 }
 
 // RunCustomPromptWithSession executes a Claude session with a custom prompt and optional session tracking.
 // - sessionID: UUID for this session (empty string to let Claude generate one)
 // - resume: if true, use --resume <id>; if false, use --session-id <id> (ignored if sessionID is empty)
-func (c *Client) RunCustomPromptWithSession(prompt, sessionID string, resume bool) (*SessionResult, error) {
+func (c *Client) RunCustomPromptWithSession(prompt, sessionID string, resume bool) (*agents.RunResult, error) {
 	var args []string
 
 	// Session handling: --resume for continuing, --session-id for new sessions
@@ -221,9 +225,11 @@ func (c *Client) RunCustomPromptWithSession(prompt, sessionID string, resume boo
 	}
 	c.debug.LogCmdResult(exitCode, stdout.String(), stderr.String(), duration)
 
-	result := &SessionResult{
-		RawJSON: stdout.Bytes(),
-		Stderr:  stderr.String(),
+	result := &agents.RunResult{
+		RawJSON:  stdout.Bytes(),
+		Stderr:   stderr.String(),
+		ExitCode: exitCode,
+		Duration: duration,
 	}
 
 	// Parse JSON output if available
@@ -233,14 +239,14 @@ func (c *Client) RunCustomPromptWithSession(prompt, sessionID string, resume boo
 		c.debug.LogJSON(jsonErr == nil, jsonErr)
 		if jsonErr == nil {
 			result.SessionID = parsed.SessionID
-			result.Cost = parsed.TotalCostUSD
+			result.Cost = &agents.CostMetrics{CostUSD: parsed.TotalCostUSD}
 			result.Duration = time.Duration(parsed.DurationMS) * time.Millisecond
 			result.NumTurns = parsed.NumTurns
 			result.Output = parsed.Result
 			result.IsError = parsed.IsError
 			result.Errors = parsed.Errors
 			c.debug.Log("Parsed result: session_id=%s cost=%.4f duration=%s turns=%d is_error=%v errors=%v",
-				result.SessionID, result.Cost, result.Duration, result.NumTurns, result.IsError, result.Errors)
+				result.SessionID, result.Cost.CostUSD, result.Duration, result.NumTurns, result.IsError, result.Errors)
 		}
 	} else {
 		c.debug.Log("No stdout to parse")
@@ -254,6 +260,7 @@ func (c *Client) RunCustomPromptWithSession(prompt, sessionID string, resume boo
 				result.Stderr = string(exitErr.Stderr)
 			}
 		}
+		result.Error = err
 		return result, err
 	}
 

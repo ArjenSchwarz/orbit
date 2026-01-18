@@ -8,21 +8,27 @@ import (
 	"log"
 	"strings"
 
-	"github.com/arjenschwarz/orbit/internal/claude"
+	"github.com/arjenschwarz/orbit/internal/agents"
 )
+
+// promptRunner is an interface for running custom prompts.
+// This abstracts the Claude client to allow testing and future agent flexibility.
+type promptRunner interface {
+	RunCustomPrompt(prompt string) (*agents.RunResult, error)
+}
 
 // Comparator generates comparisons between variants using Claude.
 type Comparator struct {
-	claudeClient *claude.Client
+	promptRunner promptRunner
 	customCmd    string // Empty for built-in Claude comparison
 	maxRetries   int
 }
 
 // NewComparator creates a new Comparator.
 // If customCmd is non-empty, it will be used instead of Claude for comparison.
-func NewComparator(claudeClient *claude.Client, customCmd string) *Comparator {
+func NewComparator(runner promptRunner, customCmd string) *Comparator {
 	return &Comparator{
-		claudeClient: claudeClient,
+		promptRunner: runner,
 		customCmd:    customCmd,
 		maxRetries:   3,
 	}
@@ -62,7 +68,7 @@ func (c *Comparator) Compare(ctx context.Context, specName string, variants []Va
 	prompt := originalPrompt
 
 	for attempt := 0; attempt < c.maxRetries; attempt++ {
-		response, err := c.claudeClient.RunCustomPrompt(prompt)
+		response, err := c.promptRunner.RunCustomPrompt(prompt)
 		if err != nil {
 			return nil, fmt.Errorf("claude execution failed: %w", err)
 		}

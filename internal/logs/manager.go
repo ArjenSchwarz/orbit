@@ -13,7 +13,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/arjenschwarz/orbit/internal/claude"
+	"github.com/arjenschwarz/orbit/internal/agents"
+	"github.com/arjenschwarz/orbit/internal/agents/claudecode"
 	"github.com/arjenschwarz/orbit/internal/transcript"
 	"github.com/google/uuid"
 )
@@ -306,15 +307,21 @@ func (m *Manager) postCompletionFileName() string {
 	return "post-completion-session"
 }
 
-// SaveSession records a completed Claude session.
-func (m *Manager) SaveSession(phase int, result *claude.SessionResult, startTime time.Time) error {
+// SaveSession records a completed agent session.
+func (m *Manager) SaveSession(phase int, result *agents.RunResult, startTime time.Time) error {
 	endTime := time.Now()
+
+	// Extract cost from CostMetrics
+	var costUSD float64
+	if result.Cost != nil {
+		costUSD = result.Cost.CostUSD
+	}
 
 	entry := SessionEntry{
 		Phase:      phase,
 		SessionID:  result.SessionID,
 		DurationMS: result.Duration.Milliseconds(),
-		CostUSD:    result.Cost,
+		CostUSD:    costUSD,
 		NumTurns:   result.NumTurns,
 		StartedAt:  startTime,
 		EndedAt:    endTime,
@@ -324,7 +331,7 @@ func (m *Manager) SaveSession(phase int, result *claude.SessionResult, startTime
 
 	m.summary.Sessions = append(m.summary.Sessions, entry)
 	m.summary.PhasesCompleted = phase
-	m.summary.TotalCostUSD += result.Cost
+	m.summary.TotalCostUSD += costUSD
 	m.summary.TotalDurationMS += result.Duration.Milliseconds()
 
 	// Write session JSON (result only)
@@ -369,16 +376,22 @@ func (m *Manager) Complete() error {
 }
 
 // SavePostCompletionSession saves the post-command session with distinct naming.
-func (m *Manager) SavePostCompletionSession(result *claude.SessionResult, startTime time.Time) error {
+func (m *Manager) SavePostCompletionSession(result *agents.RunResult, startTime time.Time) error {
 	endTime := time.Now()
 	baseName := m.postCompletionFileName()
+
+	// Extract cost from CostMetrics
+	var costUSD float64
+	if result.Cost != nil {
+		costUSD = result.Cost.CostUSD
+	}
 
 	// Add session entry to summary (Phase 0 indicates post-completion)
 	entry := SessionEntry{
 		Phase:      0, // Post-completion marker
 		SessionID:  result.SessionID,
 		DurationMS: result.Duration.Milliseconds(),
-		CostUSD:    result.Cost,
+		CostUSD:    costUSD,
 		NumTurns:   result.NumTurns,
 		StartedAt:  startTime,
 		EndedAt:    endTime,
@@ -386,7 +399,7 @@ func (m *Manager) SavePostCompletionSession(result *claude.SessionResult, startT
 		RunNumber:  m.summary.RunNumber,
 	}
 	m.summary.Sessions = append(m.summary.Sessions, entry)
-	m.summary.TotalCostUSD += result.Cost
+	m.summary.TotalCostUSD += costUSD
 	m.summary.TotalDurationMS += result.Duration.Milliseconds()
 
 	// Save JSON
@@ -420,7 +433,7 @@ func (m *Manager) copyPostCompletionTranscript(sessionID, baseName string) error
 		return fmt.Errorf("failed to get home directory: %w", err)
 	}
 
-	projectPath := claude.BuildProjectPath(m.workingDir)
+	projectPath := claudecode.BuildProjectPath(m.workingDir)
 	claudeProjectsDir := filepath.Join(homeDir, ".claude", "projects", projectPath)
 	srcPath := filepath.Join(claudeProjectsDir, sessionID+".jsonl")
 
@@ -483,7 +496,11 @@ func (m *Manager) generatePostCompletionMarkdownTranscript(srcPath, dstPath, ses
 }
 
 // formatPostCompletionTranscript creates a human-readable post-completion transcript.
-func formatPostCompletionTranscript(result *claude.SessionResult, start, end time.Time) string {
+func formatPostCompletionTranscript(result *agents.RunResult, start, end time.Time) string {
+	var costUSD float64
+	if result.Cost != nil {
+		costUSD = result.Cost.CostUSD
+	}
 	return fmt.Sprintf(`Orbit Post-Completion Session Log
 ========================================
 
@@ -507,7 +524,7 @@ Stderr:
 		start.Format(time.RFC3339),
 		end.Format(time.RFC3339),
 		result.Duration.String(),
-		result.Cost,
+		costUSD,
 		result.NumTurns,
 		result.IsError,
 		result.Output,
@@ -547,7 +564,11 @@ func (m *Manager) writeSummary() error {
 }
 
 // formatTranscript creates a human-readable session transcript.
-func formatTranscript(phase int, result *claude.SessionResult, start, end time.Time) string {
+func formatTranscript(phase int, result *agents.RunResult, start, end time.Time) string {
+	var costUSD float64
+	if result.Cost != nil {
+		costUSD = result.Cost.CostUSD
+	}
 	return fmt.Sprintf(`Orbit Session Log - Phase %d
 ========================================
 
@@ -572,7 +593,7 @@ Stderr:
 		start.Format(time.RFC3339),
 		end.Format(time.RFC3339),
 		result.Duration.String(),
-		result.Cost,
+		costUSD,
 		result.NumTurns,
 		result.IsError,
 		result.Output,
@@ -591,7 +612,7 @@ func (m *Manager) copySessionTranscript(phase int, sessionID string) error {
 		return fmt.Errorf("failed to get home directory: %w", err)
 	}
 
-	projectPath := claude.BuildProjectPath(m.workingDir)
+	projectPath := claudecode.BuildProjectPath(m.workingDir)
 	claudeProjectsDir := filepath.Join(homeDir, ".claude", "projects", projectPath)
 	srcPath := filepath.Join(claudeProjectsDir, sessionID+".jsonl")
 
