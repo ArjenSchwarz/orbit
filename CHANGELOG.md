@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- Updated README.md and CLAUDE.md documentation to reflect multi-agent support:
+  - Project description now mentions support for multiple AI coding agents
+  - Added all 4 supported agents (Claude Code, Codex, Kiro, Copilot) to prerequisites
+  - Added new CLI flags section for agent selection (`--agent`) and multi-variant comparison
+  - Added per-agent configuration example in `.orbit.yaml`
+  - Added Multi-Variant Comparison section with usage examples, guidance file format, subcommands, and workflow
+  - Updated architecture diagram with new packages (agents, variants, comparison, report)
+  - Updated configuration and error handling sections for agent-based architecture
+
 ### Fixed
 
 - Kiro agent environment variable bug: `appendEnv()` now includes `os.Environ()` as the base before appending custom environment variables, preventing agent execution failures due to missing PATH and system environment

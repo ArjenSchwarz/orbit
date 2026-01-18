@@ -1,15 +1,17 @@
 # Orbit
 
-Orbit is a CLI tool that orchestrates Claude Code sessions to implement spec phases sequentially. It handles session lifecycle, error recovery, and log management.
+Orbit is a CLI tool that orchestrates AI coding agents to implement spec phases sequentially. It handles session lifecycle, error recovery, and log management.
 
 ## Overview
 
-Orbit solves the problem of running Claude Code through multiple implementation phases without manual intervention. It:
+Orbit solves the problem of running AI coding agents through multiple implementation phases without manual intervention. It:
 
+- Supports multiple AI agents: Claude Code, OpenAI Codex, AWS Kiro, and GitHub Copilot
 - Automatically detects tasks from your git branch
-- Runs Claude Code in non-interactive mode for each phase
+- Runs agents in non-interactive mode for each phase
 - Handles rate limits and connection errors with appropriate retries
 - Saves session logs for debugging and auditing
+- Supports multi-variant comparison runs to evaluate different implementations
 
 ## Installation
 
@@ -19,7 +21,11 @@ go install github.com/arjenschwarz/orbit/cmd/orbit@latest
 
 ## Prerequisites
 
-- [Claude Code CLI](https://claude.ai/code) installed and authenticated
+- At least one AI coding agent installed and authenticated:
+  - [Claude Code CLI](https://docs.anthropic.com/en/docs/agents-and-tools/claude-code/overview) (default)
+  - [OpenAI Codex](https://github.com/openai/codex)
+  - [AWS Kiro](https://kiro.dev/docs/cli)
+  - [GitHub Copilot CLI](https://docs.github.com/en/copilot/using-github-copilot/using-github-copilot-in-the-command-line)
 - [rune](https://github.com/arjenschwarz/rune) CLI installed
 - Git repository with a spec containing a tasks file
 
@@ -49,19 +55,40 @@ orbit --no-post-command
 
 ## Options
 
+### Core Options
+
 | Flag | Default | Description |
 |------|---------|-------------|
 | `--tasks-file` | auto-detect | Path to rune tasks file |
 | `--log-dir` | `.orbit` next to tasks file | Base directory for session logs |
 | `--skip-permissions` | `true` | Run Claude with `--dangerously-skip-permissions` |
 | `--verbose` | `false` | Enable verbose output |
+| `--debug` | `false` | Enable debug logging (detailed CLI execution info) |
 | `--dry-run` | `false` | Show what would be executed without running |
-| `--command` | see below | Custom prompt for Claude phases |
+| `--command` | see below | Custom prompt for agent phases |
 | `--post-command` | see below | Command to run after all tasks complete |
 | `--no-post-command` | `false` | Skip the post-completion command |
 | `--date-subdirs` | `false` | Use date-based subdirectories for logs |
-| `--continue-session` | `true` | Resume unfinished Claude sessions on restart |
+| `--no-continue-session` | `false` | Start fresh sessions instead of resuming |
 | `--version` | - | Show version and exit |
+
+### Agent Selection
+
+| Flag | Default | Description |
+|------|---------|-------------|
+| `--agent` | `claude-code` | Agent to use: `claude-code`, `codex`, `kiro`, `copilot` |
+
+### Multi-Variant Comparison
+
+| Flag | Default | Description |
+|------|---------|-------------|
+| `--variants` | `0` | Number of implementation variants to run (0 = single-run mode) |
+| `--variant-agents` | - | Comma-separated agent list for variants (cycles if fewer than variants) |
+| `--parallel` | `false` | Run variants in parallel |
+| `--max-parallel` | `3` | Maximum concurrent variants |
+| `--branch-prefix` | `orbit-impl` | Branch naming prefix for variants |
+| `--guidance-file` | - | YAML file with per-variant guidance |
+| `--compare-command` | - | Custom comparison command |
 
 ### Default Commands
 
@@ -93,6 +120,24 @@ command: "Run /next-task --phase and when complete run /commit"
 post-command: "Run tests and verify everything works"
 date_subdirs: false      # Use flat .orbit/ directory (default)
 continue_session: true   # Resume unfinished sessions (default)
+agent: claude-code       # Default agent
+
+# Per-agent configuration
+agents:
+  claude-code:
+    cli-path: claude                    # Override CLI path
+    auto-approve: false                 # Tool approval behavior
+    timeout: 30m                        # Execution timeout
+  codex:
+    cli-path: codex
+    auto-approve: true
+    timeout: 1h
+  kiro:
+    cli-path: kiro-cli
+    timeout: 1h
+  copilot:
+    cli-path: copilot
+    auto-approve: false
 ```
 
 To disable the post-completion command in config, set it to an empty string:
@@ -115,6 +160,7 @@ date_subdirs: true
 | `ORBIT_POST_COMMAND` | Override the post-completion command (empty string disables) |
 | `ORBIT_DATE_SUBDIRS` | Use date-based subdirectories (`true`/`false`) |
 | `ORBIT_CONTINUE_SESSION` | Enable session continuation (`true`/`false`) |
+| `ORBIT_AGENT` | Default agent to use |
 
 Setting an environment variable to an empty string explicitly overrides config file values:
 
@@ -139,13 +185,14 @@ Configuration is resolved in this order (highest priority first):
 ## How It Works
 
 1. **Check Tasks**: Orbit queries `rune list --filter pending` to find remaining tasks
-2. **Run Phase**: Executes `claude -p "/next-task --phase then /commit"` for the next phase
-3. **Handle Errors**: Classifies errors and retries appropriately:
+2. **Run Phase**: Executes the configured agent with the phase prompt (e.g., `/next-task --phase then /commit`)
+3. **Handle Errors**: Classifies errors per-agent and retries appropriately:
    - Connection errors: Exponential backoff (1s, 2s, 4s, 8s, 16s)
    - Rate limits: Wait for retry-after duration or 60s default
    - API overload: Wait 30s and retry
+   - Session invalid: Retry with fresh session
    - Other errors: Stop and preserve state
-4. **Save Logs**: Stores session JSON and transcripts in timestamped directories
+4. **Save Logs**: Stores session output and transcripts
 5. **Repeat**: Loops until all tasks are complete
 
 ## Log Structure
@@ -181,21 +228,22 @@ specs/my-feature/.orbit/
 
 ## Session Management
 
-Orbit tracks Claude session IDs to enable crash recovery and session continuation.
+Orbit tracks session IDs to enable crash recovery and session continuation across all supported agents.
 
 ### How It Works
 
 1. **Session ID Generation**: Before each phase, Orbit generates a UUID session ID
-2. **Persistence**: The session ID is saved to `summary.json` before invoking Claude
-3. **Resume on Restart**: If Orbit is interrupted mid-phase, it detects the unfinished phase and resumes the same Claude session using `--resume`
-4. **Fallback**: If session resume fails (e.g., session expired), Orbit automatically starts a fresh session
+2. **Persistence**: The session ID is saved to `summary.json` before invoking the agent
+3. **Resume on Restart**: If Orbit is interrupted mid-phase, it detects the unfinished phase and resumes using agent-specific resume mechanisms
+4. **Session Export**: Some agents (like Kiro) require explicit session export, which Orbit handles automatically
+5. **Fallback**: If session resume fails (e.g., session expired), Orbit automatically starts a fresh session
 
 ### Disabling Session Continuation
 
 To always start fresh sessions instead of resuming:
 
 ```bash
-orbit --continue-session=false
+orbit run --no-continue-session
 ```
 
 Or in `.orbit.yaml`:
@@ -209,10 +257,85 @@ continue_session: false
 Orbit is inherently resumable. Since task state is tracked in the rune tasks file, you can:
 
 - Stop Orbit at any time (Ctrl+C)
-- Complete tasks manually in Claude interactive mode
+- Complete tasks manually in interactive mode
 - Run Orbit again to continue from where you left off
 
-With session continuation enabled (default), Orbit will also resume the Claude session context, allowing Claude to remember what it was working on.
+With session continuation enabled (default), Orbit will also resume the agent session context, allowing it to remember what it was working on.
+
+## Multi-Variant Comparison
+
+Orbit supports running multiple implementation variants in parallel using different agents or guidance, then comparing the results to choose the best implementation.
+
+### Running Variants
+
+```bash
+# Run 3 variants with the default agent
+orbit run --variants 3
+
+# Run 2 variants in parallel
+orbit run --variants 2 --parallel
+
+# Compare different agents
+orbit run --variants 3 --variant-agents claude-code,codex,kiro
+
+# Use per-variant guidance
+orbit run --variants 2 --guidance-file guidance.yaml
+```
+
+### Guidance File Format
+
+Create a YAML file with per-variant instructions:
+
+```yaml
+global_guidance: "Focus on performance and code readability"
+
+variants:
+  - id: 1
+    guidance: "Use a functional programming approach"
+  - id: 2
+    guidance: "Use an object-oriented approach with design patterns"
+```
+
+### Variant Subcommands
+
+Once variants are running or complete, use these subcommands to manage them:
+
+```bash
+# Check variant status
+orbit status my-feature
+
+# Regenerate comparison report
+orbit compare my-feature
+
+# Adopt a variant and clean up others
+orbit finalize my-feature --variant 1
+
+# Clean up all variants
+orbit cleanup my-feature
+
+# Clean up but keep a specific variant
+orbit cleanup my-feature --keep 2
+```
+
+### Variant Workflow
+
+1. **Run variants**: `orbit run --variants N` creates N worktrees and runs the implementation in each
+2. **Monitor progress**: `orbit status` shows the status of each variant
+3. **Compare results**: After completion, a comparison report is generated in `specs/{spec}/comparison-report/`
+4. **Finalize**: Use `orbit finalize --variant N` to adopt the best implementation and clean up
+
+### Variant Structure
+
+Variants are stored in worktrees alongside the `.orbit` directory:
+
+```
+specs/my-feature/.orbit/
+├── variants.json                     # Variant metadata
+└── worktrees/
+    ├── orbit-impl-1-feature-branch/  # Variant 1 worktree
+    ├── orbit-impl-2-feature-branch/  # Variant 2 worktree
+    └── orbit-impl-3-feature-branch/  # Variant 3 worktree
+```
 
 ## Web Interface
 
