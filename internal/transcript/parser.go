@@ -28,34 +28,126 @@ var codexTypes = map[string]bool{
 	"turn_context":  true,
 }
 
+// copilotTypes are the type values that indicate Copilot format.
+// Copilot uses dot-notation type fields like "session.start", "user.message", etc.
+var copilotTypes = map[string]bool{
+	"session.start":            true,
+	"session.info":             true,
+	"user.message":             true,
+	"assistant.turn_start":     true,
+	"assistant.message":        true,
+	"assistant.reasoning":      true,
+	"assistant.turn_end":       true,
+	"tool.execution_start":     true,
+	"tool.execution_complete":  true,
+}
+
 // infrastructureTypes are entry types that should be skipped during format detection.
 // These are internal Claude infrastructure entries, not part of the conversation.
 var infrastructureTypes = map[string]bool{
 	"queue-operation": true,
 }
 
-// DetectFormat examines the first non-empty line to determine the log format.
-// Returns the detected format, the first line bytes (with BOM stripped), and any error.
-// The first line is returned to allow reuse without re-reading.
+// DetectFormat examines file content to determine the log format.
+// Returns the detected format, the initial bytes read (with BOM stripped), and any error.
+//
+// Detection strategy:
+// 1. Read a chunk of content (up to 8KB for Kiro detection)
+// 2. Try parsing as complete JSON with Kiro markers - if successful, it's Kiro format
+// 3. Otherwise, treat as JSONL and detect based on first line's type field
+//
+// Note: Cannot use first-byte check alone because both JSON and JSONL start with '{'
 func DetectFormat(r io.Reader) (Format, []byte, error) {
-	firstLine, err := readFirstNonEmptyLine(r)
-	if err != nil {
-		if errors.Is(err, io.EOF) {
-			return FormatUnknown, nil, fmt.Errorf("empty file")
-		}
+	// Read up to 8KB for Kiro detection (needs enough to check structure)
+	chunk := make([]byte, 8192)
+	n, err := io.ReadFull(r, chunk)
+	if err != nil && err != io.EOF && err != io.ErrUnexpectedEOF {
 		return FormatUnknown, nil, err
 	}
+	if n == 0 {
+		return FormatUnknown, nil, fmt.Errorf("empty file")
+	}
+	chunk = chunk[:n]
 
 	// Strip BOM if present
-	firstLine = stripBOM(firstLine)
+	chunk = stripBOM(chunk)
 
-	// Detect format from line content
-	format, err := detectFormatFromLine(firstLine)
-	if err != nil {
-		return FormatUnknown, nil, err
+	// First, try to detect Kiro format (plain JSON with specific structure)
+	if format := detectKiroFormat(chunk); format != FormatUnknown {
+		return format, chunk, nil
 	}
 
-	return format, firstLine, nil
+	// Fall back to JSONL detection based on first line
+	return detectJSONLFormat(chunk)
+}
+
+// detectKiroFormat checks if content is Kiro plain JSON format.
+// Kiro format is a single JSON object with conversation_id and non-empty history fields.
+func detectKiroFormat(data []byte) Format {
+	// Kiro sessions can be large; we only need to check the beginning structure.
+	// Look for the characteristic fields: conversation_id and history array start.
+	var kiroCheck struct {
+		ConversationID string `json:"conversation_id"`
+		History        []any  `json:"history"`
+	}
+
+	// Try to parse enough to detect structure
+	if err := json.Unmarshal(data, &kiroCheck); err != nil {
+		// If we got a partial read (buffer too small), check if it looks like Kiro
+		// by examining the beginning of the content for characteristic fields
+		dataStr := string(data)
+		if strings.Contains(dataStr, `"conversation_id"`) &&
+			strings.Contains(dataStr, `"history"`) &&
+			!strings.Contains(dataStr, "\n{") { // JSONL would have newline + brace
+			// Likely Kiro but truncated - still return as Kiro since full file would parse
+			return FormatKiro
+		}
+		return FormatUnknown
+	}
+
+	// Must have both fields populated to be valid Kiro format
+	if kiroCheck.ConversationID != "" && len(kiroCheck.History) > 0 {
+		return FormatKiro
+	}
+
+	return FormatUnknown
+}
+
+// detectJSONLFormat detects format from the first non-empty line of JSONL content.
+func detectJSONLFormat(data []byte) (Format, []byte, error) {
+	// Split into lines and find first non-empty line
+	lines := bytes.Split(data, []byte("\n"))
+	var firstLine []byte
+	for _, line := range lines {
+		trimmed := bytes.TrimSpace(line)
+		if len(trimmed) > 0 {
+			firstLine = trimmed
+			break
+		}
+	}
+
+	if len(firstLine) == 0 {
+		return FormatUnknown, nil, fmt.Errorf("empty file")
+	}
+
+	var obj struct {
+		Type string `json:"type"`
+	}
+	if err := json.Unmarshal(firstLine, &obj); err != nil {
+		return FormatUnknown, nil, fmt.Errorf("failed to parse first line as JSON: %w", err)
+	}
+
+	if claudeTypes[obj.Type] {
+		return FormatClaude, data, nil
+	}
+	if codexTypes[obj.Type] {
+		return FormatCodex, data, nil
+	}
+	if copilotTypes[obj.Type] {
+		return FormatCopilot, data, nil
+	}
+
+	return FormatUnknown, data, fmt.Errorf("unrecognized log format: type field value '%s'", obj.Type)
 }
 
 // readFirstNonEmptyLineFromBufReader reads lines until finding a non-empty line.
@@ -116,6 +208,9 @@ func detectFormatFromLine(line []byte) (Format, error) {
 	}
 	if codexTypes[obj.Type] {
 		return FormatCodex, nil
+	}
+	if copilotTypes[obj.Type] {
+		return FormatCopilot, nil
 	}
 
 	return FormatUnknown, fmt.Errorf("unrecognized log format: type field value '%s'", obj.Type)

@@ -1705,3 +1705,177 @@ func TestDetectFormat_UnknownType_Negative(t *testing.T) {
 		t.Errorf("expected specific error about unknown type, got %q", err.Error())
 	}
 }
+
+// --- Kiro and Copilot Format Detection Tests ---
+
+func TestDetectFormat_KiroJSON(t *testing.T) {
+	// Kiro uses plain JSON format with conversation_id and history fields
+	input := `{"conversation_id":"3b200b15-9728-46df-8a79-afddbe4f55a5","next_message":null,"history":[{"user":{"content":{"Prompt":{"prompt":"test"}}}}]}`
+	format, _, err := DetectFormat(strings.NewReader(input))
+	if err != nil {
+		t.Fatalf("DetectFormat returned error: %v", err)
+	}
+	if format != FormatKiro {
+		t.Errorf("expected FormatKiro, got %v", format)
+	}
+}
+
+func TestDetectFormat_KiroJSONFile(t *testing.T) {
+	// Test with actual Kiro sample file
+	f, err := os.Open(filepath.Join("testdata", "kiro", "session.json"))
+	if err != nil {
+		t.Fatalf("failed to open test file: %v", err)
+	}
+	defer func() { _ = f.Close() }()
+
+	format, _, err := DetectFormat(f)
+	if err != nil {
+		t.Fatalf("DetectFormat returned error: %v", err)
+	}
+	if format != FormatKiro {
+		t.Errorf("expected FormatKiro, got %v", format)
+	}
+}
+
+func TestDetectFormat_KiroMissingHistory(t *testing.T) {
+	// Kiro format requires both conversation_id and non-empty history
+	input := `{"conversation_id":"test-id","history":[]}`
+	_, _, err := DetectFormat(strings.NewReader(input))
+	if err == nil {
+		t.Fatal("expected error for Kiro format with empty history")
+	}
+}
+
+func TestDetectFormat_KiroMissingConversationID(t *testing.T) {
+	// Kiro format requires conversation_id
+	input := `{"history":[{"user":{"content":{}}}]}`
+	_, _, err := DetectFormat(strings.NewReader(input))
+	if err == nil {
+		t.Fatal("expected error for Kiro format without conversation_id")
+	}
+}
+
+func TestDetectFormat_CopilotSessionStart(t *testing.T) {
+	// Copilot uses JSONL format with session.start type
+	input := `{"type":"session.start","data":{"sessionId":"0765df0e-fada-412a-9c46-55040a3b495d"},"id":"929a0412-f0ae-471c-992e-70f9d7cde9c1","timestamp":"2026-01-17T12:12:21.934Z"}`
+	format, _, err := DetectFormat(strings.NewReader(input))
+	if err != nil {
+		t.Fatalf("DetectFormat returned error: %v", err)
+	}
+	if format != FormatCopilot {
+		t.Errorf("expected FormatCopilot, got %v", format)
+	}
+}
+
+func TestDetectFormat_CopilotSessionInfo(t *testing.T) {
+	// Copilot session.info type
+	input := `{"type":"session.info","data":{"infoType":"authentication","message":"Logged in"},"id":"test","timestamp":"2026-01-17T12:12:22.283Z"}`
+	format, _, err := DetectFormat(strings.NewReader(input))
+	if err != nil {
+		t.Fatalf("DetectFormat returned error: %v", err)
+	}
+	if format != FormatCopilot {
+		t.Errorf("expected FormatCopilot, got %v", format)
+	}
+}
+
+func TestDetectFormat_CopilotUserMessage(t *testing.T) {
+	// Copilot user.message type
+	input := `{"type":"user.message","data":{"content":"test message"},"id":"test","timestamp":"2026-01-17T12:12:37.747Z"}`
+	format, _, err := DetectFormat(strings.NewReader(input))
+	if err != nil {
+		t.Fatalf("DetectFormat returned error: %v", err)
+	}
+	if format != FormatCopilot {
+		t.Errorf("expected FormatCopilot, got %v", format)
+	}
+}
+
+func TestDetectFormat_CopilotAssistantTurnStart(t *testing.T) {
+	// Copilot assistant.turn_start type
+	input := `{"type":"assistant.turn_start","data":{"turnId":"0"},"id":"test","timestamp":"2026-01-17T12:12:37.748Z"}`
+	format, _, err := DetectFormat(strings.NewReader(input))
+	if err != nil {
+		t.Fatalf("DetectFormat returned error: %v", err)
+	}
+	if format != FormatCopilot {
+		t.Errorf("expected FormatCopilot, got %v", format)
+	}
+}
+
+func TestDetectFormat_CopilotAssistantMessage(t *testing.T) {
+	// Copilot assistant.message type
+	input := `{"type":"assistant.message","data":{"messageId":"test","content":"response"},"id":"test","timestamp":"2026-01-17T12:12:43.372Z"}`
+	format, _, err := DetectFormat(strings.NewReader(input))
+	if err != nil {
+		t.Fatalf("DetectFormat returned error: %v", err)
+	}
+	if format != FormatCopilot {
+		t.Errorf("expected FormatCopilot, got %v", format)
+	}
+}
+
+func TestDetectFormat_CopilotAssistantReasoning(t *testing.T) {
+	// Copilot assistant.reasoning type
+	input := `{"type":"assistant.reasoning","data":{"reasoningId":"test","content":"thinking"},"id":"test","timestamp":"2026-01-17T12:12:43.372Z"}`
+	format, _, err := DetectFormat(strings.NewReader(input))
+	if err != nil {
+		t.Fatalf("DetectFormat returned error: %v", err)
+	}
+	if format != FormatCopilot {
+		t.Errorf("expected FormatCopilot, got %v", format)
+	}
+}
+
+func TestDetectFormat_CopilotAssistantTurnEnd(t *testing.T) {
+	// Copilot assistant.turn_end type
+	input := `{"type":"assistant.turn_end","data":{"turnId":"0"},"id":"test","timestamp":"2026-01-17T12:12:43.372Z"}`
+	format, _, err := DetectFormat(strings.NewReader(input))
+	if err != nil {
+		t.Fatalf("DetectFormat returned error: %v", err)
+	}
+	if format != FormatCopilot {
+		t.Errorf("expected FormatCopilot, got %v", format)
+	}
+}
+
+func TestDetectFormat_CopilotToolExecutionStart(t *testing.T) {
+	// Copilot tool.execution_start type
+	input := `{"type":"tool.execution_start","data":{"toolCallId":"test","toolName":"bash"},"id":"test","timestamp":"2026-01-17T12:14:31.652Z"}`
+	format, _, err := DetectFormat(strings.NewReader(input))
+	if err != nil {
+		t.Fatalf("DetectFormat returned error: %v", err)
+	}
+	if format != FormatCopilot {
+		t.Errorf("expected FormatCopilot, got %v", format)
+	}
+}
+
+func TestDetectFormat_CopilotToolExecutionComplete(t *testing.T) {
+	// Copilot tool.execution_complete type
+	input := `{"type":"tool.execution_complete","data":{"toolCallId":"test","success":true},"id":"test","timestamp":"2026-01-17T12:14:32.620Z"}`
+	format, _, err := DetectFormat(strings.NewReader(input))
+	if err != nil {
+		t.Fatalf("DetectFormat returned error: %v", err)
+	}
+	if format != FormatCopilot {
+		t.Errorf("expected FormatCopilot, got %v", format)
+	}
+}
+
+func TestDetectFormat_CopilotJSONLFile(t *testing.T) {
+	// Test with actual Copilot sample file
+	f, err := os.Open(filepath.Join("testdata", "copilot", "session.jsonl"))
+	if err != nil {
+		t.Fatalf("failed to open test file: %v", err)
+	}
+	defer func() { _ = f.Close() }()
+
+	format, _, err := DetectFormat(f)
+	if err != nil {
+		t.Fatalf("DetectFormat returned error: %v", err)
+	}
+	if format != FormatCopilot {
+		t.Errorf("expected FormatCopilot, got %v", format)
+	}
+}

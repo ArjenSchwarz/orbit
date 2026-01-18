@@ -9,6 +9,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Multi-agent transcript parsing for Kiro and Copilot formats (Phases 3-4):
+  - `FormatKiro` and `FormatCopilot` enum values in `internal/transcript/types.go`
+  - `internal/transcript/kiro_types.go` with complete type definitions:
+    - `KiroSession`, `KiroHistoryEntry`, `KiroUserMessage`, `KiroAssistantMessage`
+    - `KiroUserContent` with `KiroPrompt` and `KiroToolUseResults` variants
+    - `KiroToolUse`, `KiroToolCall`, `KiroTextResponse` for assistant responses
+    - `KiroRequestMetadata`, `KiroDuration` for telemetry data
+  - `internal/transcript/kiro_parser.go` implementing `ParseKiro()` function:
+    - Parses plain JSON format with conversation_id and history array
+    - Converts Kiro sessions to unified Entry format for markdown rendering
+  - `internal/transcript/copilot_types.go` with complete type definitions:
+    - `CopilotEvent` with polymorphic `CopilotData` for all event types
+    - Support for session.start, session.info, user.message, assistant.turn_start/end
+    - Support for assistant.message, assistant.reasoning, tool.execution_start/complete
+    - `CopilotToolRequest`, `CopilotToolResult`, `CopilotToolTelemetry` for tool handling
+  - `internal/transcript/copilot_parser.go` implementing `ParseCopilot()` function:
+    - Parses JSONL format with event-based streaming structure
+    - Converts Copilot events to unified Entry format for markdown rendering
+  - Improved `DetectFormat()` function with multi-format detection strategy:
+    - Reads 8KB chunk for Kiro detection (plain JSON with specific markers)
+    - Falls back to JSONL first-line detection for Claude/Codex/Copilot
+    - Added `copilotTypes` map for dot-notation type field recognition
+  - Golden file tests for both Kiro and Copilot parsers
+  - Sample session files in `testdata/kiro/` and `testdata/copilot/`
+
 - Agent abstraction layer for multi-agent support (Phase 1):
   - `internal/agents` package with core types and interfaces:
     - `agent.go` with `Agent` interface defining execution, session, and capability methods

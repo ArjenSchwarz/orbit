@@ -1,0 +1,43 @@
+# Session Transcript
+
+---
+
+## 👤 User
+
+List all files in the current directory
+
+---
+
+## 🤖 Assistant
+
+---
+
+<details>
+<summary>✅ 🔧 bash: List files in current directory</summary>
+
+**Input:**
+```json
+{
+  "command": "ls -la",
+  "description": "List files in current directory"
+}
+```
+
+**Result:**
+```
+file1.txt
+file2.txt
+README.md
+```
+
+</details>
+
+## 🤖 Assistant
+
+The current directory contains:
+- file1.txt
+- file2.txt
+- README.md
+
+---
+

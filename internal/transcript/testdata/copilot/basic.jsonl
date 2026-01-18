@@ -1,0 +1,10 @@
+{"type":"session.start","data":{"sessionId":"test-session-001","version":1,"producer":"copilot-agent","copilotVersion":"0.0.384","startTime":"2026-01-17T12:12:21.932Z"},"id":"event-001","timestamp":"2026-01-17T12:12:21.934Z","parentId":null}
+{"type":"user.message","data":{"content":"List all files in the current directory","transformedContent":"<current_datetime>2026-01-17T12:12:37.747Z</current_datetime>\n\nList all files in the current directory","attachments":[]},"id":"event-002","timestamp":"2026-01-17T12:12:37.747Z","parentId":"event-001"}
+{"type":"assistant.turn_start","data":{"turnId":"0"},"id":"event-003","timestamp":"2026-01-17T12:12:37.748Z","parentId":"event-002"}
+{"type":"assistant.message","data":{"messageId":"msg-001","content":"","toolRequests":[{"toolCallId":"tool-001","name":"bash","arguments":{"command":"ls -la","description":"List files in current directory"}}]},"id":"event-004","timestamp":"2026-01-17T12:12:43.372Z","parentId":"event-003"}
+{"type":"tool.execution_start","data":{"toolCallId":"tool-001","toolName":"bash","arguments":{"command":"ls -la","description":"List files in current directory"}},"id":"event-005","timestamp":"2026-01-17T12:14:31.652Z","parentId":"event-004"}
+{"type":"tool.execution_complete","data":{"toolCallId":"tool-001","success":true,"result":{"content":"file1.txt\nfile2.txt\nREADME.md"}},"id":"event-006","timestamp":"2026-01-17T12:14:32.620Z","parentId":"event-005"}
+{"type":"assistant.turn_end","data":{"turnId":"0"},"id":"event-007","timestamp":"2026-01-17T12:14:32.621Z","parentId":"event-006"}
+{"type":"assistant.turn_start","data":{"turnId":"1"},"id":"event-008","timestamp":"2026-01-17T12:14:32.621Z","parentId":"event-007"}
+{"type":"assistant.message","data":{"messageId":"msg-002","content":"The current directory contains:\n- file1.txt\n- file2.txt\n- README.md","toolRequests":[]},"id":"event-009","timestamp":"2026-01-17T12:14:35.143Z","parentId":"event-008"}
+{"type":"assistant.turn_end","data":{"turnId":"1"},"id":"event-010","timestamp":"2026-01-17T12:14:35.144Z","parentId":"event-009"}

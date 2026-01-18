@@ -1,0 +1,90 @@
+{
+  "conversation_id": "test-kiro-session",
+  "next_message": null,
+  "history": [
+    {
+      "user": {
+        "additional_context": "",
+        "env_context": null,
+        "content": {
+          "Prompt": {
+            "prompt": "List all files in the current directory"
+          }
+        },
+        "timestamp": "2026-01-18T10:00:00.000Z",
+        "images": null
+      },
+      "assistant": {
+        "ToolUse": {
+          "message_id": "msg-001",
+          "content": "I'll list the files in the current directory for you.",
+          "tool_uses": [
+            {
+              "id": "tool-001",
+              "name": "fs_read",
+              "orig_name": "fs_read",
+              "args": {
+                "operations": [
+                  {
+                    "mode": "Directory",
+                    "path": "."
+                  }
+                ]
+              },
+              "orig_args": {
+                "operations": [
+                  {
+                    "mode": "Directory",
+                    "path": "."
+                  }
+                ]
+              }
+            }
+          ]
+        }
+      },
+      "request_metadata": {
+        "request_id": "req-001",
+        "message_id": "msg-001",
+        "model_id": "claude-sonnet",
+        "chat_conversation_type": "ToolUse"
+      }
+    },
+    {
+      "user": {
+        "additional_context": "",
+        "env_context": null,
+        "content": {
+          "ToolUseResults": {
+            "tool_use_results": [
+              {
+                "tool_use_id": "tool-001",
+                "content": [
+                  {
+                    "Text": "file1.txt\nfile2.txt\nREADME.md"
+                  }
+                ],
+                "status": "Success"
+              }
+            ]
+          }
+        },
+        "timestamp": null,
+        "images": null
+      },
+      "assistant": {
+        "ToolUse": {
+          "message_id": "msg-002",
+          "content": "The current directory contains:\n- file1.txt\n- file2.txt\n- README.md",
+          "tool_uses": []
+        }
+      },
+      "request_metadata": {
+        "request_id": "req-002",
+        "message_id": "msg-002",
+        "model_id": "claude-sonnet",
+        "chat_conversation_type": "ToolUse"
+      }
+    }
+  ]
+}

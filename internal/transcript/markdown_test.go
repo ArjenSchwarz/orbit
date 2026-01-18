@@ -1450,6 +1450,84 @@ func testGoldenCollapsible(t *testing.T, name string) {
 	}
 }
 
+// --- Kiro Golden Tests ---
+
+func TestRenderMarkdown_GoldenKiro_Basic(t *testing.T) {
+	testGoldenKiro(t, "basic")
+}
+
+// --- Copilot Golden Tests ---
+
+func TestRenderMarkdown_GoldenCopilot_Basic(t *testing.T) {
+	testGoldenCopilot(t, "basic")
+}
+
+func testGoldenCopilot(t *testing.T, name string) {
+	t.Helper()
+
+	// Read JSONL input
+	jsonlPath := filepath.Join("testdata", "copilot", name+".jsonl")
+	f, err := os.Open(jsonlPath)
+	if err != nil {
+		t.Fatalf("failed to open test file %s: %v", jsonlPath, err)
+	}
+	defer func() { _ = f.Close() }()
+
+	parseResult, err := ParseCopilot(f)
+	if err != nil {
+		t.Fatalf("ParseCopilot returned error: %v", err)
+	}
+
+	// Render to Markdown
+	actual := RenderMarkdown(parseResult.Entries, RenderOptions{})
+
+	// Read golden file
+	goldenPath := filepath.Join("testdata", "copilot", name+".md.golden")
+	goldenBytes, err := os.ReadFile(goldenPath)
+	if err != nil {
+		t.Fatalf("failed to read golden file %s: %v", goldenPath, err)
+	}
+	expected := string(goldenBytes)
+
+	// Compare
+	if actual != expected {
+		t.Errorf("output does not match golden file\n--- expected ---\n%s\n--- actual ---\n%s", expected, actual)
+	}
+}
+
+func testGoldenKiro(t *testing.T, name string) {
+	t.Helper()
+
+	// Read JSON input (Kiro uses plain JSON, not JSONL)
+	jsonPath := filepath.Join("testdata", "kiro", name+".json")
+	f, err := os.Open(jsonPath)
+	if err != nil {
+		t.Fatalf("failed to open test file %s: %v", jsonPath, err)
+	}
+	defer func() { _ = f.Close() }()
+
+	parseResult, err := ParseKiro(f)
+	if err != nil {
+		t.Fatalf("ParseKiro returned error: %v", err)
+	}
+
+	// Render to Markdown
+	actual := RenderMarkdown(parseResult.Entries, RenderOptions{})
+
+	// Read golden file
+	goldenPath := filepath.Join("testdata", "kiro", name+".md.golden")
+	goldenBytes, err := os.ReadFile(goldenPath)
+	if err != nil {
+		t.Fatalf("failed to read golden file %s: %v", goldenPath, err)
+	}
+	expected := string(goldenBytes)
+
+	// Compare
+	if actual != expected {
+		t.Errorf("output does not match golden file\n--- expected ---\n%s\n--- actual ---\n%s", expected, actual)
+	}
+}
+
 // Backward compatibility tests (Task 25)
 
 func TestBackwardCompat_NoIDFields(t *testing.T) {

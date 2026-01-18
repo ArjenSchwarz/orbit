@@ -1,0 +1,49 @@
+# Session Transcript
+
+---
+
+## 👤 User
+
+List all files in the current directory
+
+---
+
+## 🤖 Assistant
+
+I'll list the files in the current directory for you.
+
+---
+
+<details>
+<summary>✅ 🔧 fs_read</summary>
+
+**Input:**
+```json
+{
+  "operations": [
+    {
+      "mode": "Directory",
+      "path": "."
+    }
+  ]
+}
+```
+
+**Result:**
+```
+file1.txt
+file2.txt
+README.md
+```
+
+</details>
+
+## 🤖 Assistant
+
+The current directory contains:
+- file1.txt
+- file2.txt
+- README.md
+
+---
+

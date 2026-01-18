@@ -48,48 +48,48 @@ references:
 
 ## Phase 2: Session Parsing
 
-- [ ] 3. Extend format detection for new agents
+- [x] 3. Extend format detection for new agents
   - Requirements: [7.1](requirements.md#7.1), [7.2](requirements.md#7.2), [7.3](requirements.md#7.3)
-  - [ ] 3.1. Add format enum values
+  - [x] 3.1. Add format enum values
     - Add FormatKiro and FormatCopilot to Format enum in internal/transcript/types.go
     - Requirements: [7.3](requirements.md#7.3)
-  - [ ] 3.2. Add tests for Kiro format detection
+  - [x] 3.2. Add tests for Kiro format detection
     - Add test cases to internal/transcript/parser_test.go for detecting Kiro JSON format
     - Copy sample file from specs/multi-agent/samples/kiro/ to internal/transcript/testdata/kiro/
     - Requirements: [7.1](requirements.md#7.1), [7.2](requirements.md#7.2)
-  - [ ] 3.3. Add tests for Copilot format detection
+  - [x] 3.3. Add tests for Copilot format detection
     - Add test cases to internal/transcript/parser_test.go for detecting Copilot JSONL format
     - Copy sample file from specs/multi-agent/samples/copilot/ to internal/transcript/testdata/copilot/
     - Requirements: [7.1](requirements.md#7.1), [7.2](requirements.md#7.2)
-  - [ ] 3.4. Implement improved DetectFormat
+  - [x] 3.4. Implement improved DetectFormat
     - Update internal/transcript/parser.go with new detection logic: try Kiro JSON first, then JSONL detection
     - Cannot use first-byte check alone (both JSON and JSONL start with curly brace)
     - Requirements: [7.1](requirements.md#7.1), [7.2](requirements.md#7.2)
 
-- [ ] 4. Implement Kiro parser
+- [x] 4. Implement Kiro parser
   - Requirements: [4.6](requirements.md#4.6)
-  - [ ] 4.1. Add Kiro type definitions
+  - [x] 4.1. Add Kiro type definitions
     - Create internal/transcript/kiro_types.go with KiroSession, KiroHistoryItem, KiroUserMessage, etc.
     - Requirements: [4.6](requirements.md#4.6)
-  - [ ] 4.2. Add golden file tests for Kiro parser
+  - [x] 4.2. Add golden file tests for Kiro parser
     - Create internal/transcript/kiro_parser_test.go with golden file tests
     - Create expected.md golden file in testdata/kiro/
     - Requirements: [4.6](requirements.md#4.6)
-  - [ ] 4.3. Implement Kiro parser
+  - [x] 4.3. Implement Kiro parser
     - Create internal/transcript/kiro_parser.go to parse plain JSON format and render to unified Entry format
     - Requirements: [4.6](requirements.md#4.6)
 
-- [ ] 5. Implement Copilot parser
+- [x] 5. Implement Copilot parser
   - Requirements: [5.6](requirements.md#5.6)
-  - [ ] 5.1. Add Copilot type definitions
+  - [x] 5.1. Add Copilot type definitions
     - Create internal/transcript/copilot_types.go with CopilotEntry, CopilotSessionStart, CopilotUserMessage, etc.
     - Type markers: session.start, session.info, user.message, assistant.turn_start, assistant.message, assistant.reasoning, assistant.turn_end, tool.execution_start, tool.execution_complete
     - Requirements: [5.6](requirements.md#5.6)
-  - [ ] 5.2. Add golden file tests for Copilot parser
+  - [x] 5.2. Add golden file tests for Copilot parser
     - Create internal/transcript/copilot_parser_test.go with golden file tests
     - Create expected.md golden file in testdata/copilot/
     - Requirements: [5.6](requirements.md#5.6)
-  - [ ] 5.3. Implement Copilot parser
+  - [x] 5.3. Implement Copilot parser
     - Create internal/transcript/copilot_parser.go to parse JSONL format and render to unified Entry format
     - Requirements: [5.6](requirements.md#5.6)
 
