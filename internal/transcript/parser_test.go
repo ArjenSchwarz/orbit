@@ -1879,3 +1879,92 @@ func TestDetectFormat_CopilotJSONLFile(t *testing.T) {
 		t.Errorf("expected FormatCopilot, got %v", format)
 	}
 }
+
+// --- Parse function tests (auto-detection for all formats) ---
+
+func TestParse_ClaudeJSONL(t *testing.T) {
+	f, err := os.Open(filepath.Join("testdata", "valid.jsonl"))
+	if err != nil {
+		t.Fatalf("failed to open test file: %v", err)
+	}
+	defer func() { _ = f.Close() }()
+
+	result, err := Parse(f)
+	if err != nil {
+		t.Fatalf("Parse returned error: %v", err)
+	}
+
+	if len(result.Entries) == 0 {
+		t.Error("expected at least one entry")
+	}
+}
+
+func TestParse_CodexJSONL(t *testing.T) {
+	f, err := os.Open(filepath.Join("testdata", "codex", "basic.jsonl"))
+	if err != nil {
+		t.Fatalf("failed to open test file: %v", err)
+	}
+	defer func() { _ = f.Close() }()
+
+	result, err := Parse(f)
+	if err != nil {
+		t.Fatalf("Parse returned error: %v", err)
+	}
+
+	if len(result.Entries) == 0 {
+		t.Error("expected at least one entry")
+	}
+}
+
+func TestParse_KiroJSON(t *testing.T) {
+	// This is the key test for the PR comment - Kiro should auto-detect
+	f, err := os.Open(filepath.Join("testdata", "kiro", "basic.json"))
+	if err != nil {
+		t.Fatalf("failed to open test file: %v", err)
+	}
+	defer func() { _ = f.Close() }()
+
+	result, err := Parse(f)
+	if err != nil {
+		t.Fatalf("Parse returned error: %v", err)
+	}
+
+	if len(result.Entries) == 0 {
+		t.Error("expected at least one entry")
+	}
+
+	// Verify it parsed as Kiro format by checking entry structure
+	foundUser := false
+	foundAssistant := false
+	for _, entry := range result.Entries {
+		if entry.Type == "user" {
+			foundUser = true
+		}
+		if entry.Type == "assistant" {
+			foundAssistant = true
+		}
+	}
+	if !foundUser {
+		t.Error("expected to find user entry in Kiro transcript")
+	}
+	if !foundAssistant {
+		t.Error("expected to find assistant entry in Kiro transcript")
+	}
+}
+
+func TestParse_CopilotJSONL(t *testing.T) {
+	f, err := os.Open(filepath.Join("testdata", "copilot", "session.jsonl"))
+	if err != nil {
+		t.Fatalf("failed to open test file: %v", err)
+	}
+	defer func() { _ = f.Close() }()
+
+	result, err := Parse(f)
+	if err != nil {
+		t.Fatalf("Parse returned error: %v", err)
+	}
+
+	if len(result.Entries) == 0 {
+		t.Error("expected at least one entry")
+	}
+}

@@ -608,7 +608,7 @@ func agentToFormat(agent string) transcript.Format {
 	}
 }
 
-// convert reads JSONL from input and writes formatted output (Markdown or HTML).
+// convert reads a transcript file from input and writes formatted output (Markdown or HTML).
 // If agent is specified, it forces the use of that agent's parser instead of auto-detection.
 func convert(input io.Reader, output io.Writer, sessionID string, format string, agent string) error {
 	var result *transcript.ParseResult
@@ -618,8 +618,8 @@ func convert(input io.Reader, output io.Writer, sessionID string, format string,
 		// Force specific agent format
 		result, err = transcript.ParseJSONLWithFormat(input, agentToFormat(agent))
 	} else {
-		// Auto-detect format
-		result, err = transcript.ParseJSONL(input)
+		// Auto-detect format (handles all formats: Claude, Codex, Kiro, Copilot)
+		result, err = transcript.Parse(input)
 	}
 	if err != nil {
 		return fmt.Errorf("failed to parse transcript: %w", err)
