@@ -9,6 +9,11 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/arjenschwarz/orbit/internal/agents"
+	_ "github.com/arjenschwarz/orbit/internal/agents/claudecode" // Register claude-code agent
+	_ "github.com/arjenschwarz/orbit/internal/agents/codex"      // Register codex agent
+	_ "github.com/arjenschwarz/orbit/internal/agents/copilot"    // Register copilot agent
+	_ "github.com/arjenschwarz/orbit/internal/agents/kiro"       // Register kiro agent
 	"github.com/arjenschwarz/orbit/internal/config"
 	"github.com/arjenschwarz/orbit/internal/orbit"
 	"gopkg.in/yaml.v3"
@@ -31,6 +36,9 @@ func runCommand(args []string) error {
 	noPostCommand := fs.Bool("no-post-command", false, "Skip post-completion command")
 	dateSubdirs := fs.Bool("date-subdirs", false, "Use timestamped subdirectories for logs")
 	noContinueSession := fs.Bool("no-continue-session", false, "Start fresh sessions instead of resuming")
+
+	// Agent selection
+	agentFlag := fs.String("agent", "", "Agent to use (claude-code, codex, kiro, copilot)")
 
 	// Variant flags for multi-spec comparison
 	variantCount := fs.Int("variants", 0, "Number of implementation variants to run (0 = single-run mode)")
@@ -103,6 +111,19 @@ func runCommand(args []string) error {
 	// Load configuration (Viper handles merging of home/project configs and env vars)
 	cfg := config.Load(workingDir)
 
+	// Resolve agent: CLI flag > config file > default (claude-code)
+	agentName := resolveAgent(*agentFlag, cfg)
+
+	// Validate agent is installed
+	agentCfg := cfg.GetAgentConfig(agentName)
+	agent, err := agents.Get(agentName, agentCfg)
+	if err != nil {
+		return fmt.Errorf("invalid agent %q: %w\nAvailable agents: %s", agentName, err, strings.Join(agents.List(), ", "))
+	}
+	if !agent.IsInstalled() {
+		return fmt.Errorf("agent %q CLI (%s) not found\nInstall it from: %s", agentName, agent.CLICommand(), getAgentInstallURL(agentName))
+	}
+
 	// Apply CLI flag overrides
 	command, postCommand := resolveCommands(cfg, *commandFlag, *postCommandFlag, *noPostCommand)
 
@@ -171,6 +192,8 @@ func runCommand(args []string) error {
 		PostCommand:     postCommand,
 		DateSubdirs:     dateSubdirsValue,
 		ContinueSession: continueSessionValue,
+		Agent:           agentName,
+		AgentConfig:     agentCfg,
 		VariantCount:    *variantCount,
 		Parallel:        *parallel,
 		MaxParallel:     *maxParallel,
@@ -227,6 +250,32 @@ func resolveCommands(cfg *config.Config, commandFlag, postCommandFlag string, no
 	}
 
 	return command, postCommand
+}
+
+// resolveAgent determines which agent to use based on priority:
+// CLI flag > config file > default (claude-code)
+func resolveAgent(flagValue string, cfg *config.Config) string {
+	if flagValue != "" {
+		return flagValue
+	}
+	if cfg.Agent != "" {
+		return cfg.Agent
+	}
+	return "claude-code"
+}
+
+// getAgentInstallURL returns the installation URL for a given agent.
+func getAgentInstallURL(agentName string) string {
+	urls := map[string]string{
+		"claude-code": "https://docs.anthropic.com/en/docs/agents-and-tools/claude-code/overview",
+		"codex":       "https://github.com/openai/codex",
+		"kiro":        "https://kiro.dev/docs/cli",
+		"copilot":     "https://docs.github.com/en/copilot/using-github-copilot/using-github-copilot-in-the-command-line",
+	}
+	if url, ok := urls[agentName]; ok {
+		return url
+	}
+	return "unknown agent - check documentation"
 }
 
 // detectTasksFile attempts to find a tasks file based on the branch name.

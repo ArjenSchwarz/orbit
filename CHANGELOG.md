@@ -9,6 +9,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Agent configuration and CLI integration (Phase 4):
+  - `agent:` field in `.orbit.yaml` to set default agent per project
+  - `agents:` section in `.orbit.yaml` for per-agent configuration:
+    - `cli-path`: Override CLI command path
+    - `auto-approve`: Tool approval behavior (maps to agent-specific flags)
+    - `extra-args`: Additional CLI arguments
+    - `timeout`: Execution timeout as duration string (e.g., "30m", "1h")
+    - `model`: Agent-specific model option
+  - `--agent` flag for `orbit run` to select agent (claude-code, codex, kiro, copilot)
+  - Agent validation with helpful error messages including install URLs
+  - `ORBIT_AGENT` environment variable for default agent
+  - `GetAgentConfig()` method on config.Config returning agents.AgentConfig
+  - `--agent`/`-a` flag for `apsis` to force agent format parsing
+  - `ParseJSONLWithFormat()` function in transcript package for forced format parsing
+  - Agent classifier registry with `RegisterClassifier()` and `GetClassifier()` functions
+  - Default error classifier fallback for unregistered agents
+
 - Multi-agent transcript parsing for Kiro and Copilot formats (Phases 3-4):
   - `FormatKiro` and `FormatCopilot` enum values in `internal/transcript/types.go`
   - `internal/transcript/kiro_types.go` with complete type definitions:

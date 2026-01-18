@@ -10,11 +10,15 @@ import (
 	"github.com/arjenschwarz/orbit/internal/agents"
 )
 
+func init() {
+	agents.RegisterClassifier("claude-code", NewClassifier)
+}
+
 // Classifier implements agents.ErrorClassifier for Claude Code.
 type Classifier struct{}
 
 // NewClassifier creates a new Claude Code error classifier.
-func NewClassifier() *Classifier {
+func NewClassifier() agents.ErrorClassifier {
 	return &Classifier{}
 }
 

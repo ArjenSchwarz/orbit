@@ -228,6 +228,24 @@ type ParseWarning struct {
 	Message string
 }
 
+// ParseJSONLWithFormat reads JSONL from the provided reader using the specified format.
+// This skips format detection and directly uses the given parser.
+// Use ParseJSONL for auto-detection.
+func ParseJSONLWithFormat(r io.Reader, format Format) (*ParseResult, error) {
+	switch format {
+	case FormatCodex:
+		return ParseCodexJSONL(r)
+	case FormatClaude:
+		return parseClaudeJSONL(r)
+	case FormatKiro:
+		return ParseKiro(r)
+	case FormatCopilot:
+		return ParseCopilot(r)
+	default:
+		return nil, fmt.Errorf("unsupported format: %d", format)
+	}
+}
+
 // ParseJSONL reads JSONL from the provided reader and returns parsed entries.
 // Automatically detects format (Claude or Codex) and delegates to appropriate parser.
 // Preserves streaming architecture to avoid memory issues with large files.

@@ -140,29 +140,29 @@ references:
 
 ## Phase 4: Configuration and CLI
 
-- [ ] 9. Extend configuration for agents
+- [x] 9. Extend configuration for agents
   - Requirements: [9.1](requirements.md#9.1), [9.2](requirements.md#9.2), [9.3](requirements.md#9.3), [9.4](requirements.md#9.4), [9.5](requirements.md#9.5), [9.6](requirements.md#9.6), [9.7](requirements.md#9.7)
-  - [ ] 9.1. Add tests for agent configuration
+  - [x] 9.1. Add tests for agent configuration
     - Add test cases to internal/config/config_test.go for agents section, GetAgentConfig method
     - Requirements: [9.1](requirements.md#9.1), [9.2](requirements.md#9.2), [9.3](requirements.md#9.3), [9.4](requirements.md#9.4), [9.5](requirements.md#9.5), [9.6](requirements.md#9.6), [9.7](requirements.md#9.7)
-  - [ ] 9.2. Implement agent configuration
+  - [x] 9.2. Implement agent configuration
     - Add AgentConfig struct and Agents map to internal/config/config.go
     - Add GetAgentConfig method with timeout parsing
     - Requirements: [9.1](requirements.md#9.1), [9.2](requirements.md#9.2), [9.3](requirements.md#9.3), [9.4](requirements.md#9.4), [9.5](requirements.md#9.5), [9.6](requirements.md#9.6), [9.7](requirements.md#9.7)
 
-- [ ] 10. Add agent selection to orbit run command
+- [x] 10. Add agent selection to orbit run command
   - Requirements: [6.1](requirements.md#6.1), [6.2](requirements.md#6.2), [6.3](requirements.md#6.3), [6.4](requirements.md#6.4), [6.5](requirements.md#6.5), [6.6](requirements.md#6.6)
-  - [ ] 10.1. Add --agent flag to orbit run
+  - [x] 10.1. Add --agent flag to orbit run
     - Modify cmd/orbit/run.go to add --agent flag
     - Implement selection priority: CLI flag > config file > default (claude-code)
     - Requirements: [6.1](requirements.md#6.1), [6.2](requirements.md#6.2), [6.3](requirements.md#6.3), [6.4](requirements.md#6.4)
-  - [ ] 10.2. Add agent validation
+  - [x] 10.2. Add agent validation
     - Validate agent is installed before running, emit helpful error with install URL if not
     - Requirements: [6.5](requirements.md#6.5), [6.6](requirements.md#6.6)
 
-- [ ] 11. Add agent override to apsis command
+- [x] 11. Add agent override to apsis command
   - Requirements: [7.4](requirements.md#7.4)
-  - [ ] 11.1. Add --agent flag to apsis
+  - [x] 11.1. Add --agent flag to apsis
     - Modify cmd/apsis/main.go to add --agent flag for format override
     - Requirements: [7.4](requirements.md#7.4)
 

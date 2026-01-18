@@ -4,6 +4,7 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 )
 
 func TestLoad_ProjectOnly(t *testing.T) {
@@ -603,5 +604,259 @@ func TestLoad_ServeInvalidEnvPort(t *testing.T) {
 	// Invalid port should fall back to default
 	if cfg.ServePort != DefaultServePort {
 		t.Errorf("expected default ServePort %d for invalid env, got %d", DefaultServePort, cfg.ServePort)
+	}
+}
+
+// Tests for agent configuration
+
+func TestLoad_AgentsSection(t *testing.T) {
+	tmpDir := t.TempDir()
+	homeDir := t.TempDir()
+
+	t.Setenv("HOME", homeDir)
+
+	// Write project config with agents section
+	projectConfig := `agent: codex
+agents:
+  claude-code:
+    cli-path: /usr/local/bin/claude
+    auto-approve: false
+    timeout: 30m
+  codex:
+    cli-path: codex
+    auto-approve: true
+    extra-args:
+      - "--search"
+      - "--verbose"
+    timeout: 1h
+  kiro:
+    cli-path: kiro-cli
+    model: auto
+`
+	if err := os.WriteFile(filepath.Join(tmpDir, ".orbit.yaml"), []byte(projectConfig), 0644); err != nil {
+		t.Fatalf("failed to write project config: %v", err)
+	}
+
+	cfg := Load(tmpDir)
+
+	// Check default agent selection
+	if cfg.Agent != "codex" {
+		t.Errorf("expected Agent %q, got %q", "codex", cfg.Agent)
+	}
+
+	// Check agents map is populated
+	if len(cfg.Agents) != 3 {
+		t.Errorf("expected 3 agents, got %d", len(cfg.Agents))
+	}
+
+	// Check claude-code config
+	claudeCfg, ok := cfg.Agents["claude-code"]
+	if !ok {
+		t.Fatal("expected claude-code in agents map")
+	}
+	if claudeCfg.CLIPath != "/usr/local/bin/claude" {
+		t.Errorf("expected claude-code CLIPath %q, got %q", "/usr/local/bin/claude", claudeCfg.CLIPath)
+	}
+	if claudeCfg.AutoApprove {
+		t.Error("expected claude-code AutoApprove to be false")
+	}
+	if claudeCfg.Timeout != "30m" {
+		t.Errorf("expected claude-code Timeout %q, got %q", "30m", claudeCfg.Timeout)
+	}
+
+	// Check codex config
+	codexCfg, ok := cfg.Agents["codex"]
+	if !ok {
+		t.Fatal("expected codex in agents map")
+	}
+	if codexCfg.CLIPath != "codex" {
+		t.Errorf("expected codex CLIPath %q, got %q", "codex", codexCfg.CLIPath)
+	}
+	if !codexCfg.AutoApprove {
+		t.Error("expected codex AutoApprove to be true")
+	}
+	if len(codexCfg.ExtraArgs) != 2 {
+		t.Errorf("expected 2 extra args, got %d", len(codexCfg.ExtraArgs))
+	}
+	if codexCfg.Timeout != "1h" {
+		t.Errorf("expected codex Timeout %q, got %q", "1h", codexCfg.Timeout)
+	}
+
+	// Check kiro config
+	kiroCfg, ok := cfg.Agents["kiro"]
+	if !ok {
+		t.Fatal("expected kiro in agents map")
+	}
+	if kiroCfg.Model != "auto" {
+		t.Errorf("expected kiro Model %q, got %q", "auto", kiroCfg.Model)
+	}
+}
+
+func TestGetAgentConfig_WithTimeout(t *testing.T) {
+	cfg := &Config{
+		Agents: map[string]AgentConfig{
+			"claude-code": {
+				CLIPath:     "/usr/local/bin/claude",
+				AutoApprove: true,
+				Timeout:     "30m",
+			},
+		},
+	}
+
+	agentCfg := cfg.GetAgentConfig("claude-code")
+
+	if agentCfg.CLIPath != "/usr/local/bin/claude" {
+		t.Errorf("expected CLIPath %q, got %q", "/usr/local/bin/claude", agentCfg.CLIPath)
+	}
+	if !agentCfg.AutoApprove {
+		t.Error("expected AutoApprove to be true")
+	}
+	expectedTimeout := 30 * time.Minute
+	if agentCfg.Timeout != expectedTimeout {
+		t.Errorf("expected Timeout %v, got %v", expectedTimeout, agentCfg.Timeout)
+	}
+}
+
+func TestGetAgentConfig_InvalidTimeout(t *testing.T) {
+	cfg := &Config{
+		Agents: map[string]AgentConfig{
+			"test-agent": {
+				CLIPath: "test",
+				Timeout: "invalid-duration",
+			},
+		},
+	}
+
+	agentCfg := cfg.GetAgentConfig("test-agent")
+
+	// Invalid timeout should result in zero duration
+	if agentCfg.Timeout != 0 {
+		t.Errorf("expected zero Timeout for invalid duration, got %v", agentCfg.Timeout)
+	}
+	// Other fields should still be set
+	if agentCfg.CLIPath != "test" {
+		t.Errorf("expected CLIPath %q, got %q", "test", agentCfg.CLIPath)
+	}
+}
+
+func TestGetAgentConfig_NotConfigured(t *testing.T) {
+	cfg := &Config{
+		Agents: map[string]AgentConfig{
+			"other-agent": {
+				CLIPath: "other",
+			},
+		},
+	}
+
+	agentCfg := cfg.GetAgentConfig("missing-agent")
+
+	// Should return zero-value AgentConfig
+	if agentCfg.CLIPath != "" {
+		t.Errorf("expected empty CLIPath for unconfigured agent, got %q", agentCfg.CLIPath)
+	}
+	if agentCfg.AutoApprove {
+		t.Error("expected AutoApprove to be false for unconfigured agent")
+	}
+	if agentCfg.Timeout != 0 {
+		t.Errorf("expected zero Timeout for unconfigured agent, got %v", agentCfg.Timeout)
+	}
+}
+
+func TestGetAgentConfig_WithModel(t *testing.T) {
+	cfg := &Config{
+		Agents: map[string]AgentConfig{
+			"kiro": {
+				CLIPath: "kiro-cli",
+				Model:   "auto",
+			},
+		},
+	}
+
+	agentCfg := cfg.GetAgentConfig("kiro")
+
+	if agentCfg.Options == nil {
+		t.Fatal("expected Options to be set")
+	}
+	if agentCfg.Options["model"] != "auto" {
+		t.Errorf("expected model %q in Options, got %q", "auto", agentCfg.Options["model"])
+	}
+}
+
+func TestGetAgentConfig_WithExtraArgs(t *testing.T) {
+	cfg := &Config{
+		Agents: map[string]AgentConfig{
+			"codex": {
+				CLIPath:   "codex",
+				ExtraArgs: []string{"--search", "--verbose"},
+			},
+		},
+	}
+
+	agentCfg := cfg.GetAgentConfig("codex")
+
+	if len(agentCfg.ExtraArgs) != 2 {
+		t.Errorf("expected 2 ExtraArgs, got %d", len(agentCfg.ExtraArgs))
+	}
+	if agentCfg.ExtraArgs[0] != "--search" {
+		t.Errorf("expected ExtraArgs[0] %q, got %q", "--search", agentCfg.ExtraArgs[0])
+	}
+	if agentCfg.ExtraArgs[1] != "--verbose" {
+		t.Errorf("expected ExtraArgs[1] %q, got %q", "--verbose", agentCfg.ExtraArgs[1])
+	}
+}
+
+func TestLoad_AgentMergeHomeAndProject(t *testing.T) {
+	tmpDir := t.TempDir()
+	homeDir := t.TempDir()
+
+	t.Setenv("HOME", homeDir)
+
+	// Home config with default agent settings
+	homeConfig := `agent: claude-code
+agents:
+  claude-code:
+    cli-path: claude
+    auto-approve: false
+    timeout: 30m
+`
+	if err := os.WriteFile(filepath.Join(homeDir, ".orbit.yaml"), []byte(homeConfig), 0644); err != nil {
+		t.Fatalf("failed to write home config: %v", err)
+	}
+
+	// Project config overrides agent and adds codex
+	projectConfig := `agent: codex
+agents:
+  codex:
+    cli-path: /usr/local/bin/codex
+    auto-approve: true
+`
+	if err := os.WriteFile(filepath.Join(tmpDir, ".orbit.yaml"), []byte(projectConfig), 0644); err != nil {
+		t.Fatalf("failed to write project config: %v", err)
+	}
+
+	cfg := Load(tmpDir)
+
+	// Agent selection should be from project config
+	if cfg.Agent != "codex" {
+		t.Errorf("expected Agent %q from project, got %q", "codex", cfg.Agent)
+	}
+
+	// Should have both agents merged
+	if len(cfg.Agents) != 2 {
+		t.Errorf("expected 2 agents after merge, got %d", len(cfg.Agents))
+	}
+
+	// Claude-code from home should be present
+	if _, ok := cfg.Agents["claude-code"]; !ok {
+		t.Error("expected claude-code from home config to be present")
+	}
+
+	// Codex from project should be present
+	codexCfg, ok := cfg.Agents["codex"]
+	if !ok {
+		t.Fatal("expected codex from project config to be present")
+	}
+	if codexCfg.CLIPath != "/usr/local/bin/codex" {
+		t.Errorf("expected codex CLIPath from project, got %q", codexCfg.CLIPath)
 	}
 }

@@ -15,7 +15,7 @@ import (
 
 	output "github.com/ArjenSchwarz/go-output/v2"
 	"github.com/arjenschwarz/orbit/internal/agents"
-	"github.com/arjenschwarz/orbit/internal/agents/claudecode"
+	_ "github.com/arjenschwarz/orbit/internal/agents/claudecode" // Register claudecode agent
 	"github.com/arjenschwarz/orbit/internal/claude"
 	"github.com/arjenschwarz/orbit/internal/comparison"
 	"github.com/arjenschwarz/orbit/internal/debug"
@@ -55,6 +55,10 @@ type Config struct {
 	PostCommand     string // Post-completion command (empty = disabled)
 	DateSubdirs     bool   // If true, use timestamped subdirectories for logs
 	ContinueSession bool   // If true, continue existing Claude sessions when resuming
+
+	// Agent configuration
+	Agent       string             // Agent name (claude-code, codex, kiro, copilot)
+	AgentConfig agents.AgentConfig // Agent-specific configuration
 
 	// Variant configuration for multi-spec comparison
 	VariantCount   int      // Number of variants (0 = single-run mode)
@@ -104,12 +108,26 @@ func New(config Config) (*Orbit, error) {
 		Debug:           config.Debug,
 	})
 
-	// Initialize agent and error classifier (default to Claude Code)
-	agentConfig := agents.AgentConfig{
-		AutoApprove: config.SkipPermissions,
+	// Initialize agent and error classifier
+	// Use the configured agent or default to Claude Code
+	agentName := config.Agent
+	if agentName == "" {
+		agentName = "claude-code"
 	}
-	agent := claudecode.New(agentConfig)
-	errorClassifier := claudecode.NewClassifier()
+
+	// Merge agent config with SkipPermissions
+	agentConfig := config.AgentConfig
+	if config.SkipPermissions {
+		agentConfig.AutoApprove = true
+	}
+
+	agent, err := agents.Get(agentName, agentConfig)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get agent %q: %w", agentName, err)
+	}
+
+	// Get the error classifier for this agent
+	errorClassifier := agents.GetClassifier(agentName)
 
 	// Log configuration if debug enabled
 	if config.Debug {

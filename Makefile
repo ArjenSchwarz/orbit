@@ -1,4 +1,4 @@
-.PHONY: build build-orbit build-apsis test lint clean install modernize
+.PHONY: build build-orbit build-apsis test test-short test-verbose test-coverage lint clean install modernize
 
 # Version from git describe
 VERSION := $(shell git describe --tags --always 2>/dev/null || echo "dev")
@@ -17,6 +17,10 @@ build-apsis:
 # Run all tests
 test:
 	go test ./...
+
+# Run tests quickly (skip slow retry tests)
+test-short:
+	go test -short ./...
 
 # Run tests with verbose output
 test-verbose:

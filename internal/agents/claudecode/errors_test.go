@@ -196,5 +196,9 @@ func TestIsSessionInvalidError(t *testing.T) {
 }
 
 func TestClassifier_ImplementsInterface(t *testing.T) {
-	var _ agents.ErrorClassifier = NewClassifier()
+	// This test verifies that Classifier implements ErrorClassifier
+	classifier := NewClassifier()
+	if classifier == nil {
+		t.Error("NewClassifier() returned nil")
+	}
 }

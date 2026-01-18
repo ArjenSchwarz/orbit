@@ -15,7 +15,8 @@ This repository contains two related CLI tools for working with Claude Code:
 make build          # Build both binaries (orbit and apsis)
 make build-orbit    # Build orbit only
 make build-apsis    # Build apsis only (with version injection)
-make test           # Run all tests
+make test           # Run all tests (~10s total)
+make test-short     # Run tests with -short flag
 make test-verbose   # Run tests with verbose output
 make test-coverage  # Run tests with coverage report
 make lint           # Run golangci-lint

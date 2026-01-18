@@ -29,6 +29,7 @@ type Config struct {
 	Output  string // -o, --output
 	Project string // -p, --project
 	Format  string // -f, --format
+	Agent   string // -a, --agent (force agent format)
 	Version bool   // -v, --version
 	Help    bool   // -h, --help
 	Input   string // positional argument (session ID or file path)
@@ -61,6 +62,8 @@ func parseFlags() *Config {
 	flag.StringVar(&cfg.Project, "project", "", "Project directory (default: current directory)")
 	flag.StringVar(&cfg.Format, "f", "md", "Output format: md, markdown, html (default: md)")
 	flag.StringVar(&cfg.Format, "format", "md", "Output format: md, markdown, html (default: md)")
+	flag.StringVar(&cfg.Agent, "a", "", "Force agent format (claude-code, codex, kiro, copilot)")
+	flag.StringVar(&cfg.Agent, "agent", "", "Force agent format (claude-code, codex, kiro, copilot)")
 	flag.BoolVar(&cfg.Version, "v", false, "Show version")
 	flag.BoolVar(&cfg.Version, "version", false, "Show version")
 	flag.BoolVar(&cfg.Help, "h", false, "Show help")
@@ -78,7 +81,7 @@ func parseFlags() *Config {
 }
 
 func printUsage() {
-	fmt.Fprintf(os.Stderr, `apsis - Convert Claude Code session transcripts to Markdown or HTML
+	fmt.Fprintf(os.Stderr, `apsis - Convert AI agent session transcripts to Markdown or HTML
 
 Usage:
   apsis [options] [session-id | file-path]
@@ -89,6 +92,8 @@ Options:
   -o, --output <file>     Write output to file (default: stdout)
   -p, --project <path>    Project directory (default: current directory)
   -f, --format <format>   Output format: md, markdown, html (default: md)
+  -a, --agent <name>      Force agent format: claude-code, codex, kiro, copilot
+                          (default: auto-detect from content)
   -v, --version           Show version
   -h, --help              Show this help
 
@@ -99,6 +104,7 @@ Examples:
   cat session.jsonl | apsis                      Convert from stdin
   apsis -o transcript.md session-id              Save to file
   apsis -f html -o transcript.html session-id    Save as HTML
+  apsis -a kiro session.json                     Force Kiro format parsing
   apsis --list                                   List sessions for current project
   apsis --list -p /path/to/project               List sessions for different project
 `)
@@ -167,7 +173,7 @@ func run(cfg *Config) error {
 		output = f
 	}
 
-	return convert(input, output, sessionID, cfg.Format)
+	return convert(input, output, sessionID, cfg.Format, cfg.Agent)
 }
 
 // isFilePath returns true if the argument appears to be a file path rather than a session ID.
@@ -586,9 +592,35 @@ func sortSessionsByTimestamp(sessions []SessionInfo) {
 	})
 }
 
+// agentToFormat converts an agent name to a transcript.Format.
+func agentToFormat(agent string) transcript.Format {
+	switch agent {
+	case "claude-code":
+		return transcript.FormatClaude
+	case "codex":
+		return transcript.FormatCodex
+	case "kiro":
+		return transcript.FormatKiro
+	case "copilot":
+		return transcript.FormatCopilot
+	default:
+		return transcript.FormatUnknown
+	}
+}
+
 // convert reads JSONL from input and writes formatted output (Markdown or HTML).
-func convert(input io.Reader, output io.Writer, sessionID string, format string) error {
-	result, err := transcript.ParseJSONL(input)
+// If agent is specified, it forces the use of that agent's parser instead of auto-detection.
+func convert(input io.Reader, output io.Writer, sessionID string, format string, agent string) error {
+	var result *transcript.ParseResult
+	var err error
+
+	if agent != "" {
+		// Force specific agent format
+		result, err = transcript.ParseJSONLWithFormat(input, agentToFormat(agent))
+	} else {
+		// Auto-detect format
+		result, err = transcript.ParseJSONL(input)
+	}
 	if err != nil {
 		return fmt.Errorf("failed to parse transcript: %w", err)
 	}
