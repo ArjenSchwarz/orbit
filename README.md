@@ -61,7 +61,6 @@ orbit --no-post-command
 |------|---------|-------------|
 | `--tasks-file` | auto-detect | Path to rune tasks file |
 | `--log-dir` | `.orbit` next to tasks file | Base directory for session logs |
-| `--skip-permissions` | `true` | Run Claude with `--dangerously-skip-permissions` |
 | `--verbose` | `false` | Enable verbose output |
 | `--debug` | `false` | Enable debug logging (detailed CLI execution info) |
 | `--dry-run` | `false` | Show what would be executed without running |
@@ -126,17 +125,36 @@ agent: claude-code       # Default agent
 agents:
   claude-code:
     cli-path: claude                    # Override CLI path
-    auto-approve: false                 # Tool approval behavior
+    auto-approve: true                  # Tool approval behavior (default: true)
     timeout: 30m                        # Execution timeout
   codex:
     cli-path: codex
-    auto-approve: true
     timeout: 1h
   kiro:
     cli-path: kiro-cli
     timeout: 1h
   copilot:
     cli-path: copilot
+```
+
+### Auto-Approve Behavior
+
+By default, `auto-approve` is **enabled** (`true`) for all agents. This allows Orbit to run agents non-interactively without prompting for tool approvals.
+
+Each agent uses its equivalent auto-approval flag:
+
+| Agent | Flag Used |
+|-------|-----------|
+| Claude Code | `--dangerously-skip-permissions` |
+| Codex | `--full-auto` |
+| Kiro | `--trust-all-tools` |
+| Copilot | `--yolo` (equivalent to `--allow-all-tools --allow-all-paths --allow-all-url`) |
+
+To disable auto-approval for a specific agent (requiring manual tool approval):
+
+```yaml
+agents:
+  claude-code:
     auto-approve: false
 ```
 

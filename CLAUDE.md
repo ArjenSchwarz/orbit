@@ -92,7 +92,7 @@ Configuration priority (highest to lowest):
 
 Empty string environment variables explicitly disable features (e.g., `ORBIT_POST_COMMAND=""` disables post-command).
 
-Agent configuration in `.orbit.yaml` supports per-agent settings under the `agents` key with `cli-path`, `auto-approve`, `timeout`, and `extra-args` options.
+Agent configuration in `.orbit.yaml` supports per-agent settings under the `agents` key with `cli-path`, `auto-approve` (default: `true`), `timeout`, and `extra-args` options. Auto-approve is enabled by default to allow non-interactive operation.
 
 ## External Dependencies
 

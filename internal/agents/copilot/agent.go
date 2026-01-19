@@ -128,12 +128,12 @@ func (a *Agent) buildArgs(opts agents.RunOptions, resume bool) []string {
 	}
 
 	// Copilot uses: copilot -p "<prompt>"
-	// With --allow-all-paths for path approval
+	// With --yolo for automatic approval (equivalent to --allow-all-tools --allow-all-paths --allow-all-url)
 	// With --continue to resume previous session
 	var args []string
 
 	if a.config.AutoApprove {
-		args = append(args, "--allow-all-paths")
+		args = append(args, "--yolo")
 	}
 
 	if resume {

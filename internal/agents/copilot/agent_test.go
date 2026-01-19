@@ -87,9 +87,9 @@ func TestAgent_BuildArgs_NewSession(t *testing.T) {
 		t.Errorf("Expected prompt after -p flag, got %v", args)
 	}
 
-	// Should NOT contain --allow-all-paths when AutoApprove is false
-	if slices.Contains(args, "--allow-all-paths") {
-		t.Errorf("Should not have --allow-all-paths without AutoApprove, got %v", args)
+	// Should NOT contain --yolo when AutoApprove is false
+	if slices.Contains(args, "--yolo") {
+		t.Errorf("Should not have --yolo without AutoApprove, got %v", args)
 	}
 
 	// Should NOT contain --continue
@@ -131,8 +131,8 @@ func TestAgent_BuildArgs_WithAutoApprove(t *testing.T) {
 		SessionID: "test-session",
 	}, false)
 
-	if !slices.Contains(args, "--allow-all-paths") {
-		t.Errorf("Expected --allow-all-paths in args, got %v", args)
+	if !slices.Contains(args, "--yolo") {
+		t.Errorf("Expected --yolo in args, got %v", args)
 	}
 }
 
@@ -269,10 +269,10 @@ func TestAgent_ArgOrder(t *testing.T) {
 				t.Error("Expected -p flag with prompt")
 			}
 
-			// --allow-all-paths should come before -p
-			allowPathsPos := slices.Index(args, "--allow-all-paths")
-			if allowPathsPos != -1 && pIdx != -1 && allowPathsPos >= pIdx {
-				t.Errorf("--allow-all-paths should come before -p: --allow-all-paths at %d, -p at %d", allowPathsPos, pIdx)
+			// --yolo should come before -p
+			yoloPos := slices.Index(args, "--yolo")
+			if yoloPos != -1 && pIdx != -1 && yoloPos >= pIdx {
+				t.Errorf("--yolo should come before -p: --yolo at %d, -p at %d", yoloPos, pIdx)
 			}
 		})
 	}
