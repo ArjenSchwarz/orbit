@@ -135,7 +135,8 @@ func (a *Agent) buildArgs(opts agents.RunOptions, resume bool) []string {
 // buildExportArgs constructs the command-line arguments for exporting a session.
 func (a *Agent) buildExportArgs(filename string) []string {
 	// Export uses: kiro-cli chat --no-interactive "/chat save <filename>" --resume
-	return []string{"chat", "--no-interactive", "/chat save " + filename, "--resume"}
+	// Quote the filename to handle paths with spaces or special characters
+	return []string{"chat", "--no-interactive", "/chat save \"" + filename + "\"", "--resume"}
 }
 
 // execute runs the Kiro CLI with the given options.

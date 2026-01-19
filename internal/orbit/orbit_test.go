@@ -155,8 +155,9 @@ func TestRunPostCommandWithRetry_Success(t *testing.T) {
 		config: Config{
 			PostCommand: "test command",
 		},
-		claudeClient: mock,
-		logManager:   nil,
+		claudeClient:    mock,
+		logManager:      nil,
+		errorClassifier: agents.GetClassifier("test"), // Use default classifier
 	}
 
 	err := o.runPostCommandWithRetry()
@@ -184,8 +185,9 @@ func TestRunPostCommandWithRetry_NonRetryableError(t *testing.T) {
 		config: Config{
 			PostCommand: "test command",
 		},
-		claudeClient: mock,
-		logManager:   nil,
+		claudeClient:    mock,
+		logManager:      nil,
+		errorClassifier: agents.GetClassifier("test"), // Use default classifier
 	}
 
 	err := o.runPostCommandWithRetry()

@@ -319,15 +319,15 @@ func TestAgent_ExportSession_BuildsCorrectArgs(t *testing.T) {
 		t.Errorf("Expected --resume in args, got %v", args)
 	}
 
-	// Should have the save command with filename
+	// Should have the save command with quoted filename
 	foundSaveCmd := false
 	for _, arg := range args {
-		if arg == "/chat save test-output.json" {
+		if arg == `/chat save "test-output.json"` {
 			foundSaveCmd = true
 			break
 		}
 	}
 	if !foundSaveCmd {
-		t.Errorf("Expected '/chat save test-output.json' in args, got %v", args)
+		t.Errorf(`Expected '/chat save "test-output.json"' in args, got %v`, args)
 	}
 }

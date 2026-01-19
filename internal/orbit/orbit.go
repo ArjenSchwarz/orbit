@@ -478,19 +478,19 @@ func (o *Orbit) runPhaseWithRetry(phase int) error {
 
 		o.debug.Log("Phase %d attempt %d failed: %v", phase, attempt+1, err)
 
-		// Classify the error
-		classified, ok := err.(*orberrors.ClassifiedError)
+		// Handle agent-specific classified errors
+		classified, ok := err.(*agents.ClassifiedError)
 		if !ok {
 			o.debug.Log("Error is not a ClassifiedError, not retrying: %T", err)
 			// Unknown error type, don't retry
 			return err
 		}
 
-		o.debug.LogError(classified.Type.String(), classified.Message, classified.Type.IsRetryable())
+		o.debug.LogError(classified.Class.String(), classified.Message, classified.Class.IsRetryable())
 		lastErr = err
 
-		if !classified.Type.IsRetryable() {
-			o.debug.Log("Error type %s is not retryable, stopping", classified.Type)
+		if !classified.Class.IsRetryable() {
+			o.debug.Log("Error class %s is not retryable, stopping", classified.Class)
 			// Non-retryable error
 			return err
 		}
@@ -500,29 +500,17 @@ func (o *Orbit) runPhaseWithRetry(phase int) error {
 			o.spinner.Pause()
 		}
 
-		// Determine wait time
+		// Determine wait time using RetryAfter from classifier, with fallback to exponential backoff
 		var waitTime time.Duration
-		switch classified.Type {
-		case orberrors.ErrRateLimit:
+		if classified.RetryAfter > 0 {
 			waitTime = classified.RetryAfter
-			if waitTime == 0 {
-				waitTime = 60 * time.Second
-			}
-			log.Printf("Rate limited. Waiting %s before retry...", waitTime)
-
-		case orberrors.ErrOverloaded:
-			waitTime = 30 * time.Second
-			log.Printf("API overloaded. Waiting %s before retry...", waitTime)
-
-		case orberrors.ErrConnection:
+			log.Printf("Retryable error (attempt %d/%d). Waiting %s before retry...", attempt+1, maxRetries, waitTime)
+		} else {
 			waitTime = orberrors.BackoffDuration(attempt)
-			log.Printf("Connection error (attempt %d/%d). Waiting %s before retry...", attempt+1, maxRetries, waitTime)
-
-		default:
-			waitTime = orberrors.BackoffDuration(attempt)
+			log.Printf("Error (attempt %d/%d). Waiting %s before retry...", attempt+1, maxRetries, waitTime)
 		}
 
-		o.debug.LogRetry(attempt+1, maxRetries, classified.Type.String(), waitTime.String())
+		o.debug.LogRetry(attempt+1, maxRetries, classified.Class.String(), waitTime.String())
 
 		// Resume spinner with wait countdown during retry wait
 		if o.spinner != nil {
@@ -606,11 +594,11 @@ func (o *Orbit) runPhase(phase int) error {
 			_ = o.logManager.SaveSession(phase, result, startTime)
 		}
 
-		// Classify and return the error
+		// Classify using agent-specific classifier
 		o.debug.Log("Classifying error from stderr=%d bytes, output=%d bytes, errors=%v",
 			len(result.Stderr), len(result.Output), result.Errors)
-		classified := orberrors.Classify(1, result.Stderr, result.Output, result.Errors)
-		o.debug.LogError(classified.Type.String(), classified.Message, classified.Type.IsRetryable())
+		classified := o.errorClassifier.Classify(1, result.Stderr, result.Output, result.Errors)
+		o.debug.LogError(classified.Class.String(), classified.Message, classified.Class.IsRetryable())
 		return classified
 	}
 
@@ -626,8 +614,8 @@ func (o *Orbit) runPhase(phase int) error {
 		if o.logManager != nil {
 			_ = o.logManager.SaveSession(phase, result, startTime)
 		}
-		classified := orberrors.Classify(1, result.Stderr, result.Output, result.Errors)
-		o.debug.LogError(classified.Type.String(), classified.Message, classified.Type.IsRetryable())
+		classified := o.errorClassifier.Classify(1, result.Stderr, result.Output, result.Errors)
+		o.debug.LogError(classified.Class.String(), classified.Message, classified.Class.IsRetryable())
 		return classified
 	}
 
@@ -723,8 +711,8 @@ func (o *Orbit) runPostCommand() error {
 			o.debug.Log("Saving failed post-completion session for debugging")
 			_ = o.logManager.SavePostCompletionSession(result, startTime)
 		}
-		classified := orberrors.Classify(1, result.Stderr, result.Output, result.Errors)
-		o.debug.LogError(classified.Type.String(), classified.Message, classified.Type.IsRetryable())
+		classified := o.errorClassifier.Classify(1, result.Stderr, result.Output, result.Errors)
+		o.debug.LogError(classified.Class.String(), classified.Message, classified.Class.IsRetryable())
 		return classified
 	}
 
@@ -740,8 +728,8 @@ func (o *Orbit) runPostCommand() error {
 		if o.logManager != nil {
 			_ = o.logManager.SavePostCompletionSession(result, startTime)
 		}
-		classified := orberrors.Classify(1, result.Stderr, result.Output, result.Errors)
-		o.debug.LogError(classified.Type.String(), classified.Message, classified.Type.IsRetryable())
+		classified := o.errorClassifier.Classify(1, result.Stderr, result.Output, result.Errors)
+		o.debug.LogError(classified.Class.String(), classified.Message, classified.Class.IsRetryable())
 		return classified
 	}
 
@@ -779,15 +767,15 @@ func (o *Orbit) runPostCommandWithRetry() error {
 			return nil
 		}
 
-		// Classify the error
-		classified, ok := err.(*orberrors.ClassifiedError)
+		// Handle agent-specific classified errors
+		classified, ok := err.(*agents.ClassifiedError)
 		if !ok {
 			return err
 		}
 
 		lastErr = err
 
-		if !classified.Type.IsRetryable() {
+		if !classified.Class.IsRetryable() {
 			return err
 		}
 
@@ -796,26 +784,14 @@ func (o *Orbit) runPostCommandWithRetry() error {
 			o.spinner.Pause()
 		}
 
-		// Determine wait time
+		// Determine wait time using RetryAfter from classifier, with fallback to exponential backoff
 		var waitTime time.Duration
-		switch classified.Type {
-		case orberrors.ErrRateLimit:
+		if classified.RetryAfter > 0 {
 			waitTime = classified.RetryAfter
-			if waitTime == 0 {
-				waitTime = 60 * time.Second
-			}
-			log.Printf("Rate limited. Waiting %s before retry...", waitTime)
-
-		case orberrors.ErrOverloaded:
-			waitTime = 30 * time.Second
-			log.Printf("API overloaded. Waiting %s before retry...", waitTime)
-
-		case orberrors.ErrConnection:
+			log.Printf("Retryable error (attempt %d/%d). Waiting %s before retry...", attempt+1, maxRetries, waitTime)
+		} else {
 			waitTime = orberrors.BackoffDuration(attempt)
-			log.Printf("Connection error (attempt %d/%d). Waiting %s before retry...", attempt+1, maxRetries, waitTime)
-
-		default:
-			waitTime = orberrors.BackoffDuration(attempt)
+			log.Printf("Error (attempt %d/%d). Waiting %s before retry...", attempt+1, maxRetries, waitTime)
 		}
 
 		// Resume spinner with wait countdown during retry wait
@@ -1240,7 +1216,10 @@ func (o *Orbit) runVariantPhaseWithRetry(ctx context.Context, v *variants.Varian
 		default:
 		}
 
-		// Execute the agent with the variant's prompt and working directory
+		// Execute the agent with the variant's prompt and working directory.
+		// Each phase gets a fresh session ID intentionally - variants are isolated
+		// implementations that don't share session history. This ensures clean
+		// comparison between variants without cross-contamination from previous phases.
 		opts := agents.RunOptions{
 			Prompt:    prompt,
 			SessionID: uuid.NewString(),
@@ -1258,32 +1237,23 @@ func (o *Orbit) runVariantPhaseWithRetry(ctx context.Context, v *variants.Varian
 			lastErr = fmt.Errorf("agent reported error")
 		}
 
-		// Classify the error
-		classified := orberrors.Classify(1, result.Stderr, result.Output, result.Errors)
-		if !classified.Type.IsRetryable() {
+		// Classify the error using agent-specific classifier
+		classifier := agents.GetClassifier(agent.Name())
+		classified := classifier.Classify(1, result.Stderr, result.Output, result.Errors)
+		if !classified.Class.IsRetryable() {
 			return result, classified
 		}
 
-		// Determine wait time
+		// Determine wait time using RetryAfter from classifier, with fallback to exponential backoff
 		var waitTime time.Duration
-		switch classified.Type {
-		case orberrors.ErrRateLimit:
+		if classified.RetryAfter > 0 {
 			waitTime = classified.RetryAfter
-			if waitTime == 0 {
-				waitTime = 60 * time.Second
-			}
-			log.Printf("Variant %d: rate limited, waiting %s (attempt %d/%d)",
+			log.Printf("Variant %d: retryable error, waiting %s (attempt %d/%d)",
 				v.ID, waitTime, attempt+1, maxRetries)
-		case orberrors.ErrOverloaded:
-			waitTime = 30 * time.Second
-			log.Printf("Variant %d: API overloaded, waiting %s (attempt %d/%d)",
-				v.ID, waitTime, attempt+1, maxRetries)
-		case orberrors.ErrConnection:
+		} else {
 			waitTime = orberrors.BackoffDuration(attempt)
-			log.Printf("Variant %d: connection error, waiting %s (attempt %d/%d)",
+			log.Printf("Variant %d: error, waiting %s (attempt %d/%d)",
 				v.ID, waitTime, attempt+1, maxRetries)
-		default:
-			waitTime = orberrors.BackoffDuration(attempt)
 		}
 
 		select {
