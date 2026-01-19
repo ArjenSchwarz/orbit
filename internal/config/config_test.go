@@ -750,12 +750,12 @@ func TestGetAgentConfig_NotConfigured(t *testing.T) {
 
 	agentCfg := cfg.GetAgentConfig("missing-agent")
 
-	// Should return zero-value AgentConfig
+	// Should return default AgentConfig with AutoApprove enabled for non-interactive operation
 	if agentCfg.CLIPath != "" {
 		t.Errorf("expected empty CLIPath for unconfigured agent, got %q", agentCfg.CLIPath)
 	}
-	if agentCfg.AutoApprove {
-		t.Error("expected AutoApprove to be false for unconfigured agent")
+	if !agentCfg.AutoApprove {
+		t.Error("expected AutoApprove to be true by default for non-interactive operation")
 	}
 	if agentCfg.Timeout != 0 {
 		t.Errorf("expected zero Timeout for unconfigured agent, got %v", agentCfg.Timeout)

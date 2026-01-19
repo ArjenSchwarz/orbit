@@ -295,7 +295,11 @@ func parseAgentsConfig(v *viper.Viper) map[string]AgentConfig {
 			continue
 		}
 
-		agentCfg := AgentConfig{}
+		// Default AutoApprove to true for non-interactive operation.
+		// Can be explicitly set to false in config to disable.
+		agentCfg := AgentConfig{
+			AutoApprove: true,
+		}
 
 		if v, ok := cfgMap["cli-path"].(string); ok {
 			agentCfg.CLIPath = v
@@ -325,10 +329,14 @@ func parseAgentsConfig(v *viper.Viper) map[string]AgentConfig {
 }
 
 // GetAgentConfig returns the agents.AgentConfig for a specific agent.
-// If the agent is not configured, returns a zero-value AgentConfig.
+// If the agent is not configured, returns default AgentConfig with AutoApprove enabled.
 // This method parses the timeout string into a time.Duration.
 func (c *Config) GetAgentConfig(name string) agents.AgentConfig {
-	cfg := agents.AgentConfig{}
+	// Default AutoApprove to true for non-interactive operation.
+	// Orbit runs agents in automated mode, so tools should be approved automatically.
+	cfg := agents.AgentConfig{
+		AutoApprove: true,
+	}
 
 	ac, ok := c.Agents[name]
 	if !ok {
