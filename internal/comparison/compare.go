@@ -87,6 +87,43 @@ func (c *Comparator) CompareWithSummaries(ctx context.Context, specName string, 
 	return c.runComparison(originalPrompt, len(variants))
 }
 
+// CompareUnified performs comparison with full control over what data is included.
+// This is the recommended method - it always includes summaries and optionally includes diffs.
+func (c *Comparator) CompareUnified(ctx context.Context, input ComparisonInput) (*Result, error) {
+	if len(input.Variants) < 2 {
+		return nil, errors.New("at least 2 variants required for comparison")
+	}
+
+	// Custom command support is deferred - only Claude comparison is implemented
+	if c.customCmd != "" {
+		return nil, errors.New("custom comparison commands are not supported")
+	}
+
+	originalPrompt := buildComparisonPrompt(input)
+
+	// Check if the prompt fits within context limits
+	estimatedTokens := estimatePromptTokens(originalPrompt)
+	if estimatedTokens > MaxPromptTokens {
+		// If diffs are included and we're over limit, retry without diffs
+		if input.IncludeDiff {
+			log.Printf("Prompt too large with diffs (%d tokens), retrying without diffs", estimatedTokens)
+			input.IncludeDiff = false
+			originalPrompt = buildComparisonPrompt(input)
+			estimatedTokens = estimatePromptTokens(originalPrompt)
+		}
+
+		// If still too large, fail
+		if estimatedTokens > MaxPromptTokens {
+			return nil, &DiffTooLargeError{
+				EstimatedTokens: estimatedTokens,
+				MaxTokens:       MaxPromptTokens,
+			}
+		}
+	}
+
+	return c.runComparison(originalPrompt, len(input.Variants))
+}
+
 // runComparison executes the comparison prompt with retry logic.
 func (c *Comparator) runComparison(originalPrompt string, numVariants int) (*Result, error) {
 	prompt := originalPrompt

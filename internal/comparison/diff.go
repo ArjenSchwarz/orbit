@@ -93,6 +93,56 @@ func (d *DiffGatherer) GatherSummaries(ctx context.Context, baseCommit string, v
 	return result, nil
 }
 
+// GatherAll retrieves both diffs and summary information for all variants.
+// This is the preferred method for comprehensive comparison.
+func (d *DiffGatherer) GatherAll(ctx context.Context, baseCommit string, variantList []*variants.Variant) ([]VariantData, error) {
+	result := make([]VariantData, 0, len(variantList))
+
+	for _, v := range variantList {
+		// Skip non-completed variants
+		if v.Status != variants.StatusCompleted {
+			continue
+		}
+
+		// Get full diff
+		diff, err := d.git.GetDiff(ctx, v.WorktreePath, baseCommit)
+		if err != nil {
+			return nil, err
+		}
+
+		// Get commit messages
+		commits, err := d.git.GetCommitLog(ctx, v.WorktreePath, baseCommit)
+		if err != nil {
+			return nil, err
+		}
+
+		// Get diff stats
+		diffStat, err := d.git.GetDiffStat(ctx, v.WorktreePath, baseCommit)
+		if err != nil {
+			return nil, err
+		}
+
+		// Try to read changelog if it exists
+		changelog := d.readChangelog(v.WorktreePath)
+
+		result = append(result, VariantData{
+			ID:             v.ID,
+			Diff:           diff,
+			Agent:          v.Agent,
+			CommitMessages: commits,
+			DiffStat:       diffStat,
+			Changelog:      changelog,
+			Metrics: VariantMetrics{
+				Cost:     v.Cost,
+				Duration: v.Duration,
+				NumTurns: v.NumTurns,
+			},
+		})
+	}
+
+	return result, nil
+}
+
 // readChangelog attempts to read a changelog file from the worktree.
 // Returns empty string if no changelog is found.
 func (d *DiffGatherer) readChangelog(worktreePath string) string {

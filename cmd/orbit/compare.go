@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"errors"
 	"flag"
 	"fmt"
 	"os"
@@ -92,27 +91,17 @@ func compareCommand(args []string) error {
 
 	fmt.Printf("Comparing %d variants for spec: %s\n\n", len(completedVariants), specName)
 
-	// Collect diffs for each variant
+	// Collect all variant data (diffs + summaries)
 	ctx := context.Background()
-	variantData := make([]comparison.VariantData, 0, len(completedVariants))
-
-	for _, v := range completedVariants {
-		fmt.Printf("  Getting diff for variant %d...\n", v.ID)
-		diff, err := git.GetDiff(ctx, v.WorktreePath, metadata.BaseCommit)
-		if err != nil {
-			return fmt.Errorf("failed to get diff for variant %d: %w", v.ID, err)
-		}
-
-		variantData = append(variantData, comparison.VariantData{
-			ID:   v.ID,
-			Diff: diff,
-			Metrics: comparison.VariantMetrics{
-				Cost:     v.Cost,
-				Duration: v.Duration,
-				NumTurns: v.NumTurns,
-			},
-		})
+	fmt.Println("\n  Gathering variant data...")
+	diffGatherer := comparison.NewDiffGatherer(git)
+	variantData, err := diffGatherer.GatherAll(ctx, metadata.BaseCommit, completedVariants)
+	if err != nil {
+		return fmt.Errorf("failed to gather variant data: %w", err)
 	}
+
+	// Read spec context for additional context
+	specContext := readSpecContext(specDir)
 
 	// Run comparison
 	fmt.Println("\nRunning comparison analysis...")
@@ -126,26 +115,16 @@ func compareCommand(args []string) error {
 	})
 
 	comparator := comparison.NewComparator(claudeClient, *compareCmd)
-	result, err := comparator.Compare(ctx, specName, variantData)
 
-	// If diffs are too large, fall back to summary mode
-	var diffTooLargeErr *comparison.DiffTooLargeError
-	if errors.As(err, &diffTooLargeErr) {
-		fmt.Printf("  Full diffs too large (%d tokens), switching to summary mode...\n",
-			diffTooLargeErr.EstimatedTokens)
-
-		// Gather summaries instead
-		summaryData, summaryErr := gatherSummaryData(ctx, git, metadata.BaseCommit, completedVariants)
-		if summaryErr != nil {
-			return fmt.Errorf("failed to gather summaries: %w", summaryErr)
-		}
-
-		// Read spec context for additional context
-		specContext := readSpecContext(specDir)
-
-		result, err = comparator.CompareWithSummaries(ctx, specName, summaryData, specContext)
+	// Use the unified comparison method - it automatically handles diff size limits
+	comparisonInput := comparison.ComparisonInput{
+		SpecName:    specName,
+		SpecContext: specContext,
+		Variants:    variantData,
+		IncludeDiff: true, // Start with diffs, will be disabled automatically if too large
 	}
 
+	result, err := comparator.CompareUnified(ctx, comparisonInput)
 	if err != nil {
 		return fmt.Errorf("comparison failed: %w", err)
 	}
@@ -213,13 +192,7 @@ func formatDuration(d time.Duration) string {
 	return fmt.Sprintf("%dh %dm", hours, mins)
 }
 
-// gatherSummaryData collects summary information for variants when diffs are too large.
-func gatherSummaryData(ctx context.Context, git *variants.Git, baseCommit string, variantList []*variants.Variant) ([]comparison.VariantData, error) {
-	diffGatherer := comparison.NewDiffGatherer(git)
-	return diffGatherer.GatherSummaries(ctx, baseCommit, variantList)
-}
-
-// readSpecContext reads key spec files to provide context for summary comparison.
+// readSpecContext reads key spec files to provide context for comparison.
 func readSpecContext(specDir string) string {
 	var parts []string
 
