@@ -126,12 +126,12 @@ func (a *Agent) buildArgs(opts agents.RunOptions, resume bool) []string {
 	}
 
 	// Codex uses: codex exec "<prompt>"
-	// With --full-auto for automatic approval
+	// With --dangerously-bypass-approvals-and-sandbox for non-interactive operation
 	// With --last to resume previous session
 	args := []string{"exec"}
 
 	if a.config.AutoApprove {
-		args = append(args, "--full-auto")
+		args = append(args, "--dangerously-bypass-approvals-and-sandbox")
 	}
 
 	if resume {

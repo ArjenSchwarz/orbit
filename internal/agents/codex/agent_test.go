@@ -89,9 +89,9 @@ func TestAgent_BuildArgs_NewSession(t *testing.T) {
 		t.Errorf("Expected 'Test prompt' in args, got %v", args)
 	}
 
-	// Should NOT contain --full-auto when AutoApprove is false
-	if slices.Contains(args, "--full-auto") {
-		t.Errorf("Should not have --full-auto without AutoApprove, got %v", args)
+	// Should NOT contain --dangerously-bypass-approvals-and-sandbox when AutoApprove is false
+	if slices.Contains(args, "--dangerously-bypass-approvals-and-sandbox") {
+		t.Errorf("Should not have --dangerously-bypass-approvals-and-sandbox without AutoApprove, got %v", args)
 	}
 
 	// Should NOT contain --resume or --last
@@ -136,8 +136,8 @@ func TestAgent_BuildArgs_WithAutoApprove(t *testing.T) {
 		SessionID: "test-session",
 	}, false)
 
-	if !slices.Contains(args, "--full-auto") {
-		t.Errorf("Expected --full-auto in args, got %v", args)
+	if !slices.Contains(args, "--dangerously-bypass-approvals-and-sandbox") {
+		t.Errorf("Expected --dangerously-bypass-approvals-and-sandbox in args, got %v", args)
 	}
 }
 
@@ -246,11 +246,11 @@ func TestAgent_ArgOrder(t *testing.T) {
 				t.Errorf("Expected first arg to be 'exec', got %v", args)
 			}
 
-			// --full-auto should come before prompt
+			// --dangerously-bypass-approvals-and-sandbox should come before prompt
 			fullAutoPos := -1
 			promptPos := -1
 			for i, arg := range args {
-				if arg == "--full-auto" {
+				if arg == "--dangerously-bypass-approvals-and-sandbox" {
 					fullAutoPos = i
 				}
 				if arg == "Test prompt" {
@@ -259,7 +259,7 @@ func TestAgent_ArgOrder(t *testing.T) {
 			}
 
 			if fullAutoPos != -1 && promptPos != -1 && fullAutoPos >= promptPos {
-				t.Errorf("--full-auto should come before prompt: --full-auto at %d, prompt at %d", fullAutoPos, promptPos)
+				t.Errorf("--dangerously-bypass-approvals-and-sandbox should come before prompt: --dangerously-bypass-approvals-and-sandbox at %d, prompt at %d", fullAutoPos, promptPos)
 			}
 		})
 	}
