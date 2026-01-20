@@ -113,6 +113,14 @@ func (m *mockGitClient) HasUncommittedChanges() (bool, error) {
 	return m.uncommittedChanges, nil
 }
 
+func (m *mockGitClient) GetCommitLog(_ context.Context, _, _ string) ([]string, error) {
+	return []string{"abc123 Mock commit"}, nil
+}
+
+func (m *mockGitClient) GetDiffStat(_ context.Context, _, _ string) (string, error) {
+	return " 3 files changed, 50 insertions(+), 10 deletions(-)", nil
+}
+
 func TestNewManager(t *testing.T) {
 	git := newMockGitClient()
 

@@ -2,10 +2,12 @@ package main
 
 import (
 	"context"
+	"errors"
 	"flag"
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/arjenschwarz/orbit/internal/claude"
@@ -125,6 +127,25 @@ func compareCommand(args []string) error {
 
 	comparator := comparison.NewComparator(claudeClient, *compareCmd)
 	result, err := comparator.Compare(ctx, specName, variantData)
+
+	// If diffs are too large, fall back to summary mode
+	var diffTooLargeErr *comparison.DiffTooLargeError
+	if errors.As(err, &diffTooLargeErr) {
+		fmt.Printf("  Full diffs too large (%d tokens), switching to summary mode...\n",
+			diffTooLargeErr.EstimatedTokens)
+
+		// Gather summaries instead
+		summaryData, summaryErr := gatherSummaryData(ctx, git, metadata.BaseCommit, completedVariants)
+		if summaryErr != nil {
+			return fmt.Errorf("failed to gather summaries: %w", summaryErr)
+		}
+
+		// Read spec context for additional context
+		specContext := readSpecContext(specDir)
+
+		result, err = comparator.CompareWithSummaries(ctx, specName, summaryData, specContext)
+	}
+
 	if err != nil {
 		return fmt.Errorf("comparison failed: %w", err)
 	}
@@ -190,4 +211,52 @@ func formatDuration(d time.Duration) string {
 	hours := int(d.Hours())
 	mins := int(d.Minutes()) % 60
 	return fmt.Sprintf("%dh %dm", hours, mins)
+}
+
+// gatherSummaryData collects summary information for variants when diffs are too large.
+func gatherSummaryData(ctx context.Context, git *variants.Git, baseCommit string, variantList []*variants.Variant) ([]comparison.VariantData, error) {
+	diffGatherer := comparison.NewDiffGatherer(git)
+	return diffGatherer.GatherSummaries(ctx, baseCommit, variantList)
+}
+
+// readSpecContext reads key spec files to provide context for summary comparison.
+func readSpecContext(specDir string) string {
+	var parts []string
+
+	// Key spec files to include
+	specFiles := []struct {
+		name  string
+		label string
+	}{
+		{"requirements.md", "Requirements"},
+		{"design.md", "Design"},
+		{"tasks.md", "Tasks"},
+	}
+
+	for _, sf := range specFiles {
+		path := filepath.Join(specDir, sf.name)
+		content, err := os.ReadFile(path)
+		if err != nil {
+			continue // Skip files that don't exist
+		}
+
+		// Truncate if too long
+		s := string(content)
+		if len(s) > 3000 {
+			idx := strings.LastIndex(s[:3000], "\n")
+			if idx > 2500 {
+				s = s[:idx] + "\n... (truncated)"
+			} else {
+				s = s[:3000] + "... (truncated)"
+			}
+		}
+
+		parts = append(parts, fmt.Sprintf("### %s\n\n%s", sf.label, s))
+	}
+
+	if len(parts) == 0 {
+		return ""
+	}
+
+	return strings.Join(parts, "\n\n")
 }

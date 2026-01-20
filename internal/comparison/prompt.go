@@ -114,3 +114,111 @@ func formatDuration(d time.Duration) string {
 func estimatePromptTokens(prompt string) int {
 	return len(prompt) / 4
 }
+
+// buildSummaryPrompt constructs a comparison prompt using summaries instead of full diffs.
+// This is used when diffs are too large to fit in context.
+func buildSummaryPrompt(specName string, variants []VariantData, specContext string) string {
+	var sb strings.Builder
+
+	// Check if any variant has an agent specified
+	hasAgents := false
+	for _, v := range variants {
+		if v.Agent != "" {
+			hasAgents = true
+			break
+		}
+	}
+
+	// Header
+	sb.WriteString(fmt.Sprintf("You are comparing %d implementation variants of the specification \"%s\".\n\n", len(variants), specName))
+	sb.WriteString("Note: Full diffs are too large to include. This comparison uses commit messages, change statistics, and changelogs instead.\n\n")
+
+	// Spec context section (if provided)
+	if specContext != "" {
+		sb.WriteString("## Specification Context\n\n")
+		sb.WriteString(specContext)
+		sb.WriteString("\n\n")
+	}
+
+	// Variant summaries section
+	sb.WriteString("## Variant Summaries\n\n")
+	for _, v := range variants {
+		if v.Agent != "" {
+			sb.WriteString(fmt.Sprintf("### Variant %d (Agent: %s)\n\n", v.ID, v.Agent))
+		} else {
+			sb.WriteString(fmt.Sprintf("### Variant %d\n\n", v.ID))
+		}
+
+		// Diff stats
+		sb.WriteString("**Change Statistics:**\n```\n")
+		sb.WriteString(strings.TrimSpace(v.DiffStat))
+		sb.WriteString("\n```\n\n")
+
+		// Commit messages
+		sb.WriteString("**Commits:**\n")
+		if len(v.CommitMessages) > 0 {
+			for _, msg := range v.CommitMessages {
+				sb.WriteString(fmt.Sprintf("- %s\n", msg))
+			}
+		} else {
+			sb.WriteString("- (no commits)\n")
+		}
+		sb.WriteString("\n")
+
+		// Changelog if present
+		if v.Changelog != "" {
+			sb.WriteString("**Changelog:**\n")
+			sb.WriteString("```\n")
+			sb.WriteString(v.Changelog)
+			if !strings.HasSuffix(v.Changelog, "\n") {
+				sb.WriteString("\n")
+			}
+			sb.WriteString("```\n\n")
+		}
+	}
+
+	// Metrics table
+	sb.WriteString("## Metrics\n\n")
+	if hasAgents {
+		sb.WriteString("| Variant | Agent | Cost | Duration | Turns |\n")
+		sb.WriteString("|---------|-------|------|----------|-------|\n")
+		for _, v := range variants {
+			cost := fmt.Sprintf("$%.4f", v.Metrics.Cost)
+			duration := formatDuration(v.Metrics.Duration)
+			agent := v.Agent
+			if agent == "" {
+				agent = "-"
+			}
+			sb.WriteString(fmt.Sprintf("| %d | %s | %s | %s | %d |\n", v.ID, agent, cost, duration, v.Metrics.NumTurns))
+		}
+	} else {
+		sb.WriteString("| Variant | Cost | Duration | Turns |\n")
+		sb.WriteString("|---------|------|----------|-------|\n")
+		for _, v := range variants {
+			cost := fmt.Sprintf("$%.4f", v.Metrics.Cost)
+			duration := formatDuration(v.Metrics.Duration)
+			sb.WriteString(fmt.Sprintf("| %d | %s | %s | %d |\n", v.ID, cost, duration, v.Metrics.NumTurns))
+		}
+	}
+	sb.WriteString("\n")
+
+	// Instructions
+	sb.WriteString("## Instructions\n\n")
+	sb.WriteString("Based on the commit messages, change statistics, and any changelogs provided, analyze these implementations and provide:\n")
+	sb.WriteString("1. A recommendation (which variant number is best)\n")
+	sb.WriteString("2. Confidence level (high/medium/low) - note that without full diffs, confidence should typically be 'medium' or 'low'\n")
+	sb.WriteString("3. Executive summary (2-3 sentences)\n")
+	sb.WriteString("4. Key observations about each implementation approach\n\n")
+	sb.WriteString("Consider:\n")
+	sb.WriteString("- Commit message quality and clarity\n")
+	sb.WriteString("- Scope of changes (files modified, lines changed)\n")
+	sb.WriteString("- Implementation approach based on commit history\n")
+	sb.WriteString("- Changelog documentation quality (if present)\n\n")
+	sb.WriteString("Output your analysis as JSON matching this schema:\n")
+	sb.WriteString("```json\n")
+	sb.WriteString(jsonSchema)
+	sb.WriteString("\n```\n\n")
+	sb.WriteString("IMPORTANT: Output ONLY valid JSON. Do not include any text before or after the JSON.\n")
+
+	return sb.String()
+}

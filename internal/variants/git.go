@@ -40,6 +40,12 @@ type GitClient interface {
 
 	// HasUncommittedChanges returns true if the working directory has uncommitted changes.
 	HasUncommittedChanges() (bool, error)
+
+	// GetCommitLog returns commit messages from baseCommit to HEAD in a worktree.
+	GetCommitLog(ctx context.Context, worktreePath, baseCommit string) ([]string, error)
+
+	// GetDiffStat returns a summary of changes (files changed, insertions, deletions) from baseCommit.
+	GetDiffStat(ctx context.Context, worktreePath, baseCommit string) (string, error)
 }
 
 // Git implements GitClient with real git command execution.
@@ -233,4 +239,48 @@ func (g *Git) HasUncommittedChanges() (bool, error) {
 	}
 	// If there's any output, there are uncommitted changes
 	return len(strings.TrimSpace(string(out))) > 0, nil
+}
+
+// GetCommitLog returns commit messages from baseCommit to HEAD in a worktree.
+// Each entry contains the short hash and subject line.
+func (g *Git) GetCommitLog(ctx context.Context, worktreePath, baseCommit string) ([]string, error) {
+	// Get commit messages with format: short hash - subject
+	cmd := exec.CommandContext(ctx, "git", "log", "--oneline", "--no-decorate", baseCommit+"..HEAD")
+	cmd.Dir = worktreePath
+	out, err := cmd.Output()
+	if err != nil {
+		if ctx.Err() != nil {
+			return nil, fmt.Errorf("get commit log cancelled: %w", ctx.Err())
+		}
+		var stderr bytes.Buffer
+		if exitErr, ok := err.(*exec.ExitError); ok {
+			stderr.Write(exitErr.Stderr)
+		}
+		return nil, fmt.Errorf("get commit log from %s: %s", baseCommit, stderr.String())
+	}
+
+	// Split into lines, filtering empty
+	lines := strings.Split(strings.TrimSpace(string(out)), "\n")
+	if len(lines) == 1 && lines[0] == "" {
+		return []string{}, nil
+	}
+	return lines, nil
+}
+
+// GetDiffStat returns a summary of changes (files changed, insertions, deletions) from baseCommit.
+func (g *Git) GetDiffStat(ctx context.Context, worktreePath, baseCommit string) (string, error) {
+	cmd := exec.CommandContext(ctx, "git", "diff", "--stat", baseCommit+"..HEAD")
+	cmd.Dir = worktreePath
+	out, err := cmd.Output()
+	if err != nil {
+		if ctx.Err() != nil {
+			return "", fmt.Errorf("get diff stat cancelled: %w", ctx.Err())
+		}
+		var stderr bytes.Buffer
+		if exitErr, ok := err.(*exec.ExitError); ok {
+			stderr.Write(exitErr.Stderr)
+		}
+		return "", fmt.Errorf("get diff stat from %s: %s", baseCommit, stderr.String())
+	}
+	return string(out), nil
 }

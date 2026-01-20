@@ -62,9 +62,33 @@ func (c *Comparator) Compare(ctx context.Context, specName string, variants []Va
 	// Check that the prompt fits within context limits (Requirement 5.8)
 	estimatedTokens := estimatePromptTokens(originalPrompt)
 	if estimatedTokens > MaxPromptTokens {
-		return nil, fmt.Errorf("combined diff size (%d estimated tokens) exceeds context limit of %d; variants are too large to compare",
-			estimatedTokens, MaxPromptTokens)
+		return nil, &DiffTooLargeError{
+			EstimatedTokens: estimatedTokens,
+			MaxTokens:       MaxPromptTokens,
+		}
 	}
+
+	return c.runComparison(originalPrompt, len(variants))
+}
+
+// CompareWithSummaries analyzes variants using summaries instead of full diffs.
+// This is used when diffs are too large to fit in context.
+func (c *Comparator) CompareWithSummaries(ctx context.Context, specName string, variants []VariantData, specContext string) (*Result, error) {
+	if len(variants) < 2 {
+		return nil, errors.New("at least 2 variants required for comparison")
+	}
+
+	// Custom command support is deferred - only Claude comparison is implemented
+	if c.customCmd != "" {
+		return nil, errors.New("custom comparison commands are not supported")
+	}
+
+	originalPrompt := buildSummaryPrompt(specName, variants, specContext)
+	return c.runComparison(originalPrompt, len(variants))
+}
+
+// runComparison executes the comparison prompt with retry logic.
+func (c *Comparator) runComparison(originalPrompt string, numVariants int) (*Result, error) {
 	prompt := originalPrompt
 
 	for attempt := 0; attempt < c.maxRetries; attempt++ {
@@ -73,7 +97,7 @@ func (c *Comparator) Compare(ctx context.Context, specName string, variants []Va
 			return nil, fmt.Errorf("claude execution failed: %w", err)
 		}
 
-		result, err := c.parseAndValidate(response.Output, len(variants))
+		result, err := c.parseAndValidate(response.Output, numVariants)
 		if err == nil {
 			return result, nil
 		}
@@ -93,6 +117,18 @@ Please provide the comparison result as valid JSON only, with no additional text
 	}
 
 	return nil, fmt.Errorf("comparison failed after %d attempts: JSON validation errors", c.maxRetries)
+}
+
+// DiffTooLargeError indicates that the combined diff size exceeds context limits.
+// Callers should use CompareWithSummaries as a fallback.
+type DiffTooLargeError struct {
+	EstimatedTokens int
+	MaxTokens       int
+}
+
+func (e *DiffTooLargeError) Error() string {
+	return fmt.Sprintf("combined diff size (%d estimated tokens) exceeds context limit of %d",
+		e.EstimatedTokens, e.MaxTokens)
 }
 
 // parseAndValidate extracts JSON from Claude response and validates structure.

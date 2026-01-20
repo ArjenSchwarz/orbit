@@ -27,6 +27,11 @@ type VariantData struct {
 	Diff    string
 	Metrics VariantMetrics
 	Agent   string // Agent used for this variant [Req 10.6]
+
+	// Summary mode fields (used when diff is too large)
+	CommitMessages []string // Commit messages from base to HEAD
+	DiffStat       string   // Summary stats (files changed, insertions, deletions)
+	Changelog      string   // Changelog content if present
 }
 
 // VariantMetrics holds execution metrics for a variant.
