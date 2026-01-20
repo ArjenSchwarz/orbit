@@ -319,6 +319,11 @@ func TestAgent_ExportSession_BuildsCorrectArgs(t *testing.T) {
 		t.Errorf("Expected --resume in args, got %v", args)
 	}
 
+	// Should NOT have --trust-all-tools when AutoApprove is false
+	if slices.Contains(args, "--trust-all-tools") {
+		t.Errorf("Should not have --trust-all-tools without AutoApprove, got %v", args)
+	}
+
 	// Should have the save command with quoted filename
 	foundSaveCmd := false
 	for _, arg := range args {
@@ -329,5 +334,26 @@ func TestAgent_ExportSession_BuildsCorrectArgs(t *testing.T) {
 	}
 	if !foundSaveCmd {
 		t.Errorf(`Expected '/chat save "test-output.json"' in args, got %v`, args)
+	}
+}
+
+func TestAgent_ExportSession_WithAutoApprove(t *testing.T) {
+	agent := New(agents.AgentConfig{
+		AutoApprove: true,
+	}).(*Agent)
+
+	args := agent.buildExportArgs("test-output.json")
+
+	// Should have --trust-all-tools when AutoApprove is true
+	if !slices.Contains(args, "--trust-all-tools") {
+		t.Errorf("Expected --trust-all-tools in args with AutoApprove, got %v", args)
+	}
+
+	// Should still have all required args
+	if !slices.Contains(args, "--no-interactive") {
+		t.Errorf("Expected --no-interactive in args, got %v", args)
+	}
+	if !slices.Contains(args, "--resume") {
+		t.Errorf("Expected --resume in args, got %v", args)
 	}
 }

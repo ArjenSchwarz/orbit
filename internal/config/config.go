@@ -361,3 +361,13 @@ func (c *Config) GetAgentConfig(name string) agents.AgentConfig {
 
 	return cfg
 }
+
+// GetAllAgentConfigs returns a map of all agent configurations.
+// Each config is converted to agents.AgentConfig format.
+func (c *Config) GetAllAgentConfigs() map[string]agents.AgentConfig {
+	result := make(map[string]agents.AgentConfig)
+	for name := range c.Agents {
+		result[name] = c.GetAgentConfig(name)
+	}
+	return result
+}

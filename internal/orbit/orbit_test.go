@@ -1,6 +1,7 @@
 package orbit
 
 import (
+	"context"
 	"errors"
 	"os"
 	"path/filepath"
@@ -42,6 +43,36 @@ func (m *mockClaudeClient) RunCustomPromptWithSession(prompt, sessionID string, 
 	// Fall back to runCustomPromptFunc if not set
 	if m.runCustomPromptFunc != nil {
 		return m.runCustomPromptFunc(prompt)
+	}
+	return &agents.RunResult{}, nil
+}
+
+// mockAgent implements agents.Agent for testing.
+type mockAgent struct {
+	name       string
+	runFunc    func(ctx context.Context, opts agents.RunOptions) (*agents.RunResult, error)
+	resumeFunc func(ctx context.Context, sessionID string, opts agents.RunOptions) (*agents.RunResult, error)
+}
+
+func (m *mockAgent) Name() string                                { return m.name }
+func (m *mockAgent) CLICommand() string                          { return "mock-agent" }
+func (m *mockAgent) IsInstalled() bool                           { return true }
+func (m *mockAgent) Version() (string, error)                    { return "1.0.0", nil }
+func (m *mockAgent) DefaultSessionDir() string                   { return "" }
+func (m *mockAgent) DiscoverSessions(ctx context.Context, projectDir string) ([]agents.SessionInfo, error) {
+	return nil, nil
+}
+
+func (m *mockAgent) Run(ctx context.Context, opts agents.RunOptions) (*agents.RunResult, error) {
+	if m.runFunc != nil {
+		return m.runFunc(ctx, opts)
+	}
+	return &agents.RunResult{}, nil
+}
+
+func (m *mockAgent) Resume(ctx context.Context, sessionID string, opts agents.RunOptions) (*agents.RunResult, error) {
+	if m.resumeFunc != nil {
+		return m.resumeFunc(ctx, sessionID, opts)
 	}
 	return &agents.RunResult{}, nil
 }
@@ -137,8 +168,9 @@ func TestComplete_PostCommandSkippedWhenEmpty(t *testing.T) {
 
 func TestRunPostCommandWithRetry_Success(t *testing.T) {
 	callCount := 0
-	mock := &mockClaudeClient{
-		runCustomPromptFunc: func(prompt string) (*agents.RunResult, error) {
+	mockAg := &mockAgent{
+		name: "test-agent",
+		runFunc: func(ctx context.Context, opts agents.RunOptions) (*agents.RunResult, error) {
 			callCount++
 			return &agents.RunResult{
 				SessionID: "test-session",
@@ -151,13 +183,17 @@ func TestRunPostCommandWithRetry_Success(t *testing.T) {
 		},
 	}
 
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
 	o := &Orbit{
 		config: Config{
 			PostCommand: "test command",
 		},
-		claudeClient:    mock,
+		agent:           mockAg,
 		logManager:      nil,
 		errorClassifier: agents.GetClassifier("test"), // Use default classifier
+		shutdownCtx:     ctx,
 	}
 
 	err := o.runPostCommandWithRetry()
@@ -171,8 +207,9 @@ func TestRunPostCommandWithRetry_Success(t *testing.T) {
 
 func TestRunPostCommandWithRetry_NonRetryableError(t *testing.T) {
 	callCount := 0
-	mock := &mockClaudeClient{
-		runCustomPromptFunc: func(prompt string) (*agents.RunResult, error) {
+	mockAg := &mockAgent{
+		name: "test-agent",
+		runFunc: func(ctx context.Context, opts agents.RunOptions) (*agents.RunResult, error) {
 			callCount++
 			return &agents.RunResult{
 				Stderr:  "unknown error occurred",
@@ -181,13 +218,17 @@ func TestRunPostCommandWithRetry_NonRetryableError(t *testing.T) {
 		},
 	}
 
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
 	o := &Orbit{
 		config: Config{
 			PostCommand: "test command",
 		},
-		claudeClient:    mock,
+		agent:           mockAg,
 		logManager:      nil,
 		errorClassifier: agents.GetClassifier("test"), // Use default classifier
+		shutdownCtx:     ctx,
 	}
 
 	err := o.runPostCommandWithRetry()

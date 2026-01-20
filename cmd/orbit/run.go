@@ -206,6 +206,7 @@ func runCommand(args []string) error {
 		ContinueSession: continueSessionValue,
 		Agent:           agentName,
 		AgentConfig:     agentCfg,
+		AgentConfigs:    cfg.GetAllAgentConfigs(),
 		VariantCount:    *variantCount,
 		Parallel:        *parallel,
 		MaxParallel:     *maxParallel,

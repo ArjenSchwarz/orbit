@@ -65,8 +65,9 @@ type Config struct {
 	ContinueSession bool   // If true, continue existing Claude sessions when resuming
 
 	// Agent configuration
-	Agent       string             // Agent name (claude-code, codex, kiro, copilot)
-	AgentConfig agents.AgentConfig // Agent-specific configuration
+	Agent        string                        // Agent name (claude-code, codex, kiro, copilot)
+	AgentConfig  agents.AgentConfig            // Agent-specific configuration for default agent
+	AgentConfigs map[string]agents.AgentConfig // Per-agent configs from config file (for variants)
 
 	// Variant configuration for multi-spec comparison
 	VariantCount   int      // Number of variants (0 = single-run mode)
@@ -677,13 +678,31 @@ func (o *Orbit) runPostCommand() error {
 			return o.fail(fmt.Errorf("failed to start post-completion: %w", err))
 		}
 		o.debug.LogSession(sessionID, isResume, "post-completion obtained from log manager")
+	} else {
+		sessionID = uuid.NewString()
+		isResume = false
+		o.debug.LogSession(sessionID, isResume, "generated new (no log manager)")
 	}
 
-	o.debug.Log("Executing post-completion command...")
-	result, err := o.claudeClient.RunCustomPromptWithSession(o.config.PostCommand, sessionID, isResume)
+	o.debug.Log("Executing post-completion command with agent %s...", o.agent.Name())
+
+	// Execute using the configured agent (not hardcoded to Claude)
+	opts := agents.RunOptions{
+		Prompt:    o.config.PostCommand,
+		WorkDir:   o.config.WorkingDir,
+		SessionID: sessionID,
+	}
+
+	var result *agents.RunResult
+	var err error
+	if isResume {
+		result, err = o.agent.Resume(o.shutdownCtx, sessionID, opts)
+	} else {
+		result, err = o.agent.Run(o.shutdownCtx, opts)
+	}
 	o.debug.Log("Post-completion execution completed: err=%v", err)
 
-	// Stop spinner after Claude returns
+	// Stop spinner after agent returns
 	if o.spinner != nil {
 		o.spinner.Stop()
 	}
@@ -700,7 +719,8 @@ func (o *Orbit) runPostCommand() error {
 				o.debug.Log("Failed to update post-completion session ID: %v", setErr)
 			}
 		}
-		result, err = o.claudeClient.RunCustomPromptWithSession(o.config.PostCommand, sessionID, false)
+		opts.SessionID = sessionID
+		result, err = o.agent.Run(o.shutdownCtx, opts)
 		o.debug.Log("Fresh post-completion execution completed: err=%v", err)
 	}
 
@@ -716,15 +736,15 @@ func (o *Orbit) runPostCommand() error {
 		return classified
 	}
 
-	// Reconcile session ID if Claude returned a different one
+	// Reconcile session ID if agent returned a different one
 	if o.logManager != nil && result.SessionID != sessionID {
 		o.debug.Log("Post-completion session ID changed: expected=%s got=%s", sessionID, result.SessionID)
 		o.logManager.ReconcilePostCompletionSessionID(result.SessionID)
 	}
 
-	// Check if Claude reported an error in its output
+	// Check if agent reported an error in its output
 	if result.IsError {
-		o.debug.Log("Claude reported error in post-completion output (IsError=true)")
+		o.debug.Log("Agent reported error in post-completion output (IsError=true)")
 		if o.logManager != nil {
 			_ = o.logManager.SavePostCompletionSession(result, startTime)
 		}
@@ -987,7 +1007,9 @@ func (o *Orbit) runWithVariants(ctx context.Context) error {
 	}()
 
 	if o.config.Parallel {
+		log.Printf("Starting parallel execution of %d variants...", len(variantList))
 		o.runVariantsParallel(ctx, variantList)
+		log.Println("All variant goroutines completed")
 	} else {
 		o.runVariantsSequential(ctx, variantList)
 	}
@@ -1091,9 +1113,13 @@ func (o *Orbit) runVariant(ctx context.Context, v *variants.Variant) error {
 		agentName = "claude-code" // Default to Claude Code
 	}
 
-	variantAgentConfig := agents.AgentConfig{
-		AutoApprove: o.config.SkipPermissions,
+	// Get agent config from config file, falling back to defaults
+	variantAgentConfig := o.getAgentConfig(agentName)
+	// Ensure AutoApprove is set based on SkipPermissions flag
+	if o.config.SkipPermissions {
+		variantAgentConfig.AutoApprove = true
 	}
+
 	variantAgent, err := agents.Get(agentName, variantAgentConfig)
 	if err != nil {
 		return fmt.Errorf("failed to get agent %q for variant %d: %w", agentName, v.ID, err)
@@ -1104,20 +1130,30 @@ func (o *Orbit) runVariant(ctx context.Context, v *variants.Variant) error {
 
 	// Create a rune client for this variant's worktree
 	// The tasks file path needs to be adjusted for the worktree
-	// Convert absolute path to relative from repo root, then rebase to worktree
 	tasksFile := o.config.TasksFile
-	if o.config.RepoRoot != "" && filepath.IsAbs(tasksFile) {
-		relPath, err := filepath.Rel(o.config.RepoRoot, tasksFile)
+	if o.config.RepoRoot != "" {
+		// Convert to absolute path first if relative
+		absTasksFile := tasksFile
+		if !filepath.IsAbs(tasksFile) {
+			absTasksFile = filepath.Join(o.config.RepoRoot, tasksFile)
+		}
+		// Get path relative to repo root, then rebase to worktree
+		relPath, err := filepath.Rel(o.config.RepoRoot, absTasksFile)
 		if err == nil {
 			tasksFile = filepath.Join(v.WorktreePath, relPath)
 		}
 	}
+	o.debug.Log("Variant %d using tasks file: %s", v.ID, tasksFile)
 	variantRuneClient := rune.NewClient(tasksFile)
 	variantRuneClient.SetDebug(o.config.Debug)
 
 	// Track total metrics across all phases
 	var totalCost float64
 	var totalTurns int
+
+	// Track last logged phase and per-phase cost
+	var lastLoggedPhase string
+	var phaseCost float64
 
 	// Run all phases in this variant
 	for {
@@ -1145,12 +1181,23 @@ func (o *Orbit) runVariant(ctx context.Context, v *variants.Variant) error {
 			break
 		}
 
-		log.Printf("Variant %d: running phase %s (%d tasks)", v.ID, nextPhase.PhaseName, len(nextPhase.Tasks))
+		totalTasks := len(nextPhase.Tasks)
+		currentPhase := nextPhase.PhaseName
+
+		// Log when entering a new phase (and log completion of previous phase)
+		if currentPhase != lastLoggedPhase {
+			if lastLoggedPhase != "" {
+				log.Printf("Variant %d: finished phase %s (cost=$%.4f)", v.ID, lastLoggedPhase, phaseCost)
+				phaseCost = 0 // Reset for new phase
+			}
+			log.Printf("Variant %d: starting phase %s (%d tasks)", v.ID, currentPhase, totalTasks)
+			lastLoggedPhase = currentPhase
+		}
 
 		// Run the phase with retry
 		phaseResult, err := o.runVariantPhaseWithRetry(ctx, v, variantAgent, variantPrompt)
 		if err != nil {
-			variantErr := fmt.Errorf("phase %s: %w", nextPhase.PhaseName, err)
+			variantErr := fmt.Errorf("phase %s: %w", currentPhase, err)
 			if updateErr := o.variantManager.UpdateStatus(v.ID, variants.StatusFailed, variantErr); updateErr != nil {
 				log.Printf("Warning: failed to update variant %d status: %v", v.ID, updateErr)
 			}
@@ -1159,9 +1206,15 @@ func (o *Orbit) runVariant(ctx context.Context, v *variants.Variant) error {
 
 		// Accumulate metrics
 		if phaseResult != nil {
+			phaseCost += getCostUSD(phaseResult)
 			totalCost += getCostUSD(phaseResult)
 			totalTurns += phaseResult.NumTurns
 		}
+	}
+
+	// Log final phase completion
+	if lastLoggedPhase != "" && phaseCost > 0 {
+		log.Printf("Variant %d: finished phase %s (cost=$%.4f)", v.ID, lastLoggedPhase, phaseCost)
 	}
 
 	// Mark variant as completed
@@ -1418,4 +1471,27 @@ func (o *Orbit) generatePartialReport() error {
 
 	log.Printf("Partial report generated: %s/index.html", reportDir)
 	return fmt.Errorf("all variants failed")
+}
+
+// getAgentConfig returns the agent configuration for a given agent name.
+// It first checks the AgentConfigs map (from config file), then falls back to
+// the default AgentConfig if the agent matches the configured default agent,
+// or returns a default config with AutoApprove enabled.
+func (o *Orbit) getAgentConfig(agentName string) agents.AgentConfig {
+	// Check per-agent configs from config file
+	if o.config.AgentConfigs != nil {
+		if cfg, ok := o.config.AgentConfigs[agentName]; ok {
+			return cfg
+		}
+	}
+
+	// If this is the default agent, use its config
+	if agentName == o.config.Agent {
+		return o.config.AgentConfig
+	}
+
+	// Return default config with AutoApprove enabled for non-interactive operation
+	return agents.AgentConfig{
+		AutoApprove: true,
+	}
 }
