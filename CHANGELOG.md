@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Variant session logging: Each variant now gets its own log manager at `specs/{spec}/.orbit/logs/variant-{id}/` with phase-by-phase session storage
+- Variant web interface registration: Each variant is registered separately in the run registry with variant-specific metadata
+- Variant fields in `registry.RunEntry`: `IsVariant`, `VariantID`, `VariantRunID`, `VariantTotal`, `VariantAgent`, `VariantBranch`
+- Variant display in web dashboard: Variants show purple left border, "variant" badge, and agent name
+- Variant display in run detail page: Shows variant badge with N/M counter, agent name, variant branch, and related variants list with navigation links
+- Related variants navigation: Run detail page shows all variants from the same run with links to switch between them
+- CSS styles for variant badges, agent names, and variant run cards
+
 ### Changed
 
 - Updated README.md and CLAUDE.md documentation to reflect multi-agent support:

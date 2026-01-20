@@ -101,6 +101,8 @@ type Orbit struct {
 	variantManager       *variants.Manager      // Variant lifecycle manager (nil for single-run mode)
 	rawClaudeClient      *claude.Client         // Raw Claude client for variant mode
 	comparisonResult     *comparison.Result     // Comparison result for report generation
+	variantRunID         string                 // Shared ID to group variant registry entries
+	variantRegistryIDs   map[int]string         // Maps variant ID to registry entry ID
 }
 
 // New creates a new Orbit instance.
@@ -933,6 +935,93 @@ func (o *Orbit) registerRun() (string, error) {
 	return entry.ID, nil
 }
 
+// registerVariantRun creates registry entries for each variant.
+// Each variant gets its own entry with variant-specific metadata.
+// Returns the shared variant run ID. Errors are logged but not fatal.
+func (o *Orbit) registerVariantRun(variantList []*variants.Variant) string {
+	if o.registry == nil {
+		return ""
+	}
+
+	// Generate a shared ID to group all variants from this run
+	variantRunID := uuid.NewString()
+	o.variantRunID = variantRunID
+	o.variantRegistryIDs = make(map[int]string)
+
+	pid := os.Getpid()
+	now := time.Now()
+	variantTotal := len(variantList)
+
+	for _, v := range variantList {
+		entry := registry.NewRunEntry()
+		entry.Name = fmt.Sprintf("%s [variant %d/%d]", o.config.BranchName, v.ID, variantTotal)
+		entry.Repository = registry.GetRepository(o.config.WorkingDir)
+		entry.Branch = o.config.BranchName
+		entry.Status = registry.StatusRunning
+		entry.StartedAt = now
+		entry.PID = &pid
+		entry.RunNumber = 1
+
+		// Set variant-specific fields
+		entry.IsVariant = true
+		entry.VariantID = v.ID
+		entry.VariantRunID = variantRunID
+		entry.VariantTotal = variantTotal
+		entry.VariantAgent = v.Agent
+		entry.VariantBranch = v.Branch
+
+		// Set log directory to this variant's log directory
+		variantLogDir := filepath.Join(o.config.SpecDir, ".orbit", "logs", fmt.Sprintf("variant-%d", v.ID))
+		absLogDir, err := filepath.Abs(variantLogDir)
+		if err != nil {
+			log.Printf("Warning: failed to get absolute path for variant %d log dir: %v", v.ID, err)
+			absLogDir = variantLogDir
+		}
+		entry.LogDir = absLogDir
+
+		if err := o.registry.Register(entry); err != nil {
+			log.Printf("Warning: failed to register variant %d: %v", v.ID, err)
+			continue
+		}
+
+		o.variantRegistryIDs[v.ID] = entry.ID
+	}
+
+	return variantRunID
+}
+
+// updateVariantRegistryStatus updates a variant's status in the registry.
+// Failures are logged but not fatal.
+func (o *Orbit) updateVariantRegistryStatus(variantID int, status registry.RunStatus) {
+	if o.registry == nil || o.variantRegistryIDs == nil {
+		return
+	}
+
+	registryID, ok := o.variantRegistryIDs[variantID]
+	if !ok {
+		return
+	}
+
+	entry, err := o.registry.Get(registryID)
+	if err != nil {
+		log.Printf("Warning: failed to get variant %d registry entry: %v", variantID, err)
+		return
+	}
+	if entry == nil {
+		return
+	}
+
+	entry.Status = status
+	if status == registry.StatusCompleted || status == registry.StatusFailed {
+		now := time.Now()
+		entry.FinishedAt = &now
+	}
+
+	if err := o.registry.Register(entry); err != nil {
+		log.Printf("Warning: failed to update variant %d status: %v", variantID, err)
+	}
+}
+
 // updatePhaseStatus updates the phase status in the registry.
 // Failures are logged but not fatal (req 3.7).
 func (o *Orbit) updatePhaseStatus(phaseNum int, status registry.PhaseStatus, runCount int) {
@@ -989,6 +1078,12 @@ func (o *Orbit) runWithVariants(ctx context.Context) error {
 
 	// Assign agents to variants [Req 10.3]
 	variants.AssignVariantAgents(variantList, o.config.VariantAgents, o.config.Agent)
+
+	// Register each variant in web interface registry
+	variantRunID := o.registerVariantRun(variantList)
+	if variantRunID != "" && o.config.Verbose {
+		log.Printf("Registered %d variants with run ID: %s", len(variantList), variantRunID)
+	}
 
 	log.Printf("Running %d variants...", len(variantList))
 
@@ -1106,6 +1201,7 @@ func (o *Orbit) runVariant(ctx context.Context, v *variants.Variant) error {
 	if err := o.variantManager.UpdateStatus(v.ID, variants.StatusRunning, nil); err != nil {
 		log.Printf("Warning: failed to update variant %d status: %v", v.ID, err)
 	}
+	// Registry status is already set to running during registration
 
 	// Create the agent for this variant using its assigned agent type
 	agentName := v.Agent
@@ -1147,6 +1243,19 @@ func (o *Orbit) runVariant(ctx context.Context, v *variants.Variant) error {
 	variantRuneClient := rune.NewClient(tasksFile)
 	variantRuneClient.SetDebug(o.config.Debug)
 
+	// Create log manager for this variant
+	// Logs are stored in the main spec directory under variant-specific subdirectory
+	variantLogDir := filepath.Join(o.config.SpecDir, ".orbit", "logs", fmt.Sprintf("variant-%d", v.ID))
+	variantBranchName := fmt.Sprintf("variant-%d", v.ID)
+	variantLogManager, err := logs.NewManagerWithOptions(variantLogDir, variantBranchName, v.WorktreePath, logs.ManagerOptions{
+		UseSubdirs: false, // Use flat structure for variant logs
+	})
+	if err != nil {
+		log.Printf("Warning: failed to create log manager for variant %d: %v", v.ID, err)
+		// Continue without logging - variant execution is more important
+		variantLogManager = nil
+	}
+
 	// Track total metrics across all phases
 	var totalCost float64
 	var totalTurns int
@@ -1154,6 +1263,26 @@ func (o *Orbit) runVariant(ctx context.Context, v *variants.Variant) error {
 	// Track last logged phase and per-phase cost
 	var lastLoggedPhase string
 	var phaseCost float64
+
+	// Track phase number for logging
+	phaseNum := 0
+
+	// Get phase summaries for phase number lookup
+	phaseSummaries, err := variantRuneClient.GetPhaseSummaries()
+	if err != nil {
+		o.debug.Log("Variant %d: failed to get phase summaries: %v", v.ID, err)
+		// Continue without phase numbers - logging will use incremental numbers
+	}
+
+	// Helper to get phase number from name
+	getPhaseNumber := func(phaseName string) int {
+		for _, s := range phaseSummaries {
+			if s.Name == phaseName {
+				return s.Order
+			}
+		}
+		return 0
+	}
 
 	// Run all phases in this variant
 	for {
@@ -1163,6 +1292,7 @@ func (o *Orbit) runVariant(ctx context.Context, v *variants.Variant) error {
 			if err := o.variantManager.UpdateStatus(v.ID, variants.StatusCanceled, nil); err != nil {
 				log.Printf("Warning: failed to update variant %d status: %v", v.ID, err)
 			}
+			o.updateVariantRegistryStatus(v.ID, registry.StatusFailed) // Canceled = failed in registry
 			return ctx.Err()
 		default:
 		}
@@ -1183,6 +1313,10 @@ func (o *Orbit) runVariant(ctx context.Context, v *variants.Variant) error {
 
 		totalTasks := len(nextPhase.Tasks)
 		currentPhase := nextPhase.PhaseName
+		phaseNum = getPhaseNumber(currentPhase)
+		if phaseNum == 0 {
+			phaseNum++ // Fallback to incremental if phase not found in summaries
+		}
 
 		// Log when entering a new phase (and log completion of previous phase)
 		if currentPhase != lastLoggedPhase {
@@ -1194,14 +1328,31 @@ func (o *Orbit) runVariant(ctx context.Context, v *variants.Variant) error {
 			lastLoggedPhase = currentPhase
 		}
 
+		phaseStartTime := time.Now()
+
 		// Run the phase with retry
 		phaseResult, err := o.runVariantPhaseWithRetry(ctx, v, variantAgent, variantPrompt)
 		if err != nil {
+			// Save failed session for debugging
+			if variantLogManager != nil && phaseResult != nil {
+				_ = variantLogManager.SaveSession(phaseNum, phaseResult, phaseStartTime)
+			}
 			variantErr := fmt.Errorf("phase %s: %w", currentPhase, err)
 			if updateErr := o.variantManager.UpdateStatus(v.ID, variants.StatusFailed, variantErr); updateErr != nil {
 				log.Printf("Warning: failed to update variant %d status: %v", v.ID, updateErr)
 			}
+			o.updateVariantRegistryStatus(v.ID, registry.StatusFailed)
+			if variantLogManager != nil {
+				_ = variantLogManager.Fail(variantErr)
+			}
 			return variantErr
+		}
+
+		// Save successful session
+		if variantLogManager != nil && phaseResult != nil {
+			if saveErr := variantLogManager.SaveSession(phaseNum, phaseResult, phaseStartTime); saveErr != nil {
+				log.Printf("Warning: variant %d failed to save session log: %v", v.ID, saveErr)
+			}
 		}
 
 		// Accumulate metrics
@@ -1220,13 +1371,28 @@ func (o *Orbit) runVariant(ctx context.Context, v *variants.Variant) error {
 	// Run post-completion command if configured
 	if o.config.PostCommand != "" {
 		log.Printf("Variant %d: running post-completion command...", v.ID)
+		postStartTime := time.Now()
 		postResult, err := o.runVariantPostCompletion(ctx, v, variantAgent)
 		if err != nil {
+			// Save failed post-completion session for debugging
+			if variantLogManager != nil && postResult != nil {
+				_ = variantLogManager.SavePostCompletionSession(postResult, postStartTime)
+			}
 			variantErr := fmt.Errorf("post-completion: %w", err)
 			if updateErr := o.variantManager.UpdateStatus(v.ID, variants.StatusFailed, variantErr); updateErr != nil {
 				log.Printf("Warning: failed to update variant %d status: %v", v.ID, updateErr)
 			}
+			o.updateVariantRegistryStatus(v.ID, registry.StatusFailed)
+			if variantLogManager != nil {
+				_ = variantLogManager.Fail(variantErr)
+			}
 			return variantErr
+		}
+		// Save successful post-completion session
+		if variantLogManager != nil && postResult != nil {
+			if saveErr := variantLogManager.SavePostCompletionSession(postResult, postStartTime); saveErr != nil {
+				log.Printf("Warning: variant %d failed to save post-completion log: %v", v.ID, saveErr)
+			}
 		}
 		if postResult != nil {
 			totalCost += getCostUSD(postResult)
@@ -1242,6 +1408,14 @@ func (o *Orbit) runVariant(ctx context.Context, v *variants.Variant) error {
 	}
 	if err := o.variantManager.UpdateMetrics(v.ID, totalCost, duration, totalTurns); err != nil {
 		log.Printf("Warning: failed to update variant %d metrics: %v", v.ID, err)
+	}
+	o.updateVariantRegistryStatus(v.ID, registry.StatusCompleted)
+
+	// Mark variant log as complete
+	if variantLogManager != nil {
+		if completeErr := variantLogManager.Complete(); completeErr != nil {
+			log.Printf("Warning: variant %d failed to complete log: %v", v.ID, completeErr)
+		}
 	}
 
 	log.Printf("Variant %d completed: cost=$%.4f, duration=%s, turns=%d",

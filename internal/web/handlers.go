@@ -21,7 +21,7 @@ import (
 var templatesFS embed.FS
 
 // CSSVersion is used for cache busting. Bump when CSS changes.
-const CSSVersion = "3"
+const CSSVersion = "4"
 
 // TemplateData is the base data for all templates.
 type TemplateData struct {
@@ -45,12 +45,14 @@ type RepositoryGroup struct {
 
 // RunSummary is a summary of a run for the dashboard.
 type RunSummary struct {
-	ID          string
-	Name        string
-	Branch      string
-	Status      string
-	StartedAt   string
-	startedTime time.Time // unexported, used for sorting
+	ID           string
+	Name         string
+	Branch       string
+	Status       string
+	StartedAt    string
+	startedTime  time.Time // unexported, used for sorting
+	IsVariant    bool
+	VariantAgent string
 }
 
 // RunDetailData is passed to run_detail.html.
@@ -64,6 +66,22 @@ type RunDetailData struct {
 	Summary           *logs.Summary
 	Missing           bool
 	HasPostCompletion bool
+	// Variant-specific fields
+	IsVariant       bool
+	VariantID       int
+	VariantTotal    int
+	VariantAgent    string
+	VariantBranch   string
+	RelatedVariants []RelatedVariant
+}
+
+// RelatedVariant represents another variant from the same run.
+type RelatedVariant struct {
+	ID       string
+	Number   int
+	Status   string
+	Agent    string
+	IsCurrent bool
 }
 
 // PhaseView represents a phase for display.
@@ -159,12 +177,14 @@ func (s *Server) buildDashboardData(entries []*registry.RunEntry, currentURL str
 		}
 
 		summary := RunSummary{
-			ID:          entry.ID,
-			Name:        entry.Name,
-			Branch:      entry.Branch,
-			Status:      status,
-			StartedAt:   entry.StartedAt.Format("Jan 2, 15:04"),
-			startedTime: entry.StartedAt,
+			ID:           entry.ID,
+			Name:         entry.Name,
+			Branch:       entry.Branch,
+			Status:       status,
+			StartedAt:    entry.StartedAt.Format("Jan 2, 15:04"),
+			startedTime:  entry.StartedAt,
+			IsVariant:    entry.IsVariant,
+			VariantAgent: entry.VariantAgent,
 		}
 		repoMap[entry.Repository] = append(repoMap[entry.Repository], summary)
 	}
@@ -287,7 +307,49 @@ func (s *Server) buildRunDetailData(entry *registry.RunEntry, currentURL string)
 	// Check for post-completion transcript
 	data.HasPostCompletion = s.hasPostCompletionTranscript(entry.LogDir)
 
+	// Populate variant fields
+	if entry.IsVariant {
+		data.IsVariant = true
+		data.VariantID = entry.VariantID
+		data.VariantTotal = entry.VariantTotal
+		data.VariantAgent = entry.VariantAgent
+		data.VariantBranch = entry.VariantBranch
+
+		// Find related variants with the same VariantRunID
+		if entry.VariantRunID != "" {
+			data.RelatedVariants = s.findRelatedVariants(entry.VariantRunID, entry.ID)
+		}
+	}
+
 	return data
+}
+
+// findRelatedVariants finds all variants sharing the same VariantRunID.
+func (s *Server) findRelatedVariants(variantRunID, currentID string) []RelatedVariant {
+	entries, err := s.registry.List()
+	if err != nil {
+		return nil
+	}
+
+	var related []RelatedVariant
+	for _, e := range entries {
+		if e.VariantRunID == variantRunID {
+			related = append(related, RelatedVariant{
+				ID:        e.ID,
+				Number:    e.VariantID,
+				Status:    string(e.Status),
+				Agent:     e.VariantAgent,
+				IsCurrent: e.ID == currentID,
+			})
+		}
+	}
+
+	// Sort by variant number
+	sort.Slice(related, func(i, j int) bool {
+		return related[i].Number < related[j].Number
+	})
+
+	return related
 }
 
 // hasTranscriptFile checks if a transcript file exists for a phase.

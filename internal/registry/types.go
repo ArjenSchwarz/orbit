@@ -47,6 +47,14 @@ type RunEntry struct {
 	PID           *int       `json:"pid,omitempty"`
 	Phases        []Phase    `json:"phases,omitempty"`
 	RunNumber     int        `json:"run_number,omitempty"` // Orbit run number for file naming (1 = first run)
+
+	// Variant-specific fields (only set for variant runs)
+	IsVariant      bool   `json:"is_variant,omitempty"`       // True if this is a variant run
+	VariantID      int    `json:"variant_id,omitempty"`       // Variant number (1, 2, 3, etc.)
+	VariantRunID   string `json:"variant_run_id,omitempty"`   // Groups variants from the same run
+	VariantTotal   int    `json:"variant_total,omitempty"`    // Total variants in this run
+	VariantAgent   string `json:"variant_agent,omitempty"`    // Agent used for this variant
+	VariantBranch  string `json:"variant_branch,omitempty"`   // Git branch for this variant
 }
 
 // NewRunEntry creates a new RunEntry with default values.
