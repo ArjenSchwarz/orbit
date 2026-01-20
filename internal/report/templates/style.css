@@ -426,6 +426,130 @@ details[open] summary {
     border-radius: 0;
 }
 
+/* Documentation Assessment table */
+.doc-table {
+    width: 100%;
+    border-collapse: collapse;
+    margin-bottom: 1.5rem;
+}
+
+.doc-table th,
+.doc-table td {
+    padding: 0.75rem 1rem;
+    text-align: left;
+    border-bottom: 1px solid var(--border-color);
+}
+
+.doc-table th {
+    background-color: var(--bg-secondary);
+    font-weight: 600;
+    font-size: 0.9rem;
+}
+
+.doc-status {
+    text-align: center;
+    font-size: 1.1rem;
+}
+
+.missing-docs {
+    margin: 0;
+    padding-left: 1.2rem;
+    font-size: 0.9rem;
+}
+
+.missing-docs li {
+    margin-bottom: 0.25rem;
+}
+
+.all-docs {
+    color: var(--success-color);
+    font-size: 0.9rem;
+}
+
+/* Cross-Variant Improvements */
+.cross-variant-improvements {
+    margin-bottom: 2rem;
+}
+
+.improvements-intro {
+    color: var(--text-secondary);
+    margin-bottom: 1rem;
+}
+
+.improvements-list {
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+}
+
+.improvement {
+    background-color: var(--bg-card);
+    border: 1px solid var(--border-color);
+    border-radius: 6px;
+    padding: 1rem;
+    border-left: 4px solid var(--info-color);
+}
+
+.improvement.priority-high {
+    border-left-color: var(--error-color);
+}
+
+.improvement.priority-medium {
+    border-left-color: var(--warning-color);
+}
+
+.improvement.priority-low {
+    border-left-color: var(--text-secondary);
+}
+
+.improvement-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 0.75rem;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+}
+
+.source-variant {
+    font-weight: 600;
+    color: var(--text-secondary);
+}
+
+.priority-badge {
+    padding: 0.2rem 0.6rem;
+    border-radius: 999px;
+    font-size: 0.8rem;
+    font-weight: 500;
+    text-transform: capitalize;
+}
+
+.priority-badge.priority-high {
+    background-color: rgba(220, 53, 69, 0.1);
+    color: var(--error-color);
+}
+
+.priority-badge.priority-medium {
+    background-color: rgba(255, 193, 7, 0.15);
+    color: #997404;
+}
+
+.priority-badge.priority-low {
+    background-color: rgba(108, 117, 125, 0.1);
+    color: var(--text-secondary);
+}
+
+.improvement-description {
+    margin: 0 0 0.5rem 0;
+    font-size: 1rem;
+}
+
+.improvement-rationale {
+    margin: 0;
+    font-size: 0.9rem;
+    color: var(--text-secondary);
+}
+
 /* Print styles */
 @media print {
     body {
