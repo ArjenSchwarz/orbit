@@ -62,12 +62,12 @@ func TestBuildPrompt_IncludesMetrics(t *testing.T) {
 		t.Error("prompt should contain metrics section")
 	}
 
-	// Check cost formatting
-	if !containsString(prompt, "$0.0523") {
-		t.Error("prompt should contain formatted cost for variant 1")
+	// Check duration formatting (cost is intentionally excluded from comparison)
+	if !containsString(prompt, "3m 30s") {
+		t.Error("prompt should contain formatted duration for variant 1")
 	}
-	if !containsString(prompt, "$0.0812") {
-		t.Error("prompt should contain formatted cost for variant 2")
+	if !containsString(prompt, "5m 15s") {
+		t.Error("prompt should contain formatted duration for variant 2")
 	}
 
 	// Check turn counts

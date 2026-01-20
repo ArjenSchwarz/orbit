@@ -20,13 +20,14 @@
     <h3>{{.Name}}</h3>
     <div class="run-list">
         {{range .Runs}}
-        <div class="run-card">
+        <div class="run-card{{if .IsVariant}} variant-run{{end}}">
             <div>
                 <div class="run-name">
                     <a href="/runs/{{.ID}}">{{.Name}}</a>
+                    {{if .IsVariant}}<span class="variant-badge">variant</span>{{end}}
                 </div>
                 <div class="run-meta">
-                    {{.Branch}} &bull; {{.StartedAt}}
+                    {{.Branch}}{{if .VariantAgent}} &bull; <span class="agent-name">{{.VariantAgent}}</span>{{end}} &bull; {{.StartedAt}}
                 </div>
             </div>
             <span class="status status-{{.Status}}">{{.Status}}</span>

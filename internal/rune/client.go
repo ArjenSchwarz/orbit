@@ -199,6 +199,25 @@ func (c *Client) GetNextPhase() (*NextPhaseResult, error) {
 	c.debug.LogJSON(true, nil)
 	c.debug.Log("GetNextPhase: phase=%s tasks=%d", result.PhaseName, len(result.Tasks))
 
+	// Check if all tasks in the phase are completed
+	// rune might return a phase even when all its tasks are done
+	if len(result.Tasks) == 0 {
+		c.debug.Log("GetNextPhase: no tasks in phase, marking all complete")
+		result.AllComplete = true
+	} else {
+		allDone := true
+		for _, task := range result.Tasks {
+			if task.Status != "completed" && task.Status != "done" {
+				allDone = false
+				break
+			}
+		}
+		if allDone {
+			c.debug.Log("GetNextPhase: all %d tasks in phase are completed", len(result.Tasks))
+			result.AllComplete = true
+		}
+	}
+
 	return &result, nil
 }
 

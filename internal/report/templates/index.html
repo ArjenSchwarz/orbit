@@ -52,6 +52,7 @@
                     <tr>
                         <th>Variant</th>
                         <th>Branch</th>
+                        <th>Agent</th>
                         <th>Status</th>
                         <th>Cost</th>
                         <th>Duration</th>
@@ -68,6 +69,7 @@
                             {{end}}
                         </td>
                         <td><code>{{.Branch}}</code></td>
+                        <td>{{if .Agent}}{{.Agent}}{{else}}-{{end}}</td>
                         <td><span class="status status-{{.Status}}">{{.Status}}</span></td>
                         <td>{{formatCost .Metrics.Cost}}</td>
                         <td>{{.Metrics.Duration}}</td>
@@ -111,6 +113,65 @@
             {{end}}
         </section>
         {{end}}
+
+        {{if .Comparison.DocumentationAssessment}}
+        <section class="documentation-assessment">
+            <h2>Documentation Assessment</h2>
+            <table class="doc-table">
+                <thead>
+                    <tr>
+                        <th>Variant</th>
+                        <th>Dev Setup</th>
+                        <th>Deployment</th>
+                        <th>Requirements</th>
+                        <th>Usage Examples</th>
+                        <th>Missing Documentation</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {{range .Comparison.DocumentationAssessment}}
+                    <tr>
+                        <td>Variant {{.VariantID}}</td>
+                        <td class="doc-status">{{if .HasDevSetup}}✓{{else}}✗{{end}}</td>
+                        <td class="doc-status">{{if .HasDeployment}}✓{{else}}✗{{end}}</td>
+                        <td class="doc-status">{{if .HasRequirements}}✓{{else}}✗{{end}}</td>
+                        <td class="doc-status">{{if .HasUsageExamples}}✓{{else}}✗{{end}}</td>
+                        <td>
+                            {{if .MissingDocs}}
+                            <ul class="missing-docs">
+                                {{range .MissingDocs}}
+                                <li>{{.}}</li>
+                                {{end}}
+                            </ul>
+                            {{else}}
+                            <span class="all-docs">All documented</span>
+                            {{end}}
+                        </td>
+                    </tr>
+                    {{end}}
+                </tbody>
+            </table>
+        </section>
+        {{end}}
+
+        {{if .Comparison.CrossVariantImprovements}}
+        <section class="cross-variant-improvements">
+            <h2>Improvements from Other Variants</h2>
+            <p class="improvements-intro">These improvements from non-chosen variants could enhance the recommended implementation:</p>
+            <div class="improvements-list">
+                {{range .Comparison.CrossVariantImprovements}}
+                <div class="improvement priority-{{.Priority}}">
+                    <div class="improvement-header">
+                        <span class="source-variant">From Variant {{.SourceVariantID}}</span>
+                        <span class="priority-badge priority-{{.Priority}}">{{.Priority}} priority</span>
+                    </div>
+                    <p class="improvement-description">{{.Description}}</p>
+                    <p class="improvement-rationale"><strong>Rationale:</strong> {{.Rationale}}</p>
+                </div>
+                {{end}}
+            </div>
+        </section>
+        {{end}}
         {{end}}
 
         <section class="variant-diffs">
@@ -118,7 +179,7 @@
             {{range .Variants}}
             <article class="variant-diff" id="variant-{{.ID}}">
                 <h3>
-                    Variant {{.ID}}
+                    Variant {{.ID}}{{if .Agent}} <span class="agent-badge">{{.Agent}}</span>{{end}}
                     {{if and $.Comparison (eq $.Comparison.Recommendation .ID)}}
                     <span class="recommended-badge">Recommended</span>
                     {{end}}

@@ -9,6 +9,186 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Variant session logging: Each variant now gets its own log manager at `specs/{spec}/.orbit/logs/variant-{id}/` with phase-by-phase session storage
+- Variant web interface registration: Each variant is registered separately in the run registry with variant-specific metadata
+- Variant fields in `registry.RunEntry`: `IsVariant`, `VariantID`, `VariantRunID`, `VariantTotal`, `VariantAgent`, `VariantBranch`
+- Variant display in web dashboard: Variants show purple left border, "variant" badge, and agent name
+- Variant display in run detail page: Shows variant badge with N/M counter, agent name, variant branch, and related variants list with navigation links
+- Related variants navigation: Run detail page shows all variants from the same run with links to switch between them
+- CSS styles for variant badges, agent names, and variant run cards
+
+### Changed
+
+- Updated README.md and CLAUDE.md documentation to reflect multi-agent support:
+  - Project description now mentions support for multiple AI coding agents
+  - Added all 4 supported agents (Claude Code, Codex, Kiro, Copilot) to prerequisites
+  - Added new CLI flags section for agent selection (`--agent`) and multi-variant comparison
+  - Added per-agent configuration example in `.orbit.yaml`
+  - Added Multi-Variant Comparison section with usage examples, guidance file format, subcommands, and workflow
+  - Updated architecture diagram with new packages (agents, variants, comparison, report)
+  - Updated configuration and error handling sections for agent-based architecture
+
+### Fixed
+
+- Kiro agent environment variable bug: `appendEnv()` now includes `os.Environ()` as the base before appending custom environment variables, preventing agent execution failures due to missing PATH and system environment
+- Registered error classifiers for all agents: Kiro, Codex, and Copilot now call `agents.RegisterClassifier()` in their `init()` functions, enabling agent-specific error classification
+- Per-variant agent selection: Variants now use their assigned agent via `agents.Get()` instead of always using the Claude client, enabling true multi-agent comparison with `--variant-agents` flag
+- Linter warning in `internal/agents/codex/errors_test.go`: Removed redundant type assertion in interface check
+
+### Added
+
+- Kiro session export support in orchestrator:
+  - Automatically exports Kiro sessions after each phase completes
+  - Uses `SessionExporter` interface check for agents that require explicit export
+  - Export files stored in log directory with pattern `phase-N-run-M-kiro-session.json`
+  - Graceful error handling (logs warning but doesn't fail orchestration)
+
+- Integration tests for multi-agent support:
+  - Agent selection tests verifying default to claude-code
+  - CLI override tests confirming flag takes precedence over config
+  - All supported agents validation (claude-code, codex, kiro, copilot)
+  - Variant agents cycling behavior tests for various scenarios
+
+### Changed
+
+- Migrated session result types from `claude.SessionResult` to `agents.RunResult`:
+  - Updated `claudeRunner` interface to use `agents.RunResult`
+  - Updated `logs.Manager` to accept `*agents.RunResult` in session save methods
+  - Updated `comparison.Comparator` to use abstract `promptRunner` interface
+  - Added `NumTurns`, `IsError`, and `Errors` fields to `agents.RunResult`
+  - Added `getCostUSD()` helper for safe cost extraction from `*CostMetrics`
+
+- Moved `BuildProjectPath` utility function to `claudecode` package:
+  - Updated `apsis` and `logs` packages to import from new location
+  - Function converts project paths to Claude's directory format
+
+- Per-variant agent selection for multi-agent comparison (Phase 5):
+  - `--variant-agents` flag for `orbit run` to specify comma-separated agent list
+  - Agents cycle if fewer agents than variants (e.g., `--variant-agents claude-code,codex` for 4 variants assigns claude-code, codex, claude-code, codex)
+  - `Agent` field added to `Variant` struct for tracking which agent ran each variant
+  - Comparison report displays agent column in variants overview table
+  - Agent badge displayed next to variant ID in implementation diffs section
+  - Comparison prompt includes agent information in variant headers and metrics table
+  - `AssignVariantAgents()` function in `internal/variants/agent.go` for agent assignment logic
+  - CSS styling for `.agent-badge` in report templates
+
+- Agent configuration and CLI integration (Phase 4):
+  - `agent:` field in `.orbit.yaml` to set default agent per project
+  - `agents:` section in `.orbit.yaml` for per-agent configuration:
+    - `cli-path`: Override CLI command path
+    - `auto-approve`: Tool approval behavior (maps to agent-specific flags)
+    - `extra-args`: Additional CLI arguments
+    - `timeout`: Execution timeout as duration string (e.g., "30m", "1h")
+    - `model`: Agent-specific model option
+  - `--agent` flag for `orbit run` to select agent (claude-code, codex, kiro, copilot)
+  - Agent validation with helpful error messages including install URLs
+  - `ORBIT_AGENT` environment variable for default agent
+  - `GetAgentConfig()` method on config.Config returning agents.AgentConfig
+  - `--agent`/`-a` flag for `apsis` to force agent format parsing
+  - `ParseJSONLWithFormat()` function in transcript package for forced format parsing
+  - Agent classifier registry with `RegisterClassifier()` and `GetClassifier()` functions
+  - Default error classifier fallback for unregistered agents
+
+- Multi-agent transcript parsing for Kiro and Copilot formats (Phases 3-4):
+  - `FormatKiro` and `FormatCopilot` enum values in `internal/transcript/types.go`
+  - `internal/transcript/kiro_types.go` with complete type definitions:
+    - `KiroSession`, `KiroHistoryEntry`, `KiroUserMessage`, `KiroAssistantMessage`
+    - `KiroUserContent` with `KiroPrompt` and `KiroToolUseResults` variants
+    - `KiroToolUse`, `KiroToolCall`, `KiroTextResponse` for assistant responses
+    - `KiroRequestMetadata`, `KiroDuration` for telemetry data
+  - `internal/transcript/kiro_parser.go` implementing `ParseKiro()` function:
+    - Parses plain JSON format with conversation_id and history array
+    - Converts Kiro sessions to unified Entry format for markdown rendering
+  - `internal/transcript/copilot_types.go` with complete type definitions:
+    - `CopilotEvent` with polymorphic `CopilotData` for all event types
+    - Support for session.start, session.info, user.message, assistant.turn_start/end
+    - Support for assistant.message, assistant.reasoning, tool.execution_start/complete
+    - `CopilotToolRequest`, `CopilotToolResult`, `CopilotToolTelemetry` for tool handling
+  - `internal/transcript/copilot_parser.go` implementing `ParseCopilot()` function:
+    - Parses JSONL format with event-based streaming structure
+    - Converts Copilot events to unified Entry format for markdown rendering
+  - Improved `DetectFormat()` function with multi-format detection strategy:
+    - Reads 8KB chunk for Kiro detection (plain JSON with specific markers)
+    - Falls back to JSONL first-line detection for Claude/Codex/Copilot
+    - Added `copilotTypes` map for dot-notation type field recognition
+  - Golden file tests for both Kiro and Copilot parsers
+  - Sample session files in `testdata/kiro/` and `testdata/copilot/`
+
+- Kiro agent implementation for multi-agent support (Phase 3):
+  - `internal/agents/kiro/agent.go` implementing Agent and SessionExporter interfaces:
+    - CLI invocation: `kiro-cli chat --no-interactive "<prompt>"`
+    - Auto-approve: `--trust-all-tools` flag when enabled
+    - Session resume: `--resume` flag to continue previous session
+    - `ExportSession()` method to save sessions via `/chat save <filename>` command
+    - DefaultSessionDir returns empty (Kiro doesn't store logs automatically per Decision 7)
+    - Auto-registration via `init()` function
+  - `internal/agents/kiro/errors.go` with Kiro-specific error classifier:
+    - Rate limit detection (429, "rate limit", "throttl")
+    - Authentication error detection ("credentials", "unauthorized", "access denied")
+    - Session invalid detection ("session not found", "no active session")
+    - Connection error detection ("timeout", "connection", "econnrefused")
+    - API overload detection (503, "service unavailable")
+  - `internal/agents/kiro/agent_test.go` with comprehensive unit tests
+
+- Copilot agent implementation for multi-agent support (Phase 3):
+  - `internal/agents/copilot/agent.go` implementing Agent interface:
+    - CLI invocation: `copilot -p "<prompt>"`
+    - Auto-approve: `--allow-all-paths` flag when enabled
+    - Session resume: `--continue` flag (note: sessionID ignored per Known Limitation)
+    - DefaultSessionDir: `~/.copilot/session-state/`
+    - Auto-registration via `init()` function
+  - `internal/agents/copilot/errors.go` with Copilot-specific error classifier:
+    - Rate limit detection (429, "rate limit", "throttled")
+    - Authentication error detection ("not logged in", "gh auth login")
+    - Session invalid detection ("no session to continue", "no previous session")
+    - Connection error detection ("timeout", "connection", "enotfound")
+    - API overload detection (503, "service unavailable")
+  - `internal/agents/copilot/agent_test.go` with comprehensive unit tests
+
+- Agent abstraction layer for multi-agent support (Phase 1):
+  - `internal/agents` package with core types and interfaces:
+    - `agent.go` with `Agent` interface defining execution, session, and capability methods
+    - `SessionInfo`, `RunOptions`, `RunResult`, and `CostMetrics` types for agent execution
+    - `SessionExporter` optional interface for agents requiring explicit session export
+  - `errors.go` with unified error classification:
+    - `ErrorClass` enum (Unknown, Retryable, Fatal, SessionInvalid) for orchestrator retry logic
+    - `ClassifiedError` struct wrapping errors with classification metadata and retry-after duration
+    - `ErrorClassifier` interface for agent-specific error pattern recognition
+  - `registry.go` with factory pattern for agent management:
+    - `Register()` function for adding agent factories
+    - `Get()` function returning configured agent instances
+    - `List()` function returning sorted registered agent names
+    - `Default()` function returning "claude-code" as the default agent
+    - `AgentConfig` struct for CLI path, auto-approve, extra args, timeout, and agent-specific options
+  - `internal/agents/claudecode` package with Claude Code agent implementation:
+    - `agent.go` implementing the `Agent` interface with CLI execution
+    - Session discovery via `~/.claude/projects/` directory scanning
+    - Argument building for `--session-id`, `--resume`, `--output-format json`, and `--dangerously-skip-permissions`
+    - JSON output parsing for session ID, cost, and error detection
+    - Auto-registration via `init()` function
+  - `errors.go` with Claude Code-specific error classifier:
+    - Rate limit detection (429, "rate limit", "too many requests")
+    - Authentication error detection (401, "api key", "unauthorized")
+    - Session invalid detection ("session not found", "session expired")
+    - Connection error detection ("timeout", "connection", "dns")
+    - API overload detection (503, "overloaded", "service unavailable")
+    - Retry-after duration parsing from error messages
+  - Comprehensive test coverage for all components
+
+### Changed
+
+- Orbit orchestrator now initializes agent and error classifier (default: Claude Code)
+- Fixed `range maxRetries` syntax errors (Go 1.22+ range-over-int not supported in older versions)
+
+- Multi-agent support specification documents:
+  - `specs/multi-agent/requirements.md` with 10 requirement sections covering agent abstraction layer, Claude Code/Codex/Kiro/Copilot agent implementations, agent selection, session discovery and viewing, error handling, agent configuration, and per-variant agent selection
+  - `specs/multi-agent/design.md` with architecture, agent interface definition, registry pattern, error classification system, per-agent implementations, format detection extension, CLI integration, and known limitations
+  - `specs/multi-agent/decision_log.md` with 9 design decisions (feature name, breaking changes acceptable, Kiro/Copilot format analysis deferral, timeout configuration, per-variant agent selection requirement, CLI invocation verification, Kiro session log handling, Kiro session export timing, Copilot session format)
+  - `specs/multi-agent/tasks.md` with 6 implementation phases and 16 top-level tasks covering foundation, session parsing, additional agents, configuration/CLI, per-variant selection, and integration/cleanup
+  - `specs/multi-agent/samples/kiro/newlog.json` sample Kiro session file for format analysis
+  - `specs/multi-agent/samples/copilot/events.jsonl` sample Copilot session file for format analysis
+  - `specs/multi-agent/plan.md` original planning document for multi-agent support
+
 - Multi-spec comparison feature specification documents:
   - `specs/multi-spec-comparison/requirements.md` with 13 requirement sections covering variant configuration, git worktree management, variant execution, parallel execution, comparison, report generation, status/cleanup/finalize/compare commands, interrupt handling, performance, and error handling
   - `specs/multi-spec-comparison/design.md` with architecture, package dependencies, component designs for variants/comparison/report packages, CLI command specifications, and testing strategy

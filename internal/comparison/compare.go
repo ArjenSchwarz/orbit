@@ -8,21 +8,27 @@ import (
 	"log"
 	"strings"
 
-	"github.com/arjenschwarz/orbit/internal/claude"
+	"github.com/arjenschwarz/orbit/internal/agents"
 )
+
+// promptRunner is an interface for running custom prompts.
+// This abstracts the Claude client to allow testing and future agent flexibility.
+type promptRunner interface {
+	RunCustomPrompt(prompt string) (*agents.RunResult, error)
+}
 
 // Comparator generates comparisons between variants using Claude.
 type Comparator struct {
-	claudeClient *claude.Client
+	promptRunner promptRunner
 	customCmd    string // Empty for built-in Claude comparison
 	maxRetries   int
 }
 
 // NewComparator creates a new Comparator.
 // If customCmd is non-empty, it will be used instead of Claude for comparison.
-func NewComparator(claudeClient *claude.Client, customCmd string) *Comparator {
+func NewComparator(runner promptRunner, customCmd string) *Comparator {
 	return &Comparator{
-		claudeClient: claudeClient,
+		promptRunner: runner,
 		customCmd:    customCmd,
 		maxRetries:   3,
 	}
@@ -56,18 +62,79 @@ func (c *Comparator) Compare(ctx context.Context, specName string, variants []Va
 	// Check that the prompt fits within context limits (Requirement 5.8)
 	estimatedTokens := estimatePromptTokens(originalPrompt)
 	if estimatedTokens > MaxPromptTokens {
-		return nil, fmt.Errorf("combined diff size (%d estimated tokens) exceeds context limit of %d; variants are too large to compare",
-			estimatedTokens, MaxPromptTokens)
+		return nil, &DiffTooLargeError{
+			EstimatedTokens: estimatedTokens,
+			MaxTokens:       MaxPromptTokens,
+		}
 	}
+
+	return c.runComparison(originalPrompt, len(variants))
+}
+
+// CompareWithSummaries analyzes variants using summaries instead of full diffs.
+// This is used when diffs are too large to fit in context.
+func (c *Comparator) CompareWithSummaries(ctx context.Context, specName string, variants []VariantData, specContext string) (*Result, error) {
+	if len(variants) < 2 {
+		return nil, errors.New("at least 2 variants required for comparison")
+	}
+
+	// Custom command support is deferred - only Claude comparison is implemented
+	if c.customCmd != "" {
+		return nil, errors.New("custom comparison commands are not supported")
+	}
+
+	originalPrompt := buildSummaryPrompt(specName, variants, specContext)
+	return c.runComparison(originalPrompt, len(variants))
+}
+
+// CompareUnified performs comparison with full control over what data is included.
+// This is the recommended method - it always includes summaries and optionally includes diffs.
+func (c *Comparator) CompareUnified(ctx context.Context, input ComparisonInput) (*Result, error) {
+	if len(input.Variants) < 2 {
+		return nil, errors.New("at least 2 variants required for comparison")
+	}
+
+	// Custom command support is deferred - only Claude comparison is implemented
+	if c.customCmd != "" {
+		return nil, errors.New("custom comparison commands are not supported")
+	}
+
+	originalPrompt := buildComparisonPrompt(input)
+
+	// Check if the prompt fits within context limits
+	estimatedTokens := estimatePromptTokens(originalPrompt)
+	if estimatedTokens > MaxPromptTokens {
+		// If diffs are included and we're over limit, retry without diffs
+		if input.IncludeDiff {
+			log.Printf("Prompt too large with diffs (%d tokens), retrying without diffs", estimatedTokens)
+			input.IncludeDiff = false
+			originalPrompt = buildComparisonPrompt(input)
+			estimatedTokens = estimatePromptTokens(originalPrompt)
+		}
+
+		// If still too large, fail
+		if estimatedTokens > MaxPromptTokens {
+			return nil, &DiffTooLargeError{
+				EstimatedTokens: estimatedTokens,
+				MaxTokens:       MaxPromptTokens,
+			}
+		}
+	}
+
+	return c.runComparison(originalPrompt, len(input.Variants))
+}
+
+// runComparison executes the comparison prompt with retry logic.
+func (c *Comparator) runComparison(originalPrompt string, numVariants int) (*Result, error) {
 	prompt := originalPrompt
 
 	for attempt := 0; attempt < c.maxRetries; attempt++ {
-		response, err := c.claudeClient.RunCustomPrompt(prompt)
+		response, err := c.promptRunner.RunCustomPrompt(prompt)
 		if err != nil {
 			return nil, fmt.Errorf("claude execution failed: %w", err)
 		}
 
-		result, err := c.parseAndValidate(response.Output, len(variants))
+		result, err := c.parseAndValidate(response.Output, numVariants)
 		if err == nil {
 			return result, nil
 		}
@@ -87,6 +154,18 @@ Please provide the comparison result as valid JSON only, with no additional text
 	}
 
 	return nil, fmt.Errorf("comparison failed after %d attempts: JSON validation errors", c.maxRetries)
+}
+
+// DiffTooLargeError indicates that the combined diff size exceeds context limits.
+// Callers should use CompareWithSummaries as a fallback.
+type DiffTooLargeError struct {
+	EstimatedTokens int
+	MaxTokens       int
+}
+
+func (e *DiffTooLargeError) Error() string {
+	return fmt.Sprintf("combined diff size (%d estimated tokens) exceeds context limit of %d",
+		e.EstimatedTokens, e.MaxTokens)
 }
 
 // parseAndValidate extracts JSON from Claude response and validates structure.

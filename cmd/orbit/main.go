@@ -2,6 +2,7 @@
 package main
 
 import (
+	"fmt"
 	"log"
 	"os"
 	"strings"
@@ -22,6 +23,18 @@ var knownSubcommands = map[string]bool{
 }
 
 func main() {
+	// Handle top-level --help and --version before subcommand parsing
+	if len(os.Args) > 1 {
+		switch os.Args[1] {
+		case "--help", "-h", "help":
+			printUsage()
+			return
+		case "--version", "-v":
+			fmt.Println("orbit", version)
+			return
+		}
+	}
+
 	// Parse subcommand from os.Args
 	cmd, cmdArgs := parseSubcommand(os.Args[1:])
 
@@ -85,4 +98,65 @@ func parseSubcommand(args []string) (string, []string) {
 // isKnownSubcommand returns true if the argument is a valid subcommand.
 func isKnownSubcommand(arg string) bool {
 	return knownSubcommands[arg]
+}
+
+// reorderArgs moves flags before positional arguments.
+// Go's flag package stops parsing at the first non-flag argument,
+// so we need to reorder to support "cmd arg --flag value" syntax.
+func reorderArgs(args []string) []string {
+	var flags []string
+	var positional []string
+
+	i := 0
+	for i < len(args) {
+		arg := args[i]
+		if strings.HasPrefix(arg, "-") {
+			flags = append(flags, arg)
+			// Check if this flag has a value (not a boolean flag)
+			// Heuristic: if next arg exists and doesn't start with -, it's a value
+			if i+1 < len(args) && !strings.HasPrefix(args[i+1], "-") {
+				// Check if it's a flag=value format
+				if !strings.Contains(arg, "=") {
+					i++
+					flags = append(flags, args[i])
+				}
+			}
+		} else {
+			positional = append(positional, arg)
+		}
+		i++
+	}
+
+	return append(flags, positional...)
+}
+
+// printUsage displays the top-level help message.
+func printUsage() {
+	fmt.Fprintf(os.Stderr, `Orbit - AI coding agent orchestrator
+
+Usage: orbit <command> [options]
+
+Commands:
+  run        Orchestrate agent sessions to implement spec phases (default)
+  compare    Regenerate comparison report for existing variants
+  status     Show variant status for a spec
+  finalize   Adopt a variant and clean up others
+  cleanup    Remove all variant worktrees and branches
+  serve      Start web interface for viewing runs
+  register   Manually register a run in the registry
+  demo       Run a demo session
+
+Global Options:
+  --help, -h       Show this help message
+  --version, -v    Show version
+
+Run 'orbit <command> --help' for more information on a command.
+
+Examples:
+  orbit run                              # Auto-detect tasks from current branch
+  orbit run --tasks-file specs/foo/tasks.md
+  orbit run --variants 3 --parallel      # Run 3 implementation variants
+  orbit compare my-feature               # Regenerate comparison report
+  orbit serve                            # Start web interface on :8080
+`)
 }

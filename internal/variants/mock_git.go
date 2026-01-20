@@ -184,6 +184,16 @@ func (m *MockGit) HasUncommittedChanges() (bool, error) {
 	return m.UncommittedChanges, m.UncommittedErr
 }
 
+// GetCommitLog returns mock commit messages.
+func (m *MockGit) GetCommitLog(_ context.Context, _, _ string) ([]string, error) {
+	return []string{"abc123 Mock commit message"}, nil
+}
+
+// GetDiffStat returns mock diff stats.
+func (m *MockGit) GetDiffStat(_ context.Context, _, _ string) (string, error) {
+	return " 3 files changed, 50 insertions(+), 10 deletions(-)", nil
+}
+
 // Reset clears all recorded calls.
 func (m *MockGit) Reset() {
 	m.mu.Lock()

@@ -6,7 +6,9 @@ import (
 	"log"
 	"os"
 	"path/filepath"
+	"time"
 
+	"github.com/arjenschwarz/orbit/internal/agents"
 	"github.com/spf13/viper"
 )
 
@@ -25,6 +27,15 @@ const (
 	DefaultBranchPrefix = "orbit-impl"
 )
 
+// AgentConfig holds per-agent settings from .orbit.yaml.
+type AgentConfig struct {
+	CLIPath     string   `yaml:"cli-path"`     // Override CLI command path
+	AutoApprove bool     `yaml:"auto-approve"` // Tool approval behavior
+	ExtraArgs   []string `yaml:"extra-args"`   // Additional CLI arguments
+	Timeout     string   `yaml:"timeout"`      // Execution timeout as duration string (e.g., "30m", "1h")
+	Model       string   `yaml:"model"`        // Agent-specific model option
+}
+
 // Config holds the resolved configuration values.
 type Config struct {
 	Command         string
@@ -34,6 +45,10 @@ type Config struct {
 	ServePort       int
 	ServeBind       string
 	Debug           bool // Enable debug logging for troubleshooting
+
+	// Agent selection and configuration
+	Agent  string                 // Default agent for project (e.g., "claude-code", "codex")
+	Agents map[string]AgentConfig // Per-agent configuration
 
 	// Variant configuration for multi-spec comparison
 	VariantCount   int    // Number of variants (0 = single-run mode)
@@ -139,6 +154,9 @@ func Load(workingDir string) *Config {
 	servePort := v.GetInt("serve-port")
 	serveBind := v.GetString("serve-bind")
 	debug := v.GetBool("debug")
+	// Agent configuration
+	agent := v.GetString("agent")
+	agentsMap := parseAgentsConfig(v)
 	// Variant configuration
 	variantCount := v.GetInt("variant-count")
 	parallel := v.GetBool("parallel")
@@ -201,6 +219,10 @@ func Load(workingDir string) *Config {
 	if envGlobalGuidance, exists := os.LookupEnv("ORBIT_GLOBAL_GUIDANCE"); exists {
 		globalGuidance = envGlobalGuidance
 	}
+	// Agent environment variable override
+	if envAgent, exists := os.LookupEnv("ORBIT_AGENT"); exists {
+		agent = envAgent
+	}
 
 	return &Config{
 		Command:             command,
@@ -210,6 +232,8 @@ func Load(workingDir string) *Config {
 		ServePort:           servePort,
 		ServeBind:           serveBind,
 		Debug:               debug,
+		Agent:               agent,
+		Agents:              agentsMap,
 		VariantCount:        variantCount,
 		Parallel:            parallel,
 		MaxParallel:         maxParallel,
@@ -251,4 +275,99 @@ func parsePositiveInt(s string) (int, error) {
 // This allows distinguishing "use default" from "disable".
 func (c *Config) IsPostCommandDisabled() bool {
 	return c.postCommandExplicit && c.PostCommand == ""
+}
+
+// parseAgentsConfig extracts the agents map from viper configuration.
+// It handles the nested YAML structure of agent configurations.
+func parseAgentsConfig(v *viper.Viper) map[string]AgentConfig {
+	agentsMap := make(map[string]AgentConfig)
+
+	// Get the agents section as a map
+	agentsRaw := v.GetStringMap("agents")
+	if agentsRaw == nil {
+		return agentsMap
+	}
+
+	for name, cfg := range agentsRaw {
+		// Each agent config is a map[string]interface{}
+		cfgMap, ok := cfg.(map[string]interface{})
+		if !ok {
+			continue
+		}
+
+		// Default AutoApprove to true for non-interactive operation.
+		// Can be explicitly set to false in config to disable.
+		agentCfg := AgentConfig{
+			AutoApprove: true,
+		}
+
+		if v, ok := cfgMap["cli-path"].(string); ok {
+			agentCfg.CLIPath = v
+		}
+		if v, ok := cfgMap["auto-approve"].(bool); ok {
+			agentCfg.AutoApprove = v
+		}
+		if v, ok := cfgMap["timeout"].(string); ok {
+			agentCfg.Timeout = v
+		}
+		if v, ok := cfgMap["model"].(string); ok {
+			agentCfg.Model = v
+		}
+		// Handle extra-args as a slice
+		if v, ok := cfgMap["extra-args"].([]interface{}); ok {
+			for _, arg := range v {
+				if s, ok := arg.(string); ok {
+					agentCfg.ExtraArgs = append(agentCfg.ExtraArgs, s)
+				}
+			}
+		}
+
+		agentsMap[name] = agentCfg
+	}
+
+	return agentsMap
+}
+
+// GetAgentConfig returns the agents.AgentConfig for a specific agent.
+// If the agent is not configured, returns default AgentConfig with AutoApprove enabled.
+// This method parses the timeout string into a time.Duration.
+func (c *Config) GetAgentConfig(name string) agents.AgentConfig {
+	// Default AutoApprove to true for non-interactive operation.
+	// Orbit runs agents in automated mode, so tools should be approved automatically.
+	cfg := agents.AgentConfig{
+		AutoApprove: true,
+	}
+
+	ac, ok := c.Agents[name]
+	if !ok {
+		return cfg
+	}
+
+	cfg.CLIPath = ac.CLIPath
+	cfg.AutoApprove = ac.AutoApprove
+	cfg.ExtraArgs = ac.ExtraArgs
+
+	// Parse timeout duration
+	if ac.Timeout != "" {
+		if d, err := time.ParseDuration(ac.Timeout); err == nil {
+			cfg.Timeout = d
+		}
+	}
+
+	// Store model in Options map
+	if ac.Model != "" {
+		cfg.Options = map[string]string{"model": ac.Model}
+	}
+
+	return cfg
+}
+
+// GetAllAgentConfigs returns a map of all agent configurations.
+// Each config is converted to agents.AgentConfig format.
+func (c *Config) GetAllAgentConfigs() map[string]agents.AgentConfig {
+	result := make(map[string]agents.AgentConfig)
+	for name := range c.Agents {
+		result[name] = c.GetAgentConfig(name)
+	}
+	return result
 }

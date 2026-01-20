@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/arjenschwarz/orbit/internal/claude"
@@ -90,27 +91,17 @@ func compareCommand(args []string) error {
 
 	fmt.Printf("Comparing %d variants for spec: %s\n\n", len(completedVariants), specName)
 
-	// Collect diffs for each variant
+	// Collect all variant data (diffs + summaries)
 	ctx := context.Background()
-	variantData := make([]comparison.VariantData, 0, len(completedVariants))
-
-	for _, v := range completedVariants {
-		fmt.Printf("  Getting diff for variant %d...\n", v.ID)
-		diff, err := git.GetDiff(ctx, v.WorktreePath, metadata.BaseCommit)
-		if err != nil {
-			return fmt.Errorf("failed to get diff for variant %d: %w", v.ID, err)
-		}
-
-		variantData = append(variantData, comparison.VariantData{
-			ID:   v.ID,
-			Diff: diff,
-			Metrics: comparison.VariantMetrics{
-				Cost:     v.Cost,
-				Duration: v.Duration,
-				NumTurns: v.NumTurns,
-			},
-		})
+	fmt.Println("\n  Gathering variant data...")
+	diffGatherer := comparison.NewDiffGatherer(git)
+	variantData, err := diffGatherer.GatherAll(ctx, metadata.BaseCommit, completedVariants)
+	if err != nil {
+		return fmt.Errorf("failed to gather variant data: %w", err)
 	}
+
+	// Read spec context for additional context
+	specContext := readSpecContext(specDir)
 
 	// Run comparison
 	fmt.Println("\nRunning comparison analysis...")
@@ -124,7 +115,16 @@ func compareCommand(args []string) error {
 	})
 
 	comparator := comparison.NewComparator(claudeClient, *compareCmd)
-	result, err := comparator.Compare(ctx, specName, variantData)
+
+	// Use the unified comparison method - it automatically handles diff size limits
+	comparisonInput := comparison.ComparisonInput{
+		SpecName:    specName,
+		SpecContext: specContext,
+		Variants:    variantData,
+		IncludeDiff: true, // Start with diffs, will be disabled automatically if too large
+	}
+
+	result, err := comparator.CompareUnified(ctx, comparisonInput)
 	if err != nil {
 		return fmt.Errorf("comparison failed: %w", err)
 	}
@@ -190,4 +190,46 @@ func formatDuration(d time.Duration) string {
 	hours := int(d.Hours())
 	mins := int(d.Minutes()) % 60
 	return fmt.Sprintf("%dh %dm", hours, mins)
+}
+
+// readSpecContext reads key spec files to provide context for comparison.
+func readSpecContext(specDir string) string {
+	var parts []string
+
+	// Key spec files to include
+	specFiles := []struct {
+		name  string
+		label string
+	}{
+		{"requirements.md", "Requirements"},
+		{"design.md", "Design"},
+		{"tasks.md", "Tasks"},
+	}
+
+	for _, sf := range specFiles {
+		path := filepath.Join(specDir, sf.name)
+		content, err := os.ReadFile(path)
+		if err != nil {
+			continue // Skip files that don't exist
+		}
+
+		// Truncate if too long
+		s := string(content)
+		if len(s) > 3000 {
+			idx := strings.LastIndex(s[:3000], "\n")
+			if idx > 2500 {
+				s = s[:idx] + "\n... (truncated)"
+			} else {
+				s = s[:3000] + "... (truncated)"
+			}
+		}
+
+		parts = append(parts, fmt.Sprintf("### %s\n\n%s", sf.label, s))
+	}
+
+	if len(parts) == 0 {
+		return ""
+	}
+
+	return strings.Join(parts, "\n\n")
 }

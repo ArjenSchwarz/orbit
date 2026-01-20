@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/arjenschwarz/orbit/internal/claude"
+	"github.com/arjenschwarz/orbit/internal/agents"
 )
 
 func TestNewManager(t *testing.T) {
@@ -53,9 +53,9 @@ func TestManager_SaveSession(t *testing.T) {
 		t.Fatalf("NewManager failed: %v", err)
 	}
 
-	result := &claude.SessionResult{
+	result := &agents.RunResult{
 		SessionID: "test-session-123",
-		Cost:      0.15,
+		Cost:      &agents.CostMetrics{CostUSD: 0.15},
 		Duration:  45 * time.Second,
 		NumTurns:  5,
 		Output:    "Test output",
@@ -193,9 +193,9 @@ func TestSanitizeName(t *testing.T) {
 }
 
 func TestFormatTranscript(t *testing.T) {
-	result := &claude.SessionResult{
+	result := &agents.RunResult{
 		SessionID: "abc123",
-		Cost:      0.25,
+		Cost:      &agents.CostMetrics{CostUSD: 0.25},
 		Duration:  30 * time.Second,
 		NumTurns:  3,
 		Output:    "Test output content",
@@ -247,9 +247,9 @@ func TestManager_SavePostCompletionSession(t *testing.T) {
 		t.Fatalf("NewManager failed: %v", err)
 	}
 
-	result := &claude.SessionResult{
+	result := &agents.RunResult{
 		SessionID: "post-completion-session-456",
-		Cost:      0.25,
+		Cost:      &agents.CostMetrics{CostUSD: 0.25},
 		Duration:  60 * time.Second,
 		NumTurns:  8,
 		Output:    "Review complete. All tests pass.",
@@ -322,9 +322,9 @@ func TestManager_SavePostCompletionSession(t *testing.T) {
 }
 
 func TestFormatPostCompletionTranscript(t *testing.T) {
-	result := &claude.SessionResult{
+	result := &agents.RunResult{
 		SessionID: "post-123",
-		Cost:      0.30,
+		Cost:      &agents.CostMetrics{CostUSD: 0.30},
 		Duration:  45 * time.Second,
 		NumTurns:  5,
 		Output:    "Verification complete",
@@ -1205,9 +1205,9 @@ func TestWriteRunIndex_CreatesFiles(t *testing.T) {
 	}
 
 	// Add some sessions
-	result := &claude.SessionResult{
+	result := &agents.RunResult{
 		SessionID: "test-session-123",
-		Cost:      0.15,
+		Cost:      &agents.CostMetrics{CostUSD: 0.15},
 		Duration:  45 * time.Second,
 		NumTurns:  5,
 		Output:    "Test output",

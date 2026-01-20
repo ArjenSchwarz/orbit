@@ -12,6 +12,8 @@ const (
 	FormatUnknown Format = iota
 	FormatClaude
 	FormatCodex
+	FormatKiro
+	FormatCopilot
 )
 
 // Entry represents a single line in the Claude session JSONL.

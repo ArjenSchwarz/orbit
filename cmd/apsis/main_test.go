@@ -9,7 +9,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/arjenschwarz/orbit/internal/claude"
+	"github.com/arjenschwarz/orbit/internal/agents/claudecode"
 )
 
 func TestIsFilePath(t *testing.T) {
@@ -99,9 +99,9 @@ func TestBuildClaudePath(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			result := claude.BuildProjectPath(tt.path)
+			result := claudecode.BuildProjectPath(tt.path)
 			if result != tt.expected {
-				t.Errorf("claude.BuildProjectPath(%q) = %q, want %q", tt.path, result, tt.expected)
+				t.Errorf("claudecode.BuildProjectPath(%q) = %q, want %q", tt.path, result, tt.expected)
 			}
 		})
 	}
@@ -148,7 +148,7 @@ func TestConvert(t *testing.T) {
 {"type":"assistant","timestamp":"2025-12-23T10:00:01Z","message":{"role":"assistant","content":[{"type":"text","text":"Hello! How can I help?"}]}}`
 
 	var output bytes.Buffer
-	err := convert(strings.NewReader(input), &output, "test-session-id", "md")
+	err := convert(strings.NewReader(input), &output, "test-session-id", "md", "")
 	if err != nil {
 		t.Fatalf("convert failed: %v", err)
 	}
@@ -184,7 +184,7 @@ func TestConvert(t *testing.T) {
 
 func TestConvert_EmptyFile(t *testing.T) {
 	var output bytes.Buffer
-	err := convert(strings.NewReader(""), &output, "empty-session", "md")
+	err := convert(strings.NewReader(""), &output, "empty-session", "md", "")
 
 	// Empty files now return an error during format detection
 	if err == nil {
@@ -259,7 +259,7 @@ func TestConvert_HTMLFormat(t *testing.T) {
 {"type":"assistant","timestamp":"2025-12-23T10:00:01Z","message":{"role":"assistant","content":[{"type":"text","text":"Hello! How can I help?"}]}}`
 
 	var output bytes.Buffer
-	err := convert(strings.NewReader(input), &output, "test-session-id", "html")
+	err := convert(strings.NewReader(input), &output, "test-session-id", "html", "")
 	if err != nil {
 		t.Fatalf("convert failed: %v", err)
 	}
@@ -298,7 +298,7 @@ func TestConvert_UnsupportedFormat(t *testing.T) {
 	input := `{"type":"user","message":{"role":"user","content":[{"type":"text","text":"test"}]}}`
 
 	var output bytes.Buffer
-	err := convert(strings.NewReader(input), &output, "test-session", "xml")
+	err := convert(strings.NewReader(input), &output, "test-session", "xml", "")
 
 	if err == nil {
 		t.Fatal("expected error for unsupported format")
@@ -1271,7 +1271,7 @@ func TestListCodexSessions_IgnoresEmptyFiles_Negative(t *testing.T) {
 func TestConvert_EmptyFile_Negative(t *testing.T) {
 	// Test convert on empty file returns proper error
 	var output bytes.Buffer
-	err := convert(strings.NewReader(""), &output, "empty-session", "md")
+	err := convert(strings.NewReader(""), &output, "empty-session", "md", "")
 
 	if err == nil {
 		t.Fatal("expected error for empty file")
@@ -1284,20 +1284,21 @@ func TestConvert_EmptyFile_Negative(t *testing.T) {
 func TestConvert_InvalidJSONFile_Negative(t *testing.T) {
 	// Test convert on invalid JSON returns proper error
 	var output bytes.Buffer
-	err := convert(strings.NewReader("{invalid json}"), &output, "test-session", "md")
+	err := convert(strings.NewReader("{invalid json}"), &output, "test-session", "md", "")
 
 	if err == nil {
 		t.Fatal("expected error for invalid JSON")
 	}
-	if !strings.Contains(err.Error(), "failed to parse first line as JSON") {
-		t.Errorf("expected error about JSON parsing, got: %v", err)
+	// Invalid JSON is skipped during detection, resulting in no format found
+	if !strings.Contains(err.Error(), "no format-defining entries found") {
+		t.Errorf("expected error about no format-defining entries, got: %v", err)
 	}
 }
 
 func TestConvert_UnknownFormatType_Negative(t *testing.T) {
 	// Test convert on unknown format type returns proper error
 	var output bytes.Buffer
-	err := convert(strings.NewReader(`{"type":"unknown_format"}`), &output, "test-session", "md")
+	err := convert(strings.NewReader(`{"type":"unknown_format"}`), &output, "test-session", "md", "")
 
 	if err == nil {
 		t.Fatal("expected error for unknown format type")
@@ -1320,7 +1321,7 @@ func TestConvert_WarningSummaryOutput(t *testing.T) {
 	os.Stderr = w
 
 	var output bytes.Buffer
-	err := convert(strings.NewReader(input), &output, "test-session", "md")
+	err := convert(strings.NewReader(input), &output, "test-session", "md", "")
 
 	// Restore stderr and capture output
 	_ = w.Close()
@@ -1358,7 +1359,7 @@ func TestConvert_CodexSessionToMarkdown(t *testing.T) {
 {"timestamp":"2026-01-04T13:23:30.000Z","type":"response_item","payload":{"type":"message","role":"assistant","content":[{"type":"output_text","text":"The directory contains 2 files."}]}}`
 
 	var output bytes.Buffer
-	err := convert(strings.NewReader(input), &output, "codex-test-session", "md")
+	err := convert(strings.NewReader(input), &output, "codex-test-session", "md", "")
 	if err != nil {
 		t.Fatalf("convert failed for Codex session: %v", err)
 	}
@@ -1412,7 +1413,7 @@ func TestConvert_CodexSessionToHTML(t *testing.T) {
 {"timestamp":"2026-01-04T13:22:30.000Z","type":"response_item","payload":{"type":"message","role":"assistant","content":[{"type":"output_text","text":"Hello! How can I help you today?"}]}}`
 
 	var output bytes.Buffer
-	err := convert(strings.NewReader(input), &output, "codex-html-session", "html")
+	err := convert(strings.NewReader(input), &output, "codex-html-session", "html", "")
 	if err != nil {
 		t.Fatalf("convert failed for Codex HTML: %v", err)
 	}
@@ -1456,7 +1457,7 @@ func TestConvert_CodexReasoningBlocks(t *testing.T) {
 {"timestamp":"2026-01-04T13:23:30.000Z","type":"response_item","payload":{"type":"message","role":"assistant","content":[{"type":"output_text","text":"Here is my analysis."}]}}`
 
 	var output bytes.Buffer
-	err := convert(strings.NewReader(input), &output, "reasoning-session", "md")
+	err := convert(strings.NewReader(input), &output, "reasoning-session", "md", "")
 	if err != nil {
 		t.Fatalf("convert failed: %v", err)
 	}
@@ -1506,7 +1507,7 @@ func TestIntegration_ApsisWithCodexFile(t *testing.T) {
 	var output bytes.Buffer
 	f, _ := os.Open(sessionFile)
 	defer func() { _ = f.Close() }()
-	err = convert(f, &output, sessionID, "md")
+	err = convert(f, &output, sessionID, "md", "")
 	if err != nil {
 		t.Fatalf("convert failed: %v", err)
 	}

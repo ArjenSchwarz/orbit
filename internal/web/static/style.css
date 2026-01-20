@@ -397,6 +397,80 @@ a:hover {
     }
 }
 
+/* Variant badges and styling */
+.variant-badge {
+    display: inline-block;
+    padding: 0.2rem 0.6rem;
+    font-size: 0.75rem;
+    font-weight: 500;
+    background-color: rgba(111, 66, 193, 0.15);
+    color: #7c3aed;
+    border-radius: 999px;
+    vertical-align: middle;
+    margin-left: 0.5rem;
+}
+
+@media (prefers-color-scheme: dark) {
+    .variant-badge {
+        background-color: rgba(139, 92, 246, 0.2);
+        color: #a78bfa;
+    }
+}
+
+.agent-name {
+    font-family: "SF Mono", Monaco, "Cascadia Code", monospace;
+    font-size: 0.85em;
+    background-color: var(--bg-code);
+    padding: 0.15rem 0.4rem;
+    border-radius: 4px;
+}
+
+/* Variant run card in dashboard */
+.run-card.variant-run {
+    border-left: 3px solid #7c3aed;
+}
+
+@media (prefers-color-scheme: dark) {
+    .run-card.variant-run {
+        border-left-color: #a78bfa;
+    }
+}
+
+/* Variant list on detail page */
+.variant-list {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+    margin-bottom: 2rem;
+}
+
+.variant-item {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    padding: 0.75rem 1rem;
+    background-color: var(--bg-card);
+    border: 1px solid var(--border-color);
+    border-radius: 6px;
+}
+
+.variant-item.variant-current {
+    background-color: var(--bg-secondary);
+    border-color: var(--link-color);
+}
+
+.variant-item a {
+    margin: 0;
+    padding: 0;
+    min-height: auto;
+    min-width: auto;
+}
+
+.variant-number {
+    font-weight: 600;
+    min-width: 6rem;
+}
+
 /* Web interface overrides for transcript styles */
 /* These override transcript.css defaults for web context */
 .markdown-content a {

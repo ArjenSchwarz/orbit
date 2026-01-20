@@ -24,6 +24,7 @@ type Variant struct {
 	Status       VariantStatus `json:"status"`
 	Error        string        `json:"error,omitempty"`
 	Guidance     string        `json:"guidance,omitempty"`
+	Agent        string        `json:"agent,omitempty"` // Agent used for this variant [Req 10.5]
 
 	// Metrics populated after completion
 	Cost     float64       `json:"cost,omitempty"`

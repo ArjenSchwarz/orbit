@@ -26,6 +26,7 @@ type VariantReportData struct {
 	Diff     string
 	DiffFile string // Relative path to separate diff file if diff is large
 	Metrics  VariantMetrics
+	Agent    string // Agent used for this variant [Req 10.6]
 }
 
 // VariantMetrics holds execution metrics for report display.

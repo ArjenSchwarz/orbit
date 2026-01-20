@@ -9,6 +9,11 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/arjenschwarz/orbit/internal/agents"
+	_ "github.com/arjenschwarz/orbit/internal/agents/claudecode" // Register claude-code agent
+	_ "github.com/arjenschwarz/orbit/internal/agents/codex"      // Register codex agent
+	_ "github.com/arjenschwarz/orbit/internal/agents/copilot"    // Register copilot agent
+	_ "github.com/arjenschwarz/orbit/internal/agents/kiro"       // Register kiro agent
 	"github.com/arjenschwarz/orbit/internal/config"
 	"github.com/arjenschwarz/orbit/internal/orbit"
 	"gopkg.in/yaml.v3"
@@ -32,6 +37,9 @@ func runCommand(args []string) error {
 	dateSubdirs := fs.Bool("date-subdirs", false, "Use timestamped subdirectories for logs")
 	noContinueSession := fs.Bool("no-continue-session", false, "Start fresh sessions instead of resuming")
 
+	// Agent selection
+	agentFlag := fs.String("agent", "", "Agent to use (claude-code, codex, kiro, copilot)")
+
 	// Variant flags for multi-spec comparison
 	variantCount := fs.Int("variants", 0, "Number of implementation variants to run (0 = single-run mode)")
 	parallel := fs.Bool("parallel", false, "Run variants in parallel")
@@ -39,6 +47,7 @@ func runCommand(args []string) error {
 	branchPrefix := fs.String("branch-prefix", "orbit-impl", "Branch naming prefix for variants")
 	guidanceFile := fs.String("guidance-file", "", "YAML file with per-variant guidance")
 	compareCommand := fs.String("compare-command", "", "Custom comparison command")
+	variantAgentsFlag := fs.String("variant-agents", "", "Comma-separated agent list for variants (cycles if fewer agents than variants)")
 
 	fs.Usage = func() {
 		fmt.Fprintf(os.Stderr, "Usage: orbit run [options]\n\n")
@@ -54,6 +63,7 @@ func runCommand(args []string) error {
 		fmt.Fprintf(os.Stderr, "  orbit run --variants 3                     # Run 3 implementation variants\n")
 		fmt.Fprintf(os.Stderr, "  orbit run --variants 2 --parallel          # Run 2 variants in parallel\n")
 		fmt.Fprintf(os.Stderr, "  orbit run --variants 3 --guidance-file guidance.yaml\n")
+		fmt.Fprintf(os.Stderr, "  orbit run --variants 2 --variant-agents claude-code,codex  # Compare agents\n")
 	}
 
 	if err := fs.Parse(args); err != nil {
@@ -103,6 +113,19 @@ func runCommand(args []string) error {
 	// Load configuration (Viper handles merging of home/project configs and env vars)
 	cfg := config.Load(workingDir)
 
+	// Resolve agent: CLI flag > config file > default (claude-code)
+	agentName := resolveAgent(*agentFlag, cfg)
+
+	// Validate agent is installed
+	agentCfg := cfg.GetAgentConfig(agentName)
+	agent, err := agents.Get(agentName, agentCfg)
+	if err != nil {
+		return fmt.Errorf("invalid agent %q: %w\nAvailable agents: %s", agentName, err, strings.Join(agents.List(), ", "))
+	}
+	if !agent.IsInstalled() {
+		return fmt.Errorf("agent %q CLI (%s) not found\nInstall it from: %s", agentName, agent.CLICommand(), getAgentInstallURL(agentName))
+	}
+
 	// Apply CLI flag overrides
 	command, postCommand := resolveCommands(cfg, *commandFlag, *postCommandFlag, *noPostCommand)
 
@@ -131,6 +154,16 @@ func runCommand(args []string) error {
 		guidance, err = parseGuidanceFile(*guidanceFile, *variantCount)
 		if err != nil {
 			return fmt.Errorf("failed to parse guidance file: %w", err)
+		}
+	}
+
+	// Parse variant agents if provided
+	var variantAgents []string
+	if *variantAgentsFlag != "" {
+		variantAgents = strings.Split(*variantAgentsFlag, ",")
+		// Trim whitespace from each agent name
+		for i := range variantAgents {
+			variantAgents[i] = strings.TrimSpace(variantAgents[i])
 		}
 	}
 
@@ -171,6 +204,9 @@ func runCommand(args []string) error {
 		PostCommand:     postCommand,
 		DateSubdirs:     dateSubdirsValue,
 		ContinueSession: continueSessionValue,
+		Agent:           agentName,
+		AgentConfig:     agentCfg,
+		AgentConfigs:    cfg.GetAllAgentConfigs(),
 		VariantCount:    *variantCount,
 		Parallel:        *parallel,
 		MaxParallel:     *maxParallel,
@@ -179,6 +215,7 @@ func runCommand(args []string) error {
 		CompareCommand:  *compareCommand,
 		SpecDir:         specDir,
 		RepoRoot:        repoRoot,
+		VariantAgents:   variantAgents,
 	}
 
 	o, err := orbit.New(orbitCfg)
@@ -227,6 +264,32 @@ func resolveCommands(cfg *config.Config, commandFlag, postCommandFlag string, no
 	}
 
 	return command, postCommand
+}
+
+// resolveAgent determines which agent to use based on priority:
+// CLI flag > config file > default (claude-code)
+func resolveAgent(flagValue string, cfg *config.Config) string {
+	if flagValue != "" {
+		return flagValue
+	}
+	if cfg.Agent != "" {
+		return cfg.Agent
+	}
+	return "claude-code"
+}
+
+// getAgentInstallURL returns the installation URL for a given agent.
+func getAgentInstallURL(agentName string) string {
+	urls := map[string]string{
+		"claude-code": "https://docs.anthropic.com/en/docs/agents-and-tools/claude-code/overview",
+		"codex":       "https://github.com/openai/codex",
+		"kiro":        "https://kiro.dev/docs/cli",
+		"copilot":     "https://docs.github.com/en/copilot/using-github-copilot/using-github-copilot-in-the-command-line",
+	}
+	if url, ok := urls[agentName]; ok {
+		return url
+	}
+	return "unknown agent - check documentation"
 }
 
 // detectTasksFile attempts to find a tasks file based on the branch name.

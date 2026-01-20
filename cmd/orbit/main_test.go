@@ -174,6 +174,62 @@ func TestDetectTasksFile_FullBranchNameFallback(t *testing.T) {
 	}
 }
 
+func TestReorderArgs(t *testing.T) {
+	tests := map[string]struct {
+		input    []string
+		expected []string
+	}{
+		"flags before positional": {
+			input:    []string{"--variant", "1", "my-spec"},
+			expected: []string{"--variant", "1", "my-spec"},
+		},
+		"positional before flags": {
+			input:    []string{"my-spec", "--variant", "1"},
+			expected: []string{"--variant", "1", "my-spec"},
+		},
+		"mixed order": {
+			input:    []string{"my-spec", "--variant", "1", "--force"},
+			expected: []string{"--variant", "1", "--force", "my-spec"},
+		},
+		"boolean flag between positional and value flag": {
+			input:    []string{"my-spec", "--force", "--variant", "1"},
+			expected: []string{"--force", "--variant", "1", "my-spec"},
+		},
+		"flag with equals": {
+			input:    []string{"my-spec", "--variant=1"},
+			expected: []string{"--variant=1", "my-spec"},
+		},
+		"only flags": {
+			input:    []string{"--variant", "1", "--force"},
+			expected: []string{"--variant", "1", "--force"},
+		},
+		"only positional": {
+			input:    []string{"my-spec", "another-arg"},
+			expected: []string{"my-spec", "another-arg"},
+		},
+		"empty": {
+			input:    []string{},
+			expected: []string{},
+		},
+	}
+
+	for name, tc := range tests {
+		t.Run(name, func(t *testing.T) {
+			got := reorderArgs(tc.input)
+			if len(got) != len(tc.expected) {
+				t.Errorf("got %v, want %v", got, tc.expected)
+				return
+			}
+			for i := range got {
+				if got[i] != tc.expected[i] {
+					t.Errorf("got %v, want %v", got, tc.expected)
+					return
+				}
+			}
+		})
+	}
+}
+
 func TestResolveCommands(t *testing.T) {
 	tests := map[string]struct {
 		cfg             *config.Config

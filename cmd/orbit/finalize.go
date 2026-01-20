@@ -31,7 +31,8 @@ func finalizeCommand(args []string) error {
 		fmt.Fprintf(os.Stderr, "  orbit finalize my-feature --variant 2 --force\n")
 	}
 
-	if err := fs.Parse(args); err != nil {
+	// Reorder args so flags come before positional args (Go's flag package requires this)
+	if err := fs.Parse(reorderArgs(args)); err != nil {
 		return err
 	}
 

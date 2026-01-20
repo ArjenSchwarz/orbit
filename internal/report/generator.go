@@ -72,6 +72,7 @@ func (g *Generator) processVariant(specName string, v VariantReportData) Variant
 		Status:  v.Status,
 		Error:   v.Error,
 		Metrics: v.Metrics,
+		Agent:   v.Agent,
 	}
 
 	// Check if diff is large
