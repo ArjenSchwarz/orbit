@@ -1217,6 +1217,24 @@ func (o *Orbit) runVariant(ctx context.Context, v *variants.Variant) error {
 		log.Printf("Variant %d: finished phase %s (cost=$%.4f)", v.ID, lastLoggedPhase, phaseCost)
 	}
 
+	// Run post-completion command if configured
+	if o.config.PostCommand != "" {
+		log.Printf("Variant %d: running post-completion command...", v.ID)
+		postResult, err := o.runVariantPostCompletion(ctx, v, variantAgent)
+		if err != nil {
+			variantErr := fmt.Errorf("post-completion: %w", err)
+			if updateErr := o.variantManager.UpdateStatus(v.ID, variants.StatusFailed, variantErr); updateErr != nil {
+				log.Printf("Warning: failed to update variant %d status: %v", v.ID, updateErr)
+			}
+			return variantErr
+		}
+		if postResult != nil {
+			totalCost += getCostUSD(postResult)
+			totalTurns += postResult.NumTurns
+		}
+		log.Printf("Variant %d: post-completion finished", v.ID)
+	}
+
 	// Mark variant as completed
 	duration := time.Since(startTime)
 	if err := o.variantManager.UpdateStatus(v.ID, variants.StatusCompleted, nil); err != nil {
@@ -1306,6 +1324,65 @@ func (o *Orbit) runVariantPhaseWithRetry(ctx context.Context, v *variants.Varian
 		} else {
 			waitTime = orberrors.BackoffDuration(attempt)
 			log.Printf("Variant %d: error, waiting %s (attempt %d/%d)",
+				v.ID, waitTime, attempt+1, maxRetries)
+		}
+
+		select {
+		case <-ctx.Done():
+			return lastResult, ctx.Err()
+		case <-time.After(waitTime):
+		}
+	}
+
+	return lastResult, fmt.Errorf("max retries exceeded: %w", lastErr)
+}
+
+// runVariantPostCompletion executes the post-completion command for a variant.
+func (o *Orbit) runVariantPostCompletion(ctx context.Context, v *variants.Variant, agent agents.Agent) (*agents.RunResult, error) {
+	var lastErr error
+	var lastResult *agents.RunResult
+
+	for attempt := 0; attempt < maxRetries; attempt++ {
+		select {
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		default:
+		}
+
+		// Execute the post-completion command in the variant's worktree
+		opts := agents.RunOptions{
+			Prompt:    o.config.PostCommand,
+			SessionID: uuid.NewString(),
+			WorkDir:   v.WorktreePath,
+		}
+		result, err := agent.Run(ctx, opts)
+		if err == nil && result != nil && !result.IsError {
+			return result, nil
+		}
+
+		lastResult = result
+		if err != nil {
+			lastErr = err
+		} else if result != nil && result.IsError {
+			lastErr = fmt.Errorf("agent reported error in post-completion")
+		}
+
+		// Classify the error using agent-specific classifier
+		classifier := agents.GetClassifier(agent.Name())
+		classified := classifier.Classify(1, result.Stderr, result.Output, result.Errors)
+		if !classified.Class.IsRetryable() {
+			return result, classified
+		}
+
+		// Determine wait time using RetryAfter from classifier, with fallback to exponential backoff
+		var waitTime time.Duration
+		if classified.RetryAfter > 0 {
+			waitTime = classified.RetryAfter
+			log.Printf("Variant %d post-completion: retryable error, waiting %s (attempt %d/%d)",
+				v.ID, waitTime, attempt+1, maxRetries)
+		} else {
+			waitTime = orberrors.BackoffDuration(attempt)
+			log.Printf("Variant %d post-completion: error, waiting %s (attempt %d/%d)",
 				v.ID, waitTime, attempt+1, maxRetries)
 		}
 
