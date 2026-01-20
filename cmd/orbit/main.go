@@ -2,6 +2,7 @@
 package main
 
 import (
+	"fmt"
 	"log"
 	"os"
 	"strings"
@@ -22,6 +23,18 @@ var knownSubcommands = map[string]bool{
 }
 
 func main() {
+	// Handle top-level --help and --version before subcommand parsing
+	if len(os.Args) > 1 {
+		switch os.Args[1] {
+		case "--help", "-h", "help":
+			printUsage()
+			return
+		case "--version", "-v":
+			fmt.Println("orbit", version)
+			return
+		}
+	}
+
 	// Parse subcommand from os.Args
 	cmd, cmdArgs := parseSubcommand(os.Args[1:])
 
@@ -85,4 +98,35 @@ func parseSubcommand(args []string) (string, []string) {
 // isKnownSubcommand returns true if the argument is a valid subcommand.
 func isKnownSubcommand(arg string) bool {
 	return knownSubcommands[arg]
+}
+
+// printUsage displays the top-level help message.
+func printUsage() {
+	fmt.Fprintf(os.Stderr, `Orbit - AI coding agent orchestrator
+
+Usage: orbit <command> [options]
+
+Commands:
+  run        Orchestrate agent sessions to implement spec phases (default)
+  compare    Regenerate comparison report for existing variants
+  status     Show variant status for a spec
+  finalize   Adopt a variant and clean up others
+  cleanup    Remove all variant worktrees and branches
+  serve      Start web interface for viewing runs
+  register   Manually register a run in the registry
+  demo       Run a demo session
+
+Global Options:
+  --help, -h       Show this help message
+  --version, -v    Show version
+
+Run 'orbit <command> --help' for more information on a command.
+
+Examples:
+  orbit run                              # Auto-detect tasks from current branch
+  orbit run --tasks-file specs/foo/tasks.md
+  orbit run --variants 3 --parallel      # Run 3 implementation variants
+  orbit compare my-feature               # Regenerate comparison report
+  orbit serve                            # Start web interface on :8080
+`)
 }
