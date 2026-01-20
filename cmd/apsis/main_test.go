@@ -1289,8 +1289,9 @@ func TestConvert_InvalidJSONFile_Negative(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected error for invalid JSON")
 	}
-	if !strings.Contains(err.Error(), "failed to parse first line as JSON") {
-		t.Errorf("expected error about JSON parsing, got: %v", err)
+	// Invalid JSON is skipped during detection, resulting in no format found
+	if !strings.Contains(err.Error(), "no format-defining entries found") {
+		t.Errorf("expected error about no format-defining entries, got: %v", err)
 	}
 }
 

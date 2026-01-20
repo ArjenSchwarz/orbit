@@ -854,8 +854,8 @@ func TestDetectFormat_WhitespaceOnly(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected error for whitespace-only file")
 	}
-	if err.Error() != "empty file" {
-		t.Errorf("expected error 'empty file', got %q", err.Error())
+	if !strings.Contains(err.Error(), "no format-defining entries found") {
+		t.Errorf("expected error about no format-defining entries, got %q", err.Error())
 	}
 }
 
@@ -865,8 +865,9 @@ func TestDetectFormat_InvalidJSON(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected error for invalid JSON")
 	}
-	if !strings.Contains(err.Error(), "failed to parse first line as JSON") {
-		t.Errorf("expected error containing 'failed to parse first line as JSON', got %q", err.Error())
+	// Invalid JSON is skipped during detection, resulting in no format found
+	if !strings.Contains(err.Error(), "no format-defining entries found") {
+		t.Errorf("expected error about no format-defining entries, got %q", err.Error())
 	}
 }
 
@@ -1679,8 +1680,8 @@ func TestDetectFormat_WhitespaceOnly_Negative(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected error for whitespace-only file")
 	}
-	if err.Error() != "empty file" {
-		t.Errorf("expected exact error 'empty file', got %q", err.Error())
+	if !strings.Contains(err.Error(), "no format-defining entries found") {
+		t.Errorf("expected error about no format-defining entries, got %q", err.Error())
 	}
 }
 
@@ -1690,8 +1691,9 @@ func TestDetectFormat_InvalidJSON_Negative(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected error for invalid JSON")
 	}
-	if !strings.Contains(err.Error(), "failed to parse first line as JSON") {
-		t.Errorf("expected error containing 'failed to parse first line as JSON', got %q", err.Error())
+	// Invalid JSON is skipped during detection, resulting in no format found
+	if !strings.Contains(err.Error(), "no format-defining entries found") {
+		t.Errorf("expected error about no format-defining entries, got %q", err.Error())
 	}
 }
 

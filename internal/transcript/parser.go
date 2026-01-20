@@ -46,20 +46,21 @@ var copilotTypes = map[string]bool{
 // These are internal Claude infrastructure entries, not part of the conversation.
 var infrastructureTypes = map[string]bool{
 	"queue-operation": true,
+	"progress":        true,
 }
 
 // DetectFormat examines file content to determine the log format.
 // Returns the detected format, the initial bytes read (with BOM stripped), and any error.
 //
 // Detection strategy:
-// 1. Read a chunk of content (up to 8KB for Kiro detection)
+// 1. Read a chunk of content (up to 64KB to handle long JSONL lines)
 // 2. Try parsing as complete JSON with Kiro markers - if successful, it's Kiro format
-// 3. Otherwise, treat as JSONL and detect based on first line's type field
+// 3. Otherwise, treat as JSONL and detect based on first format-defining line
 //
 // Note: Cannot use first-byte check alone because both JSON and JSONL start with '{'
 func DetectFormat(r io.Reader) (Format, []byte, error) {
-	// Read up to 8KB for Kiro detection (needs enough to check structure)
-	chunk := make([]byte, 8192)
+	// Read up to 64KB for format detection (handles long JSONL lines)
+	chunk := make([]byte, 65536)
 	n, err := io.ReadFull(r, chunk)
 	if err != nil && err != io.EOF && err != io.ErrUnexpectedEOF {
 		return FormatUnknown, nil, err
@@ -113,41 +114,47 @@ func detectKiroFormat(data []byte) Format {
 	return FormatUnknown
 }
 
-// detectJSONLFormat detects format from the first non-empty line of JSONL content.
+// detectJSONLFormat detects format from the first format-defining line of JSONL content.
+// Skips infrastructure types (like queue-operation) to find the actual conversation format.
+// Also skips lines that fail to parse (may be truncated due to chunk size).
 func detectJSONLFormat(data []byte) (Format, []byte, error) {
-	// Split into lines and find first non-empty line
+	// Split into lines and find first format-defining line
 	lines := bytes.Split(data, []byte("\n"))
-	var firstLine []byte
+
 	for _, line := range lines {
 		trimmed := bytes.TrimSpace(line)
-		if len(trimmed) > 0 {
-			firstLine = trimmed
-			break
+		if len(trimmed) == 0 {
+			continue
 		}
+
+		var obj struct {
+			Type string `json:"type"`
+		}
+		if err := json.Unmarshal(trimmed, &obj); err != nil {
+			// Skip lines that don't parse - they may be truncated
+			// due to the chunk size limit. Keep looking for a valid line.
+			continue
+		}
+
+		// Skip infrastructure types
+		if infrastructureTypes[obj.Type] {
+			continue
+		}
+
+		if claudeTypes[obj.Type] {
+			return FormatClaude, data, nil
+		}
+		if codexTypes[obj.Type] {
+			return FormatCodex, data, nil
+		}
+		if copilotTypes[obj.Type] {
+			return FormatCopilot, data, nil
+		}
+
+		return FormatUnknown, data, fmt.Errorf("unrecognized log format: type field value '%s'", obj.Type)
 	}
 
-	if len(firstLine) == 0 {
-		return FormatUnknown, nil, fmt.Errorf("empty file")
-	}
-
-	var obj struct {
-		Type string `json:"type"`
-	}
-	if err := json.Unmarshal(firstLine, &obj); err != nil {
-		return FormatUnknown, nil, fmt.Errorf("failed to parse first line as JSON: %w", err)
-	}
-
-	if claudeTypes[obj.Type] {
-		return FormatClaude, data, nil
-	}
-	if codexTypes[obj.Type] {
-		return FormatCodex, data, nil
-	}
-	if copilotTypes[obj.Type] {
-		return FormatCopilot, data, nil
-	}
-
-	return FormatUnknown, data, fmt.Errorf("unrecognized log format: type field value '%s'", obj.Type)
+	return FormatUnknown, nil, fmt.Errorf("no format-defining entries found in file")
 }
 
 // readFirstNonEmptyLineFromBufReader reads lines until finding a non-empty line.
