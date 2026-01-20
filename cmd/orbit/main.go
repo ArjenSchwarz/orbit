@@ -100,6 +100,36 @@ func isKnownSubcommand(arg string) bool {
 	return knownSubcommands[arg]
 }
 
+// reorderArgs moves flags before positional arguments.
+// Go's flag package stops parsing at the first non-flag argument,
+// so we need to reorder to support "cmd arg --flag value" syntax.
+func reorderArgs(args []string) []string {
+	var flags []string
+	var positional []string
+
+	i := 0
+	for i < len(args) {
+		arg := args[i]
+		if strings.HasPrefix(arg, "-") {
+			flags = append(flags, arg)
+			// Check if this flag has a value (not a boolean flag)
+			// Heuristic: if next arg exists and doesn't start with -, it's a value
+			if i+1 < len(args) && !strings.HasPrefix(args[i+1], "-") {
+				// Check if it's a flag=value format
+				if !strings.Contains(arg, "=") {
+					i++
+					flags = append(flags, args[i])
+				}
+			}
+		} else {
+			positional = append(positional, arg)
+		}
+		i++
+	}
+
+	return append(flags, positional...)
+}
+
 // printUsage displays the top-level help message.
 func printUsage() {
 	fmt.Fprintf(os.Stderr, `Orbit - AI coding agent orchestrator
