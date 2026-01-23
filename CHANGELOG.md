@@ -9,6 +9,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- `internal/consolidation` package foundation (Phase 2 of variant consolidation):
+  - `types.go` with core types: `Config` struct for consolidation configuration (spec name, variant ID, agent, allow-dirty flag, custom prompt), `ConsolidationResult` for outcomes, `ConsolidationReport` parsed from agent output, `AppliedImprovement` and `SkippedImprovement` for tracking changes
+  - `logger.go` with `Logger` struct for consolidation log management:
+    - `LogEntry` struct with schema version, timestamp, variant ID, commit SHA, agent, improvements counts, and test/post-command results
+    - `Append()` method with flock-style file locking for concurrent access safety
+    - Atomic writes using temp file + rename pattern with UUID-based temp filenames
+    - `SaveReport()` for timestamped markdown report files
+    - `GetLatestCommitSHA()` for rollback support
+  - `recovery.go` with `RecoveryManager` struct for git state management:
+    - `CaptureState()` to record HEAD commit before agent runs
+    - `CreateSnapshot()` to stash uncommitted changes with `--include-untracked` flag
+    - `RestoreOnFailure()` using `git checkout -- .` and `git clean -fd` to remove partial modifications
+    - `RestoreStash()` with conflict handling (leaves stash in place, returns warning)
+    - `Cleanup()` to drop stash after successful completion
+  - `prompt.go` with `PromptBuilder` struct for agent prompt construction:
+    - Context section with comparison report path and all variant worktree paths
+    - Optional custom instructions section when `--prompt` flag is provided
+    - Instructions for analyzing cross-variant improvements, implementing changes, and committing
+    - Conflict resolution policy prioritizing chosen variant's patterns
+    - Scope constraints preventing unrelated changes, dependency additions, binary modifications
+    - Edge case handling for renamed files, idempotency checks, missing paths
+    - Report format template for agent output (applied/skipped improvements, commit SHA)
+  - Comprehensive tests for all components including concurrent append, stash/restore operations, conflict handling, and prompt generation
+
 - Dual-format report generation: Reports now generate both HTML (`index.html`) and Markdown (`report.md`) for GitHub-friendly browsing
 - Markdown report uses go-output v2 for document building with YAML frontmatter metadata
 - `VariantCommits` field in `ReportData` struct to track variant HEAD commits for staleness detection

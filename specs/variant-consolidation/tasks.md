@@ -35,13 +35,13 @@ references:
 
 ## Phase 2: Consolidation Package Foundation
 
-- [ ] 5. Create consolidation types
+- [x] 5. Create consolidation types
   - Create internal/consolidation/types.go with Config, ConsolidationResult, ConsolidationReport, AppliedImprovement, SkippedImprovement structs
   - Include CustomPrompt field in Config for --prompt flag support
   - Requirements: [2.8](requirements.md#2.8), [3.5](requirements.md#3.5), [4.2](requirements.md#4.2)
   - References: internal/consolidation/types.go
 
-- [ ] 6. Implement ConsolidationLogger with file locking
+- [x] 6. Implement ConsolidationLogger with file locking
   - Create internal/consolidation/logger.go with LogEntry struct including ImprovementsAttempted/Applied/Skipped fields
   - Implement flock-style locking for concurrent run safety
   - Implement Append with atomic write (temp file + rename)
@@ -50,14 +50,14 @@ references:
   - Requirements: [6.1](requirements.md#6.1), [6.2](requirements.md#6.2), [6.3](requirements.md#6.3), [6.4](requirements.md#6.4), [6.5](requirements.md#6.5)
   - References: internal/consolidation/logger.go
 
-- [ ] 7. Write tests for ConsolidationLogger
+- [x] 7. Write tests for ConsolidationLogger
   - Test append behavior, schema versioning, file locking for concurrent access
   - Test SaveReport with timestamped file creation
   - Test GetLatestCommitSHA with single and multiple entries
   - Requirements: [6.1](requirements.md#6.1), [6.2](requirements.md#6.2), [6.3](requirements.md#6.3), [6.4](requirements.md#6.4), [6.5](requirements.md#6.5)
   - References: internal/consolidation/logger_test.go
 
-- [ ] 8. Implement RecoveryManager
+- [x] 8. Implement RecoveryManager
   - Create internal/consolidation/recovery.go with RecoveryManager struct
   - Implement CaptureState to record worktree state before agent runs
   - Implement CreateSnapshot for git stash when --allow-dirty
@@ -67,14 +67,14 @@ references:
   - Requirements: [5.4](requirements.md#5.4), [5.5](requirements.md#5.5), [5.6](requirements.md#5.6)
   - References: internal/consolidation/recovery.go
 
-- [ ] 9. Write tests for RecoveryManager
+- [x] 9. Write tests for RecoveryManager
   - Test stash/restore operations
   - Test stash conflict handling (leaves stash, warns user)
   - Test RestoreOnFailure with partial agent modifications
   - Requirements: [5.4](requirements.md#5.4), [5.5](requirements.md#5.5), [5.6](requirements.md#5.6)
   - References: internal/consolidation/recovery_test.go
 
-- [ ] 10. Implement PromptBuilder
+- [x] 10. Implement PromptBuilder
   - Create internal/consolidation/prompt.go with PromptBuilder struct
   - Implement Build() to generate consolidation prompt with context, instructions, conflict resolution policy, scope constraints
   - Include conditional Custom Instructions section when customPrompt is provided
@@ -82,7 +82,7 @@ references:
   - Requirements: [2.8](requirements.md#2.8), [3.1](requirements.md#3.1), [3.2](requirements.md#3.2), [3.3](requirements.md#3.3), [3.4](requirements.md#3.4), [4.2](requirements.md#4.2)
   - References: internal/consolidation/prompt.go
 
-- [ ] 11. Write tests for PromptBuilder
+- [x] 11. Write tests for PromptBuilder
   - Test prompt construction with and without custom prompt
   - Test escaping of special characters in paths and names
   - Verify all required sections are included
