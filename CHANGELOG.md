@@ -9,6 +9,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Variant consolidation specification documents:
+  - `specs/variant-consolidation/requirements.md` with 7 requirement sections covering markdown report generation, consolidate command (basic operation, agent execution, commit/validation, error handling), logging/tracking, and progress indication
+  - `specs/variant-consolidation/design.md` with architecture, component diagram, data flow, interfaces (Consolidator, PromptBuilder, RecoveryManager, ConsolidationLogger), data models, error handling, and testing strategy
+  - `specs/variant-consolidation/decision_log.md` with 22 design decisions covering report formats, conflict handling, agent design, recovery mechanisms, and peer review enhancements
+  - `specs/variant-consolidation/tasks.md` with 4 implementation phases and 19 tasks for report enhancement, consolidation package foundation, consolidator core, and CLI integration
+
 - Variant session logging: Each variant now gets its own log manager at `specs/{spec}/.orbit/logs/variant-{id}/` with phase-by-phase session storage
 - Variant web interface registration: Each variant is registered separately in the run registry with variant-specific metadata
 - Variant fields in `registry.RunEntry`: `IsVariant`, `VariantID`, `VariantRunID`, `VariantTotal`, `VariantAgent`, `VariantBranch`
