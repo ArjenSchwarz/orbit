@@ -391,6 +391,10 @@ func TestGenerate_CreatesMarkdownReport(t *testing.T) {
 		GeneratedAt:    time.Date(2026, 1, 11, 10, 30, 0, 0, time.UTC),
 		BaseCommit:     "abc123def456",
 		OriginalBranch: "feature/test",
+		VariantCommits: map[int]string{
+			1: "commit1abc",
+			2: "commit2def",
+		},
 		Variants: []VariantReportData{
 			{
 				ID:     1,
@@ -472,12 +476,27 @@ func TestGenerate_CreatesMarkdownReport(t *testing.T) {
 		}
 	}
 
-	// Verify front matter is present
+	// Verify front matter is present with all required fields [Req 1.7]
 	if !strings.Contains(contentStr, "---") {
 		t.Errorf("report.md missing YAML front matter")
 	}
 	if !strings.Contains(contentStr, "title:") {
 		t.Errorf("report.md missing title in front matter")
+	}
+	if !strings.Contains(contentStr, "generated_at:") {
+		t.Errorf("report.md missing generated_at in front matter")
+	}
+	if !strings.Contains(contentStr, "base_commit: abc123def456") {
+		t.Errorf("report.md missing base_commit in front matter")
+	}
+	if !strings.Contains(contentStr, "variant_commits:") {
+		t.Errorf("report.md missing variant_commits in front matter")
+	}
+	if !strings.Contains(contentStr, "1: commit1abc") {
+		t.Errorf("report.md missing variant 1 commit in front matter")
+	}
+	if !strings.Contains(contentStr, "2: commit2def") {
+		t.Errorf("report.md missing variant 2 commit in front matter")
 	}
 }
 

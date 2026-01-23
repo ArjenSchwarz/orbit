@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	output "github.com/ArjenSchwarz/go-output/v2"
 )
@@ -151,25 +152,60 @@ func (g *Generator) generateMarkdownReport(data *ReportData) error {
 	// Build document and render to markdown
 	doc := builder.Build()
 
-	// Create markdown renderer with front matter
-	frontMatter := map[string]string{
-		"title": fmt.Sprintf("Comparison Report: %s", data.SpecName),
-		"date":  data.GeneratedAt.Format("2006-01-02"),
-	}
-	mdFormat := output.MarkdownWithFrontMatter(frontMatter)
-
+	// Render the document content (without frontmatter, we'll add our own)
+	mdFormat := output.Markdown()
 	rendered, err := mdFormat.Renderer.Render(context.Background(), doc)
 	if err != nil {
 		return fmt.Errorf("render markdown: %w", err)
 	}
 
+	// Build custom YAML frontmatter with variant_commits for staleness detection [Req 1.7]
+	frontMatter := g.buildFrontMatter(data)
+
+	// Combine frontmatter and content
+	var finalContent strings.Builder
+	finalContent.WriteString(frontMatter)
+	finalContent.Write(rendered)
+
 	// Write to file
 	mdPath := filepath.Join(g.outputDir, "report.md")
-	if err := writeFileAtomic(mdPath, rendered); err != nil {
+	if err := writeFileAtomic(mdPath, []byte(finalContent.String())); err != nil {
 		return fmt.Errorf("write report.md: %w", err)
 	}
 
 	return nil
+}
+
+// buildFrontMatter generates YAML frontmatter with metadata for staleness detection.
+// Implements: [1.7]
+func (g *Generator) buildFrontMatter(data *ReportData) string {
+	var sb strings.Builder
+	sb.WriteString("---\n")
+	sb.WriteString(fmt.Sprintf("title: \"Comparison Report: %s\"\n", data.SpecName))
+	sb.WriteString(fmt.Sprintf("generated_at: %s\n", data.GeneratedAt.Format(time.RFC3339)))
+	sb.WriteString(fmt.Sprintf("base_commit: %s\n", data.BaseCommit))
+
+	// Add variant commits for staleness detection
+	if len(data.VariantCommits) > 0 {
+		sb.WriteString("variant_commits:\n")
+		// Sort keys for deterministic output
+		var ids []int
+		for id := range data.VariantCommits {
+			ids = append(ids, id)
+		}
+		for i := 0; i < len(ids); i++ {
+			for j := i + 1; j < len(ids); j++ {
+				if ids[i] > ids[j] {
+					ids[i], ids[j] = ids[j], ids[i]
+				}
+			}
+		}
+		for _, id := range ids {
+			sb.WriteString(fmt.Sprintf("  %d: %s\n", id, data.VariantCommits[id]))
+		}
+	}
+	sb.WriteString("---\n\n")
+	return sb.String()
 }
 
 // boolToCheck converts a boolean to a check mark or X.

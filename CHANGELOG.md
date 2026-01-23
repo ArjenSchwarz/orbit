@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- Markdown report frontmatter now includes `generated_at`, `base_commit`, and `variant_commits` fields for staleness detection (requirement 1.7). Previously only included `title` and `date`. The `variant_commits` map enables the consolidate command to detect when the comparison report is stale relative to current variant HEAD commits.
+
 ### Added
 
 - `orbit consolidate` CLI command integration (Phase 4 of variant consolidation):
