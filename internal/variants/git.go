@@ -17,6 +17,9 @@ type GitClient interface {
 	// GetHeadCommit returns the current HEAD commit SHA.
 	GetHeadCommit() (string, error)
 
+	// GetHeadCommitInPath returns the HEAD commit SHA for a specific path (worktree).
+	GetHeadCommitInPath(path string) (string, error)
+
 	// CreateBranch creates a new branch from HEAD.
 	CreateBranch(name string) error
 
@@ -76,6 +79,17 @@ func (g *Git) GetHeadCommit() (string, error) {
 	out, err := cmd.Output()
 	if err != nil {
 		return "", fmt.Errorf("get head commit: %w", err)
+	}
+	return strings.TrimSpace(string(out)), nil
+}
+
+// GetHeadCommitInPath returns the HEAD commit SHA for a specific path (worktree).
+func (g *Git) GetHeadCommitInPath(path string) (string, error) {
+	cmd := exec.Command("git", "rev-parse", "HEAD")
+	cmd.Dir = path
+	out, err := cmd.Output()
+	if err != nil {
+		return "", fmt.Errorf("get head commit in %s: %w", path, err)
 	}
 	return strings.TrimSpace(string(out)), nil
 }

@@ -9,6 +9,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Dual-format report generation: Reports now generate both HTML (`index.html`) and Markdown (`report.md`) for GitHub-friendly browsing
+- Markdown report uses go-output v2 for document building with YAML frontmatter metadata
+- `VariantCommits` field in `ReportData` struct to track variant HEAD commits for staleness detection
+- `GetHeadCommitInPath` method to `GitClient` interface for getting HEAD commit SHA in worktrees
+- `GetVariantCommits` method to `variants.Manager` for collecting all variant HEAD commits
+- Tests for markdown report generation including content verification and large diff linking
+
 - Variant consolidation specification documents:
   - `specs/variant-consolidation/requirements.md` with 7 requirement sections covering markdown report generation, consolidate command (basic operation, agent execution, commit/validation, error handling), logging/tracking, and progress indication
   - `specs/variant-consolidation/design.md` with architecture, component diagram, data flow, interfaces (Consolidator, PromptBuilder, RecoveryManager, ConsolidationLogger), data models, error handling, and testing strategy

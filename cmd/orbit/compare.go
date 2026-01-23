@@ -133,12 +133,25 @@ func compareCommand(args []string) error {
 	fmt.Println("Generating report...")
 	reportDir := filepath.Join(specDir, "comparison-report")
 
+	// Collect HEAD commits for each variant [Req 1.7]
+	variantCommits := make(map[int]string)
+	for _, v := range completedVariants {
+		commit, err := git.GetHeadCommitInPath(v.WorktreePath)
+		if err != nil {
+			// Log warning but continue - staleness detection is best-effort
+			fmt.Printf("Warning: could not get HEAD for variant %d: %v\n", v.ID, err)
+		} else {
+			variantCommits[v.ID] = commit
+		}
+	}
+
 	reportData := &report.ReportData{
 		SpecName:       specName,
 		GeneratedAt:    time.Now(),
 		Comparison:     result,
 		BaseCommit:     metadata.BaseCommit,
 		OriginalBranch: metadata.OriginalBranch,
+		VariantCommits: variantCommits,
 	}
 
 	// Add variant data to report

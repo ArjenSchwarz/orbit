@@ -490,6 +490,32 @@ func (m *Manager) GetMetadata() *VariantsMetadata {
 	return &metaCopy
 }
 
+// GetVariantCommits returns a map of variant ID to HEAD commit SHA.
+// Used for staleness detection in reports [Req 1.7].
+// Errors are logged but not fatal - returns partial results on failure.
+func (m *Manager) GetVariantCommits() map[int]string {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	if m.metadata == nil {
+		return nil
+	}
+
+	commits := make(map[int]string)
+	for _, v := range m.metadata.Variants {
+		if v.WorktreePath == "" {
+			continue
+		}
+		commit, err := m.git.GetHeadCommitInPath(v.WorktreePath)
+		if err != nil {
+			// Log but continue - staleness detection is best-effort
+			continue
+		}
+		commits[v.ID] = commit
+	}
+	return commits
+}
+
 // sanitizeSpecName makes a spec name safe for filesystem and git branch names.
 func sanitizeSpecName(name string) string {
 	// Build result, replacing unsafe characters with dashes

@@ -8,13 +8,13 @@ references:
 
 ## Phase 1: Report Generation Enhancement
 
-- [ ] 1. Add VariantCommits field to ReportData
+- [x] 1. Add VariantCommits field to ReportData
   - Add VariantCommits map[int]string field to ReportData struct in internal/report/types.go
   - Update report generation to populate this field with HEAD commit SHA for each variant
   - Requirements: [1.7](requirements.md#1.7)
   - References: internal/report/types.go
 
-- [ ] 2. Implement dual-format report generation with go-output v2
+- [x] 2. Implement dual-format report generation with go-output v2
   - Modify Generator to use go-output v2 document builder pattern
   - Generate both HTML (index.html) and Markdown (comparison-report.md) from single data structure
   - Include YAML frontmatter metadata in Markdown output (generated_at, base_commit, variant_commits)
@@ -22,12 +22,12 @@ references:
   - Requirements: [1.1](requirements.md#1.1), [1.2](requirements.md#1.2), [1.3](requirements.md#1.3), [1.4](requirements.md#1.4), [1.5](requirements.md#1.5)
   - References: internal/report/generator.go
 
-- [ ] 3. Add relative links to diff files in Markdown report
+- [x] 3. Add relative links to diff files in Markdown report
   - Update Markdown renderer to include relative links to separate diff files for large diffs
   - Requirements: [1.6](requirements.md#1.6)
   - References: internal/report/generator.go
 
-- [ ] 4. Write tests for dual-format report generation
+- [x] 4. Write tests for dual-format report generation
   - Add TestReportMultiFormat for HTML + Markdown generation
   - Test metadata inclusion, empty section omission, and diff file linking
   - Requirements: [1.1](requirements.md#1.1), [1.2](requirements.md#1.2), [1.3](requirements.md#1.3), [1.4](requirements.md#1.4), [1.5](requirements.md#1.5), [1.6](requirements.md#1.6), [1.7](requirements.md#1.7)

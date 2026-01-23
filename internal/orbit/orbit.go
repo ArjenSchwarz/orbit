@@ -1661,6 +1661,7 @@ func (o *Orbit) generateReport() error {
 		Comparison:     o.comparisonResult,
 		BaseCommit:     metadata.BaseCommit,
 		OriginalBranch: metadata.OriginalBranch,
+		VariantCommits: o.variantManager.GetVariantCommits(),
 	}
 
 	// Create report in comparison-report directory under spec
@@ -1710,6 +1711,7 @@ func (o *Orbit) generatePartialReport() error {
 		Comparison:     nil, // No comparison for all-failed case
 		BaseCommit:     metadata.BaseCommit,
 		OriginalBranch: metadata.OriginalBranch,
+		VariantCommits: o.variantManager.GetVariantCommits(),
 	}
 
 	// Create report in comparison-report directory under spec

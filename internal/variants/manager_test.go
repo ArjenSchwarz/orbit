@@ -50,6 +50,10 @@ func (m *mockGitClient) GetHeadCommit() (string, error) {
 	return m.headCommit, nil
 }
 
+func (m *mockGitClient) GetHeadCommitInPath(_ string) (string, error) {
+	return m.headCommit, nil
+}
+
 func (m *mockGitClient) CreateBranch(name string) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
