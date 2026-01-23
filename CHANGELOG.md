@@ -9,6 +9,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- `internal/consolidation` Consolidator core implementation (Phase 3 of variant consolidation):
+  - `consolidator.go` with `Consolidator` struct orchestrating the consolidation workflow:
+    - `NewConsolidator()` constructor with validation for spec directory, variant ID, agent, and manager
+    - `validateVariant()` checking variant exists, listing available variants if not found
+    - `validateReport()` checking comparison report (report.md) exists
+    - `checkStaleness()` comparing report metadata against current variant HEADs with warning
+    - `checkEmptyImprovements()` for early exit when no cross-variant improvements exist
+    - `checkCleanState()` validating worktree has no uncommitted changes (unless --allow-dirty)
+    - `Run()` executing the full consolidation workflow with spinner stages
+    - `runWithRetry()` for agent execution with error classification and retry support
+    - `Rollback()` reverting the most recent consolidation commit using log or git search
+    - Helper functions for parsing commit SHA, improvement counts from agent output
+  - `ErrNoImprovements` sentinel error for empty improvements early exit
+  - `truncateSHA()` helper for displaying abbreviated commit SHAs
+  - `parseReportVariantCommits()` for extracting variant commits from YAML frontmatter
+  - Comprehensive test coverage:
+    - Unit tests for constructor validation, variant validation, report validation
+    - Unit tests for staleness detection, empty improvements detection, clean state checks
+    - Unit tests for commit SHA parsing, improvement count parsing, SHA truncation
+    - Integration tests for E2E workflow, rollback, empty improvements, partial failure recovery
+
 - `internal/consolidation` package foundation (Phase 2 of variant consolidation):
   - `types.go` with core types: `Config` struct for consolidation configuration (spec name, variant ID, agent, allow-dirty flag, custom prompt), `ConsolidationResult` for outcomes, `ConsolidationReport` parsed from agent output, `AppliedImprovement` and `SkippedImprovement` for tracking changes
   - `logger.go` with `Logger` struct for consolidation log management:

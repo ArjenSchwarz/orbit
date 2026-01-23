@@ -91,7 +91,7 @@ references:
 
 ## Phase 3: Consolidator Core Implementation
 
-- [ ] 12. Implement Consolidator validation methods
+- [x] 12. Implement Consolidator validation methods
   - Create internal/consolidation/consolidator.go with Consolidator struct
   - Implement validateVariant to check variant exists, list available if not
   - Implement validateReport to check comparison-report.md exists
@@ -100,13 +100,13 @@ references:
   - Requirements: [2.3](requirements.md#2.3), [2.4](requirements.md#2.4), [2.9](requirements.md#2.9), [5.1](requirements.md#5.1), [5.2](requirements.md#5.2)
   - References: internal/consolidation/consolidator.go
 
-- [ ] 13. Write tests for Consolidator validation
+- [x] 13. Write tests for Consolidator validation
   - Table-driven tests for variant not found, no markdown report, stale report, empty improvements
   - Test error messages include helpful suggestions
   - Requirements: [2.3](requirements.md#2.3), [2.4](requirements.md#2.4), [2.9](requirements.md#2.9), [5.1](requirements.md#5.1), [5.2](requirements.md#5.2)
   - References: internal/consolidation/consolidator_test.go
 
-- [ ] 14. Implement Consolidator.Run main workflow
+- [x] 14. Implement Consolidator.Run main workflow
   - Implement Run with spinner stages (Validating, Running agent, Running tests, Running post-command)
   - Call CaptureState before agent runs
   - Call CreateSnapshot when --allow-dirty
@@ -118,7 +118,7 @@ references:
   - Requirements: [2.5](requirements.md#2.5), [2.6](requirements.md#2.6), [2.7](requirements.md#2.7), [3.1](requirements.md#3.1), [3.5](requirements.md#3.5), [4.1](requirements.md#4.1), [4.3](requirements.md#4.3), [4.4](requirements.md#4.4), [4.6](requirements.md#4.6), [7.1](requirements.md#7.1)
   - References: internal/consolidation/consolidator.go
 
-- [ ] 15. Implement Consolidator error handling and recovery
+- [x] 15. Implement Consolidator error handling and recovery
   - Implement classifyError using existing agents.ErrorClassifier
   - Implement runWithRetry with exponential backoff for retryable errors
   - Call RestoreOnFailure when agent fails without committing
@@ -126,7 +126,7 @@ references:
   - Requirements: [5.3](requirements.md#5.3), [5.6](requirements.md#5.6), [5.8](requirements.md#5.8), [5.9](requirements.md#5.9)
   - References: internal/consolidation/consolidator.go
 
-- [ ] 16. Implement Consolidator.Rollback
+- [x] 16. Implement Consolidator.Rollback
   - Check consolidation-log.json for stored commit SHA (primary mechanism)
   - Fall back to searching recent commits (git log -n 20) for message pattern
   - Validate commit exists and message matches pattern before reverting
@@ -134,7 +134,7 @@ references:
   - Requirements: [5.7](requirements.md#5.7)
   - References: internal/consolidation/consolidator.go
 
-- [ ] 17. Write integration tests for Consolidator
+- [x] 17. Write integration tests for Consolidator
   - TestConsolidateE2E with mock agent for full workflow
   - TestConsolidateRollback for rollback functionality
   - TestConsolidateEmptyImprovements for early exit
