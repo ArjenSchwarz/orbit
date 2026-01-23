@@ -56,6 +56,16 @@ func TestParseSubcommand(t *testing.T) {
 			wantCmd:     "demo",
 			wantCmdArgs: []string{},
 		},
+		"consolidate command": {
+			args:        []string{"consolidate", "my-feature", "--variant", "1"},
+			wantCmd:     "consolidate",
+			wantCmdArgs: []string{"my-feature", "--variant", "1"},
+		},
+		"consolidate command with rollback": {
+			args:        []string{"consolidate", "--rollback", "my-feature"},
+			wantCmd:     "consolidate",
+			wantCmdArgs: []string{"--rollback", "my-feature"},
+		},
 		"unknown subcommand defaults to run": {
 			args:        []string{"unknown-thing"},
 			wantCmd:     "run",
@@ -98,13 +108,14 @@ func TestIsKnownSubcommand(t *testing.T) {
 		arg  string
 		want bool
 	}{
-		"run":      {arg: "run", want: true},
-		"serve":    {arg: "serve", want: true},
-		"register": {arg: "register", want: true},
-		"demo":     {arg: "demo", want: true},
-		"unknown":  {arg: "unknown", want: false},
-		"empty":    {arg: "", want: false},
-		"flag":     {arg: "--help", want: false},
+		"run":         {arg: "run", want: true},
+		"serve":       {arg: "serve", want: true},
+		"register":    {arg: "register", want: true},
+		"demo":        {arg: "demo", want: true},
+		"consolidate": {arg: "consolidate", want: true},
+		"unknown":     {arg: "unknown", want: false},
+		"empty":       {arg: "", want: false},
+		"flag":        {arg: "--help", want: false},
 	}
 
 	for name, tc := range tests {

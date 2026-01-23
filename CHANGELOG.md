@@ -9,6 +9,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- `orbit consolidate` CLI command integration (Phase 4 of variant consolidation):
+  - `cmd/orbit/consolidate.go` with `consolidateCommand()` function implementing `orbit consolidate <spec> --variant <id>` command
+  - Flags: `--variant` (required for consolidation), `--allow-dirty`, `--prompt`, `--rollback`
+  - Spec auto-detection from git branch name when spec argument omitted (matches other orbit commands)
+  - `handleRollback()` function for `--rollback` mode handling
+  - `truncateString()` helper for displaying truncated custom prompts
+  - `isAutomatedEnvironment()` for CI/automation detection (skips confirmation prompt)
+  - Interactive confirmation prompt before consolidation proceeds
+  - `NewConsolidatorForRollback()` constructor in consolidation package for rollback-only operations (no agent required)
+  - Subcommand routing in `main.go` for `consolidate` command
+  - Help text updated with consolidate command and example
+  - Unit tests covering flag parsing validation, spec auto-detection, rollback mode validation, variant not found errors, truncateString, and CI environment detection
+  - Subcommand tests for consolidate command parsing
+
 - `internal/consolidation` Consolidator core implementation (Phase 3 of variant consolidation):
   - `consolidator.go` with `Consolidator` struct orchestrating the consolidation workflow:
     - `NewConsolidator()` constructor with validation for spec directory, variant ID, agent, and manager

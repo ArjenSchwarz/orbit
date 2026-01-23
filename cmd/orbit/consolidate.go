@@ -1,0 +1,279 @@
+package main
+
+import (
+	"bufio"
+	"context"
+	"flag"
+	"fmt"
+	"os"
+	"path/filepath"
+	"strings"
+
+	"github.com/arjenschwarz/orbit/internal/agents"
+	_ "github.com/arjenschwarz/orbit/internal/agents/claudecode" // Register claude-code agent
+	_ "github.com/arjenschwarz/orbit/internal/agents/codex"      // Register codex agent
+	_ "github.com/arjenschwarz/orbit/internal/agents/copilot"    // Register copilot agent
+	_ "github.com/arjenschwarz/orbit/internal/agents/kiro"       // Register kiro agent
+	"github.com/arjenschwarz/orbit/internal/config"
+	"github.com/arjenschwarz/orbit/internal/consolidation"
+	"github.com/arjenschwarz/orbit/internal/variants"
+)
+
+// consolidateCommand executes the orbit consolidate subcommand.
+// It uses an AI agent to analyze improvements from non-chosen variants
+// and apply them to the chosen variant.
+// Implements: [2.1], [2.2], [2.7], [2.8]
+func consolidateCommand(args []string) error {
+	fs := flag.NewFlagSet("consolidate", flag.ExitOnError)
+
+	variantID := fs.Int("variant", 0, "Target variant ID (required for consolidation, not needed for --rollback)")
+	allowDirty := fs.Bool("allow-dirty", false, "Allow uncommitted changes in the target worktree")
+	customPrompt := fs.String("prompt", "", "Custom instructions to influence consolidation decisions")
+	rollback := fs.Bool("rollback", false, "Revert the most recent consolidation commit")
+
+	fs.Usage = func() {
+		fmt.Fprintf(os.Stderr, "Usage: orbit consolidate <spec-name> --variant N [options]\n\n")
+		fmt.Fprintf(os.Stderr, "Consolidate improvements from non-chosen variants into the chosen variant.\n")
+		fmt.Fprintf(os.Stderr, "Uses an AI agent to analyze the comparison report and apply improvements.\n\n")
+		fmt.Fprintf(os.Stderr, "Options:\n")
+		fs.PrintDefaults()
+		fmt.Fprintf(os.Stderr, "\nExamples:\n")
+		fmt.Fprintf(os.Stderr, "  orbit consolidate my-feature --variant 1\n")
+		fmt.Fprintf(os.Stderr, "  orbit consolidate my-feature --variant 1 --prompt \"Focus on error handling\"\n")
+		fmt.Fprintf(os.Stderr, "  orbit consolidate my-feature --rollback    # Revert last consolidation\n")
+		fmt.Fprintf(os.Stderr, "  orbit consolidate --variant 1              # Auto-detect spec from branch\n")
+	}
+
+	// Reorder args so flags come before positional args (Go's flag package requires this)
+	if err := fs.Parse(reorderArgs(args)); err != nil {
+		return err
+	}
+
+	// Validate flags: --variant is required unless --rollback is used
+	if !*rollback && *variantID <= 0 {
+		return fmt.Errorf("--variant is required and must be a positive integer (unless using --rollback)")
+	}
+
+	// Get spec name from args or auto-detect from branch [Req 2.2]
+	specName := fs.Arg(0)
+	if specName == "" {
+		branch, err := getGitBranchForStatus()
+		if err != nil {
+			return fmt.Errorf("failed to get git branch: %w\nProvide spec name as argument", err)
+		}
+		specName = extractSpecName(branch)
+	}
+
+	// Find and load variants.json
+	specDir := filepath.Join("specs", specName)
+	metadataPath := filepath.Join(specDir, ".orbit", "variants.json")
+
+	if _, err := os.Stat(metadataPath); os.IsNotExist(err) {
+		return fmt.Errorf("no variant run found for spec: %s", specName)
+	}
+
+	// Get repo root
+	repoRoot, err := getRepoRoot()
+	if err != nil {
+		return fmt.Errorf("failed to get repository root: %w", err)
+	}
+
+	// Load metadata using a Manager
+	git := variants.NewGit(repoRoot)
+	cfg := variants.DefaultConfig()
+	mgr, err := variants.NewManager(cfg, specName, specDir, repoRoot, git)
+	if err != nil {
+		return fmt.Errorf("failed to create manager: %w", err)
+	}
+
+	if err := mgr.Load(); err != nil {
+		return fmt.Errorf("failed to load variants: %w", err)
+	}
+
+	metadata := mgr.GetMetadata()
+	if metadata == nil {
+		return fmt.Errorf("no variant run found for spec: %s", specName)
+	}
+
+	// Handle rollback mode [Req 5.7]
+	if *rollback {
+		return handleRollback(specName, specDir, mgr)
+	}
+
+	// Resolve the agent to use [Req 2.6]
+	workDir, err := os.Getwd()
+	if err != nil {
+		return fmt.Errorf("failed to get working directory: %w", err)
+	}
+
+	appConfig := config.Load(workDir)
+	agentName := resolveAgent("", appConfig) // Use default agent
+
+	agentCfg := appConfig.GetAgentConfig(agentName)
+	agent, err := agents.Get(agentName, agentCfg)
+	if err != nil {
+		return fmt.Errorf("invalid agent %q: %w\nAvailable agents: %s", agentName, err, strings.Join(agents.List(), ", "))
+	}
+	if !agent.IsInstalled() {
+		return fmt.Errorf("agent %q CLI (%s) not found\nInstall it from: %s", agentName, agent.CLICommand(), getAgentInstallURL(agentName))
+	}
+
+	// Create consolidator configuration
+	consolidatorCfg := consolidation.Config{
+		SpecName:     specName,
+		SpecDir:      specDir,
+		VariantID:    *variantID,
+		Agent:        agent,
+		AllowDirty:   *allowDirty, // [Req 2.7]
+		PostCommand:  appConfig.PostCommand,
+		CustomPrompt: *customPrompt, // [Req 2.8]
+	}
+
+	consolidator, err := consolidation.NewConsolidator(consolidatorCfg, mgr)
+	if err != nil {
+		// Check if the error is about variant not found to provide better message
+		if strings.Contains(err.Error(), "not found") {
+			return fmt.Errorf("variant %d not found. Use 'orbit status %s' to see available variants", *variantID, specName)
+		}
+		return fmt.Errorf("failed to create consolidator: %w", err)
+	}
+
+	// Show what we're about to do
+	fmt.Printf("Consolidate spec: %s\n", specName)
+	fmt.Printf("Target variant:   %d\n", *variantID)
+	fmt.Printf("Agent:            %s\n", agentName)
+	if *customPrompt != "" {
+		fmt.Printf("Custom prompt:    %s\n", truncateString(*customPrompt, 50))
+	}
+	fmt.Println()
+
+	// Confirm unless in CI/automation (checking for TTY)
+	if !isAutomatedEnvironment() {
+		fmt.Print("Proceed with consolidation? [y/N] ")
+		reader := bufio.NewReader(os.Stdin)
+		answer, err := reader.ReadString('\n')
+		if err != nil {
+			return fmt.Errorf("failed to read input: %w", err)
+		}
+		answer = strings.TrimSpace(strings.ToLower(answer))
+		if answer != "y" && answer != "yes" {
+			fmt.Println("Consolidation cancelled")
+			return nil
+		}
+	}
+
+	// Run consolidation
+	ctx := context.Background()
+	result, err := consolidator.Run(ctx)
+	if err != nil {
+		// Check for specific error types to provide helpful messages
+		if err == consolidation.ErrNoImprovements {
+			fmt.Println(err.Error())
+			return nil // Not an error - just nothing to do
+		}
+		return fmt.Errorf("consolidation failed: %w", err)
+	}
+
+	// Display results
+	fmt.Println()
+	fmt.Println("=== Consolidation Complete ===")
+	fmt.Println()
+
+	if result.CommitSHA != "" {
+		fmt.Printf("Commit: %s\n", result.CommitSHA)
+	}
+
+	if result.TestsPassed {
+		fmt.Println("Tests:  PASSED")
+	} else {
+		fmt.Println("Tests:  FAILED")
+	}
+
+	if result.PostCommandPassed {
+		fmt.Println("Post-command: PASSED")
+	} else if len(result.Errors) > 0 {
+		fmt.Println("Post-command: FAILED")
+	}
+
+	if len(result.Errors) > 0 {
+		fmt.Println()
+		fmt.Println("Errors:")
+		for _, e := range result.Errors {
+			fmt.Printf("  - %s\n", e)
+		}
+	}
+
+	fmt.Println()
+	fmt.Printf("To undo: orbit consolidate %s --rollback\n", specName)
+
+	// Display the agent's report
+	if result.AgentReport != "" {
+		fmt.Println()
+		fmt.Println("=== Agent Report ===")
+		fmt.Println()
+		fmt.Println(result.AgentReport)
+	}
+
+	return nil
+}
+
+// handleRollback reverts the most recent consolidation commit.
+// Implements: [5.7]
+func handleRollback(specName, specDir string, mgr *variants.Manager) error {
+	// For rollback, we need a variant ID from the log or we find the commit by pattern
+	// Create a consolidator with a placeholder variant ID - it will be determined from the log
+	variants := mgr.GetVariantsSnapshot()
+	if len(variants) == 0 {
+		return fmt.Errorf("no variants found for spec: %s", specName)
+	}
+
+	// Use the first variant's worktree path for rollback
+	// The actual commit to rollback is determined from the consolidation log
+	dummyCfg := consolidation.Config{
+		SpecName:  specName,
+		SpecDir:   specDir,
+		VariantID: variants[0].ID,
+		Agent:     nil, // Not needed for rollback
+	}
+
+	// Create a minimal consolidator just for rollback
+	consolidator, err := consolidation.NewConsolidatorForRollback(dummyCfg, mgr)
+	if err != nil {
+		return fmt.Errorf("failed to create consolidator for rollback: %w", err)
+	}
+
+	ctx := context.Background()
+	if err := consolidator.Rollback(ctx); err != nil {
+		return fmt.Errorf("rollback failed: %w", err)
+	}
+
+	return nil
+}
+
+// truncateString truncates a string to maxLen characters, adding "..." if truncated.
+func truncateString(s string, maxLen int) string {
+	if len(s) <= maxLen {
+		return s
+	}
+	return s[:maxLen-3] + "..."
+}
+
+// isAutomatedEnvironment checks if we're running in a non-interactive environment.
+func isAutomatedEnvironment() bool {
+	// Check common CI environment variables
+	ciVars := []string{
+		"CI",
+		"GITHUB_ACTIONS",
+		"GITLAB_CI",
+		"JENKINS_URL",
+		"BUILDKITE",
+		"CIRCLECI",
+		"TRAVIS",
+	}
+	for _, v := range ciVars {
+		if os.Getenv(v) != "" {
+			return true
+		}
+	}
+	return false
+}

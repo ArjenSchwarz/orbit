@@ -62,6 +62,34 @@ func NewConsolidator(cfg Config, mgr *variants.Manager) (*Consolidator, error) {
 	}, nil
 }
 
+// NewConsolidatorForRollback creates a consolidator configured only for rollback operations.
+// Unlike NewConsolidator, this does not require an agent since rollback only needs git operations.
+func NewConsolidatorForRollback(cfg Config, mgr *variants.Manager) (*Consolidator, error) {
+	if cfg.SpecDir == "" {
+		return nil, errors.New("spec directory is required")
+	}
+	if cfg.VariantID < 1 {
+		return nil, errors.New("variant ID must be positive")
+	}
+	if mgr == nil {
+		return nil, errors.New("variant manager is required")
+	}
+
+	orbitDir := filepath.Join(cfg.SpecDir, ".orbit")
+	worktreePath := getWorktreePath(mgr, cfg.VariantID)
+	if worktreePath == "" {
+		return nil, fmt.Errorf("variant %d not found", cfg.VariantID)
+	}
+
+	return &Consolidator{
+		config:   cfg,
+		manager:  mgr,
+		recovery: NewRecoveryManager(worktreePath),
+		logger:   NewLogger(orbitDir),
+		// No spinner or agent needed for rollback
+	}, nil
+}
+
 // getWorktreePath returns the worktree path for a variant ID, or empty if not found.
 func getWorktreePath(mgr *variants.Manager, variantID int) string {
 	v := mgr.GetVariant(variantID)

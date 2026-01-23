@@ -12,14 +12,15 @@ var version = "dev"
 
 // knownSubcommands lists all valid subcommands.
 var knownSubcommands = map[string]bool{
-	"run":      true,
-	"serve":    true,
-	"register": true,
-	"demo":     true,
-	"status":   true,
-	"cleanup":  true,
-	"finalize": true,
-	"compare":  true,
+	"run":         true,
+	"serve":       true,
+	"register":    true,
+	"demo":        true,
+	"status":      true,
+	"cleanup":     true,
+	"finalize":    true,
+	"compare":     true,
+	"consolidate": true,
 }
 
 func main() {
@@ -56,6 +57,8 @@ func main() {
 		err = finalizeCommand(cmdArgs)
 	case "compare":
 		err = compareCommand(cmdArgs)
+	case "consolidate":
+		err = consolidateCommand(cmdArgs)
 	default:
 		// This shouldn't happen since parseSubcommand defaults to "run"
 		err = runCommand(cmdArgs)
@@ -137,14 +140,15 @@ func printUsage() {
 Usage: orbit <command> [options]
 
 Commands:
-  run        Orchestrate agent sessions to implement spec phases (default)
-  compare    Regenerate comparison report for existing variants
-  status     Show variant status for a spec
-  finalize   Adopt a variant and clean up others
-  cleanup    Remove all variant worktrees and branches
-  serve      Start web interface for viewing runs
-  register   Manually register a run in the registry
-  demo       Run a demo session
+  run          Orchestrate agent sessions to implement spec phases (default)
+  compare      Regenerate comparison report for existing variants
+  consolidate  Merge improvements from non-chosen variants into chosen variant
+  status       Show variant status for a spec
+  finalize     Adopt a variant and clean up others
+  cleanup      Remove all variant worktrees and branches
+  serve        Start web interface for viewing runs
+  register     Manually register a run in the registry
+  demo         Run a demo session
 
 Global Options:
   --help, -h       Show this help message
@@ -157,6 +161,7 @@ Examples:
   orbit run --tasks-file specs/foo/tasks.md
   orbit run --variants 3 --parallel      # Run 3 implementation variants
   orbit compare my-feature               # Regenerate comparison report
+  orbit consolidate my-feature --variant 1  # Consolidate improvements into variant 1
   orbit serve                            # Start web interface on :8080
 `)
 }

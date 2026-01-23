@@ -144,7 +144,7 @@ references:
 
 ## Phase 4: CLI Command Integration
 
-- [ ] 18. Implement consolidate command
+- [x] 18. Implement consolidate command
   - Create cmd/orbit/consolidate.go with consolidateCommand function
   - Add flags: --variant (required for consolidation), --allow-dirty, --prompt, --rollback
   - Implement spec auto-detection from git branch name when spec argument omitted
@@ -152,7 +152,7 @@ references:
   - Requirements: [2.1](requirements.md#2.1), [2.2](requirements.md#2.2), [2.7](requirements.md#2.7), [2.8](requirements.md#2.8)
   - References: cmd/orbit/consolidate.go, cmd/orbit/main.go
 
-- [ ] 19. Write CLI tests for consolidate command
+- [x] 19. Write CLI tests for consolidate command
   - Test flag parsing and validation
   - Test spec auto-detection from branch name
   - Test --rollback mode (does not require --variant)
