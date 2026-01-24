@@ -24,7 +24,7 @@ func NewGenerator(outputDir string) *Generator {
 	}
 }
 
-// Generate creates the HTML report files.
+// Generate creates both HTML and Markdown report files. [Req 1.1]
 func (g *Generator) Generate(data *ReportData) error {
 	// Create output directory
 	if err := os.MkdirAll(g.outputDir, 0755); err != nil {
@@ -34,9 +34,14 @@ func (g *Generator) Generate(data *ReportData) error {
 	// Process variants to escape content and handle large diffs
 	processedData := g.processReportData(data)
 
-	// Generate main report
+	// Generate main HTML report
 	if err := g.generateMainReport(processedData); err != nil {
 		return fmt.Errorf("generate main report: %w", err)
+	}
+
+	// Generate Markdown report alongside HTML [Req 1.1]
+	if err := g.generateMarkdownReport(processedData); err != nil {
+		return fmt.Errorf("generate markdown report: %w", err)
 	}
 
 	return nil
@@ -52,6 +57,7 @@ func (g *Generator) processReportData(data *ReportData) *ReportData {
 		Comparison:     data.Comparison,
 		BaseCommit:     data.BaseCommit,
 		OriginalBranch: data.OriginalBranch,
+		VariantCommits: data.VariantCommits,
 	}
 
 	// Process each variant for large diffs

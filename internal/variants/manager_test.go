@@ -50,6 +50,10 @@ func (m *mockGitClient) GetHeadCommit() (string, error) {
 	return m.headCommit, nil
 }
 
+func (m *mockGitClient) GetHeadCommitInPath(_ string) (string, error) {
+	return m.headCommit, nil
+}
+
 func (m *mockGitClient) CreateBranch(name string) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -199,6 +203,34 @@ func TestNewManager(t *testing.T) {
 	}
 }
 
+func TestHasExistingRun(t *testing.T) {
+	tmpDir := t.TempDir()
+	specDir := filepath.Join(tmpDir, "specs", "test-spec")
+	git := newMockGitClient()
+
+	cfg := Config{Count: 2, BranchPrefix: "orbit-impl"}
+	mgr, err := NewManager(cfg, "test-spec", specDir, tmpDir, git)
+	if err != nil {
+		t.Fatalf("NewManager: %v", err)
+	}
+
+	// Initially no existing run
+	if mgr.HasExistingRun() {
+		t.Error("expected HasExistingRun() = false initially")
+	}
+
+	// Set metadata
+	mgr.metadata = &VariantsMetadata{
+		RunID:      "test-run",
+		BaseCommit: "abc123",
+	}
+
+	// Now should have existing run
+	if !mgr.HasExistingRun() {
+		t.Error("expected HasExistingRun() = true after setting metadata")
+	}
+}
+
 func TestSetup_CreatesWorktreesAndBranches(t *testing.T) {
 	tmpDir := t.TempDir()
 	specDir := filepath.Join(tmpDir, "specs", "test-spec")
@@ -211,7 +243,7 @@ func TestSetup_CreatesWorktreesAndBranches(t *testing.T) {
 	}
 
 	ctx := context.Background()
-	if err := mgr.Setup(ctx); err != nil {
+	if err := mgr.Setup(ctx, false); err != nil {
 		t.Fatalf("Setup: %v", err)
 	}
 
@@ -268,7 +300,7 @@ func TestSetup_ReusesCompatibleWorktrees(t *testing.T) {
 	}
 
 	ctx := context.Background()
-	if err := mgr.Setup(ctx); err != nil {
+	if err := mgr.Setup(ctx, true); err != nil {
 		t.Fatalf("Setup: %v", err)
 	}
 
@@ -281,7 +313,7 @@ func TestSetup_ReusesCompatibleWorktrees(t *testing.T) {
 	}
 }
 
-func TestSetup_FailsOnDivergentWorktrees(t *testing.T) {
+func TestSetup_CleansUpOnNewRun(t *testing.T) {
 	tmpDir := t.TempDir()
 	specDir := filepath.Join(tmpDir, "specs", "test-spec")
 	git := newMockGitClient()
@@ -295,19 +327,35 @@ func TestSetup_FailsOnDivergentWorktrees(t *testing.T) {
 	// Pre-populate metadata with different base commit
 	mgr.metadata = &VariantsMetadata{
 		RunID:          "existing-run",
-		BaseCommit:     "different123", // Different from mock's abc123def456
+		BaseCommit:     "different123",
 		OriginalBranch: "feature/test-spec",
 		StartedAt:      time.Now(),
-		Variants:       []*Variant{{ID: 1}, {ID: 2}},
+		Variants: []*Variant{
+			{ID: 1, Branch: "orbit-impl-1/test-spec", WorktreePath: "/tmp/wt1"},
+			{ID: 2, Branch: "orbit-impl-2/test-spec", WorktreePath: "/tmp/wt2"},
+		},
+	}
+
+	// Create metadata file so cleanup can remove it
+	orbitDir := filepath.Join(specDir, ".orbit")
+	if err := os.MkdirAll(orbitDir, 0755); err != nil {
+		t.Fatalf("create orbit dir: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(orbitDir, "variants.json"), []byte("{}"), 0644); err != nil {
+		t.Fatalf("create variants.json: %v", err)
 	}
 
 	ctx := context.Background()
-	err = mgr.Setup(ctx)
-	if err == nil {
-		t.Fatal("expected error for divergent worktrees")
+	if err := mgr.Setup(ctx, false); err != nil {
+		t.Fatalf("Setup: %v", err)
 	}
-	if !contains(err.Error(), "different base commit") {
-		t.Errorf("unexpected error: %v", err)
+
+	// Should have cleaned up old worktrees and created new ones
+	if len(git.removedWorktrees) != 2 {
+		t.Errorf("expected 2 removed worktrees, got %d", len(git.removedWorktrees))
+	}
+	if len(git.createdBranches) != 2 {
+		t.Errorf("expected 2 new branches, got %d", len(git.createdBranches))
 	}
 }
 
@@ -324,7 +372,7 @@ func TestSetup_FailsOnDirtyWorkingDirectory(t *testing.T) {
 	}
 
 	ctx := context.Background()
-	err = mgr.Setup(ctx)
+	err = mgr.Setup(ctx, false)
 	if err == nil {
 		t.Fatal("expected error for dirty working directory")
 	}
@@ -345,7 +393,7 @@ func TestSetup_CreatesGitignore(t *testing.T) {
 	}
 
 	ctx := context.Background()
-	if err := mgr.Setup(ctx); err != nil {
+	if err := mgr.Setup(ctx, false); err != nil {
 		t.Fatalf("Setup: %v", err)
 	}
 
@@ -382,7 +430,7 @@ func TestSetup_UpdatesExistingGitignore(t *testing.T) {
 	}
 
 	ctx := context.Background()
-	if err := mgr.Setup(ctx); err != nil {
+	if err := mgr.Setup(ctx, false); err != nil {
 		t.Fatalf("Setup: %v", err)
 	}
 
@@ -411,7 +459,7 @@ func TestUpdateStatus(t *testing.T) {
 	}
 
 	ctx := context.Background()
-	if err := mgr.Setup(ctx); err != nil {
+	if err := mgr.Setup(ctx, false); err != nil {
 		t.Fatalf("Setup: %v", err)
 	}
 
@@ -455,7 +503,7 @@ func TestSave_AtomicWrite(t *testing.T) {
 	}
 
 	ctx := context.Background()
-	if err := mgr.Setup(ctx); err != nil {
+	if err := mgr.Setup(ctx, false); err != nil {
 		t.Fatalf("Setup: %v", err)
 	}
 
@@ -488,7 +536,7 @@ func TestSave_ConcurrentAccess(t *testing.T) {
 	}
 
 	ctx := context.Background()
-	if err := mgr.Setup(ctx); err != nil {
+	if err := mgr.Setup(ctx, false); err != nil {
 		t.Fatalf("Setup: %v", err)
 	}
 
@@ -528,7 +576,7 @@ func TestGetVariantsSnapshot_ReturnsCopy(t *testing.T) {
 	}
 
 	ctx := context.Background()
-	if err := mgr.Setup(ctx); err != nil {
+	if err := mgr.Setup(ctx, false); err != nil {
 		t.Fatalf("Setup: %v", err)
 	}
 
@@ -562,7 +610,7 @@ func TestCountByStatus(t *testing.T) {
 	}
 
 	ctx := context.Background()
-	if err := mgr.Setup(ctx); err != nil {
+	if err := mgr.Setup(ctx, false); err != nil {
 		t.Fatalf("Setup: %v", err)
 	}
 
@@ -595,7 +643,7 @@ func TestCleanup_RemovesAllWorktrees(t *testing.T) {
 	}
 
 	ctx := context.Background()
-	if err := mgr.Setup(ctx); err != nil {
+	if err := mgr.Setup(ctx, false); err != nil {
 		t.Fatalf("Setup: %v", err)
 	}
 
@@ -637,7 +685,7 @@ func TestCleanup_PreservesKeptVariant(t *testing.T) {
 	}
 
 	ctx := context.Background()
-	if err := mgr.Setup(ctx); err != nil {
+	if err := mgr.Setup(ctx, false); err != nil {
 		t.Fatalf("Setup: %v", err)
 	}
 
@@ -680,7 +728,7 @@ func TestFinalize_RebasesVariant(t *testing.T) {
 	}
 
 	ctx := context.Background()
-	if err := mgr.Setup(ctx); err != nil {
+	if err := mgr.Setup(ctx, false); err != nil {
 		t.Fatalf("Setup: %v", err)
 	}
 
@@ -716,7 +764,7 @@ func TestFinalize_FailsOnDivergedBranch(t *testing.T) {
 	}
 
 	ctx := context.Background()
-	if err := mgr.Setup(ctx); err != nil {
+	if err := mgr.Setup(ctx, false); err != nil {
 		t.Fatalf("Setup: %v", err)
 	}
 

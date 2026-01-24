@@ -97,6 +97,13 @@ func (m *MockGit) GetHeadCommit() (string, error) {
 	return m.HeadCommit, m.HeadCommitErr
 }
 
+// GetHeadCommitInPath returns the configured head commit (ignoring path for mock).
+func (m *MockGit) GetHeadCommitInPath(_ string) (string, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return m.HeadCommit, m.HeadCommitErr
+}
+
 // CreateBranch records the call and returns the configured error.
 func (m *MockGit) CreateBranch(name string) error {
 	m.mu.Lock()

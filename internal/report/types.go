@@ -15,6 +15,9 @@ type ReportData struct {
 	Comparison     *comparison.Result
 	BaseCommit     string
 	OriginalBranch string
+
+	// VariantCommits maps variant ID to HEAD commit SHA for staleness detection [Req 1.7]
+	VariantCommits map[int]string
 }
 
 // VariantReportData holds per-variant data for report rendering.

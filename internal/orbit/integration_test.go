@@ -64,7 +64,7 @@ func TestVariantRun_Sequential(t *testing.T) {
 
 	// Setup worktrees
 	ctx := context.Background()
-	if err := mgr.Setup(ctx); err != nil {
+	if err := mgr.Setup(ctx, false); err != nil {
 		t.Fatalf("Setup failed: %v", err)
 	}
 
@@ -175,7 +175,7 @@ func TestVariantRun_Parallel(t *testing.T) {
 	}
 
 	ctx := context.Background()
-	if err := mgr.Setup(ctx); err != nil {
+	if err := mgr.Setup(ctx, false); err != nil {
 		t.Fatalf("Setup failed: %v", err)
 	}
 
@@ -260,7 +260,7 @@ func TestVariantRun_SingleSuccess(t *testing.T) {
 	}
 
 	ctx := context.Background()
-	if err := mgr.Setup(ctx); err != nil {
+	if err := mgr.Setup(ctx, false); err != nil {
 		t.Fatalf("Setup failed: %v", err)
 	}
 
@@ -326,7 +326,7 @@ func TestCleanup_RemovesWorktrees(t *testing.T) {
 	}
 
 	ctx := context.Background()
-	if err := mgr.Setup(ctx); err != nil {
+	if err := mgr.Setup(ctx, false); err != nil {
 		t.Fatalf("Setup failed: %v", err)
 	}
 
@@ -394,7 +394,7 @@ func TestFinalize_RebasesVariant(t *testing.T) {
 	}
 
 	ctx := context.Background()
-	if err := mgr.Setup(ctx); err != nil {
+	if err := mgr.Setup(ctx, false); err != nil {
 		t.Fatalf("Setup failed: %v", err)
 	}
 
@@ -463,7 +463,7 @@ func TestFinalize_FailsOnDivergedBranch(t *testing.T) {
 	}
 
 	ctx := context.Background()
-	if err := mgr.Setup(ctx); err != nil {
+	if err := mgr.Setup(ctx, false); err != nil {
 		t.Fatalf("Setup failed: %v", err)
 	}
 

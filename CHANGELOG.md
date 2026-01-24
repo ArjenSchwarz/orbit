@@ -7,7 +7,101 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- Consolidator now generates a unique SessionID for each consolidation run, preventing session ID collisions and log file overwrites when agents like Claude Code or Kiro expect non-empty session IDs
+- `RestoreOnFailure` now resets HEAD to the captured commit before cleanup, properly restoring the worktree if the agent checks out a different branch/commit during execution
+- `truncateString` helper now handles edge cases where `maxLen <= 3` to prevent negative slice index panic
+
+### Changed
+
+- Replaced manual bubble sort with `slices.Sort()` in markdown report frontmatter generation for sorting variant IDs
+
 ### Added
+
+- PR review documentation: `specs/variant-consolidation/review-overview-1.md` with issue analysis and `review-fixes-1.md` task tracking
+
+### Fixed
+
+- Consolidator report path: Changed from `.orbit/comparison/report.md` to `comparison-report/report.md` to match where `orbit compare` actually generates the report
+- Consolidator improvements section detection: Changed from looking for `## Improvements from Other Variants` (h2) to `# Improvements from Other Variants` (h1) to match the actual heading level in the report
+- Markdown report escaping: Changed `b.Text()` to `b.Raw()` for lines containing markdown syntax (`###`, `**`) so go-output doesn't escape them as `\#\#\#`
+
+- Markdown report frontmatter now includes `generated_at`, `base_commit`, and `variant_commits` fields for staleness detection (requirement 1.7). Previously only included `title` and `date`. The `variant_commits` map enables the consolidate command to detect when the comparison report is stale relative to current variant HEAD commits.
+
+### Added
+
+- `orbit consolidate` CLI command integration (Phase 4 of variant consolidation):
+  - `cmd/orbit/consolidate.go` with `consolidateCommand()` function implementing `orbit consolidate <spec> --variant <id>` command
+  - Flags: `--variant` (required for consolidation), `--allow-dirty`, `--prompt`, `--rollback`
+  - Spec auto-detection from git branch name when spec argument omitted (matches other orbit commands)
+  - `handleRollback()` function for `--rollback` mode handling
+  - `truncateString()` helper for displaying truncated custom prompts
+  - `isAutomatedEnvironment()` for CI/automation detection (skips confirmation prompt)
+  - Interactive confirmation prompt before consolidation proceeds
+  - `NewConsolidatorForRollback()` constructor in consolidation package for rollback-only operations (no agent required)
+  - Subcommand routing in `main.go` for `consolidate` command
+  - Help text updated with consolidate command and example
+  - Unit tests covering flag parsing validation, spec auto-detection, rollback mode validation, variant not found errors, truncateString, and CI environment detection
+  - Subcommand tests for consolidate command parsing
+
+- `internal/consolidation` Consolidator core implementation (Phase 3 of variant consolidation):
+  - `consolidator.go` with `Consolidator` struct orchestrating the consolidation workflow:
+    - `NewConsolidator()` constructor with validation for spec directory, variant ID, agent, and manager
+    - `validateVariant()` checking variant exists, listing available variants if not found
+    - `validateReport()` checking comparison report (report.md) exists
+    - `checkStaleness()` comparing report metadata against current variant HEADs with warning
+    - `checkEmptyImprovements()` for early exit when no cross-variant improvements exist
+    - `checkCleanState()` validating worktree has no uncommitted changes (unless --allow-dirty)
+    - `Run()` executing the full consolidation workflow with spinner stages
+    - `runWithRetry()` for agent execution with error classification and retry support
+    - `Rollback()` reverting the most recent consolidation commit using log or git search
+    - Helper functions for parsing commit SHA, improvement counts from agent output
+  - `ErrNoImprovements` sentinel error for empty improvements early exit
+  - `truncateSHA()` helper for displaying abbreviated commit SHAs
+  - `parseReportVariantCommits()` for extracting variant commits from YAML frontmatter
+  - Comprehensive test coverage:
+    - Unit tests for constructor validation, variant validation, report validation
+    - Unit tests for staleness detection, empty improvements detection, clean state checks
+    - Unit tests for commit SHA parsing, improvement count parsing, SHA truncation
+    - Integration tests for E2E workflow, rollback, empty improvements, partial failure recovery
+
+- `internal/consolidation` package foundation (Phase 2 of variant consolidation):
+  - `types.go` with core types: `Config` struct for consolidation configuration (spec name, variant ID, agent, allow-dirty flag, custom prompt), `ConsolidationResult` for outcomes, `ConsolidationReport` parsed from agent output, `AppliedImprovement` and `SkippedImprovement` for tracking changes
+  - `logger.go` with `Logger` struct for consolidation log management:
+    - `LogEntry` struct with schema version, timestamp, variant ID, commit SHA, agent, improvements counts, and test/post-command results
+    - `Append()` method with flock-style file locking for concurrent access safety
+    - Atomic writes using temp file + rename pattern with UUID-based temp filenames
+    - `SaveReport()` for timestamped markdown report files
+    - `GetLatestCommitSHA()` for rollback support
+  - `recovery.go` with `RecoveryManager` struct for git state management:
+    - `CaptureState()` to record HEAD commit before agent runs
+    - `CreateSnapshot()` to stash uncommitted changes with `--include-untracked` flag
+    - `RestoreOnFailure()` using `git checkout -- .` and `git clean -fd` to remove partial modifications
+    - `RestoreStash()` with conflict handling (leaves stash in place, returns warning)
+    - `Cleanup()` to drop stash after successful completion
+  - `prompt.go` with `PromptBuilder` struct for agent prompt construction:
+    - Context section with comparison report path and all variant worktree paths
+    - Optional custom instructions section when `--prompt` flag is provided
+    - Instructions for analyzing cross-variant improvements, implementing changes, and committing
+    - Conflict resolution policy prioritizing chosen variant's patterns
+    - Scope constraints preventing unrelated changes, dependency additions, binary modifications
+    - Edge case handling for renamed files, idempotency checks, missing paths
+    - Report format template for agent output (applied/skipped improvements, commit SHA)
+  - Comprehensive tests for all components including concurrent append, stash/restore operations, conflict handling, and prompt generation
+
+- Dual-format report generation: Reports now generate both HTML (`index.html`) and Markdown (`report.md`) for GitHub-friendly browsing
+- Markdown report uses go-output v2 for document building with YAML frontmatter metadata
+- `VariantCommits` field in `ReportData` struct to track variant HEAD commits for staleness detection
+- `GetHeadCommitInPath` method to `GitClient` interface for getting HEAD commit SHA in worktrees
+- `GetVariantCommits` method to `variants.Manager` for collecting all variant HEAD commits
+- Tests for markdown report generation including content verification and large diff linking
+
+- Variant consolidation specification documents:
+  - `specs/variant-consolidation/requirements.md` with 7 requirement sections covering markdown report generation, consolidate command (basic operation, agent execution, commit/validation, error handling), logging/tracking, and progress indication
+  - `specs/variant-consolidation/design.md` with architecture, component diagram, data flow, interfaces (Consolidator, PromptBuilder, RecoveryManager, ConsolidationLogger), data models, error handling, and testing strategy
+  - `specs/variant-consolidation/decision_log.md` with 22 design decisions covering report formats, conflict handling, agent design, recovery mechanisms, and peer review enhancements
+  - `specs/variant-consolidation/tasks.md` with 4 implementation phases and 19 tasks for report enhancement, consolidation package foundation, consolidator core, and CLI integration
 
 - Variant session logging: Each variant now gets its own log manager at `specs/{spec}/.orbit/logs/variant-{id}/` with phase-by-phase session storage
 - Variant web interface registration: Each variant is registered separately in the run registry with variant-specific metadata
