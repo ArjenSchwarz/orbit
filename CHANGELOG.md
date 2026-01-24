@@ -9,6 +9,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Agent resolution changes for per-variant model selection (Phase 4):
+  - `buildAgentConfig()` function in run.go to convert ResolvedAgent to agents.AgentConfig
+  - `run` command now uses new config flow: RequireConfigFile -> ResolveAliases -> GetResolvedAgent -> agents.Get with type
+  - `compare` command now requires .orbit.yaml configuration file for AI-powered comparison
+  - `consolidate` command now requires .orbit.yaml configuration file and uses new agent resolution flow
+  - Unit tests for buildAgentConfig verifying model in Options map when set and nil/empty when no model
+
 - `orbit init` subcommand for configuration initialization (Phase 3 of per-variant model selection):
   - Creates `.orbit.yaml` in current directory with default claude-code agent
   - `--force` flag to overwrite existing configuration file

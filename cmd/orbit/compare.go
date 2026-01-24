@@ -11,6 +11,7 @@ import (
 
 	"github.com/arjenschwarz/orbit/internal/claude"
 	"github.com/arjenschwarz/orbit/internal/comparison"
+	"github.com/arjenschwarz/orbit/internal/config"
 	"github.com/arjenschwarz/orbit/internal/report"
 	"github.com/arjenschwarz/orbit/internal/variants"
 )
@@ -33,6 +34,18 @@ func compareCommand(args []string) error {
 	}
 
 	if err := fs.Parse(args); err != nil {
+		return err
+	}
+
+	// Get working directory for config loading
+	workDir, err := os.Getwd()
+	if err != nil {
+		return fmt.Errorf("failed to get working directory: %w", err)
+	}
+
+	// Load and validate configuration (required for AI comparison)
+	appConfig := config.Load(workDir)
+	if err := appConfig.RequireConfigFile(); err != nil {
 		return err
 	}
 
@@ -105,10 +118,6 @@ func compareCommand(args []string) error {
 
 	// Run comparison
 	fmt.Println("\nRunning comparison analysis...")
-	workDir, err := os.Getwd()
-	if err != nil {
-		return fmt.Errorf("failed to get working directory: %w", err)
-	}
 
 	claudeClient := claude.NewClient(claude.Config{
 		WorkingDir: workDir,

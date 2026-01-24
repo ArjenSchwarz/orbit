@@ -84,27 +84,27 @@ references:
 
 ## Phase 4: Agent Resolution Changes
 
-- [ ] 15. Add buildAgentConfig function
+- [x] 15. Add buildAgentConfig function
   - Create agents.AgentConfig from ResolvedAgent, put model in Options map if set
   - Requirements: [6.1](requirements.md#6.1), [6.2](requirements.md#6.2)
   - References: cmd/orbit/run.go
 
-- [ ] 16. Modify run command to use new config flow
+- [x] 16. Modify run command to use new config flow
   - Call RequireConfigFile, ResolveAliases, GetResolvedAgent, pass type to agents.Get
   - Requirements: [4.1](requirements.md#4.1), [4.2](requirements.md#4.2), [5.1](requirements.md#5.1)
   - References: cmd/orbit/run.go
 
-- [ ] 17. Update compare command to require config
+- [x] 17. Update compare command to require config
   - Add RequireConfigFile check since compare uses agent for AI analysis
   - Requirements: [5.1](requirements.md#5.1)
   - References: cmd/orbit/compare.go
 
-- [ ] 18. Update consolidate command to require config
+- [x] 18. Update consolidate command to require config
   - Add RequireConfigFile check since consolidate uses agent
   - Requirements: [5.1](requirements.md#5.1)
   - References: cmd/orbit/consolidate.go
 
-- [ ] 19. Add unit tests for buildAgentConfig
+- [x] 19. Add unit tests for buildAgentConfig
   - Test model in Options when set, Options nil/empty when no model
   - Requirements: [6.1](requirements.md#6.1), [6.2](requirements.md#6.2)
   - References: cmd/orbit/run_test.go
