@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Per-variant model selection specification documents:
+  - `specs/per-variant-model-selection/requirements.md` with 7 requirement sections covering agent alias configuration, config requirement, config initialization (`orbit init`), variant agent assignment, validation/error handling, model passing to agent CLIs, and logging/traceability
+  - `specs/per-variant-model-selection/design.md` with architecture, components (AgentAliasConfig, ResolvedAgent types), data models, YAML type coercion, config merge behavior, error handling with exit codes, and testing strategy including property-based tests
+  - `specs/per-variant-model-selection/decision_log.md` with 9 design decisions (agent alias approach, explicit type field, required config, validate structure not values, require `orbit init`, unified model flag, hardcoded model flag per agent, alias naming constraints)
+  - `specs/per-variant-model-selection/tasks.md` with 7 implementation phases and 34 tasks covering config foundation, config loading/validation, init command, agent resolution changes, agent model flag implementation, metadata/logging, and integration tests
+
 ### Fixed
 
 - Consolidator now generates a unique SessionID for each consolidation run, preventing session ID collisions and log file overwrites when agents like Claude Code or Kiro expect non-empty session IDs
