@@ -175,17 +175,17 @@ references:
 
 ## Phase 7: Integration Tests
 
-- [ ] 32. Add integration test for run without config
+- [x] 32. Add integration test for run without config
   - Test orbit run with no .orbit.yaml exits 1 with message about orbit init
   - Requirements: [2.1](requirements.md#2.1), [2.2](requirements.md#2.2)
   - References: internal/orbit/orbit_test.go
 
-- [ ] 33. Add integration test for variant run with different models
+- [x] 33. Add integration test for variant run with different models
   - Create .orbit.yaml with two aliases, run --variants 2 --variant-agents, verify variants.json has correct metadata
   - Requirements: [4.1](requirements.md#4.1), [4.2](requirements.md#4.2), [4.4](requirements.md#4.4), [7.1](requirements.md#7.1)
   - References: internal/orbit/orbit_test.go
 
-- [ ] 34. Add integration test for init command
+- [x] 34. Add integration test for init command
   - Test orbit init creates file, running again fails, --force overwrites
   - Requirements: [3.1](requirements.md#3.1), [3.2](requirements.md#3.2), [3.3](requirements.md#3.3), [3.4](requirements.md#3.4)
   - References: cmd/orbit/init_test.go

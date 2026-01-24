@@ -9,6 +9,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Integration tests for per-variant model selection (Phase 7):
+  - `TestIntegration_RunWithoutConfig` verifying orbit run fails with exit 1 and "orbit init" message when no .orbit.yaml exists
+  - `TestIntegration_VariantRunWithDifferentModels` verifying variant runs with different model aliases correctly resolve agent type and model configuration
+  - Existing init command tests cover all Phase 7 requirements: file creation, existing config failure, --force overwrite
+
 - Agent metadata and logging for per-variant model selection (Phase 6):
   - `AgentType` and `Model` fields in `Variant` struct for tracking resolved agent configuration
   - `UpdateAgentInfo()` method in variant manager to persist agent type and model
