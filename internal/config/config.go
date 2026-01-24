@@ -6,11 +6,18 @@ import (
 	"log"
 	"os"
 	"path/filepath"
+	"regexp"
+	"strings"
 	"time"
 
 	"github.com/arjenschwarz/orbit/internal/agents"
 	"github.com/spf13/viper"
 )
+
+// aliasNamePattern matches valid alias names: lowercase alphanumeric with hyphens,
+// not starting or ending with a hyphen.
+// Pattern: [a-z0-9]+(-[a-z0-9]+)*
+var aliasNamePattern = regexp.MustCompile(`^[a-z0-9]+(-[a-z0-9]+)*$`)
 
 const (
 	// DefaultCommand is the default prompt used for Claude during phase execution.
@@ -34,6 +41,44 @@ type AgentConfig struct {
 	ExtraArgs   []string `yaml:"extra-args"`   // Additional CLI arguments
 	Timeout     string   `yaml:"timeout"`      // Execution timeout as duration string (e.g., "30m", "1h")
 	Model       string   `yaml:"model"`        // Agent-specific model option
+}
+
+// AgentAliasConfig holds per-alias settings from .orbit.yaml.
+// This enables defining named agent configurations that combine an agent type with model and other settings.
+type AgentAliasConfig struct {
+	Type        string   `yaml:"type"`         // Required: underlying agent type (e.g., "claude-code", "codex")
+	Model       string   `yaml:"model"`        // Optional: model to use
+	CLIPath     string   `yaml:"cli-path"`     // Override CLI command path
+	AutoApprove bool     `yaml:"auto-approve"` // Tool approval behavior
+	ExtraArgs   []string `yaml:"extra-args"`   // Additional CLI arguments
+	Timeout     string   `yaml:"timeout"`      // Execution timeout as duration string (e.g., "30m", "1h")
+}
+
+// ResolvedAgent contains a validated and resolved agent alias.
+type ResolvedAgent struct {
+	Alias  string           // Original alias name (normalized to lowercase)
+	Type   string           // Underlying agent type (e.g., "claude-code")
+	Config AgentAliasConfig // The full configuration for this alias
+}
+
+// ValidateAliasName checks if a name matches the required pattern.
+// Pattern: [a-z0-9]+(-[a-z0-9]+)* (lowercase alphanumeric with hyphens)
+// Returns an error if the name is invalid.
+func ValidateAliasName(name string) error {
+	if name == "" {
+		return fmt.Errorf("alias name cannot be empty")
+	}
+
+	normalized := NormalizeAliasName(name)
+	if !aliasNamePattern.MatchString(normalized) {
+		return fmt.Errorf("invalid agent alias name %q: must use only lowercase letters, numbers, and hyphens, and cannot start or end with a hyphen (pattern: [a-z0-9]+(-[a-z0-9]+)*)", name)
+	}
+	return nil
+}
+
+// NormalizeAliasName converts a name to lowercase for case-insensitive comparison.
+func NormalizeAliasName(name string) string {
+	return strings.ToLower(name)
 }
 
 // Config holds the resolved configuration values.

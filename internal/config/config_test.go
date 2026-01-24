@@ -3,8 +3,11 @@ package config
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
+
+	"pgregory.net/rapid"
 )
 
 func TestLoad_ProjectOnly(t *testing.T) {
@@ -858,5 +861,168 @@ agents:
 	}
 	if codexCfg.CLIPath != "/usr/local/bin/codex" {
 		t.Errorf("expected codex CLIPath from project, got %q", codexCfg.CLIPath)
+	}
+}
+
+// Property-based tests for alias validation using rapid
+
+func TestProperty_ValidAliasName_AcceptsValidPatterns(t *testing.T) {
+	rapid.Check(t, func(t *rapid.T) {
+		// Generate valid alias names matching [a-z0-9]+(-[a-z0-9]+)*
+		validName := rapid.StringMatching(`[a-z0-9]+(-[a-z0-9]+)*`).Draw(t, "validName")
+		err := ValidateAliasName(validName)
+		if err != nil {
+			t.Fatalf("valid name %q rejected: %v", validName, err)
+		}
+	})
+}
+
+func TestProperty_ValidAliasName_RejectsStartingHyphen(t *testing.T) {
+	rapid.Check(t, func(t *rapid.T) {
+		// Names starting with hyphen should fail
+		suffix := rapid.StringMatching(`[a-z0-9]+`).Draw(t, "suffix")
+		invalidName := "-" + suffix
+		err := ValidateAliasName(invalidName)
+		if err == nil {
+			t.Fatalf("invalid name %q (starts with hyphen) was accepted", invalidName)
+		}
+	})
+}
+
+func TestProperty_ValidAliasName_RejectsEndingHyphen(t *testing.T) {
+	rapid.Check(t, func(t *rapid.T) {
+		// Names ending with hyphen should fail
+		prefix := rapid.StringMatching(`[a-z0-9]+`).Draw(t, "prefix")
+		invalidName := prefix + "-"
+		err := ValidateAliasName(invalidName)
+		if err == nil {
+			t.Fatalf("invalid name %q (ends with hyphen) was accepted", invalidName)
+		}
+	})
+}
+
+func TestProperty_NormalizeAliasName_CaseInsensitive(t *testing.T) {
+	rapid.Check(t, func(t *rapid.T) {
+		// Any case variant normalizes to same result
+		name := rapid.StringMatching(`[a-zA-Z0-9]+(-[a-zA-Z0-9]+)*`).Draw(t, "name")
+		n1 := NormalizeAliasName(name)
+		n2 := NormalizeAliasName(strings.ToUpper(name))
+		n3 := NormalizeAliasName(strings.ToLower(name))
+
+		if n1 != n2 || n2 != n3 {
+			t.Fatalf("inconsistent normalization: %q -> %q, %q, %q", name, n1, n2, n3)
+		}
+	})
+}
+
+func TestProperty_NormalizeAliasName_AlwaysLowercase(t *testing.T) {
+	rapid.Check(t, func(t *rapid.T) {
+		// Normalization always produces lowercase output
+		name := rapid.StringMatching(`[a-zA-Z0-9-]+`).Draw(t, "name")
+		normalized := NormalizeAliasName(name)
+		if normalized != strings.ToLower(normalized) {
+			t.Fatalf("normalized name %q is not lowercase", normalized)
+		}
+	})
+}
+
+func TestProperty_NormalizeAliasName_Idempotent(t *testing.T) {
+	rapid.Check(t, func(t *rapid.T) {
+		// Normalizing twice gives the same result as normalizing once
+		name := rapid.StringMatching(`[a-zA-Z0-9-]+`).Draw(t, "name")
+		once := NormalizeAliasName(name)
+		twice := NormalizeAliasName(once)
+		if once != twice {
+			t.Fatalf("normalization not idempotent: %q -> %q -> %q", name, once, twice)
+		}
+	})
+}
+
+// Table-driven unit tests for alias validation
+
+func TestValidateAliasName(t *testing.T) {
+	tests := []struct {
+		name      string
+		aliasName string
+		wantErr   bool
+	}{
+		// Valid names
+		{name: "simple lowercase", aliasName: "claude", wantErr: false},
+		{name: "with numbers", aliasName: "agent1", wantErr: false},
+		{name: "with hyphen", aliasName: "claude-sonnet", wantErr: false},
+		{name: "multiple hyphens", aliasName: "my-agent-v2", wantErr: false},
+		{name: "single letter", aliasName: "a", wantErr: false},
+		{name: "single number", aliasName: "1", wantErr: false},
+		{name: "numbers and letters", aliasName: "agent2test", wantErr: false},
+		{name: "complex valid", aliasName: "claude-opus-4-20250514", wantErr: false},
+
+		// Invalid names - empty
+		{name: "empty string", aliasName: "", wantErr: true},
+
+		// Invalid names - starts with hyphen
+		{name: "starts with hyphen", aliasName: "-agent", wantErr: true},
+		{name: "starts with hyphen with suffix", aliasName: "-claude-code", wantErr: true},
+
+		// Invalid names - ends with hyphen
+		{name: "ends with hyphen", aliasName: "agent-", wantErr: true},
+		{name: "ends with hyphen complex", aliasName: "claude-code-", wantErr: true},
+
+		// Invalid names - underscore
+		{name: "underscore instead of hyphen", aliasName: "my_agent", wantErr: true},
+		{name: "underscore at start", aliasName: "_agent", wantErr: true},
+		{name: "underscore at end", aliasName: "agent_", wantErr: true},
+
+		// Invalid names - dot
+		{name: "dot separator", aliasName: "my.agent", wantErr: true},
+		{name: "version with dot", aliasName: "agent.v1", wantErr: true},
+
+		// Invalid names - uppercase (these get normalized but the normalization is tested separately)
+		// ValidateAliasName normalizes first, so uppercase should pass after normalization
+		{name: "uppercase", aliasName: "CLAUDE", wantErr: false},
+		{name: "mixed case", aliasName: "Claude-Sonnet", wantErr: false},
+		{name: "camelCase", aliasName: "claudeCode", wantErr: false},
+
+		// Invalid names - special characters
+		{name: "space", aliasName: "my agent", wantErr: true},
+		{name: "slash", aliasName: "my/agent", wantErr: true},
+		{name: "colon", aliasName: "my:agent", wantErr: true},
+		{name: "at sign", aliasName: "my@agent", wantErr: true},
+
+		// Invalid names - consecutive hyphens
+		{name: "double hyphen", aliasName: "my--agent", wantErr: true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := ValidateAliasName(tt.aliasName)
+			if (err != nil) != tt.wantErr {
+				t.Errorf("ValidateAliasName(%q) error = %v, wantErr %v", tt.aliasName, err, tt.wantErr)
+			}
+		})
+	}
+}
+
+func TestNormalizeAliasName(t *testing.T) {
+	tests := []struct {
+		name     string
+		input    string
+		expected string
+	}{
+		{name: "already lowercase", input: "claude", expected: "claude"},
+		{name: "uppercase", input: "CLAUDE", expected: "claude"},
+		{name: "mixed case", input: "Claude-Sonnet", expected: "claude-sonnet"},
+		{name: "camelCase", input: "claudeCode", expected: "claudecode"},
+		{name: "numbers unchanged", input: "Agent123", expected: "agent123"},
+		{name: "hyphens preserved", input: "MY-AGENT-V2", expected: "my-agent-v2"},
+		{name: "empty string", input: "", expected: ""},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := NormalizeAliasName(tt.input)
+			if result != tt.expected {
+				t.Errorf("NormalizeAliasName(%q) = %q, want %q", tt.input, result, tt.expected)
+			}
+		})
 	}
 }

@@ -8,22 +8,22 @@ references:
 
 ## Phase 1: Config Package Foundation
 
-- [ ] 1. Create AgentAliasConfig and ResolvedAgent types
+- [x] 1. Create AgentAliasConfig and ResolvedAgent types
   - Add new structs to internal/config/config.go with yaml tags for type, model, cli-path, auto-approve, extra-args, timeout
   - Requirements: [1.5](requirements.md#1.5), [1.6](requirements.md#1.6), [1.7](requirements.md#1.7)
   - References: internal/config/config.go
 
-- [ ] 2. Add alias name validation function
+- [x] 2. Add alias name validation function
   - Implement ValidateAliasName() with pattern [a-z0-9]+(-[a-z0-9]+)* and NormalizeAliasName() for case normalization
   - Requirements: [1.2](requirements.md#1.2), [1.3](requirements.md#1.3)
   - References: internal/config/config.go
 
-- [ ] 3. Add property-based tests for alias validation
+- [x] 3. Add property-based tests for alias validation
   - Use pgregory.net/rapid to test ValidateAliasName and NormalizeAliasName with generated inputs
   - Requirements: [1.2](requirements.md#1.2), [1.3](requirements.md#1.3)
   - References: internal/config/config_test.go
 
-- [ ] 4. Add unit tests for alias validation
+- [x] 4. Add unit tests for alias validation
   - Table-driven tests for valid names, invalid patterns (starts/ends with hyphen, underscore, dot), case normalization
   - Requirements: [1.2](requirements.md#1.2), [1.3](requirements.md#1.3), [1.4](requirements.md#1.4)
   - References: internal/config/config_test.go

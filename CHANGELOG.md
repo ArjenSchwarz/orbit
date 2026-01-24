@@ -9,6 +9,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- `AgentAliasConfig` and `ResolvedAgent` types in config package for per-variant model selection feature
+- `ValidateAliasName()` function to validate agent alias names against pattern `[a-z0-9]+(-[a-z0-9]+)*`
+- `NormalizeAliasName()` function for case-insensitive alias name comparison
+- Property-based tests using `pgregory.net/rapid` for alias name validation
+- Table-driven unit tests for alias validation covering valid patterns, invalid patterns, and case normalization
+
 - Per-variant model selection specification documents:
   - `specs/per-variant-model-selection/requirements.md` with 7 requirement sections covering agent alias configuration, config requirement, config initialization (`orbit init`), variant agent assignment, validation/error handling, model passing to agent CLIs, and logging/traceability
   - `specs/per-variant-model-selection/design.md` with architecture, components (AgentAliasConfig, ResolvedAgent types), data models, YAML type coercion, config merge behavior, error handling with exit codes, and testing strategy including property-based tests
