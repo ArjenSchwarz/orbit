@@ -20,6 +20,7 @@ import (
 	"github.com/arjenschwarz/orbit/internal/agents"
 	"github.com/arjenschwarz/orbit/internal/display"
 	"github.com/arjenschwarz/orbit/internal/variants"
+	"github.com/google/uuid"
 )
 
 // ErrNoImprovements indicates the comparison report has no cross-variant improvements.
@@ -486,8 +487,12 @@ func (c *Consolidator) runWithRetry(ctx context.Context, prompt string) (*agents
 
 	worktreePath := c.recovery.worktreePath
 
+	// Generate a unique session ID for this consolidation run
+	sessionID := uuid.NewString()
+
 	opts := agents.RunOptions{
 		Prompt:      prompt,
+		SessionID:   sessionID,
 		WorkDir:     worktreePath,
 		AutoApprove: true,
 	}

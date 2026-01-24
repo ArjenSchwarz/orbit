@@ -7,9 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- Consolidator now generates a unique SessionID for each consolidation run, preventing session ID collisions and log file overwrites when agents like Claude Code or Kiro expect non-empty session IDs
+- `RestoreOnFailure` now resets HEAD to the captured commit before cleanup, properly restoring the worktree if the agent checks out a different branch/commit during execution
+- `truncateString` helper now handles edge cases where `maxLen <= 3` to prevent negative slice index panic
+
 ### Changed
 
 - Replaced manual bubble sort with `slices.Sort()` in markdown report frontmatter generation for sorting variant IDs
+
+### Added
+
+- PR review documentation: `specs/variant-consolidation/review-overview-1.md` with issue analysis and `review-fixes-1.md` task tracking
 
 ### Fixed
 

@@ -298,6 +298,16 @@ func handleRollback(specName, specDir string, mgr *variants.Manager, variantID i
 
 // truncateString truncates a string to maxLen characters, adding "..." if truncated.
 func truncateString(s string, maxLen int) string {
+	if maxLen <= 3 {
+		// For very small maxLen, just return what fits without ellipsis
+		if maxLen <= 0 {
+			return ""
+		}
+		if len(s) <= maxLen {
+			return s
+		}
+		return s[:maxLen]
+	}
 	if len(s) <= maxLen {
 		return s
 	}

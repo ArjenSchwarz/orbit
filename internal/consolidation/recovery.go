@@ -79,8 +79,29 @@ func (rm *RecoveryManager) CreateSnapshot(ctx context.Context) error {
 }
 
 // RestoreOnFailure restores worktree to pre-session state if agent fails without committing.
-// Uses git checkout -- . and git clean -fd to remove uncommitted modifications.
+// Resets HEAD to the captured commit, then uses git checkout and git clean to remove modifications.
 func (rm *RecoveryManager) RestoreOnFailure(ctx context.Context) error {
+	// Reset HEAD to captured commit if we have one and HEAD has changed
+	if rm.headCommit != "" {
+		// Check current HEAD
+		cmd := exec.CommandContext(ctx, "git", "rev-parse", "HEAD")
+		cmd.Dir = rm.worktreePath
+		out, err := cmd.Output()
+		if err == nil {
+			currentHead := strings.TrimSpace(string(out))
+			if currentHead != rm.headCommit {
+				// HEAD has changed - reset to captured commit
+				cmd = exec.CommandContext(ctx, "git", "reset", "--hard", rm.headCommit)
+				cmd.Dir = rm.worktreePath
+				var stderr bytes.Buffer
+				cmd.Stderr = &stderr
+				if err := cmd.Run(); err != nil {
+					return fmt.Errorf("failed to reset HEAD: %s", stderr.String())
+				}
+			}
+		}
+	}
+
 	// Reset any uncommitted changes
 	cmd := exec.CommandContext(ctx, "git", "checkout", "--", ".")
 	cmd.Dir = rm.worktreePath

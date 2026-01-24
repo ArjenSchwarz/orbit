@@ -192,6 +192,36 @@ func TestTruncateString(t *testing.T) {
 			maxLen: 4,
 			want:   "h...",
 		},
+		"maxLen 3 no ellipsis": {
+			input:  "hello world",
+			maxLen: 3,
+			want:   "hel",
+		},
+		"maxLen 2 truncates": {
+			input:  "hello",
+			maxLen: 2,
+			want:   "he",
+		},
+		"maxLen 1 truncates": {
+			input:  "hello",
+			maxLen: 1,
+			want:   "h",
+		},
+		"maxLen 0 returns empty": {
+			input:  "hello",
+			maxLen: 0,
+			want:   "",
+		},
+		"negative maxLen returns empty": {
+			input:  "hello",
+			maxLen: -5,
+			want:   "",
+		},
+		"maxLen 3 short string fits": {
+			input:  "hi",
+			maxLen: 3,
+			want:   "hi",
+		},
 	}
 
 	for name, tc := range tests {
