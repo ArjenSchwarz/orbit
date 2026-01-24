@@ -80,6 +80,13 @@ func (m *Manager) Load() error {
 	return nil
 }
 
+// HasExistingRun returns true if there's existing variant metadata from a previous run.
+func (m *Manager) HasExistingRun() bool {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return m.metadata != nil
+}
+
 // Save persists the current metadata to variants.json using atomic write.
 func (m *Manager) Save() error {
 	m.mu.Lock()
@@ -166,9 +173,15 @@ func (m *Manager) ensureGitignore() error {
 }
 
 // Setup creates worktrees and branches for all variants.
-// Returns error if worktrees exist with different base commit.
-func (m *Manager) Setup(ctx context.Context) error {
-	// Check for uncommitted changes
+// If continueExisting is true and metadata exists, reuses existing worktrees.
+// If continueExisting is false and metadata exists, cleans up first.
+func (m *Manager) Setup(ctx context.Context, continueExisting bool) error {
+	// Check for existing metadata first - if continuing, skip all checks
+	if m.metadata != nil && continueExisting {
+		return nil
+	}
+
+	// Check for uncommitted changes (only for new runs)
 	hasChanges, err := m.git.HasUncommittedChanges()
 	if err != nil {
 		return fmt.Errorf("check uncommitted changes: %w", err)
@@ -188,16 +201,11 @@ func (m *Manager) Setup(ctx context.Context) error {
 		return fmt.Errorf("get head commit: %w", err)
 	}
 
-	// Check for existing metadata
+	// Clean up existing worktrees before creating new ones
 	if m.metadata != nil {
-		// Worktrees exist from a previous run
-		if m.metadata.BaseCommit == headCommit {
-			// Base commit matches - can reuse existing worktrees
-			return nil
+		if err := m.Cleanup(ctx, 0); err != nil {
+			return fmt.Errorf("cleanup existing worktrees: %w", err)
 		}
-		// Base commit differs - fail with error
-		return fmt.Errorf("existing worktrees have different base commit (%s vs current %s); run 'orbit cleanup' first",
-			m.metadata.BaseCommit[:8], headCommit[:8])
 	}
 
 	// Ensure .gitignore is in place before creating worktrees

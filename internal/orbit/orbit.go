@@ -2,6 +2,7 @@
 package orbit
 
 import (
+	"bufio"
 	"context"
 	"fmt"
 	"log"
@@ -1068,8 +1069,18 @@ func (o *Orbit) updateRunStatus(status registry.RunStatus) {
 
 // runWithVariants orchestrates multi-variant execution.
 func (o *Orbit) runWithVariants(ctx context.Context) error {
+	// Check for existing run and prompt user
+	continueExisting := false
+	if o.variantManager.HasExistingRun() {
+		cont, proceed := o.promptContinueOrRestart()
+		if !proceed {
+			return fmt.Errorf("variant run canceled by user")
+		}
+		continueExisting = cont
+	}
+
 	// Setup worktrees
-	if err := o.variantManager.Setup(ctx); err != nil {
+	if err := o.variantManager.Setup(ctx, continueExisting); err != nil {
 		return fmt.Errorf("setup variants: %w", err)
 	}
 
@@ -1135,6 +1146,35 @@ func (o *Orbit) runWithVariants(ctx context.Context) error {
 	}
 
 	return o.generateReport()
+}
+
+// promptContinueOrRestart asks the user whether to continue an existing run or start fresh.
+// Returns (continueExisting, shouldProceed). If shouldProceed is false, the run should be aborted.
+func (o *Orbit) promptContinueOrRestart() (bool, bool) {
+	fmt.Println("\nExisting variant run detected.")
+	fmt.Println("  [c] Continue existing run")
+	fmt.Println("  [n] Start new run (cleanup and recreate)")
+	fmt.Println("  [q] Cancel")
+	fmt.Print("\nChoice [c/n/q]: ")
+
+	reader := bufio.NewReader(os.Stdin)
+	input, err := reader.ReadString('\n')
+	if err != nil {
+		return false, false
+	}
+
+	input = strings.TrimSpace(strings.ToLower(input))
+	switch input {
+	case "c", "continue":
+		return true, true
+	case "n", "new":
+		return false, true
+	case "q", "quit", "cancel":
+		return false, false
+	default:
+		fmt.Println("Invalid choice, canceling")
+		return false, false
+	}
 }
 
 // runVariantsSequential runs variants one at a time.
@@ -1579,14 +1619,14 @@ func (o *Orbit) runComparison(ctx context.Context) error {
 		return fmt.Errorf("no variant metadata available")
 	}
 
-	// Gather diffs from successful variants
+	// Gather summaries from successful variants (not full diffs - they use too much context)
 	gitClient := variants.NewGit(o.config.RepoRoot)
 	diffGatherer := comparison.NewDiffGatherer(gitClient)
 	variantList := o.variantManager.GetVariantsSnapshot()
 
-	variantData, err := diffGatherer.GatherDiffs(ctx, metadata.BaseCommit, variantList)
+	variantData, err := diffGatherer.GatherSummaries(ctx, metadata.BaseCommit, variantList)
 	if err != nil {
-		return fmt.Errorf("gather diffs: %w", err)
+		return fmt.Errorf("gather summaries: %w", err)
 	}
 
 	if len(variantData) < 2 {
@@ -1594,9 +1634,12 @@ func (o *Orbit) runComparison(ctx context.Context) error {
 		return nil
 	}
 
-	// Create comparator and run comparison
+	// Read spec context for additional context
+	specContext := o.readSpecContext()
+
+	// Create comparator and run comparison using summaries only (diffs excluded to save context)
 	comparator := comparison.NewComparator(o.rawClaudeClient, o.config.CompareCommand)
-	result, err := comparator.Compare(ctx, o.config.BranchName, variantData)
+	result, err := comparator.CompareWithSummaries(ctx, o.config.BranchName, variantData, specContext)
 	if err != nil {
 		return fmt.Errorf("compare variants: %w", err)
 	}
@@ -1724,6 +1767,48 @@ func (o *Orbit) generatePartialReport() error {
 
 	log.Printf("Partial report generated: %s/index.html", reportDir)
 	return fmt.Errorf("all variants failed")
+}
+
+// readSpecContext reads key spec files to provide context for comparison.
+func (o *Orbit) readSpecContext() string {
+	var parts []string
+
+	// Key spec files to include
+	specFiles := []struct {
+		name  string
+		label string
+	}{
+		{"requirements.md", "Requirements"},
+		{"design.md", "Design"},
+		{"tasks.md", "Tasks"},
+	}
+
+	for _, sf := range specFiles {
+		path := filepath.Join(o.config.SpecDir, sf.name)
+		content, err := os.ReadFile(path)
+		if err != nil {
+			continue // Skip files that don't exist
+		}
+
+		// Truncate if too long
+		s := string(content)
+		if len(s) > 3000 {
+			idx := strings.LastIndex(s[:3000], "\n")
+			if idx > 2500 {
+				s = s[:idx] + "\n... (truncated)"
+			} else {
+				s = s[:3000] + "... (truncated)"
+			}
+		}
+
+		parts = append(parts, fmt.Sprintf("### %s\n\n%s", sf.label, s))
+	}
+
+	if len(parts) == 0 {
+		return ""
+	}
+
+	return strings.Join(parts, "\n\n")
 }
 
 // getAgentConfig returns the agent configuration for a given agent name.

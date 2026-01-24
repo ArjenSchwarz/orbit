@@ -116,12 +116,12 @@ func compareCommand(args []string) error {
 
 	comparator := comparison.NewComparator(claudeClient, *compareCmd)
 
-	// Use the unified comparison method - it automatically handles diff size limits
+	// Use the unified comparison method with summaries only (diffs excluded to save context)
 	comparisonInput := comparison.ComparisonInput{
 		SpecName:    specName,
 		SpecContext: specContext,
 		Variants:    variantData,
-		IncludeDiff: true, // Start with diffs, will be disabled automatically if too large
+		IncludeDiff: false, // Diffs excluded - they use too much context
 	}
 
 	result, err := comparator.CompareUnified(ctx, comparisonInput)
