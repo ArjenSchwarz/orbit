@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- Replaced manual bubble sort with `slices.Sort()` in markdown report frontmatter generation for sorting variant IDs
+
 ### Fixed
 
 - Consolidator report path: Changed from `.orbit/comparison/report.md` to `comparison-report/report.md` to match where `orbit compare` actually generates the report

@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"time"
 
@@ -193,13 +194,7 @@ func (g *Generator) buildFrontMatter(data *ReportData) string {
 		for id := range data.VariantCommits {
 			ids = append(ids, id)
 		}
-		for i := 0; i < len(ids); i++ {
-			for j := i + 1; j < len(ids); j++ {
-				if ids[i] > ids[j] {
-					ids[i], ids[j] = ids[j], ids[i]
-				}
-			}
-		}
+		slices.Sort(ids)
 		for _, id := range ids {
 			sb.WriteString(fmt.Sprintf("  %d: %s\n", id, data.VariantCommits[id]))
 		}
