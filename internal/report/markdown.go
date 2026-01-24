@@ -85,9 +85,9 @@ func (g *Generator) generateMarkdownReport(data *ReportData) error {
 				if fa.Preference > 0 {
 					header += fmt.Sprintf(" (Variant %d preferred)", fa.Preference)
 				}
-				b.Text(fmt.Sprintf("### %s", header))
+				b.Raw(output.FormatMarkdown, []byte(fmt.Sprintf("### %s\n", header)))
 				for id, assessment := range fa.Variants {
-					b.Text(fmt.Sprintf("- **Variant %d:** %s", id, assessment))
+					b.Raw(output.FormatMarkdown, []byte(fmt.Sprintf("- **Variant %d:** %s\n", id, assessment)))
 				}
 			}
 		})
@@ -116,9 +116,9 @@ func (g *Generator) generateMarkdownReport(data *ReportData) error {
 		builder.Section("Improvements from Other Variants", func(b *output.Builder) {
 			b.Text("These improvements from non-chosen variants could enhance the recommended implementation:")
 			for _, imp := range data.Comparison.CrossVariantImprovements {
-				b.Text(fmt.Sprintf("### From Variant %d (%s priority)", imp.SourceVariantID, imp.Priority))
-				b.Text(imp.Description)
-				b.Text(fmt.Sprintf("**Rationale:** %s", imp.Rationale))
+				b.Raw(output.FormatMarkdown, []byte(fmt.Sprintf("### From Variant %d (%s priority)\n", imp.SourceVariantID, imp.Priority)))
+				b.Raw(output.FormatMarkdown, []byte(imp.Description+"\n"))
+				b.Raw(output.FormatMarkdown, []byte(fmt.Sprintf("**Rationale:** %s\n", imp.Rationale)))
 			}
 		})
 	}

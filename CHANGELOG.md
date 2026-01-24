@@ -9,6 +9,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Consolidator report path: Changed from `.orbit/comparison/report.md` to `comparison-report/report.md` to match where `orbit compare` actually generates the report
+- Consolidator improvements section detection: Changed from looking for `## Improvements from Other Variants` (h2) to `# Improvements from Other Variants` (h1) to match the actual heading level in the report
+- Markdown report escaping: Changed `b.Text()` to `b.Raw()` for lines containing markdown syntax (`###`, `**`) so go-output doesn't escape them as `\#\#\#`
+
 - Markdown report frontmatter now includes `generated_at`, `base_commit`, and `variant_commits` fields for staleness detection (requirement 1.7). Previously only included `title` and `date`. The `variant_commits` map enables the consolidate command to detect when the comparison report is stale relative to current variant HEAD commits.
 
 ### Added

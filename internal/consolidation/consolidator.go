@@ -124,7 +124,7 @@ func (c *Consolidator) validateVariant() error {
 // validateReport checks that a Markdown comparison report exists.
 // Implements: [5.2]
 func (c *Consolidator) validateReport() (string, error) {
-	reportPath := filepath.Join(c.config.SpecDir, ".orbit", "comparison", "report.md")
+	reportPath := filepath.Join(c.config.SpecDir, "comparison-report", "report.md")
 	if _, err := os.Stat(reportPath); os.IsNotExist(err) {
 		return "", fmt.Errorf("comparison-report.md not found at %s. Run 'orbit compare %s' first to generate it",
 			reportPath, c.config.SpecName)
@@ -139,7 +139,7 @@ func (c *Consolidator) validateReport() (string, error) {
 // the commit SHA recorded when the comparison report was generated.
 // Implements: [2.9]
 func (c *Consolidator) checkStaleness(ctx context.Context) (warning string, err error) {
-	reportPath := filepath.Join(c.config.SpecDir, ".orbit", "comparison", "report.md")
+	reportPath := filepath.Join(c.config.SpecDir, "comparison-report", "report.md")
 
 	// Parse YAML frontmatter from comparison-report.md to get variant_commits map
 	reportCommits, err := parseReportVariantCommits(reportPath)
@@ -241,30 +241,29 @@ func parseReportVariantCommits(reportPath string) (map[int]string, error) {
 // checkEmptyImprovements validates the comparison report has actionable content.
 // Returns ErrNoImprovements if the CrossVariantImprovements section is empty or missing.
 func (c *Consolidator) checkEmptyImprovements(ctx context.Context) error {
-	reportPath := filepath.Join(c.config.SpecDir, ".orbit", "comparison", "report.md")
+	reportPath := filepath.Join(c.config.SpecDir, "comparison-report", "report.md")
 
 	content, err := os.ReadFile(reportPath)
 	if err != nil {
 		return fmt.Errorf("failed to read comparison report: %w", err)
 	}
 
+	contentStr := string(content)
+
 	// Look for the "Improvements from Other Variants" section
 	// This section contains the cross-variant improvements
-	if !strings.Contains(string(content), "## Improvements from Other Variants") {
-		return ErrNoImprovements
-	}
-
-	// Check if there's content after the header (at least one ### heading for an improvement)
-	idx := strings.Index(string(content), "## Improvements from Other Variants")
+	// The heading is h1 (# ) in the go-output generated report
+	sectionHeader := "# Improvements from Other Variants"
+	idx := strings.Index(contentStr, sectionHeader)
 	if idx == -1 {
 		return ErrNoImprovements
 	}
 
 	// Get content after the header
-	afterHeader := string(content)[idx+len("## Improvements from Other Variants"):]
+	afterHeader := contentStr[idx+len(sectionHeader):]
 
-	// Find the next section (## heading)
-	nextSection := strings.Index(afterHeader[1:], "\n## ")
+	// Find the next section (# heading at start of line)
+	nextSection := strings.Index(afterHeader[1:], "\n# ")
 	if nextSection != -1 {
 		afterHeader = afterHeader[:nextSection+1]
 	}
