@@ -629,6 +629,20 @@ func (c *Config) GetResolvedAgent(alias string) (ResolvedAgent, error) {
 	return resolved, nil
 }
 
+// defaultConfigYAML is the template for a default .orbit.yaml file.
+const defaultConfigYAML = `# Orbit configuration - see documentation for all options
+agents:
+  claude-code:
+    type: claude-code
+    auto-approve: true
+`
+
+// GenerateDefaultConfig returns the YAML bytes for a default .orbit.yaml file.
+// The default config contains a single claude-code agent with type and auto-approve: true.
+func GenerateDefaultConfig() []byte {
+	return []byte(defaultConfigYAML)
+}
+
 // GetResolvedAgentConfig converts a ResolvedAgent to agents.AgentConfig.
 // This bridges between the config package's alias system and the agents package.
 func GetResolvedAgentConfig(resolved ResolvedAgent) agents.AgentConfig {

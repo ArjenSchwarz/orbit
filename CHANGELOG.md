@@ -9,6 +9,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- `orbit init` subcommand for configuration initialization (Phase 3 of per-variant model selection):
+  - Creates `.orbit.yaml` in current directory with default claude-code agent
+  - `--force` flag to overwrite existing configuration file
+  - Error with exit code 1 if config file already exists (without --force)
+  - `GenerateDefaultConfig()` function in config package returns default YAML bytes
+  - Unit tests for init command covering no existing config, existing config fails, --force overwrites, write permission error
+
 - Config loading and validation for agent aliases (Phase 2 of per-variant model selection):
   - `parseAgentAliasesConfig()` function to parse agent aliases with type field from YAML
   - `coerceModelValue()` function for YAML type coercion: string, int, float coerced to string; bool, array, map return validation errors

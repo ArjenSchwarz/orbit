@@ -21,6 +21,7 @@ var knownSubcommands = map[string]bool{
 	"finalize":    true,
 	"compare":     true,
 	"consolidate": true,
+	"init":        true,
 }
 
 func main() {
@@ -59,6 +60,8 @@ func main() {
 		err = compareCommand(cmdArgs)
 	case "consolidate":
 		err = consolidateCommand(cmdArgs)
+	case "init":
+		err = initCommand(cmdArgs)
 	default:
 		// This shouldn't happen since parseSubcommand defaults to "run"
 		err = runCommand(cmdArgs)
@@ -140,6 +143,7 @@ func printUsage() {
 Usage: orbit <command> [options]
 
 Commands:
+  init         Create a default .orbit.yaml configuration file
   run          Orchestrate agent sessions to implement spec phases (default)
   compare      Regenerate comparison report for existing variants
   consolidate  Merge improvements from non-chosen variants into chosen variant

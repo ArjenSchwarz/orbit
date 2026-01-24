@@ -67,17 +67,17 @@ references:
 
 ## Phase 3: Init Command
 
-- [ ] 12. Implement GenerateDefaultConfig function
+- [x] 12. Implement GenerateDefaultConfig function
   - Return YAML bytes for default config with claude-code agent with type and auto-approve true
   - Requirements: [3.5](requirements.md#3.5)
   - References: internal/config/config.go
 
-- [ ] 13. Implement orbit init subcommand
+- [x] 13. Implement orbit init subcommand
   - Create cmd/orbit/init.go with --force flag, check existing file, write default config, log success
   - Requirements: [3.1](requirements.md#3.1), [3.2](requirements.md#3.2), [3.3](requirements.md#3.3), [3.4](requirements.md#3.4), [3.6](requirements.md#3.6)
   - References: cmd/orbit/init.go, cmd/orbit/main.go
 
-- [ ] 14. Add unit tests for init command
+- [x] 14. Add unit tests for init command
   - Test no existing config creates file, existing config fails, --force overwrites, write permission error
   - Requirements: [3.1](requirements.md#3.1), [3.2](requirements.md#3.2), [3.3](requirements.md#3.3), [3.4](requirements.md#3.4)
   - References: cmd/orbit/init_test.go
