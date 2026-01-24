@@ -9,6 +9,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Agent model flag implementation for per-variant model selection (Phase 5):
+  - All agents (claude-code, codex, kiro, copilot) now read `Options["model"]` and append `--model` flag to CLI args
+  - Model flag added after auto-approve flags but before extra-args
+  - Unit tests for each agent verifying model flag is added when Options["model"] is set
+  - Unit tests verifying model flag is not added when Options is nil, empty, or model value is empty
+  - Unit tests for codex, kiro, copilot verifying model flag comes before prompt
+
 - Agent resolution changes for per-variant model selection (Phase 4):
   - `buildAgentConfig()` function in run.go to convert ResolvedAgent to agents.AgentConfig
   - `run` command now uses new config flow: RequireConfigFile -> ResolveAliases -> GetResolvedAgent -> agents.Get with type

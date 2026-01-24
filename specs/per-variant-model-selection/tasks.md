@@ -111,27 +111,27 @@ references:
 
 ## Phase 5: Agent Model Flag Implementation
 
-- [ ] 20. Add model flag to claude-code agent
+- [x] 20. Add model flag to claude-code agent
   - In buildArgs, check Options["model"] and append --model flag
   - Requirements: [6.1](requirements.md#6.1), [6.3](requirements.md#6.3)
   - References: internal/agents/claudecode/agent.go
 
-- [ ] 21. Add model flag to codex agent
+- [x] 21. Add model flag to codex agent
   - In buildArgs, check Options["model"] and append --model flag
   - Requirements: [6.1](requirements.md#6.1), [6.3](requirements.md#6.3)
   - References: internal/agents/codex/agent.go
 
-- [ ] 22. Add model flag to kiro agent
+- [x] 22. Add model flag to kiro agent
   - In buildArgs, check Options["model"] and append --model flag
   - Requirements: [6.1](requirements.md#6.1), [6.3](requirements.md#6.3)
   - References: internal/agents/kiro/agent.go
 
-- [ ] 23. Add model flag to copilot agent
+- [x] 23. Add model flag to copilot agent
   - In buildArgs, check Options["model"] and append --model flag
   - Requirements: [6.1](requirements.md#6.1), [6.3](requirements.md#6.3)
   - References: internal/agents/copilot/agent.go
 
-- [ ] 24. Add unit tests for agent model flags
+- [x] 24. Add unit tests for agent model flags
   - Test each agent buildArgs with and without model in Options
   - Requirements: [6.1](requirements.md#6.1), [6.2](requirements.md#6.2), [6.3](requirements.md#6.3)
   - References: internal/agents/claudecode/agent_test.go, internal/agents/codex/agent_test.go, internal/agents/kiro/agent_test.go, internal/agents/copilot/agent_test.go
