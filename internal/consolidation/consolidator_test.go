@@ -263,7 +263,7 @@ func TestConsolidator_validateReport(t *testing.T) {
 		tmpDir := t.TempDir()
 
 		// Create the comparison directory and report
-		compDir := filepath.Join(tmpDir, ".orbit", "comparison")
+		compDir := filepath.Join(tmpDir, "comparison-report")
 		require.NoError(t, os.MkdirAll(compDir, 0755))
 		reportPath := filepath.Join(compDir, "report.md")
 		require.NoError(t, os.WriteFile(reportPath, []byte("# Test Report"), 0644))
@@ -284,7 +284,7 @@ func TestConsolidator_validateReport(t *testing.T) {
 func TestConsolidator_checkStaleness(t *testing.T) {
 	t.Run("no warning when report has no frontmatter", func(t *testing.T) {
 		tmpDir := t.TempDir()
-		compDir := filepath.Join(tmpDir, ".orbit", "comparison")
+		compDir := filepath.Join(tmpDir, "comparison-report")
 		require.NoError(t, os.MkdirAll(compDir, 0755))
 
 		reportContent := "# Comparison Report\n\nNo frontmatter here."
@@ -305,7 +305,7 @@ func TestConsolidator_checkStaleness(t *testing.T) {
 
 	t.Run("no warning when commits match", func(t *testing.T) {
 		tmpDir := t.TempDir()
-		compDir := filepath.Join(tmpDir, ".orbit", "comparison")
+		compDir := filepath.Join(tmpDir, "comparison-report")
 		require.NoError(t, os.MkdirAll(compDir, 0755))
 
 		reportContent := `---
@@ -380,7 +380,7 @@ variant_commits:
 func TestConsolidator_checkEmptyImprovements(t *testing.T) {
 	t.Run("returns error when section is missing", func(t *testing.T) {
 		tmpDir := t.TempDir()
-		compDir := filepath.Join(tmpDir, ".orbit", "comparison")
+		compDir := filepath.Join(tmpDir, "comparison-report")
 		require.NoError(t, os.MkdirAll(compDir, 0755))
 
 		reportContent := `# Comparison Report
@@ -405,7 +405,7 @@ Variant 1 is recommended.
 
 	t.Run("returns error when section has no improvements", func(t *testing.T) {
 		tmpDir := t.TempDir()
-		compDir := filepath.Join(tmpDir, ".orbit", "comparison")
+		compDir := filepath.Join(tmpDir, "comparison-report")
 		require.NoError(t, os.MkdirAll(compDir, 0755))
 
 		reportContent := `# Comparison Report
@@ -429,7 +429,7 @@ These improvements from non-chosen variants could enhance the recommended implem
 
 	t.Run("no error when improvements exist", func(t *testing.T) {
 		tmpDir := t.TempDir()
-		compDir := filepath.Join(tmpDir, ".orbit", "comparison")
+		compDir := filepath.Join(tmpDir, "comparison-report")
 		require.NoError(t, os.MkdirAll(compDir, 0755))
 
 		reportContent := `# Comparison Report
@@ -643,7 +643,7 @@ func TestConsolidateE2E(t *testing.T) {
 		tmpDir := t.TempDir()
 		specDir := filepath.Join(tmpDir, "specs", "test-spec")
 		orbitDir := filepath.Join(specDir, ".orbit")
-		compDir := filepath.Join(orbitDir, "comparison")
+		compDir := filepath.Join(specDir, "comparison-report")
 		worktreeDir := filepath.Join(orbitDir, "worktrees")
 		worktree1 := filepath.Join(worktreeDir, "orbit-impl-1-test-spec")
 		worktree2 := filepath.Join(worktreeDir, "orbit-impl-2-test-spec")
@@ -713,7 +713,7 @@ abc123def456
 		)
 		require.NoError(t, err)
 		ctx := context.Background()
-		require.NoError(t, mgr.Setup(ctx))
+		require.NoError(t, mgr.Setup(ctx, false))
 
 		// Create consolidator
 		cfg := Config{
@@ -739,7 +739,7 @@ func TestConsolidateEmptyImprovements(t *testing.T) {
 		tmpDir := t.TempDir()
 		specDir := filepath.Join(tmpDir, "specs", "test-spec")
 		orbitDir := filepath.Join(specDir, ".orbit")
-		compDir := filepath.Join(orbitDir, "comparison")
+		compDir := filepath.Join(specDir, "comparison-report")
 		worktreeDir := filepath.Join(orbitDir, "worktrees")
 		worktree1 := filepath.Join(worktreeDir, "orbit-impl-1-test-spec")
 
@@ -775,7 +775,7 @@ Variant 1 is recommended.
 		)
 		require.NoError(t, err)
 		ctx := context.Background()
-		require.NoError(t, mgr.Setup(ctx))
+		require.NoError(t, mgr.Setup(ctx, false))
 
 		// Create consolidator
 		cfg := Config{
@@ -911,7 +911,7 @@ func createTestManagerWithVariants(t *testing.T, numVariants int, specDir string
 	// Setup the manager to create variants
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
-	err = mgr.Setup(ctx)
+	err = mgr.Setup(ctx, false)
 	require.NoError(t, err)
 
 	return mgr

@@ -10,9 +10,12 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"os/signal"
 	"path/filepath"
 	"regexp"
 	"strings"
+	"syscall"
+	"time"
 
 	"github.com/arjenschwarz/orbit/internal/agents"
 	"github.com/arjenschwarz/orbit/internal/display"
@@ -303,6 +306,40 @@ func (c *Consolidator) checkCleanState(ctx context.Context) error {
 // The agent autonomously analyzes, implements, commits, and reports.
 // Implements: [3.1]-[3.3], [4.1]-[4.6], [5.1]-[5.8], [7.1]
 func (c *Consolidator) Run(ctx context.Context) (*ConsolidationResult, error) {
+	// Set up graceful shutdown handling
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
+
+	sigChan := make(chan os.Signal, 1)
+	signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
+	defer signal.Stop(sigChan)
+
+	// Channel to coordinate shutdown
+	shutdownDone := make(chan struct{})
+	go func() {
+		select {
+		case <-sigChan:
+			c.stopSpinner()
+			fmt.Fprintln(os.Stderr, "\nInterrupted. Restoring state...")
+			if c.recovery != nil {
+				if err := c.recovery.RestoreOnFailure(context.Background()); err != nil {
+					fmt.Fprintf(os.Stderr, "Warning: failed to restore worktree: %v\n", err)
+				}
+				if c.recovery.HasStash() {
+					if warning, err := c.recovery.RestoreStash(context.Background()); err != nil {
+						fmt.Fprintf(os.Stderr, "Warning: failed to restore stash: %v\n", err)
+					} else if warning != "" {
+						fmt.Fprintln(os.Stderr, warning)
+					}
+				}
+			}
+			cancel()
+			close(shutdownDone)
+		case <-ctx.Done():
+			close(shutdownDone)
+		}
+	}()
+
 	// Validation phase
 	c.updateSpinnerMessage("Validating prerequisites...")
 
@@ -435,8 +472,18 @@ func (c *Consolidator) Run(ctx context.Context) (*ConsolidationResult, error) {
 }
 
 // runWithRetry runs the agent with exponential backoff for retryable errors.
+// Uses proper exponential backoff with timing: 1s, 2s, 4s, 8s, 16s.
 // Implements: [5.8], [5.9]
 func (c *Consolidator) runWithRetry(ctx context.Context, prompt string) (*agents.RunResult, error) {
+	const maxRetries = 5
+	backoffDurations := []time.Duration{
+		1 * time.Second,
+		2 * time.Second,
+		4 * time.Second,
+		8 * time.Second,
+		16 * time.Second,
+	}
+
 	worktreePath := c.recovery.worktreePath
 
 	opts := agents.RunOptions{
@@ -445,55 +492,77 @@ func (c *Consolidator) runWithRetry(ctx context.Context, prompt string) (*agents
 		AutoApprove: true,
 	}
 
-	result, err := c.config.Agent.Run(ctx, opts)
-	if err == nil && (result == nil || result.Error == nil) {
-		return result, nil
-	}
-
-	// Classify error for retry decision
-	classifier, ok := c.config.Agent.(agents.ErrorClassifier)
-	if !ok {
-		// Agent doesn't support classification - return the error
-		if err != nil {
-			return result, err
+	var lastErr error
+	for attempt := 0; attempt <= maxRetries; attempt++ {
+		if ctx.Err() != nil {
+			return nil, ctx.Err()
 		}
-		return result, result.Error
-	}
 
-	exitCode := 0
-	stderr := ""
-	stdout := ""
-	var errMsgs []string
-
-	if result != nil {
-		exitCode = result.ExitCode
-		stderr = result.Stderr
-		stdout = result.Output
-		errMsgs = result.Errors
-	}
-
-	classifiedErr := classifier.Classify(exitCode, stderr, stdout, errMsgs)
-	if classifiedErr == nil || classifiedErr.Class != agents.ErrorClassRetryable {
-		// Not retryable - return the error
-		if err != nil {
-			return result, err
+		result, err := c.config.Agent.Run(ctx, opts)
+		if err == nil && (result == nil || result.Error == nil) {
+			return result, nil
 		}
-		if result != nil && result.Error != nil {
-			return result, result.Error
+
+		// Classify error for retry decision
+		classifier, ok := c.config.Agent.(agents.ErrorClassifier)
+		if !ok {
+			// Agent doesn't support classification - return the error
+			if err != nil {
+				return result, err
+			}
+			if result != nil && result.Error != nil {
+				return result, result.Error
+			}
+			return result, nil
 		}
-		return result, fmt.Errorf("agent execution failed")
+
+		exitCode := 0
+		stderr := ""
+		stdout := ""
+		var errMsgs []string
+
+		if result != nil {
+			exitCode = result.ExitCode
+			stderr = result.Stderr
+			stdout = result.Output
+			errMsgs = result.Errors
+		}
+
+		classifiedErr := classifier.Classify(exitCode, stderr, stdout, errMsgs)
+		if classifiedErr == nil || classifiedErr.Class != agents.ErrorClassRetryable {
+			// Not retryable - return the error
+			if err != nil {
+				return result, err
+			}
+			if result != nil && result.Error != nil {
+				return result, result.Error
+			}
+			return result, fmt.Errorf("agent execution failed")
+		}
+
+		lastErr = classifiedErr
+
+		// Don't retry on last attempt
+		if attempt >= maxRetries {
+			break
+		}
+
+		// Apply backoff
+		backoff := backoffDurations[attempt]
+		if classifiedErr.RetryAfter > 0 {
+			backoff = classifiedErr.RetryAfter
+		}
+
+		c.updateSpinnerMessage(fmt.Sprintf("Retrying in %v (attempt %d/%d)...", backoff, attempt+1, maxRetries))
+
+		select {
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		case <-time.After(backoff):
+		}
 	}
 
-	// Retry with exponential backoff
-	// This is a simplified version - full implementation would use time.Sleep
-	// For now, just return the error to keep things simple
-	if err != nil {
-		return result, err
-	}
-	if result != nil && result.Error != nil {
-		return result, result.Error
-	}
-	return result, fmt.Errorf("agent execution failed after retries")
+	return nil, fmt.Errorf("max retries exceeded: %w", lastErr)
 }
 
 // Rollback reverts the most recent consolidation commit.

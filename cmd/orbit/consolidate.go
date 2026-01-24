@@ -30,6 +30,7 @@ func consolidateCommand(args []string) error {
 	allowDirty := fs.Bool("allow-dirty", false, "Allow uncommitted changes in the target worktree")
 	customPrompt := fs.String("prompt", "", "Custom instructions to influence consolidation decisions")
 	rollback := fs.Bool("rollback", false, "Revert the most recent consolidation commit")
+	force := fs.Bool("force", false, "Skip confirmation prompt (useful for CI/CD pipelines)")
 
 	fs.Usage = func() {
 		fmt.Fprintf(os.Stderr, "Usage: orbit consolidate <spec-name> --variant N [options]\n\n")
@@ -97,7 +98,7 @@ func consolidateCommand(args []string) error {
 
 	// Handle rollback mode [Req 5.7]
 	if *rollback {
-		return handleRollback(specName, specDir, mgr)
+		return handleRollback(specName, specDir, mgr, *variantID, *force)
 	}
 
 	// Resolve the agent to use [Req 2.6]
@@ -147,8 +148,8 @@ func consolidateCommand(args []string) error {
 	}
 	fmt.Println()
 
-	// Confirm unless in CI/automation (checking for TTY)
-	if !isAutomatedEnvironment() {
+	// Confirm unless --force is set or in CI/automation (checking for TTY)
+	if !*force && !isAutomatedEnvironment() {
 		fmt.Print("Proceed with consolidation? [y/N] ")
 		reader := bufio.NewReader(os.Stdin)
 		answer, err := reader.ReadString('\n')
@@ -218,26 +219,70 @@ func consolidateCommand(args []string) error {
 }
 
 // handleRollback reverts the most recent consolidation commit.
+// If variantID is 0, attempts to infer it from the consolidation log.
 // Implements: [5.7]
-func handleRollback(specName, specDir string, mgr *variants.Manager) error {
-	// For rollback, we need a variant ID from the log or we find the commit by pattern
-	// Create a consolidator with a placeholder variant ID - it will be determined from the log
-	variants := mgr.GetVariantsSnapshot()
-	if len(variants) == 0 {
+func handleRollback(specName, specDir string, mgr *variants.Manager, variantID int, force bool) error {
+	// If variantID is not specified, try to infer from consolidation log
+	if variantID == 0 {
+		logger := consolidation.NewLogger(filepath.Join(specDir, ".orbit"))
+		log, err := logger.Read()
+		if err != nil {
+			return fmt.Errorf("--variant is required: failed to read consolidation log: %w", err)
+		}
+		if len(log.Entries) == 0 {
+			return fmt.Errorf("--variant is required: no previous consolidation found")
+		}
+		// Use variant ID from the most recent consolidation
+		variantID = log.Entries[len(log.Entries)-1].ChosenVariantID
+		fmt.Printf("Using variant %d from consolidation log\n", variantID)
+	}
+
+	// Verify the variant exists
+	allVariants := mgr.GetVariantsSnapshot()
+	if len(allVariants) == 0 {
 		return fmt.Errorf("no variants found for spec: %s", specName)
 	}
 
-	// Use the first variant's worktree path for rollback
-	// The actual commit to rollback is determined from the consolidation log
-	dummyCfg := consolidation.Config{
+	var foundVariant bool
+	for _, v := range allVariants {
+		if v.ID == variantID {
+			foundVariant = true
+			break
+		}
+	}
+	if !foundVariant {
+		var ids []string
+		for _, v := range allVariants {
+			ids = append(ids, fmt.Sprintf("%d", v.ID))
+		}
+		return fmt.Errorf("variant %d not found; available variants: %s", variantID, strings.Join(ids, ", "))
+	}
+
+	// Confirm unless --force is set
+	if !force {
+		fmt.Printf("This will revert the most recent consolidation commit for variant %d.\n\n", variantID)
+		fmt.Print("Proceed with rollback? [y/N] ")
+		reader := bufio.NewReader(os.Stdin)
+		answer, err := reader.ReadString('\n')
+		if err != nil {
+			return fmt.Errorf("failed to read input: %w", err)
+		}
+		answer = strings.TrimSpace(strings.ToLower(answer))
+		if answer != "y" && answer != "yes" {
+			fmt.Println("Rollback cancelled")
+			return nil
+		}
+	}
+
+	// Create consolidator for rollback
+	cfg := consolidation.Config{
 		SpecName:  specName,
 		SpecDir:   specDir,
-		VariantID: variants[0].ID,
+		VariantID: variantID,
 		Agent:     nil, // Not needed for rollback
 	}
 
-	// Create a minimal consolidator just for rollback
-	consolidator, err := consolidation.NewConsolidatorForRollback(dummyCfg, mgr)
+	consolidator, err := consolidation.NewConsolidatorForRollback(cfg, mgr)
 	if err != nil {
 		return fmt.Errorf("failed to create consolidator for rollback: %w", err)
 	}
@@ -247,6 +292,7 @@ func handleRollback(specName, specDir string, mgr *variants.Manager) error {
 		return fmt.Errorf("rollback failed: %w", err)
 	}
 
+	fmt.Println("Rollback complete. The consolidation commit has been reverted.")
 	return nil
 }
 

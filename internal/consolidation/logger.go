@@ -142,6 +142,18 @@ func (l *Logger) GetLatestCommitSHA() (string, error) {
 	return latestEntry.CommitSHA, nil
 }
 
+// Read returns the full consolidation log file.
+// Used to access variant IDs and other metadata from rollback mode,
+// enabling the CLI to infer variant ID from the last consolidation entry
+// when --variant flag is not provided.
+func (l *Logger) Read() (*ConsolidationLog, error) {
+	log, err := l.readLog()
+	if err != nil {
+		return nil, fmt.Errorf("failed to read consolidation log: %w", err)
+	}
+	return log, nil
+}
+
 // readLog reads the existing consolidation log from disk.
 func (l *Logger) readLog() (*ConsolidationLog, error) {
 	data, err := os.ReadFile(l.logPath)
