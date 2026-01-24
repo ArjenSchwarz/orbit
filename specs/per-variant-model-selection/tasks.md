@@ -30,37 +30,37 @@ references:
 
 ## Phase 2: Config Loading and Validation
 
-- [ ] 5. Implement parseAgentsConfig with YAML type coercion
+- [x] 5. Implement parseAgentsConfig with YAML type coercion
   - Parse agents section from YAML, handle model field type coercion (string/int/float valid, bool/array/map error)
   - Requirements: [6.4](requirements.md#6.4)
   - References: internal/config/config.go
 
-- [ ] 6. Implement ResolveAliases validation
+- [x] 6. Implement ResolveAliases validation
   - Validate all aliases have type field, check for duplicates after normalization, verify type is registered agent
   - Requirements: [1.4](requirements.md#1.4), [1.5](requirements.md#1.5), [5.1](requirements.md#5.1), [5.2](requirements.md#5.2), [5.4](requirements.md#5.4)
   - References: internal/config/config.go
 
-- [ ] 7. Add RequireConfigFile and GetResolvedAgent methods
+- [x] 7. Add RequireConfigFile and GetResolvedAgent methods
   - RequireConfigFile returns error if no config found, GetResolvedAgent looks up alias and returns error if not found
   - Requirements: [2.1](requirements.md#2.1), [2.2](requirements.md#2.2), [2.5](requirements.md#2.5), [2.6](requirements.md#2.6)
   - References: internal/config/config.go
 
-- [ ] 8. Add ConfigFileFound tracking
+- [x] 8. Add ConfigFileFound tracking
   - Set ConfigFileFound=true when loading config, check in RequireConfigFile
   - Requirements: [2.1](requirements.md#2.1)
   - References: internal/config/config.go
 
-- [ ] 9. Add unit tests for YAML type coercion
+- [x] 9. Add unit tests for YAML type coercion
   - Test string, unquoted string, integer, float models (valid) and boolean, array, map models (error)
   - Requirements: [6.4](requirements.md#6.4)
   - References: internal/config/config_test.go
 
-- [ ] 10. Add unit tests for ResolveAliases
+- [x] 10. Add unit tests for ResolveAliases
   - Test missing type field, unknown type, empty agents section, duplicate aliases after normalization
   - Requirements: [1.4](requirements.md#1.4), [1.5](requirements.md#1.5), [2.3](requirements.md#2.3), [2.4](requirements.md#2.4), [5.2](requirements.md#5.2), [5.4](requirements.md#5.4)
   - References: internal/config/config_test.go
 
-- [ ] 11. Add unit tests for config merge behavior
+- [x] 11. Add unit tests for config merge behavior
   - Test home only, project only, deep merge of same alias, different aliases from each
   - Requirements: [2.1](requirements.md#2.1)
   - References: internal/config/config_test.go

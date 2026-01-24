@@ -1,6 +1,7 @@
 package config
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -8,6 +9,13 @@ import (
 	"time"
 
 	"pgregory.net/rapid"
+
+	// Import agent packages to trigger their init() registration.
+	// This is needed for tests that validate against registered agent types.
+	_ "github.com/arjenschwarz/orbit/internal/agents/claudecode"
+	_ "github.com/arjenschwarz/orbit/internal/agents/codex"
+	_ "github.com/arjenschwarz/orbit/internal/agents/copilot"
+	_ "github.com/arjenschwarz/orbit/internal/agents/kiro"
 )
 
 func TestLoad_ProjectOnly(t *testing.T) {
@@ -1024,5 +1032,677 @@ func TestNormalizeAliasName(t *testing.T) {
 				t.Errorf("NormalizeAliasName(%q) = %q, want %q", tt.input, result, tt.expected)
 			}
 		})
+	}
+}
+
+// Tests for YAML type coercion (model field)
+
+func TestLoad_ModelTypeCoercion_String(t *testing.T) {
+	tmpDir := t.TempDir()
+	homeDir := t.TempDir()
+	t.Setenv("HOME", homeDir)
+
+	projectConfig := `agents:
+  claude-code:
+    type: claude-code
+    model: "gpt-4"
+`
+	if err := os.WriteFile(filepath.Join(tmpDir, ".orbit.yaml"), []byte(projectConfig), 0644); err != nil {
+		t.Fatalf("failed to write project config: %v", err)
+	}
+
+	cfg := Load(tmpDir)
+
+	if len(cfg.ConfigParseError) > 0 {
+		t.Errorf("unexpected parse errors: %v", cfg.ConfigParseError)
+	}
+
+	aliasCfg, ok := cfg.AgentAliases["claude-code"]
+	if !ok {
+		t.Fatal("expected claude-code alias in AgentAliases")
+	}
+	if aliasCfg.Model != "gpt-4" {
+		t.Errorf("expected Model %q, got %q", "gpt-4", aliasCfg.Model)
+	}
+}
+
+func TestLoad_ModelTypeCoercion_UnquotedString(t *testing.T) {
+	tmpDir := t.TempDir()
+	homeDir := t.TempDir()
+	t.Setenv("HOME", homeDir)
+
+	projectConfig := `agents:
+  claude-code:
+    type: claude-code
+    model: gpt-4
+`
+	if err := os.WriteFile(filepath.Join(tmpDir, ".orbit.yaml"), []byte(projectConfig), 0644); err != nil {
+		t.Fatalf("failed to write project config: %v", err)
+	}
+
+	cfg := Load(tmpDir)
+
+	if len(cfg.ConfigParseError) > 0 {
+		t.Errorf("unexpected parse errors: %v", cfg.ConfigParseError)
+	}
+
+	aliasCfg, ok := cfg.AgentAliases["claude-code"]
+	if !ok {
+		t.Fatal("expected claude-code alias in AgentAliases")
+	}
+	if aliasCfg.Model != "gpt-4" {
+		t.Errorf("expected Model %q, got %q", "gpt-4", aliasCfg.Model)
+	}
+}
+
+func TestLoad_ModelTypeCoercion_Integer(t *testing.T) {
+	tmpDir := t.TempDir()
+	homeDir := t.TempDir()
+	t.Setenv("HOME", homeDir)
+
+	projectConfig := `agents:
+  claude-code:
+    type: claude-code
+    model: 4
+`
+	if err := os.WriteFile(filepath.Join(tmpDir, ".orbit.yaml"), []byte(projectConfig), 0644); err != nil {
+		t.Fatalf("failed to write project config: %v", err)
+	}
+
+	cfg := Load(tmpDir)
+
+	if len(cfg.ConfigParseError) > 0 {
+		t.Errorf("unexpected parse errors: %v", cfg.ConfigParseError)
+	}
+
+	aliasCfg, ok := cfg.AgentAliases["claude-code"]
+	if !ok {
+		t.Fatal("expected claude-code alias in AgentAliases")
+	}
+	if aliasCfg.Model != "4" {
+		t.Errorf("expected Model %q, got %q", "4", aliasCfg.Model)
+	}
+}
+
+func TestLoad_ModelTypeCoercion_Float(t *testing.T) {
+	tmpDir := t.TempDir()
+	homeDir := t.TempDir()
+	t.Setenv("HOME", homeDir)
+
+	projectConfig := `agents:
+  claude-code:
+    type: claude-code
+    model: 4.5
+`
+	if err := os.WriteFile(filepath.Join(tmpDir, ".orbit.yaml"), []byte(projectConfig), 0644); err != nil {
+		t.Fatalf("failed to write project config: %v", err)
+	}
+
+	cfg := Load(tmpDir)
+
+	if len(cfg.ConfigParseError) > 0 {
+		t.Errorf("unexpected parse errors: %v", cfg.ConfigParseError)
+	}
+
+	aliasCfg, ok := cfg.AgentAliases["claude-code"]
+	if !ok {
+		t.Fatal("expected claude-code alias in AgentAliases")
+	}
+	if aliasCfg.Model != "4.5" {
+		t.Errorf("expected Model %q, got %q", "4.5", aliasCfg.Model)
+	}
+}
+
+func TestLoad_ModelTypeCoercion_Boolean_Error(t *testing.T) {
+	tmpDir := t.TempDir()
+	homeDir := t.TempDir()
+	t.Setenv("HOME", homeDir)
+
+	projectConfig := `agents:
+  claude-code:
+    type: claude-code
+    model: true
+`
+	if err := os.WriteFile(filepath.Join(tmpDir, ".orbit.yaml"), []byte(projectConfig), 0644); err != nil {
+		t.Fatalf("failed to write project config: %v", err)
+	}
+
+	cfg := Load(tmpDir)
+
+	if len(cfg.ConfigParseError) == 0 {
+		t.Fatal("expected parse error for boolean model")
+	}
+	if !strings.Contains(cfg.ConfigParseError[0].Error(), "model must be a string or number, got bool") {
+		t.Errorf("expected error to mention bool type, got: %v", cfg.ConfigParseError[0])
+	}
+}
+
+func TestLoad_ModelTypeCoercion_Array_Error(t *testing.T) {
+	tmpDir := t.TempDir()
+	homeDir := t.TempDir()
+	t.Setenv("HOME", homeDir)
+
+	projectConfig := `agents:
+  claude-code:
+    type: claude-code
+    model:
+      - a
+      - b
+`
+	if err := os.WriteFile(filepath.Join(tmpDir, ".orbit.yaml"), []byte(projectConfig), 0644); err != nil {
+		t.Fatalf("failed to write project config: %v", err)
+	}
+
+	cfg := Load(tmpDir)
+
+	if len(cfg.ConfigParseError) == 0 {
+		t.Fatal("expected parse error for array model")
+	}
+	if !strings.Contains(cfg.ConfigParseError[0].Error(), "model must be a string or number, got array") {
+		t.Errorf("expected error to mention array type, got: %v", cfg.ConfigParseError[0])
+	}
+}
+
+func TestLoad_ModelTypeCoercion_Map_Error(t *testing.T) {
+	tmpDir := t.TempDir()
+	homeDir := t.TempDir()
+	t.Setenv("HOME", homeDir)
+
+	projectConfig := `agents:
+  claude-code:
+    type: claude-code
+    model:
+      key: value
+`
+	if err := os.WriteFile(filepath.Join(tmpDir, ".orbit.yaml"), []byte(projectConfig), 0644); err != nil {
+		t.Fatalf("failed to write project config: %v", err)
+	}
+
+	cfg := Load(tmpDir)
+
+	if len(cfg.ConfigParseError) == 0 {
+		t.Fatal("expected parse error for map model")
+	}
+	if !strings.Contains(cfg.ConfigParseError[0].Error(), "model must be a string or number, got map") {
+		t.Errorf("expected error to mention map type, got: %v", cfg.ConfigParseError[0])
+	}
+}
+
+// Tests for ResolveAliases validation
+
+func TestResolveAliases_MissingType(t *testing.T) {
+	cfg := &Config{
+		ConfigFileFound: true,
+		AgentAliases: map[string]AgentAliasConfig{
+			"my-agent": {
+				Model: "gpt-4",
+				// Type is missing
+			},
+		},
+	}
+
+	err := cfg.ResolveAliases()
+	if err == nil {
+		t.Fatal("expected error for missing type field")
+	}
+	if !strings.Contains(err.Error(), "missing required \"type\" field") {
+		t.Errorf("expected error to mention missing type, got: %v", err)
+	}
+}
+
+func TestResolveAliases_UnknownType(t *testing.T) {
+	cfg := &Config{
+		ConfigFileFound: true,
+		AgentAliases: map[string]AgentAliasConfig{
+			"my-agent": {
+				Type:  "unknown-agent-type",
+				Model: "gpt-4",
+			},
+		},
+	}
+
+	err := cfg.ResolveAliases()
+	if err == nil {
+		t.Fatal("expected error for unknown type")
+	}
+	if !strings.Contains(err.Error(), "unknown agent type") {
+		t.Errorf("expected error to mention unknown type, got: %v", err)
+	}
+}
+
+func TestResolveAliases_EmptyAgentsSection(t *testing.T) {
+	cfg := &Config{
+		ConfigFileFound: true,
+		AgentAliases:    map[string]AgentAliasConfig{},
+	}
+
+	err := cfg.ResolveAliases()
+	if err == nil {
+		t.Fatal("expected error for empty agents section")
+	}
+	if !strings.Contains(err.Error(), "no agents configured") {
+		t.Errorf("expected error to mention no agents configured, got: %v", err)
+	}
+}
+
+func TestResolveAliases_DuplicateAfterNormalization(t *testing.T) {
+	cfg := &Config{
+		ConfigFileFound: true,
+		AgentAliases: map[string]AgentAliasConfig{
+			"claude-code": {
+				Type: "claude-code",
+			},
+			"Claude-Code": {
+				Type: "claude-code",
+			},
+		},
+	}
+
+	err := cfg.ResolveAliases()
+	if err == nil {
+		t.Fatal("expected error for duplicate aliases after normalization")
+	}
+	if !strings.Contains(err.Error(), "duplicate agent aliases") {
+		t.Errorf("expected error to mention duplicate aliases, got: %v", err)
+	}
+}
+
+func TestResolveAliases_Valid(t *testing.T) {
+	cfg := &Config{
+		ConfigFileFound: true,
+		AgentAliases: map[string]AgentAliasConfig{
+			"claude-sonnet": {
+				Type:  "claude-code",
+				Model: "claude-sonnet-4",
+			},
+			"claude-opus": {
+				Type:  "claude-code",
+				Model: "claude-opus-4",
+			},
+		},
+	}
+
+	err := cfg.ResolveAliases()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if len(cfg.ResolvedAgents) != 2 {
+		t.Errorf("expected 2 resolved agents, got %d", len(cfg.ResolvedAgents))
+	}
+
+	sonnet, ok := cfg.ResolvedAgents["claude-sonnet"]
+	if !ok {
+		t.Fatal("expected claude-sonnet in ResolvedAgents")
+	}
+	if sonnet.Type != "claude-code" {
+		t.Errorf("expected Type %q, got %q", "claude-code", sonnet.Type)
+	}
+	if sonnet.Config.Model != "claude-sonnet-4" {
+		t.Errorf("expected Model %q, got %q", "claude-sonnet-4", sonnet.Config.Model)
+	}
+}
+
+func TestResolveAliases_PropagatesParseErrors(t *testing.T) {
+	cfg := &Config{
+		ConfigFileFound:  true,
+		ConfigParseError: []error{fmt.Errorf("alias %q: model must be a string or number, got bool", "test")},
+		AgentAliases: map[string]AgentAliasConfig{
+			"test": {
+				Type: "claude-code",
+			},
+		},
+	}
+
+	err := cfg.ResolveAliases()
+	if err == nil {
+		t.Fatal("expected error from parse errors")
+	}
+	if !strings.Contains(err.Error(), "model must be a string or number") {
+		t.Errorf("expected parse error to be propagated, got: %v", err)
+	}
+}
+
+// Tests for RequireConfigFile
+
+func TestRequireConfigFile_Found(t *testing.T) {
+	cfg := &Config{
+		ConfigFileFound: true,
+	}
+
+	err := cfg.RequireConfigFile()
+	if err != nil {
+		t.Errorf("unexpected error: %v", err)
+	}
+}
+
+func TestRequireConfigFile_NotFound(t *testing.T) {
+	cfg := &Config{
+		ConfigFileFound: false,
+	}
+
+	err := cfg.RequireConfigFile()
+	if err == nil {
+		t.Fatal("expected error when config file not found")
+	}
+	if !strings.Contains(err.Error(), "orbit init") {
+		t.Errorf("expected error to mention orbit init, got: %v", err)
+	}
+}
+
+// Tests for GetResolvedAgent
+
+func TestGetResolvedAgent_Found(t *testing.T) {
+	cfg := &Config{
+		ConfigFileFound: true,
+		AgentAliases: map[string]AgentAliasConfig{
+			"claude-code": {
+				Type:  "claude-code",
+				Model: "claude-sonnet-4",
+			},
+		},
+	}
+
+	if err := cfg.ResolveAliases(); err != nil {
+		t.Fatalf("failed to resolve aliases: %v", err)
+	}
+
+	resolved, err := cfg.GetResolvedAgent("claude-code")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if resolved.Type != "claude-code" {
+		t.Errorf("expected Type %q, got %q", "claude-code", resolved.Type)
+	}
+}
+
+func TestGetResolvedAgent_CaseInsensitive(t *testing.T) {
+	cfg := &Config{
+		ConfigFileFound: true,
+		AgentAliases: map[string]AgentAliasConfig{
+			"claude-code": {
+				Type:  "claude-code",
+				Model: "claude-sonnet-4",
+			},
+		},
+	}
+
+	if err := cfg.ResolveAliases(); err != nil {
+		t.Fatalf("failed to resolve aliases: %v", err)
+	}
+
+	// Should work with uppercase
+	resolved, err := cfg.GetResolvedAgent("Claude-Code")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if resolved.Type != "claude-code" {
+		t.Errorf("expected Type %q, got %q", "claude-code", resolved.Type)
+	}
+}
+
+func TestGetResolvedAgent_NotFound(t *testing.T) {
+	cfg := &Config{
+		ConfigFileFound: true,
+		AgentAliases: map[string]AgentAliasConfig{
+			"claude-code": {
+				Type: "claude-code",
+			},
+		},
+	}
+
+	if err := cfg.ResolveAliases(); err != nil {
+		t.Fatalf("failed to resolve aliases: %v", err)
+	}
+
+	_, err := cfg.GetResolvedAgent("unknown")
+	if err == nil {
+		t.Fatal("expected error for unknown agent")
+	}
+	if !strings.Contains(err.Error(), "not configured") {
+		t.Errorf("expected error to mention not configured, got: %v", err)
+	}
+}
+
+func TestGetResolvedAgent_BeforeResolve(t *testing.T) {
+	cfg := &Config{
+		ConfigFileFound: true,
+		AgentAliases: map[string]AgentAliasConfig{
+			"claude-code": {
+				Type: "claude-code",
+			},
+		},
+	}
+
+	// Don't call ResolveAliases
+	_, err := cfg.GetResolvedAgent("claude-code")
+	if err == nil {
+		t.Fatal("expected error when ResolveAliases not called")
+	}
+	if !strings.Contains(err.Error(), "ResolveAliases() must be called") {
+		t.Errorf("expected error about ResolveAliases, got: %v", err)
+	}
+}
+
+// Tests for config merge behavior
+
+func TestLoad_ConfigMerge_HomeOnly(t *testing.T) {
+	tmpDir := t.TempDir()
+	homeDir := t.TempDir()
+	t.Setenv("HOME", homeDir)
+
+	homeConfig := `agents:
+  claude-code:
+    type: claude-code
+    model: home-model
+    timeout: 30m
+`
+	if err := os.WriteFile(filepath.Join(homeDir, ".orbit.yaml"), []byte(homeConfig), 0644); err != nil {
+		t.Fatalf("failed to write home config: %v", err)
+	}
+
+	cfg := Load(tmpDir)
+
+	if !cfg.ConfigFileFound {
+		t.Error("expected ConfigFileFound to be true")
+	}
+
+	aliasCfg, ok := cfg.AgentAliases["claude-code"]
+	if !ok {
+		t.Fatal("expected claude-code alias")
+	}
+	if aliasCfg.Type != "claude-code" {
+		t.Errorf("expected Type %q, got %q", "claude-code", aliasCfg.Type)
+	}
+	if aliasCfg.Model != "home-model" {
+		t.Errorf("expected Model %q, got %q", "home-model", aliasCfg.Model)
+	}
+	if aliasCfg.Timeout != "30m" {
+		t.Errorf("expected Timeout %q, got %q", "30m", aliasCfg.Timeout)
+	}
+}
+
+func TestLoad_ConfigMerge_ProjectOnly(t *testing.T) {
+	tmpDir := t.TempDir()
+	homeDir := t.TempDir()
+	t.Setenv("HOME", homeDir)
+
+	projectConfig := `agents:
+  claude-code:
+    type: claude-code
+    model: project-model
+`
+	if err := os.WriteFile(filepath.Join(tmpDir, ".orbit.yaml"), []byte(projectConfig), 0644); err != nil {
+		t.Fatalf("failed to write project config: %v", err)
+	}
+
+	cfg := Load(tmpDir)
+
+	if !cfg.ConfigFileFound {
+		t.Error("expected ConfigFileFound to be true")
+	}
+
+	aliasCfg, ok := cfg.AgentAliases["claude-code"]
+	if !ok {
+		t.Fatal("expected claude-code alias")
+	}
+	if aliasCfg.Model != "project-model" {
+		t.Errorf("expected Model %q, got %q", "project-model", aliasCfg.Model)
+	}
+}
+
+func TestLoad_ConfigMerge_DeepMerge(t *testing.T) {
+	// Tests that Viper's deep merge works: project overrides home fields but
+	// unset fields inherit from home
+	tmpDir := t.TempDir()
+	homeDir := t.TempDir()
+	t.Setenv("HOME", homeDir)
+
+	homeConfig := `agents:
+  claude-code:
+    type: claude-code
+    model: home-model
+    timeout: 30m
+`
+	if err := os.WriteFile(filepath.Join(homeDir, ".orbit.yaml"), []byte(homeConfig), 0644); err != nil {
+		t.Fatalf("failed to write home config: %v", err)
+	}
+
+	// Project only overrides model, not timeout
+	projectConfig := `agents:
+  claude-code:
+    type: claude-code
+    model: project-model
+`
+	if err := os.WriteFile(filepath.Join(tmpDir, ".orbit.yaml"), []byte(projectConfig), 0644); err != nil {
+		t.Fatalf("failed to write project config: %v", err)
+	}
+
+	cfg := Load(tmpDir)
+
+	aliasCfg, ok := cfg.AgentAliases["claude-code"]
+	if !ok {
+		t.Fatal("expected claude-code alias")
+	}
+
+	// Model should be overridden by project
+	if aliasCfg.Model != "project-model" {
+		t.Errorf("expected Model %q (from project), got %q", "project-model", aliasCfg.Model)
+	}
+	// Timeout should be inherited from home (Viper deep merges nested maps)
+	if aliasCfg.Timeout != "30m" {
+		t.Errorf("expected Timeout %q (from home), got %q", "30m", aliasCfg.Timeout)
+	}
+}
+
+func TestLoad_ConfigMerge_DifferentAliases(t *testing.T) {
+	// Tests that aliases from both configs are available
+	tmpDir := t.TempDir()
+	homeDir := t.TempDir()
+	t.Setenv("HOME", homeDir)
+
+	homeConfig := `agents:
+  claude-sonnet:
+    type: claude-code
+    model: claude-sonnet-4
+`
+	if err := os.WriteFile(filepath.Join(homeDir, ".orbit.yaml"), []byte(homeConfig), 0644); err != nil {
+		t.Fatalf("failed to write home config: %v", err)
+	}
+
+	projectConfig := `agents:
+  claude-opus:
+    type: claude-code
+    model: claude-opus-4
+`
+	if err := os.WriteFile(filepath.Join(tmpDir, ".orbit.yaml"), []byte(projectConfig), 0644); err != nil {
+		t.Fatalf("failed to write project config: %v", err)
+	}
+
+	cfg := Load(tmpDir)
+
+	if len(cfg.AgentAliases) != 2 {
+		t.Errorf("expected 2 aliases, got %d", len(cfg.AgentAliases))
+	}
+
+	sonnet, ok := cfg.AgentAliases["claude-sonnet"]
+	if !ok {
+		t.Error("expected claude-sonnet from home config")
+	} else if sonnet.Model != "claude-sonnet-4" {
+		t.Errorf("expected claude-sonnet Model %q, got %q", "claude-sonnet-4", sonnet.Model)
+	}
+
+	opus, ok := cfg.AgentAliases["claude-opus"]
+	if !ok {
+		t.Error("expected claude-opus from project config")
+	} else if opus.Model != "claude-opus-4" {
+		t.Errorf("expected claude-opus Model %q, got %q", "claude-opus-4", opus.Model)
+	}
+}
+
+func TestLoad_ConfigMerge_AliasShadowsTypeName(t *testing.T) {
+	// Tests that an alias named the same as a type works correctly
+	tmpDir := t.TempDir()
+	homeDir := t.TempDir()
+	t.Setenv("HOME", homeDir)
+
+	projectConfig := `agents:
+  claude-code:
+    type: claude-code
+    model: claude-opus-4
+`
+	if err := os.WriteFile(filepath.Join(tmpDir, ".orbit.yaml"), []byte(projectConfig), 0644); err != nil {
+		t.Fatalf("failed to write project config: %v", err)
+	}
+
+	cfg := Load(tmpDir)
+
+	if err := cfg.ResolveAliases(); err != nil {
+		t.Fatalf("failed to resolve aliases: %v", err)
+	}
+
+	resolved, err := cfg.GetResolvedAgent("claude-code")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	// Should use the alias config, not default agent
+	if resolved.Config.Model != "claude-opus-4" {
+		t.Errorf("expected Model %q, got %q", "claude-opus-4", resolved.Config.Model)
+	}
+}
+
+// Test for GetResolvedAgentConfig helper
+
+func TestGetResolvedAgentConfig(t *testing.T) {
+	resolved := ResolvedAgent{
+		Alias: "my-alias",
+		Type:  "claude-code",
+		Config: AgentAliasConfig{
+			Type:        "claude-code",
+			Model:       "claude-opus-4",
+			CLIPath:     "/usr/local/bin/claude",
+			AutoApprove: true,
+			ExtraArgs:   []string{"--verbose"},
+			Timeout:     "30m",
+		},
+	}
+
+	agentCfg := GetResolvedAgentConfig(resolved)
+
+	if agentCfg.CLIPath != "/usr/local/bin/claude" {
+		t.Errorf("expected CLIPath %q, got %q", "/usr/local/bin/claude", agentCfg.CLIPath)
+	}
+	if !agentCfg.AutoApprove {
+		t.Error("expected AutoApprove to be true")
+	}
+	if len(agentCfg.ExtraArgs) != 1 || agentCfg.ExtraArgs[0] != "--verbose" {
+		t.Errorf("expected ExtraArgs [--verbose], got %v", agentCfg.ExtraArgs)
+	}
+	if agentCfg.Timeout != 30*time.Minute {
+		t.Errorf("expected Timeout 30m, got %v", agentCfg.Timeout)
+	}
+	if agentCfg.Options == nil || agentCfg.Options["model"] != "claude-opus-4" {
+		t.Errorf("expected Options[model] = %q, got %v", "claude-opus-4", agentCfg.Options)
 	}
 }

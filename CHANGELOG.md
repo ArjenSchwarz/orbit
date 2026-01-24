@@ -9,6 +9,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Config loading and validation for agent aliases (Phase 2 of per-variant model selection):
+  - `parseAgentAliasesConfig()` function to parse agent aliases with type field from YAML
+  - `coerceModelValue()` function for YAML type coercion: string, int, float coerced to string; bool, array, map return validation errors
+  - `ResolveAliases()` method to validate all aliases (type field required, valid name pattern, no duplicates after normalization, registered agent types)
+  - `RequireConfigFile()` method returning error if no .orbit.yaml found (home or project)
+  - `GetResolvedAgent()` method for case-insensitive alias lookup with descriptive error messages
+  - `GetResolvedAgentConfig()` helper to convert ResolvedAgent to agents.AgentConfig
+  - `ConfigFileFound`, `ConfigParseError`, `AgentAliases`, `ResolvedAgents` fields in Config struct
+  - Unit tests for YAML type coercion (string, unquoted string, integer, float valid; boolean, array, map error)
+  - Unit tests for ResolveAliases validation (missing type, unknown type, empty agents, duplicate aliases)
+  - Unit tests for config merge behavior (home only, project only, deep merge, different aliases)
+  - Unit tests for GetResolvedAgent (found, case insensitive, not found, before resolve)
+  - Unit tests for RequireConfigFile and GetResolvedAgentConfig
+
 - `AgentAliasConfig` and `ResolvedAgent` types in config package for per-variant model selection feature
 - `ValidateAliasName()` function to validate agent alias names against pattern `[a-z0-9]+(-[a-z0-9]+)*`
 - `NormalizeAliasName()` function for case-insensitive alias name comparison
