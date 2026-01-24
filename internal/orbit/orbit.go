@@ -1278,7 +1278,7 @@ func (o *Orbit) runVariant(ctx context.Context, v *variants.Variant) error {
 	if variantAgentConfig.Options != nil {
 		model = variantAgentConfig.Options["model"]
 	}
-	if err := o.variantManager.UpdateAgentInfo(v.ID, agentType, model); err != nil {
+	if err := o.variantManager.UpdateAgentInfo(v.ID, agentName, agentType, model); err != nil {
 		log.Printf("Warning: failed to update agent info for variant %d: %v", v.ID, err)
 	}
 

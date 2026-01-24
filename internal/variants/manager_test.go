@@ -508,11 +508,14 @@ func TestUpdateAgentInfo(t *testing.T) {
 	}
 
 	// Update agent info for variant 1
-	if err := mgr.UpdateAgentInfo(1, "claude-code", "claude-3-5-sonnet"); err != nil {
+	if err := mgr.UpdateAgentInfo(1, "claude-sonnet", "claude-code", "claude-3-5-sonnet"); err != nil {
 		t.Fatalf("UpdateAgentInfo: %v", err)
 	}
 
 	v := mgr.GetVariant(1)
+	if v.Agent != "claude-sonnet" {
+		t.Errorf("variant Agent = %s, want claude-sonnet", v.Agent)
+	}
 	if v.AgentType != "claude-code" {
 		t.Errorf("variant AgentType = %s, want claude-code", v.AgentType)
 	}
@@ -528,6 +531,9 @@ func TestUpdateAgentInfo(t *testing.T) {
 	var loaded VariantsMetadata
 	if err := json.Unmarshal(data, &loaded); err != nil {
 		t.Fatalf("unmarshal: %v", err)
+	}
+	if loaded.Variants[0].Agent != "claude-sonnet" {
+		t.Errorf("persisted Agent = %s, want claude-sonnet", loaded.Variants[0].Agent)
 	}
 	if loaded.Variants[0].AgentType != "claude-code" {
 		t.Errorf("persisted AgentType = %s, want claude-code", loaded.Variants[0].AgentType)
@@ -554,7 +560,7 @@ func TestUpdateAgentInfo_NotFound(t *testing.T) {
 	}
 
 	// Try to update non-existent variant
-	err = mgr.UpdateAgentInfo(99, "claude-code", "model")
+	err = mgr.UpdateAgentInfo(99, "alias", "claude-code", "model")
 	if err == nil {
 		t.Fatal("expected error for non-existent variant")
 	}

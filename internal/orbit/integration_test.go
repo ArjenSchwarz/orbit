@@ -14,6 +14,7 @@ import (
 	_ "github.com/arjenschwarz/orbit/internal/agents/codex"      // Register codex agent
 	_ "github.com/arjenschwarz/orbit/internal/agents/copilot"    // Register copilot agent
 	_ "github.com/arjenschwarz/orbit/internal/agents/kiro"       // Register kiro agent
+	orbitconfig "github.com/arjenschwarz/orbit/internal/config"
 	"github.com/arjenschwarz/orbit/internal/variants"
 )
 
@@ -704,5 +705,183 @@ func TestVariantAgents_EmptyList(t *testing.T) {
 				t.Errorf("Variant %d should use global agent claude-code", i+1)
 			}
 		}
+	}
+}
+
+// TestRunWithoutConfig tests that orbit run fails when no .orbit.yaml exists [Req 2.1, 2.2].
+func TestRunWithoutConfig(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	// Create spec directory without .orbit.yaml
+	specDir := filepath.Join(tmpDir, "specs", "no-config-test")
+	tasksFile := filepath.Join(specDir, "tasks.md")
+	if err := os.MkdirAll(specDir, 0755); err != nil {
+		t.Fatalf("failed to create spec dir: %v", err)
+	}
+
+	tasksContent := `# Tasks
+
+## Phase 1: Implementation
+
+- [ ] 1. Implement feature
+`
+	if err := os.WriteFile(tasksFile, []byte(tasksContent), 0644); err != nil {
+		t.Fatalf("failed to write tasks file: %v", err)
+	}
+
+	// Change to temp directory (config.Load looks for .orbit.yaml in working dir)
+	oldWd, err := os.Getwd()
+	if err != nil {
+		t.Fatalf("failed to get working directory: %v", err)
+	}
+	defer func() {
+		if err := os.Chdir(oldWd); err != nil {
+			t.Errorf("failed to restore working directory: %v", err)
+		}
+	}()
+
+	if err := os.Chdir(tmpDir); err != nil {
+		t.Fatalf("failed to change to temp directory: %v", err)
+	}
+
+	// Temporarily override HOME to prevent loading ~/.orbit.yaml
+	oldHome := os.Getenv("HOME")
+	os.Setenv("HOME", tmpDir)
+	defer os.Setenv("HOME", oldHome)
+
+	// Load config (should not find .orbit.yaml)
+	cfg := orbitconfig.Load(tmpDir)
+
+	// RequireConfigFile should fail
+	err = cfg.RequireConfigFile()
+	if err == nil {
+		t.Fatal("expected error when .orbit.yaml is missing, got nil")
+	}
+
+	// Error should mention .orbit.yaml and orbit init
+	errMsg := err.Error()
+	if !contains(errMsg, ".orbit.yaml") {
+		t.Errorf("error should mention .orbit.yaml, got: %v", err)
+	}
+	if !contains(errMsg, "orbit init") {
+		t.Errorf("error should mention 'orbit init', got: %v", err)
+	}
+}
+
+// TestVariantRunWithDifferentModels tests variant execution with different model configurations [Req 4.1, 4.2, 4.4, 7.1].
+func TestVariantRunWithDifferentModels(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	// Create spec directory
+	specDir := filepath.Join(tmpDir, "specs", "model-test")
+	tasksFile := filepath.Join(specDir, "tasks.md")
+	if err := os.MkdirAll(specDir, 0755); err != nil {
+		t.Fatalf("failed to create spec dir: %v", err)
+	}
+
+	tasksContent := `# Tasks
+
+## Phase 1: Implementation
+
+- [ ] 1. Implement feature
+`
+	if err := os.WriteFile(tasksFile, []byte(tasksContent), 0644); err != nil {
+		t.Fatalf("failed to write tasks file: %v", err)
+	}
+
+	// Create .orbit.yaml with two agent aliases
+	configContent := `agents:
+  claude-sonnet:
+    type: claude-code
+    model: claude-sonnet-4-20250514
+    auto-approve: true
+  claude-opus:
+    type: claude-code
+    model: claude-opus-4-20250514
+    auto-approve: true
+`
+	configPath := filepath.Join(tmpDir, ".orbit.yaml")
+	if err := os.WriteFile(configPath, []byte(configContent), 0644); err != nil {
+		t.Fatalf("failed to write config: %v", err)
+	}
+
+	// Create mock git client
+	git := variants.NewMockGit()
+	git.CurrentBranch = "feature/model-test"
+	git.HeadCommit = "model123"
+
+	// Create variant config
+	cfg := variants.Config{
+		Count:        2,
+		Parallel:     false,
+		MaxParallel:  3,
+		BranchPrefix: "orbit-impl",
+	}
+
+	// Create variant manager
+	mgr, err := variants.NewManager(cfg, "model-test", specDir, tmpDir, git)
+	if err != nil {
+		t.Fatalf("failed to create variant manager: %v", err)
+	}
+
+	// Setup worktrees
+	ctx := context.Background()
+	if err := mgr.Setup(ctx, false); err != nil {
+		t.Fatalf("Setup failed: %v", err)
+	}
+
+	// Assign agents to variants (simulating --variant-agents claude-sonnet,claude-opus)
+	variantAgents := []string{"claude-sonnet", "claude-opus"}
+	variantList := mgr.GetVariantsSnapshot()
+	for i, v := range variantList {
+		agentAlias := variantAgents[i%len(variantAgents)]
+		agentType := "claude-code"
+		var model string
+		if agentAlias == "claude-sonnet" {
+			model = "claude-sonnet-4-20250514"
+		} else {
+			model = "claude-opus-4-20250514"
+		}
+
+		// Update agent metadata
+		if err := mgr.UpdateAgentInfo(v.ID, agentAlias, agentType, model); err != nil {
+			t.Fatalf("failed to update agent info: %v", err)
+		}
+	}
+
+	// Verify variants.json contains correct metadata
+	metadataPath := filepath.Join(specDir, ".orbit", "variants.json")
+	data, err := os.ReadFile(metadataPath)
+	if err != nil {
+		t.Fatalf("failed to read variants.json: %v", err)
+	}
+
+	var metadata variants.VariantsMetadata
+	if err := json.Unmarshal(data, &metadata); err != nil {
+		t.Fatalf("failed to parse variants.json: %v", err)
+	}
+
+	// Verify variant 1 has claude-sonnet
+	v1 := metadata.Variants[0]
+	if v1.Agent != "claude-sonnet" {
+		t.Errorf("variant 1 agent = %q, want %q", v1.Agent, "claude-sonnet")
+	}
+	if v1.AgentType != "claude-code" {
+		t.Errorf("variant 1 agent_type = %q, want %q", v1.AgentType, "claude-code")
+	}
+	if v1.Model != "claude-sonnet-4-20250514" {
+		t.Errorf("variant 1 model = %q, want %q", v1.Model, "claude-sonnet-4-20250514")
+	}
+
+	// Verify variant 2 has claude-opus
+	v2 := metadata.Variants[1]
+	if v2.Agent != "claude-opus" {
+		t.Errorf("variant 2 agent = %q, want %q", v2.Agent, "claude-opus")
+	}
+	if v2.AgentType != "claude-code" {
+		t.Errorf("variant 2 agent_type = %q, want %q", v2.AgentType, "claude-code")
+	}
+	if v2.Model != "claude-opus-4-20250514" {
+		t.Errorf("variant 2 model = %q, want %q", v2.Model, "claude-opus-4-20250514")
 	}
 }

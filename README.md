@@ -112,6 +112,12 @@ Orbit loads configuration from two locations (in order of priority):
 1. **Project config**: `.orbit.yaml` in the current directory
 2. **Home config**: `~/.orbit.yaml` in your home directory
 
+Create a default configuration with:
+
+```bash
+orbit init
+```
+
 Example `.orbit.yaml`:
 
 ```yaml
@@ -119,22 +125,30 @@ command: "Run /next-task --phase and when complete run /commit"
 post-command: "Run tests and verify everything works"
 date_subdirs: false      # Use flat .orbit/ directory (default)
 continue_session: true   # Resume unfinished sessions (default)
-agent: claude-code       # Default agent
+agent: claude-code       # Default agent alias
 
-# Per-agent configuration
+# Agent aliases - each combines an agent type with configuration
 agents:
   claude-code:
-    cli-path: claude                    # Override CLI path
+    type: claude-code                   # Required: underlying agent type
     auto-approve: true                  # Tool approval behavior (default: true)
     timeout: 30m                        # Execution timeout
   codex:
-    cli-path: codex
+    type: codex                         # Required: underlying agent type
     timeout: 1h
   kiro:
-    cli-path: kiro-cli
+    type: kiro                          # Required: underlying agent type
     timeout: 1h
   copilot:
-    cli-path: copilot
+    type: copilot                       # Required: underlying agent type
+
+# Agent aliases can also specify models for per-variant model selection
+# claude-sonnet:
+#   type: claude-code
+#   model: claude-sonnet-4-20250514
+# claude-opus:
+#   type: claude-code
+#   model: claude-opus-4-20250514
 ```
 
 ### Auto-Approve Behavior
