@@ -324,6 +324,22 @@ func (m *Manager) UpdateMetrics(id int, cost float64, duration time.Duration, tu
 	return m.saveLocked()
 }
 
+// UpdateAgentInfo updates a variant's resolved agent type and model.
+func (m *Manager) UpdateAgentInfo(id int, agentType, model string) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	v := m.getVariantLocked(id)
+	if v == nil {
+		return fmt.Errorf("variant %d not found", id)
+	}
+
+	v.AgentType = agentType
+	v.Model = model
+
+	return m.saveLocked()
+}
+
 // GetVariant returns a variant by ID.
 func (m *Manager) GetVariant(id int) *Variant {
 	m.mu.Lock()

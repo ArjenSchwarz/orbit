@@ -138,37 +138,37 @@ references:
 
 ## Phase 6: Metadata and Logging
 
-- [ ] 25. Add AgentType and Model fields to Variant struct
+- [x] 25. Add AgentType and Model fields to Variant struct
   - Add AgentType string and Model string fields with json tags to Variant in types.go
   - Requirements: [7.1](requirements.md#7.1)
   - References: internal/variants/types.go
 
-- [ ] 26. Update variant creation to populate new fields
+- [x] 26. Update variant creation to populate new fields
   - When creating variants, set Agent (alias name), AgentType, and Model from resolved config
   - Requirements: [4.4](requirements.md#4.4), [7.1](requirements.md#7.1)
   - References: internal/variants/manager.go
 
-- [ ] 27. Add AgentAlias, AgentType, Model to SessionEntry
+- [x] 27. Add AgentAlias, AgentType, Model to SessionEntry
   - Add three new fields to SessionEntry struct in logs/manager.go
   - Requirements: [7.2](requirements.md#7.2)
   - References: internal/logs/manager.go
 
-- [ ] 28. Update session logging to populate new fields
+- [x] 28. Update session logging to populate new fields
   - When logging session, include alias, type, and model from resolved agent config
   - Requirements: [7.2](requirements.md#7.2)
   - References: internal/logs/manager.go
 
-- [ ] 29. Add verbose logging of resolved agent config
+- [x] 29. Add verbose logging of resolved agent config
   - When verbose flag set, log alias name, type, model before agent execution
   - Requirements: [7.3](requirements.md#7.3)
   - References: cmd/orbit/run.go
 
-- [ ] 30. Add unit tests for variant metadata
+- [x] 30. Add unit tests for variant metadata
   - Test that Variant struct includes agent, agent_type, model in JSON output
   - Requirements: [7.1](requirements.md#7.1)
   - References: internal/variants/types_test.go
 
-- [ ] 31. Add unit tests for session entry metadata
+- [x] 31. Add unit tests for session entry metadata
   - Test that SessionEntry includes agent_alias, agent_type, model in JSON output
   - Requirements: [7.2](requirements.md#7.2)
   - References: internal/logs/manager_test.go

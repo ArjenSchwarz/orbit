@@ -9,6 +9,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Agent metadata and logging for per-variant model selection (Phase 6):
+  - `AgentType` and `Model` fields in `Variant` struct for tracking resolved agent configuration
+  - `UpdateAgentInfo()` method in variant manager to persist agent type and model
+  - `AgentAlias`, `AgentType`, `Model` fields in `SessionEntry` for session-level tracking
+  - `AgentInfo` struct and `SetAgentInfo()` method in log manager for session logging context
+  - Verbose logging of resolved agent configuration (alias, type, model) when `--verbose` flag is set
+  - Unit tests for variant metadata persistence and loading
+  - Unit tests for session entry agent metadata
+
 - Agent model flag implementation for per-variant model selection (Phase 5):
   - All agents (claude-code, codex, kiro, copilot) now read `Options["model"]` and append `--model` flag to CLI args
   - Model flag added after auto-approve flags but before extra-args

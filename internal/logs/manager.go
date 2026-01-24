@@ -48,6 +48,9 @@ type SessionEntry struct {
 	EndedAt    time.Time `json:"ended_at"`
 	IsError    bool      `json:"is_error,omitempty"`
 	RunNumber  int       `json:"run_number"`
+	AgentAlias string    `json:"agent_alias,omitempty"` // Agent alias used for this session
+	AgentType  string    `json:"agent_type,omitempty"`  // Underlying agent type (e.g., "claude-code")
+	Model      string    `json:"model,omitempty"`       // Model used for this session
 }
 
 // Summary contains the overall orchestration run summary.
@@ -67,14 +70,22 @@ type Summary struct {
 	BranchName     string               `json:"branch_name,omitempty"`
 }
 
+// AgentInfo holds the resolved agent configuration for the current run.
+type AgentInfo struct {
+	Alias string // Agent alias name used
+	Type  string // Underlying agent type (e.g., "claude-code")
+	Model string // Model used (optional)
+}
+
 // Manager handles log storage and retrieval.
 type Manager struct {
 	baseDir    string
 	sessionDir string
 	workingDir string
 	summary    Summary
-	useSubdirs bool   // controls directory mode
-	branchName string // stored for branch mismatch warning
+	useSubdirs bool      // controls directory mode
+	branchName string    // stored for branch mismatch warning
+	agentInfo  AgentInfo // agent context for session logging
 }
 
 // NewManager creates a new log manager with a timestamped session directory.
@@ -151,6 +162,16 @@ func NewManagerWithOptions(baseDir, branchName, workingDir string, opts ManagerO
 // SessionDir returns the current session directory path.
 func (m *Manager) SessionDir() string {
 	return m.sessionDir
+}
+
+// SetAgentInfo sets the agent context for session logging.
+// Call this once after agent resolution to include agent metadata in session entries.
+func (m *Manager) SetAgentInfo(alias, agentType, model string) {
+	m.agentInfo = AgentInfo{
+		Alias: alias,
+		Type:  agentType,
+		Model: model,
+	}
 }
 
 // RunNumber returns the current run number for file naming purposes.
@@ -327,6 +348,9 @@ func (m *Manager) SaveSession(phase int, result *agents.RunResult, startTime tim
 		EndedAt:    endTime,
 		IsError:    result.IsError,
 		RunNumber:  m.summary.RunNumber,
+		AgentAlias: m.agentInfo.Alias,
+		AgentType:  m.agentInfo.Type,
+		Model:      m.agentInfo.Model,
 	}
 
 	m.summary.Sessions = append(m.summary.Sessions, entry)
@@ -397,6 +421,9 @@ func (m *Manager) SavePostCompletionSession(result *agents.RunResult, startTime 
 		EndedAt:    endTime,
 		IsError:    result.IsError,
 		RunNumber:  m.summary.RunNumber,
+		AgentAlias: m.agentInfo.Alias,
+		AgentType:  m.agentInfo.Type,
+		Model:      m.agentInfo.Model,
 	}
 	m.summary.Sessions = append(m.summary.Sessions, entry)
 	m.summary.TotalCostUSD += costUSD
