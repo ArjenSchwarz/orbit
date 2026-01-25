@@ -111,8 +111,23 @@ func RenderEntries(entries []Entry, toolMeta map[string]ToolMeta, skillDescripti
 // for correctly rendering tool_result entries that reference them.
 // Exported for use by Follower in follow mode.
 func BuildToolMeta(entries []Entry) map[string]ToolMeta {
-	toolMeta := make(map[string]ToolMeta)
 	skillDescriptions := BuildSkillDescriptionMap(entries)
+
+	// Pre-count tool entries for efficient map sizing
+	toolCount := 0
+	for i := range entries {
+		entry := &entries[i]
+		if entry.Message == nil {
+			continue
+		}
+		for _, item := range entry.Message.Content {
+			if item.Type == "tool_use" && item.ID != "" {
+				toolCount++
+			}
+		}
+	}
+
+	toolMeta := make(map[string]ToolMeta, toolCount)
 
 	for i := range entries {
 		entry := &entries[i]

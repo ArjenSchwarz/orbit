@@ -882,7 +882,7 @@ apsis --list -p /path/to/project
 | `-o, --output <file>` | Write output to file (default: stdout) |
 | `-p, --project <path>` | Project directory (default: current directory) |
 | `-f, --format <format>` | Output format: `md`, `markdown`, `html` (default: `md`) |
-| `-F, --follow` | Follow mode: continuously monitor file for new entries (like `tail -f`) |
+| `-F, --follow` | Follow mode: continuously monitor file for new entries (stdout only, markdown only) |
 | `-v, --version` | Show version |
 | `-h, --help` | Show help |
 

@@ -9,13 +9,34 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"syscall"
+	"sync"
 	"time"
 )
 
-// maxSeenHashes is the maximum number of entry hashes to track before resetting.
-// At 16 bytes per hash, this uses ~160KB of memory.
-const maxSeenHashes = 10000
+const (
+	// maxSeenHashes is the maximum number of entry hashes to track before resetting.
+	// At 16 bytes per hash, this uses ~160KB of memory.
+	maxSeenHashes = 10000
+
+	// maxScanLineSize is the maximum line size for the scanner (10MB).
+	maxScanLineSize = 10 * 1024 * 1024
+
+	// initialScanBuffer is the initial buffer size for the scanner (64KB).
+	initialScanBuffer = 64 * 1024
+
+	// PollInterval is the interval between file change checks.
+	// Exported for testing configurability.
+	PollInterval = 500 * time.Millisecond
+)
+
+// scanBufferPool provides reusable scanner buffers to reduce memory allocation
+// pressure during high-frequency polling.
+var scanBufferPool = sync.Pool{
+	New: func() any {
+		buf := make([]byte, 0, initialScanBuffer)
+		return &buf
+	},
+}
 
 // Follower monitors a JSONL file and renders new entries incrementally.
 type Follower struct {
@@ -163,7 +184,7 @@ func (f *Follower) addSeenHash(h [16]byte) {
 // Run starts the follow loop. Blocks until ctx is cancelled.
 // Returns nil on clean shutdown (context cancellation), error on file errors.
 func (f *Follower) Run(ctx context.Context) error {
-	ticker := time.NewTicker(500 * time.Millisecond)
+	ticker := time.NewTicker(PollInterval)
 	defer ticker.Stop()
 
 	// Initial render
@@ -205,27 +226,10 @@ func hashLine(line []byte) [16]byte {
 	return truncated
 }
 
-// getFileInfo returns mtime, inode, and size for file change detection.
-// On Unix systems, inode is retrieved via syscall.Stat_t.
-// On non-Unix platforms, inode is set to 0 (disabling replacement detection).
-func getFileInfo(path string) (mtime time.Time, inode uint64, size int64, err error) {
-	info, err := os.Stat(path)
-	if err != nil {
-		return time.Time{}, 0, 0, err
-	}
-
-	stat, ok := info.Sys().(*syscall.Stat_t)
-	if !ok {
-		// Fallback: use 0 for inode (disables file replacement detection)
-		return info.ModTime(), 0, info.Size(), nil
-	}
-
-	return info.ModTime(), stat.Ino, info.Size(), nil
-}
-
 // readAndHashLines reads a file line by line, returning raw lines and their hashes.
 // Skips incomplete JSON at EOF (detected by parse failure on last non-empty line).
 // Logs warning to warnWriter for corrupt mid-file lines.
+// Uses sync.Pool for scanner buffers to reduce memory allocation pressure.
 func readAndHashLines(path string, warnWriter io.Writer) ([]lineWithHash, error) {
 	f, err := os.Open(path)
 	if err != nil {
@@ -234,10 +238,15 @@ func readAndHashLines(path string, warnWriter io.Writer) ([]lineWithHash, error)
 	defer func() { _ = f.Close() }()
 
 	scanner := bufio.NewScanner(f)
-	buf := make([]byte, 0, 64*1024)
-	scanner.Buffer(buf, 10*1024*1024) // 10MB max line
+	bufPtr := scanBufferPool.Get().(*[]byte)
+	buf := *bufPtr
+	scanner.Buffer(buf, maxScanLineSize)
+	defer func() {
+		*bufPtr = buf[:0]
+		scanBufferPool.Put(bufPtr)
+	}()
 
-	var lines []lineWithHash
+	lines := make([]lineWithHash, 0, 128)
 	var pendingBadLine []byte // Track if previous line failed to parse
 	var pendingLineNum int
 
@@ -253,7 +262,7 @@ func readAndHashLines(path string, warnWriter io.Writer) ([]lineWithHash, error)
 		var entry Entry
 		if err := json.Unmarshal(line, &entry); err != nil {
 			// Mark as pending bad line - might be incomplete (EOF) or corrupt (mid-file)
-			pendingBadLine = append([]byte{}, line...) // Copy
+			pendingBadLine = bytes.Clone(line)
 			pendingLineNum = lineNum
 			continue
 		}
@@ -265,7 +274,7 @@ func readAndHashLines(path string, warnWriter io.Writer) ([]lineWithHash, error)
 		}
 
 		lines = append(lines, lineWithHash{
-			raw:  append([]byte{}, line...), // Copy
+			raw:  bytes.Clone(line),
 			hash: hashLine(line),
 		})
 	}
