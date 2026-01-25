@@ -1254,40 +1254,46 @@ func (o *Orbit) runVariant(ctx context.Context, v *variants.Variant) error {
 	}
 	// Registry status is already set to running during registration
 
-	// Create the agent for this variant using its assigned agent type
-	agentName := v.Agent
-	if agentName == "" {
-		agentName = "claude-code" // Default to Claude Code
+	// Create the agent for this variant using its assigned agent alias
+	agentAlias := v.Agent
+	if agentAlias == "" {
+		agentAlias = "claude-code" // Default to Claude Code
 	}
 
 	// Get agent config from config file, falling back to defaults
-	variantAgentConfig := o.getAgentConfig(agentName)
+	variantAgentConfig := o.getAgentConfig(agentAlias)
 	// Ensure AutoApprove is set based on SkipPermissions flag
 	if o.config.SkipPermissions {
 		variantAgentConfig.AutoApprove = true
 	}
 
-	variantAgent, err := agents.Get(agentName, variantAgentConfig)
-	if err != nil {
-		return fmt.Errorf("failed to get agent %q for variant %d: %w", agentName, v.ID, err)
+	// Resolve the agent type: use Type from config, or fall back to alias name
+	// (for backwards compatibility when alias name equals type name)
+	agentType := variantAgentConfig.Type
+	if agentType == "" {
+		agentType = agentAlias
 	}
 
-	// Populate variant agent metadata for logging and reporting
-	agentType := variantAgent.Name() // Underlying agent type (e.g., "claude-code")
+	variantAgent, err := agents.Get(agentType, variantAgentConfig)
+	if err != nil {
+		return fmt.Errorf("failed to get agent %q (type: %s) for variant %d: %w", agentAlias, agentType, v.ID, err)
+	}
+
+	// agentType is already resolved above from config or alias
 	var model string
 	if variantAgentConfig.Options != nil {
 		model = variantAgentConfig.Options["model"]
 	}
-	if err := o.variantManager.UpdateAgentInfo(v.ID, agentName, agentType, model); err != nil {
+	if err := o.variantManager.UpdateAgentInfo(v.ID, agentAlias, agentType, model); err != nil {
 		log.Printf("Warning: failed to update agent info for variant %d: %v", v.ID, err)
 	}
 
 	// Log resolved agent configuration in verbose mode
 	if o.config.Verbose {
 		if model != "" {
-			log.Printf("Variant %d agent config: alias=%s, type=%s, model=%s", v.ID, agentName, agentType, model)
+			log.Printf("Variant %d agent config: alias=%s, type=%s, model=%s", v.ID, agentAlias, agentType, model)
 		} else {
-			log.Printf("Variant %d agent config: alias=%s, type=%s", v.ID, agentName, agentType)
+			log.Printf("Variant %d agent config: alias=%s, type=%s", v.ID, agentAlias, agentType)
 		}
 	}
 
@@ -1327,7 +1333,7 @@ func (o *Orbit) runVariant(ctx context.Context, v *variants.Variant) error {
 	}
 	if variantLogManager != nil {
 		// Set agent info for session logging
-		variantLogManager.SetAgentInfo(agentName, agentType, model)
+		variantLogManager.SetAgentInfo(agentAlias, agentType, model)
 	}
 
 	// Track total metrics across all phases

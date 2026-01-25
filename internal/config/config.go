@@ -522,6 +522,11 @@ func (c *Config) GetAgentConfig(name string) agents.AgentConfig {
 		cfg.Options = map[string]string{"model": ac.Model}
 	}
 
+	// Look up the underlying type from AgentAliases
+	if alias, ok := c.AgentAliases[name]; ok && alias.Type != "" {
+		cfg.Type = alias.Type
+	}
+
 	return cfg
 }
 
@@ -647,6 +652,7 @@ func GenerateDefaultConfig() []byte {
 // This bridges between the config package's alias system and the agents package.
 func GetResolvedAgentConfig(resolved ResolvedAgent) agents.AgentConfig {
 	cfg := agents.AgentConfig{
+		Type:        resolved.Type,
 		CLIPath:     resolved.Config.CLIPath,
 		AutoApprove: resolved.Config.AutoApprove,
 		ExtraArgs:   resolved.Config.ExtraArgs,

@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- Variant agent alias resolution: When using `--variant-agents` with agent aliases (e.g., `claude-opus,claude-sonnet`), orbit now correctly resolves the alias to its underlying agent type before creating the agent. Previously, passing an alias like `claude-opus` would fail with "unknown agent" because `agents.Get()` only recognizes registered types (e.g., `claude-code`), not aliases.
+
 ### Added
 
 - Integration tests for per-variant model selection (Phase 7):
