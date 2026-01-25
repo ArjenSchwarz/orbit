@@ -359,7 +359,6 @@ flowchart TB
     end
 
     Phase1 --> Phase2 --> Phase3 --> Phase4 --> Phase5
-    Phase4 -.->|optional| Phase5
 ```
 
 ---
