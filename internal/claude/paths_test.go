@@ -43,6 +43,26 @@ func TestBuildProjectPath(t *testing.T) {
 			input:    "",
 			expected: "",
 		},
+		{
+			name:     "path with dots",
+			input:    "/home/user/project.name/subdir",
+			expected: "-home-user-project-name-subdir",
+		},
+		{
+			name:     "worktree path with dot suffix",
+			input:    "/home/user/orbit/specs/feature/.orbit/worktrees/orbit-impl-1-feature.5",
+			expected: "-home-user-orbit-specs-feature--orbit-worktrees-orbit-impl-1-feature-5",
+		},
+		{
+			name:     "hidden directory",
+			input:    "/home/user/.config/project",
+			expected: "-home-user--config-project",
+		},
+		{
+			name:     "multiple dots",
+			input:    "/path/to/file.tar.gz",
+			expected: "-path-to-file-tar-gz",
+		},
 	}
 
 	for _, tt := range tests {
