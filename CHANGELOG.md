@@ -9,6 +9,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- End-to-end integration tests for apsis follow mode (Phase 5):
+  - `TestFollowerIntegration_BasicFollowWithAppend` testing entry append with incremental rendering
+  - `TestFollowerIntegration_FileTruncation` testing truncation detection and re-render
+  - `TestFollowerIntegration_FileReplacement` testing inode change detection and re-render
+  - `TestFollowerIntegration_IncompleteJSONHandling` testing partial JSON line handling
+  - `TestFollowMode_SIGINTExitCode` testing context cancellation behavior
+  - `TestFollowMode_ExitCode130Logic` testing exit code for file not found
+  - `TestFollowMode_BasicFollowWithEntry` testing CLI-level follow mode validation
+  - All tests use `waitForOutput` helper with generous timeouts for poll cycle timing
+
 - CLI integration for apsis follow mode (Phase 4):
   - `-F` and `--follow` flags to enable follow mode for live transcript monitoring
   - `validateFollowMode()` function checking for incompatible flag combinations (`-o` with `--follow`, `-f html` with `--follow`)

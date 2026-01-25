@@ -757,3 +757,264 @@ func waitForOutput(t *testing.T, buf *bytes.Buffer, expected string, timeout tim
 	}
 	return false
 }
+
+// --- End-to-End Integration Tests ---
+
+// TestFollowerIntegration_BasicFollowWithAppend tests that new entries are rendered
+// as they are appended to the file (requirements 4.1, 4.2).
+func TestFollowerIntegration_BasicFollowWithAppend(t *testing.T) {
+	tmpDir := t.TempDir()
+	tmpFile := filepath.Join(tmpDir, "session.jsonl")
+
+	// Create file with initial entry
+	initialContent := `{"type":"user","message":{"role":"user","content":[{"type":"text","text":"Initial message"}]}}` + "\n"
+	if err := os.WriteFile(tmpFile, []byte(initialContent), 0644); err != nil {
+		t.Fatalf("failed to create temp file: %v", err)
+	}
+
+	var buf bytes.Buffer
+	f, err := NewFollower(tmpFile, &buf, RenderOptions{Title: "Session Transcript"})
+	if err != nil {
+		t.Fatalf("NewFollower() error: %v", err)
+	}
+	f.warn = io.Discard
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	done := make(chan error, 1)
+	go func() {
+		done <- f.Run(ctx)
+	}()
+
+	// Wait for initial content to be rendered
+	if !waitForOutput(t, &buf, "Initial message", 2*time.Second) {
+		t.Fatal("initial content not rendered within timeout")
+	}
+
+	// Verify header is present in initial render (markdown header format: "# Session Transcript")
+	if !strings.Contains(buf.String(), "# Session Transcript") {
+		t.Error("expected header in initial render")
+	}
+
+	initialOutputLen := buf.Len()
+
+	// Append new entry
+	fh, err := os.OpenFile(tmpFile, os.O_APPEND|os.O_WRONLY, 0644)
+	if err != nil {
+		t.Fatalf("failed to open file for append: %v", err)
+	}
+	_, _ = fh.WriteString(`{"type":"assistant","message":{"role":"assistant","content":[{"type":"text","text":"Appended response"}]}}` + "\n")
+	_ = fh.Close()
+
+	// Wait for appended content
+	if !waitForOutput(t, &buf, "Appended response", 2*time.Second) {
+		t.Error("appended content not rendered within timeout")
+	}
+
+	// Verify incremental output doesn't contain header again
+	incrementalOutput := buf.String()[initialOutputLen:]
+	if strings.Contains(incrementalOutput, "# Session Transcript") {
+		t.Error("incremental output should not contain header")
+	}
+
+	cancel()
+	<-done
+}
+
+// TestFollowerIntegration_FileTruncation tests that truncated files cause
+// a full re-render (requirement 3.5).
+func TestFollowerIntegration_FileTruncation(t *testing.T) {
+	tmpDir := t.TempDir()
+	tmpFile := filepath.Join(tmpDir, "session.jsonl")
+
+	// Create file with initial content (longer to ensure clear truncation detection)
+	initialContent := `{"type":"user","message":{"role":"user","content":[{"type":"text","text":"First entry with lots of content to ensure size difference"}]}}
+{"type":"assistant","message":{"role":"assistant","content":[{"type":"text","text":"Second entry with even more content to make the file larger"}]}}
+`
+	if err := os.WriteFile(tmpFile, []byte(initialContent), 0644); err != nil {
+		t.Fatalf("failed to create temp file: %v", err)
+	}
+
+	var buf bytes.Buffer
+	f, err := NewFollower(tmpFile, &buf, RenderOptions{Title: "Session Transcript"})
+	if err != nil {
+		t.Fatalf("NewFollower() error: %v", err)
+	}
+	f.warn = io.Discard
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	done := make(chan error, 1)
+	go func() {
+		done <- f.Run(ctx)
+	}()
+
+	// Wait for initial render
+	if !waitForOutput(t, &buf, "Second entry", 2*time.Second) {
+		t.Fatal("initial content not rendered within timeout")
+	}
+
+	// Wait for at least one poll cycle to complete so lastSize is set
+	time.Sleep(600 * time.Millisecond)
+
+	// Count headers before truncation (markdown format: "# Session Transcript")
+	initialHeaderCount := strings.Count(buf.String(), "# Session Transcript")
+	if initialHeaderCount != 1 {
+		t.Errorf("expected 1 header in initial render, got %d", initialHeaderCount)
+	}
+
+	// Truncate and write new content (simulates agent restart with new session)
+	// The new content is SHORTER than the original to trigger truncation detection
+	newContent := `{"type":"user","message":{"role":"user","content":[{"type":"text","text":"Short"}]}}` + "\n"
+	if err := os.WriteFile(tmpFile, []byte(newContent), 0644); err != nil {
+		t.Fatalf("failed to truncate file: %v", err)
+	}
+
+	// Wait for new content after truncation (give more time for poll cycle)
+	if !waitForOutput(t, &buf, "Short", 2*time.Second) {
+		t.Error("content after truncation not rendered within timeout")
+	}
+
+	// Should have a new header after truncation (re-render)
+	finalHeaderCount := strings.Count(buf.String(), "# Session Transcript")
+	if finalHeaderCount != 2 {
+		t.Errorf("expected 2 headers after truncation re-render, got %d", finalHeaderCount)
+	}
+
+	cancel()
+	<-done
+}
+
+// TestFollowerIntegration_FileReplacement tests that file replacement (inode change)
+// causes a full re-render (requirements 3.6, 3.7).
+func TestFollowerIntegration_FileReplacement(t *testing.T) {
+	tmpDir := t.TempDir()
+	tmpFile := filepath.Join(tmpDir, "session.jsonl")
+
+	// Create initial file
+	initialContent := `{"type":"user","message":{"role":"user","content":[{"type":"text","text":"Original file"}]}}` + "\n"
+	if err := os.WriteFile(tmpFile, []byte(initialContent), 0644); err != nil {
+		t.Fatalf("failed to create temp file: %v", err)
+	}
+
+	var buf bytes.Buffer
+	f, err := NewFollower(tmpFile, &buf, RenderOptions{Title: "Session Transcript"})
+	if err != nil {
+		t.Fatalf("NewFollower() error: %v", err)
+	}
+	f.warn = io.Discard
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	done := make(chan error, 1)
+	go func() {
+		done <- f.Run(ctx)
+	}()
+
+	// Wait for initial render
+	if !waitForOutput(t, &buf, "Original file", 2*time.Second) {
+		t.Fatal("initial content not rendered within timeout")
+	}
+
+	// Wait for at least one poll cycle to complete so lastInode is set
+	time.Sleep(600 * time.Millisecond)
+
+	// Replace file atomically (new inode)
+	// This simulates how agents might crash and restart, creating a new file
+	newFile := filepath.Join(tmpDir, "session.jsonl.new")
+	newContent := `{"type":"user","message":{"role":"user","content":[{"type":"text","text":"Replaced file"}]}}` + "\n"
+	if err := os.WriteFile(newFile, []byte(newContent), 0644); err != nil {
+		t.Fatalf("failed to create new file: %v", err)
+	}
+
+	// Atomic replace: remove old, rename new
+	if err := os.Remove(tmpFile); err != nil {
+		t.Fatalf("failed to remove old file: %v", err)
+	}
+	if err := os.Rename(newFile, tmpFile); err != nil {
+		t.Fatalf("failed to rename new file: %v", err)
+	}
+
+	// Wait for new content after replacement (give more time for poll cycle)
+	if !waitForOutput(t, &buf, "Replaced file", 2*time.Second) {
+		t.Error("content after file replacement not rendered within timeout")
+	}
+
+	// Should have re-rendered with header (markdown format)
+	headerCount := strings.Count(buf.String(), "# Session Transcript")
+	if headerCount < 2 {
+		t.Errorf("expected at least 2 headers after file replacement, got %d", headerCount)
+	}
+
+	cancel()
+	<-done
+}
+
+// TestFollowerIntegration_IncompleteJSONHandling tests that incomplete JSON lines
+// at EOF are skipped and processed on the next poll (requirements 7.5, 7.6).
+func TestFollowerIntegration_IncompleteJSONHandling(t *testing.T) {
+	tmpDir := t.TempDir()
+	tmpFile := filepath.Join(tmpDir, "session.jsonl")
+
+	// Create file with complete entry
+	initialContent := `{"type":"user","message":{"role":"user","content":[{"type":"text","text":"Complete entry"}]}}` + "\n"
+	if err := os.WriteFile(tmpFile, []byte(initialContent), 0644); err != nil {
+		t.Fatalf("failed to create temp file: %v", err)
+	}
+
+	var buf bytes.Buffer
+	f, err := NewFollower(tmpFile, &buf, RenderOptions{Title: "Session Transcript"})
+	if err != nil {
+		t.Fatalf("NewFollower() error: %v", err)
+	}
+	f.warn = io.Discard
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	done := make(chan error, 1)
+	go func() {
+		done <- f.Run(ctx)
+	}()
+
+	// Wait for initial render
+	if !waitForOutput(t, &buf, "Complete entry", 2*time.Second) {
+		t.Fatal("initial content not rendered within timeout")
+	}
+
+	// Append incomplete JSON (simulates mid-write capture)
+	fh, err := os.OpenFile(tmpFile, os.O_APPEND|os.O_WRONLY, 0644)
+	if err != nil {
+		t.Fatalf("failed to open file for append: %v", err)
+	}
+	// Write partial JSON
+	_, _ = fh.WriteString(`{"type":"assistant","message":{"role":"assistant","content":[{"type":"text","text":"Partial`)
+	_ = fh.Close()
+
+	// Wait a bit to ensure poll cycle happens
+	time.Sleep(600 * time.Millisecond)
+
+	// Partial entry should NOT appear yet
+	if strings.Contains(buf.String(), "Partial") {
+		t.Error("partial JSON should not be rendered")
+	}
+
+	// Complete the JSON
+	fh, err = os.OpenFile(tmpFile, os.O_APPEND|os.O_WRONLY, 0644)
+	if err != nil {
+		t.Fatalf("failed to open file for completion: %v", err)
+	}
+	_, _ = fh.WriteString(` entry"}]}}` + "\n")
+	_ = fh.Close()
+
+	// Now it should appear
+	if !waitForOutput(t, &buf, "Partial entry", 2*time.Second) {
+		t.Error("completed entry not rendered within timeout")
+	}
+
+	cancel()
+	<-done
+}

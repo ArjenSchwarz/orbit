@@ -131,7 +131,7 @@ references:
 
 ## Final Validation
 
-- [ ] 15. Add end-to-end integration tests
+- [x] 15. Add end-to-end integration tests
   - Test basic follow with entry append
   - Test file truncation and re-render
   - Test file replacement and re-render
@@ -140,7 +140,7 @@ references:
   - Requirements: [3.5](requirements.md#3.5), [3.7](requirements.md#3.7), [6.3](requirements.md#6.3)
   - References: internal/transcript/follow_test.go, cmd/apsis/main_test.go
 
-- [ ] 16. Run linter and fix any issues
+- [x] 16. Run linter and fix any issues
   - Run make lint
   - Fix any golangci-lint warnings
   - Ensure code follows project conventions
