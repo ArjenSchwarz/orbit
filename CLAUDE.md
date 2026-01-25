@@ -163,8 +163,8 @@ Variant workflow (in order):
 1. `orbit run --variants N` - create and run variants
 2. `orbit status <spec>` - monitor variant progress and status
 3. `orbit compare <spec>` - regenerate comparison report (auto-generated after run)
-4. `orbit finalize <spec> --variant N` - adopt variant N and clean up others
-5. `orbit consolidate <spec> --variant N` - (optional) merge improvements from other variants
+4. `orbit consolidate <spec> --variant N` - (optional) merge improvements from other variants
+5. `orbit finalize <spec> --variant N` - adopt variant N and clean up others
 6. `orbit cleanup <spec>` - removes all variant worktrees and branches (alternative to finalize)
 
 Consolidation allows merging good ideas from non-chosen variants:

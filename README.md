@@ -315,16 +315,16 @@ flowchart TD
     I --> J
     J --> K[orbit status]
     K --> L{Choose variant}
-    L --> M[orbit finalize --variant N]
-    M --> N{Want improvements<br>from other variants?}
-    N -->|Yes| O[orbit consolidate --variant N]
-    N -->|No| P[Done]
-    O --> P
+    L --> M{Want improvements<br>from other variants?}
+    M -->|Yes| N[orbit consolidate --variant N]
+    M -->|No| O[orbit finalize --variant N]
+    N --> O
+    O --> P[Done]
 
     style A fill:#e1f5fe
     style P fill:#c8e6c9
     style H fill:#fff3e0
-    style M fill:#fce4ec
+    style O fill:#fce4ec
 ```
 
 ### Complete Workflow Steps
@@ -559,60 +559,9 @@ flowchart TD
 
 ---
 
-### Step 4: Finalize a Variant
+### Step 4: Consolidate Improvements (Optional)
 
-After reviewing the comparison, adopt your chosen variant:
-
-```bash
-# Adopt variant 1 as the final implementation
-orbit finalize my-feature --variant 1
-```
-
-**What finalize does:**
-
-1. Validates the original branch hasn't diverged (no new commits)
-2. Rebases the chosen variant onto the original branch
-3. Removes all variant worktrees
-4. Deletes all variant branches
-5. Cleans up `variants.json` and worktree directory
-
-```mermaid
-sequenceDiagram
-    participant User
-    participant Orbit
-    participant Git
-
-    User->>Orbit: orbit finalize my-feature --variant 1
-    Orbit->>Git: Check original branch hasn't diverged
-    Git-->>Orbit: OK (no new commits)
-
-    Orbit->>Git: Checkout original branch
-    Orbit->>Git: Merge --ff-only orbit-impl-1/my-feature
-    Git-->>Orbit: Fast-forward successful
-
-    loop For each variant
-        Orbit->>Git: Remove worktree
-        Orbit->>Git: Delete branch
-    end
-
-    Orbit->>Orbit: Delete variants.json
-    Orbit->>Orbit: Clean up .orbit/worktrees/
-    Orbit-->>User: Finalization complete
-```
-
-**Finalize flags:**
-
-| Flag | Description |
-|------|-------------|
-| `--variant N` | Which variant to adopt (required) |
-| `--force` | Force finalization even if branch diverged |
-| `--dry-run` | Show what would happen without making changes |
-
----
-
-### Step 5: Consolidate Improvements (Optional)
-
-If other variants had good ideas you want to incorporate, use consolidate:
+Before finalizing, you can merge good ideas from other variants into your chosen one. This must be done before finalize, as finalize removes all variant worktrees.
 
 ```bash
 # Apply improvements from other variants to chosen variant 1
@@ -660,6 +609,57 @@ flowchart TD
 | `--allow-dirty` | Allow consolidation with uncommitted changes |
 | `--rollback` | Revert the last consolidation commit |
 | `--force` | Force consolidation even if report is stale |
+
+---
+
+### Step 5: Finalize a Variant
+
+After reviewing the comparison (and optionally consolidating improvements), adopt your chosen variant:
+
+```bash
+# Adopt variant 1 as the final implementation
+orbit finalize my-feature --variant 1
+```
+
+**What finalize does:**
+
+1. Validates the original branch hasn't diverged (no new commits)
+2. Rebases the chosen variant onto the original branch
+3. Removes all variant worktrees
+4. Deletes all variant branches
+5. Cleans up `variants.json` and worktree directory
+
+```mermaid
+sequenceDiagram
+    participant User
+    participant Orbit
+    participant Git
+
+    User->>Orbit: orbit finalize my-feature --variant 1
+    Orbit->>Git: Check original branch hasn't diverged
+    Git-->>Orbit: OK (no new commits)
+
+    Orbit->>Git: Checkout original branch
+    Orbit->>Git: Merge --ff-only orbit-impl-1/my-feature
+    Git-->>Orbit: Fast-forward successful
+
+    loop For each variant
+        Orbit->>Git: Remove worktree
+        Orbit->>Git: Delete branch
+    end
+
+    Orbit->>Orbit: Delete variants.json
+    Orbit->>Orbit: Clean up .orbit/worktrees/
+    Orbit-->>User: Finalization complete
+```
+
+**Finalize flags:**
+
+| Flag | Description |
+|------|-------------|
+| `--variant N` | Which variant to adopt (required) |
+| `--force` | Force finalization even if branch diverged |
+| `--dry-run` | Show what would happen without making changes |
 
 ---
 
@@ -747,12 +747,13 @@ open specs/user-auth/comparison-report/index.html
 # or
 cat specs/user-auth/comparison-report/comparison-report.md
 
-# 5. Finalize the best variant
-orbit finalize user-auth --variant 2
-
-# 6. (Optional) If variant 1 had some good error handling, consolidate it
+# 5. (Optional) If variant 1 had some good error handling, consolidate it
+#    Note: Must be done BEFORE finalize, as finalize removes worktrees
 orbit consolidate user-auth --variant 2 \
   --prompt "Apply the error handling patterns from variant 1"
+
+# 6. Finalize the best variant (cleans up all worktrees)
+orbit finalize user-auth --variant 2
 
 # 7. Continue development on your feature branch
 git log --oneline -5  # See the variant commits merged in
@@ -766,16 +767,16 @@ flowchart LR
         A[orbit run --variants N]
         B[orbit status]
         C[orbit compare]
-        D[orbit finalize --variant N]
-        E[orbit consolidate --variant N]
+        D[orbit consolidate --variant N]
+        E[orbit finalize --variant N]
         F[orbit cleanup]
     end
 
     A -->|creates variants| B
     B -->|check progress| C
     C -->|regenerate report| D
-    D -->|adopt variant| E
-    E -->|merge improvements| F
+    D -.->|optional: merge improvements| E
+    E -->|adopt variant & cleanup| F
 
     F -.->|alternative to finalize| A
 ```
@@ -785,8 +786,8 @@ flowchart LR
 | `orbit run --variants N` | Create and run N variants | Start of workflow |
 | `orbit status <spec>` | Check variant status | Monitor progress |
 | `orbit compare <spec>` | Regenerate comparison | Report outdated or missing |
-| `orbit finalize <spec> --variant N` | Adopt a variant | Choose final implementation |
-| `orbit consolidate <spec> --variant N` | Merge improvements | Want ideas from other variants |
+| `orbit consolidate <spec> --variant N` | Merge improvements | Before finalize, want ideas from other variants |
+| `orbit finalize <spec> --variant N` | Adopt a variant | Choose final implementation, cleans up worktrees |
 | `orbit cleanup <spec>` | Remove all variants | Abandon without adopting |
 
 ## Web Interface
