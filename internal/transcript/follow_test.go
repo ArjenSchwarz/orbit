@@ -2,6 +2,7 @@ package transcript
 
 import (
 	"bytes"
+	"context"
 	"io"
 	"os"
 	"path/filepath"
@@ -365,4 +366,394 @@ not valid json
 	if len(lines) != 2 {
 		t.Fatalf("expected 2 lines, got %d", len(lines))
 	}
+}
+
+// --- Follower tests ---
+
+func TestNewFollower(t *testing.T) {
+	tmpDir := t.TempDir()
+	tmpFile := filepath.Join(tmpDir, "test.jsonl")
+
+	// File doesn't exist - should fail
+	_, err := NewFollower(tmpFile, io.Discard, RenderOptions{})
+	if err == nil {
+		t.Error("NewFollower should fail for non-existent file")
+	}
+
+	// Create file
+	if err := os.WriteFile(tmpFile, []byte(`{"type":"user"}`+"\n"), 0644); err != nil {
+		t.Fatalf("failed to create temp file: %v", err)
+	}
+
+	// Now it should succeed
+	f, err := NewFollower(tmpFile, io.Discard, RenderOptions{})
+	if err != nil {
+		t.Fatalf("NewFollower() error: %v", err)
+	}
+
+	if f.filePath != tmpFile {
+		t.Errorf("filePath = %q, want %q", f.filePath, tmpFile)
+	}
+	if f.seenHashes == nil {
+		t.Error("seenHashes not initialized")
+	}
+}
+
+func TestFollower_Poll_MtimeChange(t *testing.T) {
+	tmpDir := t.TempDir()
+	tmpFile := filepath.Join(tmpDir, "test.jsonl")
+
+	// Create file
+	if err := os.WriteFile(tmpFile, []byte(`{"type":"user"}`+"\n"), 0644); err != nil {
+		t.Fatalf("failed to create temp file: %v", err)
+	}
+
+	f, err := NewFollower(tmpFile, io.Discard, RenderOptions{})
+	if err != nil {
+		t.Fatalf("NewFollower() error: %v", err)
+	}
+
+	// First poll should detect change (from zero state)
+	changed, err := f.poll()
+	if err != nil {
+		t.Fatalf("poll() error: %v", err)
+	}
+	if !changed {
+		t.Error("first poll should detect change from zero state")
+	}
+
+	// Second poll with no changes
+	changed, err = f.poll()
+	if err != nil {
+		t.Fatalf("poll() error: %v", err)
+	}
+	if changed {
+		t.Error("second poll should not detect change")
+	}
+
+	// Append to file
+	fh, err := os.OpenFile(tmpFile, os.O_APPEND|os.O_WRONLY, 0644)
+	if err != nil {
+		t.Fatalf("failed to open file: %v", err)
+	}
+	if _, err := fh.WriteString(`{"type":"assistant"}` + "\n"); err != nil {
+		_ = fh.Close()
+		t.Fatalf("failed to write: %v", err)
+	}
+	_ = fh.Close()
+
+	// Third poll should detect change
+	changed, err = f.poll()
+	if err != nil {
+		t.Fatalf("poll() error: %v", err)
+	}
+	if !changed {
+		t.Error("poll should detect change after append")
+	}
+}
+
+func TestFollower_Poll_Truncation(t *testing.T) {
+	tmpDir := t.TempDir()
+	tmpFile := filepath.Join(tmpDir, "test.jsonl")
+
+	// Create file with multiple entries
+	if err := os.WriteFile(tmpFile, []byte(`{"type":"user"}`+"\n"+`{"type":"assistant"}`+"\n"), 0644); err != nil {
+		t.Fatalf("failed to create temp file: %v", err)
+	}
+
+	var buf bytes.Buffer
+	f, err := NewFollower(tmpFile, &buf, RenderOptions{})
+	if err != nil {
+		t.Fatalf("NewFollower() error: %v", err)
+	}
+
+	// Initialize state
+	_, _ = f.poll()
+	f.seenHashes[[16]byte{1}] = struct{}{} // Simulate having seen entries
+	f.initialRenderDone = true
+
+	// Truncate the file
+	if err := os.WriteFile(tmpFile, []byte(`{"type":"user"}`+"\n"), 0644); err != nil {
+		t.Fatalf("failed to truncate file: %v", err)
+	}
+
+	// Poll should detect truncation and clear state
+	changed, err := f.poll()
+	if err != nil {
+		t.Fatalf("poll() error: %v", err)
+	}
+	if !changed {
+		t.Error("poll should detect truncation")
+	}
+	if len(f.seenHashes) != 0 {
+		t.Error("seenHashes should be cleared on truncation")
+	}
+	if f.initialRenderDone {
+		t.Error("initialRenderDone should be reset on truncation")
+	}
+}
+
+func TestFollower_Poll_FileDeleted(t *testing.T) {
+	tmpDir := t.TempDir()
+	tmpFile := filepath.Join(tmpDir, "test.jsonl")
+
+	// Create file
+	if err := os.WriteFile(tmpFile, []byte(`{"type":"user"}`+"\n"), 0644); err != nil {
+		t.Fatalf("failed to create temp file: %v", err)
+	}
+
+	f, err := NewFollower(tmpFile, io.Discard, RenderOptions{})
+	if err != nil {
+		t.Fatalf("NewFollower() error: %v", err)
+	}
+
+	// Initialize state
+	_, _ = f.poll()
+
+	// Delete file
+	if err := os.Remove(tmpFile); err != nil {
+		t.Fatalf("failed to remove file: %v", err)
+	}
+
+	// Poll should return error
+	_, err = f.poll()
+	if err == nil {
+		t.Error("poll should return error when file is deleted")
+	}
+}
+
+func TestFollower_ProcessFile(t *testing.T) {
+	tmpDir := t.TempDir()
+	tmpFile := filepath.Join(tmpDir, "test.jsonl")
+
+	// Create file with user entry
+	if err := os.WriteFile(tmpFile, []byte(`{"type":"user","message":{"role":"user","content":[{"type":"text","text":"Hello"}]}}`+"\n"), 0644); err != nil {
+		t.Fatalf("failed to create temp file: %v", err)
+	}
+
+	var buf bytes.Buffer
+	f, err := NewFollower(tmpFile, &buf, RenderOptions{})
+	if err != nil {
+		t.Fatalf("NewFollower() error: %v", err)
+	}
+	f.warn = io.Discard // Suppress warnings
+
+	// Process file
+	if err := f.processFile(); err != nil {
+		t.Fatalf("processFile() error: %v", err)
+	}
+
+	// Should have output
+	output := buf.String()
+	if !strings.Contains(output, "Session Transcript") {
+		t.Error("output should contain header")
+	}
+	if !strings.Contains(output, "Hello") {
+		t.Error("output should contain entry content")
+	}
+	if !f.initialRenderDone {
+		t.Error("initialRenderDone should be true after first render")
+	}
+	if len(f.seenHashes) != 1 {
+		t.Errorf("seenHashes should have 1 entry, got %d", len(f.seenHashes))
+	}
+}
+
+func TestFollower_ProcessFile_Incremental(t *testing.T) {
+	tmpDir := t.TempDir()
+	tmpFile := filepath.Join(tmpDir, "test.jsonl")
+
+	// Create file with user entry
+	if err := os.WriteFile(tmpFile, []byte(`{"type":"user","message":{"role":"user","content":[{"type":"text","text":"First"}]}}`+"\n"), 0644); err != nil {
+		t.Fatalf("failed to create temp file: %v", err)
+	}
+
+	var buf bytes.Buffer
+	f, err := NewFollower(tmpFile, &buf, RenderOptions{})
+	if err != nil {
+		t.Fatalf("NewFollower() error: %v", err)
+	}
+	f.warn = io.Discard
+
+	// Initial render
+	if err := f.processFile(); err != nil {
+		t.Fatalf("processFile() error: %v", err)
+	}
+
+	initialOutput := buf.String()
+	if !strings.Contains(initialOutput, "Session Transcript") {
+		t.Error("initial output should contain header")
+	}
+
+	// Append new entry
+	fh, err := os.OpenFile(tmpFile, os.O_APPEND|os.O_WRONLY, 0644)
+	if err != nil {
+		t.Fatalf("failed to open file: %v", err)
+	}
+	if _, err := fh.WriteString(`{"type":"user","message":{"role":"user","content":[{"type":"text","text":"Second"}]}}` + "\n"); err != nil {
+		_ = fh.Close()
+		t.Fatalf("failed to write: %v", err)
+	}
+	_ = fh.Close()
+
+	// Process again
+	buf.Reset()
+	if err := f.processFile(); err != nil {
+		t.Fatalf("processFile() error: %v", err)
+	}
+
+	incrementalOutput := buf.String()
+	// Incremental output should NOT contain header again
+	if strings.Contains(incrementalOutput, "Session Transcript") {
+		t.Error("incremental output should not contain header")
+	}
+	if !strings.Contains(incrementalOutput, "Second") {
+		t.Error("incremental output should contain new entry")
+	}
+	if len(f.seenHashes) != 2 {
+		t.Errorf("seenHashes should have 2 entries, got %d", len(f.seenHashes))
+	}
+}
+
+func TestFollower_AddSeenHash_Cap(t *testing.T) {
+	f := &Follower{
+		seenHashes:        make(map[[16]byte]struct{}),
+		initialRenderDone: true,
+	}
+
+	// Fill up to just below cap
+	for i := 0; i < maxSeenHashes-1; i++ {
+		h := [16]byte{byte(i >> 24), byte(i >> 16), byte(i >> 8), byte(i)}
+		f.addSeenHash(h)
+	}
+
+	if len(f.seenHashes) != maxSeenHashes-1 {
+		t.Errorf("expected %d hashes, got %d", maxSeenHashes-1, len(f.seenHashes))
+	}
+	if !f.initialRenderDone {
+		t.Error("initialRenderDone should still be true")
+	}
+
+	// Add one more to reach cap, then one more to trigger reset
+	f.addSeenHash([16]byte{0xff, 0xff, 0xff, 0xfe})
+	if len(f.seenHashes) != maxSeenHashes {
+		t.Errorf("expected %d hashes at cap, got %d", maxSeenHashes, len(f.seenHashes))
+	}
+
+	// Next add should trigger reset
+	f.addSeenHash([16]byte{0xff, 0xff, 0xff, 0xff})
+	if len(f.seenHashes) != 1 {
+		t.Errorf("after reset, expected 1 hash, got %d", len(f.seenHashes))
+	}
+	if f.initialRenderDone {
+		t.Error("initialRenderDone should be reset after cap exceeded")
+	}
+}
+
+func TestFollower_Run_WithCancellation(t *testing.T) {
+	tmpDir := t.TempDir()
+	tmpFile := filepath.Join(tmpDir, "test.jsonl")
+
+	// Create file
+	if err := os.WriteFile(tmpFile, []byte(`{"type":"user","message":{"role":"user","content":[{"type":"text","text":"Hello"}]}}`+"\n"), 0644); err != nil {
+		t.Fatalf("failed to create temp file: %v", err)
+	}
+
+	var buf bytes.Buffer
+	f, err := NewFollower(tmpFile, &buf, RenderOptions{})
+	if err != nil {
+		t.Fatalf("NewFollower() error: %v", err)
+	}
+	f.warn = io.Discard
+
+	// Start follower with cancellable context
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan error, 1)
+	go func() {
+		done <- f.Run(ctx)
+	}()
+
+	// Wait for initial render
+	deadline := time.Now().Add(1500 * time.Millisecond)
+	for time.Now().Before(deadline) {
+		if strings.Contains(buf.String(), "Hello") {
+			break
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+
+	if !strings.Contains(buf.String(), "Hello") {
+		t.Error("expected initial content to be rendered")
+	}
+
+	// Cancel and wait for clean shutdown
+	cancel()
+	select {
+	case err := <-done:
+		if err != nil {
+			t.Errorf("Run() returned error on cancellation: %v", err)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("Run() did not return after cancellation")
+	}
+}
+
+func TestFollower_Run_DetectsChanges(t *testing.T) {
+	tmpDir := t.TempDir()
+	tmpFile := filepath.Join(tmpDir, "test.jsonl")
+
+	// Create file
+	if err := os.WriteFile(tmpFile, []byte(`{"type":"user","message":{"role":"user","content":[{"type":"text","text":"First"}]}}`+"\n"), 0644); err != nil {
+		t.Fatalf("failed to create temp file: %v", err)
+	}
+
+	var buf bytes.Buffer
+	f, err := NewFollower(tmpFile, &buf, RenderOptions{})
+	if err != nil {
+		t.Fatalf("NewFollower() error: %v", err)
+	}
+	f.warn = io.Discard
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	done := make(chan error, 1)
+	go func() {
+		done <- f.Run(ctx)
+	}()
+
+	// Wait for initial render
+	waitForOutput(t, &buf, "First", 1500*time.Millisecond)
+
+	// Append new entry
+	fh, err := os.OpenFile(tmpFile, os.O_APPEND|os.O_WRONLY, 0644)
+	if err != nil {
+		t.Fatalf("failed to open file: %v", err)
+	}
+	if _, err := fh.WriteString(`{"type":"user","message":{"role":"user","content":[{"type":"text","text":"Second"}]}}` + "\n"); err != nil {
+		_ = fh.Close()
+		t.Fatalf("failed to write: %v", err)
+	}
+	_ = fh.Close()
+
+	// Wait for new content
+	if !waitForOutput(t, &buf, "Second", 1500*time.Millisecond) {
+		t.Error("expected new entry to be rendered")
+	}
+
+	cancel()
+	<-done
+}
+
+// waitForOutput polls the buffer until expected content appears or timeout.
+func waitForOutput(t *testing.T, buf *bytes.Buffer, expected string, timeout time.Duration) bool {
+	t.Helper()
+	deadline := time.Now().Add(timeout)
+	for time.Now().Before(deadline) {
+		if strings.Contains(buf.String(), expected) {
+			return true
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	return false
 }

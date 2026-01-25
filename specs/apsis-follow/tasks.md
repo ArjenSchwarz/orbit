@@ -50,7 +50,7 @@ references:
 
 ## Follower Component
 
-- [ ] 6. Implement Follower struct and NewFollower
+- [x] 6. Implement Follower struct and NewFollower
   - Add struct with all fields per design
   - NewFollower validates file exists (requirement 7.1)
   - Initialize seenHashes map
@@ -59,7 +59,7 @@ references:
   - Requirements: [7.1](requirements.md#7.1)
   - References: internal/transcript/follow.go
 
-- [ ] 7. Implement Follower.poll method
+- [x] 7. Implement Follower.poll method
   - Check mtime for changes
   - Detect truncation via size decrease
   - Detect replacement via inode change
@@ -68,7 +68,7 @@ references:
   - Requirements: [3.3](requirements.md#3.3), [3.4](requirements.md#3.4), [3.5](requirements.md#3.5), [3.6](requirements.md#3.6), [3.7](requirements.md#3.7)
   - References: internal/transcript/follow.go
 
-- [ ] 8. Implement Follower.processFile method
+- [x] 8. Implement Follower.processFile method
   - Call readAndHashLines
   - Parse entries and build toolMeta/skillDescriptions
   - Filter to unseen entries via hash comparison
@@ -78,7 +78,7 @@ references:
   - Requirements: [4.1](requirements.md#4.1), [4.2](requirements.md#4.2), [4.3](requirements.md#4.3), [4.6](requirements.md#4.6), [4.8](requirements.md#4.8)
   - References: internal/transcript/follow.go
 
-- [ ] 9. Implement Follower.Run method
+- [x] 9. Implement Follower.Run method
   - Create 500ms ticker
   - Poll loop with context cancellation
   - Call processFile on changes

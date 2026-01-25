@@ -9,6 +9,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Follower component for apsis follow mode (Phase 3):
+  - `Follower` struct with file monitoring, deduplication, and incremental rendering state
+  - `NewFollower()` constructor validating file existence at creation time (requirement 7.1)
+  - `poll()` method detecting file changes via mtime, truncation via size decrease, and replacement via inode change
+  - `processFile()` method reading, hashing, parsing, and rendering new entries with hash-based deduplication
+  - `addSeenHash()` method with cap-based reset at 10,000 entries to prevent unbounded memory growth
+  - `Run()` method implementing 500ms poll loop with context cancellation support
+  - Unit tests for constructor validation, poll scenarios (mtime, truncation, deletion), processFile (initial and incremental rendering), hash cap reset, and Run with cancellation
+
 - Incremental rendering support for apsis follow mode (Phase 2):
   - `RenderEntries()` function to render entries without header using pre-built state
   - `BuildToolMeta()` function to accumulate tool metadata from entries for follow mode

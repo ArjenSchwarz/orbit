@@ -3,6 +3,7 @@ package transcript
 import (
 	"bufio"
 	"bytes"
+	"context"
 	"crypto/sha256"
 	"encoding/json"
 	"fmt"
@@ -11,6 +12,182 @@ import (
 	"syscall"
 	"time"
 )
+
+// maxSeenHashes is the maximum number of entry hashes to track before resetting.
+// At 16 bytes per hash, this uses ~160KB of memory.
+const maxSeenHashes = 10000
+
+// Follower monitors a JSONL file and renders new entries incrementally.
+type Follower struct {
+	filePath string
+	output   io.Writer
+	warn     io.Writer // Destination for warning messages (defaults to os.Stderr)
+
+	// Deduplication state
+	seenHashes map[[16]byte]struct{}
+
+	// File change detection
+	lastMtime time.Time
+	lastInode uint64
+	lastSize  int64
+
+	// Render state
+	initialRenderDone bool // True after first render (header already written)
+	opts              RenderOptions
+}
+
+// NewFollower creates a new Follower for the given file path.
+// Validates file exists at creation time (fails fast per requirement 7.1).
+func NewFollower(filePath string, output io.Writer, opts RenderOptions) (*Follower, error) {
+	// Validate file exists (requirement 7.1)
+	if _, err := os.Stat(filePath); err != nil {
+		return nil, fmt.Errorf("file not found: %s", filePath)
+	}
+
+	return &Follower{
+		filePath:   filePath,
+		output:     output,
+		warn:       os.Stderr,
+		seenHashes: make(map[[16]byte]struct{}),
+		opts:       opts,
+	}, nil
+}
+
+// poll checks for file changes and returns whether the file changed.
+// Clears seenHashes on truncation (size decrease) or replacement (inode change).
+func (f *Follower) poll() (bool, error) {
+	mtime, inode, size, err := getFileInfo(f.filePath)
+	if err != nil {
+		return false, fmt.Errorf("checking file: %w", err)
+	}
+
+	// Detect file truncation or replacement
+	truncated := size < f.lastSize
+	replaced := f.lastInode != 0 && inode != 0 && inode != f.lastInode
+
+	if truncated || replaced {
+		// Clear state and re-render from beginning
+		f.seenHashes = make(map[[16]byte]struct{})
+		f.initialRenderDone = false
+		f.lastMtime = mtime
+		f.lastInode = inode
+		f.lastSize = size
+		return true, nil
+	}
+
+	// Check for modification
+	changed := !mtime.Equal(f.lastMtime)
+	f.lastMtime = mtime
+	f.lastInode = inode
+	f.lastSize = size
+
+	return changed, nil
+}
+
+// processFile reads, parses, and renders new entries.
+// Builds toolMeta/skillDescriptions from all entries, then renders only unseen entries.
+func (f *Follower) processFile() error {
+	lines, err := readAndHashLines(f.filePath, f.warn)
+	if err != nil {
+		return err
+	}
+
+	// Parse all entries and collect unseen entries with their hashes
+	var allEntries []Entry
+	var newEntries []Entry
+	var newHashes [][16]byte
+
+	for _, lh := range lines {
+		var entry Entry
+		if err := json.Unmarshal(lh.raw, &entry); err != nil {
+			// Already filtered by readAndHashLines, shouldn't happen
+			continue
+		}
+		allEntries = append(allEntries, entry)
+
+		// Check if this entry is new
+		if _, seen := f.seenHashes[lh.hash]; !seen {
+			newEntries = append(newEntries, entry)
+			newHashes = append(newHashes, lh.hash)
+		}
+	}
+
+	// No new entries to render
+	if len(newEntries) == 0 {
+		return nil
+	}
+
+	// Build state from ALL entries for correct rendering context
+	toolMeta := BuildToolMeta(allEntries)
+	skillDescriptions := BuildSkillDescriptionMap(allEntries)
+
+	// Render
+	var output string
+	if f.initialRenderDone {
+		// Incremental: render only new entries without header
+		output = RenderEntries(newEntries, toolMeta, skillDescriptions, f.opts)
+	} else {
+		// Initial: render all with header
+		output = RenderMarkdown(allEntries, f.opts)
+		f.initialRenderDone = true
+	}
+
+	// Write output
+	if _, err := f.output.Write([]byte(output)); err != nil {
+		return fmt.Errorf("writing output: %w", err)
+	}
+
+	// Flush if output supports it (requirement 4.8)
+	if flusher, ok := f.output.(interface{ Flush() error }); ok {
+		_ = flusher.Flush()
+	}
+
+	// Update seen hashes
+	for _, h := range newHashes {
+		f.addSeenHash(h)
+	}
+
+	return nil
+}
+
+// addSeenHash adds a hash to the seen set, resetting if cap exceeded.
+func (f *Follower) addSeenHash(h [16]byte) {
+	if len(f.seenHashes) >= maxSeenHashes {
+		// Reset to avoid unbounded growth
+		f.seenHashes = make(map[[16]byte]struct{})
+		f.initialRenderDone = false // Re-render header on next batch
+	}
+	f.seenHashes[h] = struct{}{}
+}
+
+// Run starts the follow loop. Blocks until ctx is cancelled.
+// Returns nil on clean shutdown (context cancellation), error on file errors.
+func (f *Follower) Run(ctx context.Context) error {
+	ticker := time.NewTicker(500 * time.Millisecond)
+	defer ticker.Stop()
+
+	// Initial render
+	if err := f.processFile(); err != nil {
+		return err
+	}
+
+	for {
+		select {
+		case <-ctx.Done():
+			return nil // Clean shutdown
+		case <-ticker.C:
+			changed, err := f.poll()
+			if err != nil {
+				return err
+			}
+			if changed {
+				if err := f.processFile(); err != nil {
+					return err
+				}
+			}
+		}
+	}
+}
 
 // lineWithHash holds a raw JSON line and its precomputed hash.
 type lineWithHash struct {
