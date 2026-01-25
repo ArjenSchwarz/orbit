@@ -76,6 +76,8 @@ func BuildProjectPath(projectPath string) string {
 	// Replace path separators with dashes (leading separator becomes leading dash)
 	p := strings.ReplaceAll(projectPath, "/", "-")
 	p = strings.ReplaceAll(p, "\\", "-")
+	// Replace dots with dashes to match Claude's encoding
+	p = strings.ReplaceAll(p, ".", "-")
 	return p
 }
 
