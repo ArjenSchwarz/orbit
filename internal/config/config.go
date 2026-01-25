@@ -6,11 +6,18 @@ import (
 	"log"
 	"os"
 	"path/filepath"
+	"regexp"
+	"strings"
 	"time"
 
 	"github.com/arjenschwarz/orbit/internal/agents"
 	"github.com/spf13/viper"
 )
+
+// aliasNamePattern matches valid alias names: lowercase alphanumeric with hyphens,
+// not starting or ending with a hyphen.
+// Pattern: [a-z0-9]+(-[a-z0-9]+)*
+var aliasNamePattern = regexp.MustCompile(`^[a-z0-9]+(-[a-z0-9]+)*$`)
 
 const (
 	// DefaultCommand is the default prompt used for Claude during phase execution.
@@ -36,6 +43,44 @@ type AgentConfig struct {
 	Model       string   `yaml:"model"`        // Agent-specific model option
 }
 
+// AgentAliasConfig holds per-alias settings from .orbit.yaml.
+// This enables defining named agent configurations that combine an agent type with model and other settings.
+type AgentAliasConfig struct {
+	Type        string   `yaml:"type"`         // Required: underlying agent type (e.g., "claude-code", "codex")
+	Model       string   `yaml:"model"`        // Optional: model to use
+	CLIPath     string   `yaml:"cli-path"`     // Override CLI command path
+	AutoApprove bool     `yaml:"auto-approve"` // Tool approval behavior
+	ExtraArgs   []string `yaml:"extra-args"`   // Additional CLI arguments
+	Timeout     string   `yaml:"timeout"`      // Execution timeout as duration string (e.g., "30m", "1h")
+}
+
+// ResolvedAgent contains a validated and resolved agent alias.
+type ResolvedAgent struct {
+	Alias  string           // Original alias name (normalized to lowercase)
+	Type   string           // Underlying agent type (e.g., "claude-code")
+	Config AgentAliasConfig // The full configuration for this alias
+}
+
+// ValidateAliasName checks if a name matches the required pattern.
+// Pattern: [a-z0-9]+(-[a-z0-9]+)* (lowercase alphanumeric with hyphens)
+// Returns an error if the name is invalid.
+func ValidateAliasName(name string) error {
+	if name == "" {
+		return fmt.Errorf("alias name cannot be empty")
+	}
+
+	normalized := NormalizeAliasName(name)
+	if !aliasNamePattern.MatchString(normalized) {
+		return fmt.Errorf("invalid agent alias name %q: must use only lowercase letters, numbers, and hyphens, and cannot start or end with a hyphen (pattern: [a-z0-9]+(-[a-z0-9]+)*)", name)
+	}
+	return nil
+}
+
+// NormalizeAliasName converts a name to lowercase for case-insensitive comparison.
+func NormalizeAliasName(name string) string {
+	return strings.ToLower(name)
+}
+
 // Config holds the resolved configuration values.
 type Config struct {
 	Command         string
@@ -47,8 +92,15 @@ type Config struct {
 	Debug           bool // Enable debug logging for troubleshooting
 
 	// Agent selection and configuration
-	Agent  string                 // Default agent for project (e.g., "claude-code", "codex")
-	Agents map[string]AgentConfig // Per-agent configuration
+	Agent        string                      // Default agent alias for project
+	Agents       map[string]AgentConfig      // Per-agent configuration (legacy)
+	AgentAliases map[string]AgentAliasConfig // Agent alias configurations from YAML
+	// ResolvedAgents is populated by ResolveAliases() after validation
+	ResolvedAgents map[string]ResolvedAgent
+
+	// Config file state
+	ConfigFileFound  bool    // Whether .orbit.yaml was found (home or project)
+	ConfigParseError []error // Errors from parsing config (e.g., invalid model types)
 
 	// Variant configuration for multi-spec comparison
 	VariantCount   int    // Number of variants (0 = single-run mode)
@@ -103,6 +155,8 @@ func Load(workingDir string) *Config {
 
 	// Track if post-command was explicitly set in either config file
 	postCommandExplicit := false
+	// Track if any config file was found (home or project)
+	configFileFound := false
 
 	// Load home config first (lowest priority for files)
 	if homeDir, err := os.UserHomeDir(); err == nil {
@@ -113,6 +167,7 @@ func Load(workingDir string) *Config {
 			if err := homeViper.ReadInConfig(); err != nil {
 				log.Printf("Warning: could not read %s: %v", homeConfigPath, err)
 			} else {
+				configFileFound = true
 				// Track if home config explicitly set post-command
 				if homeViper.IsSet("post-command") {
 					postCommandExplicit = true
@@ -134,6 +189,7 @@ func Load(workingDir string) *Config {
 		if err := projectViper.ReadInConfig(); err != nil {
 			log.Printf("Warning: could not read %s: %v", projectConfigPath, err)
 		} else {
+			configFileFound = true
 			// Check if post-command was explicitly set in project config
 			if projectViper.IsSet("post-command") {
 				postCommandExplicit = true
@@ -156,7 +212,13 @@ func Load(workingDir string) *Config {
 	debug := v.GetBool("debug")
 	// Agent configuration
 	agent := v.GetString("agent")
-	agentsMap := parseAgentsConfig(v)
+	agentsMap, agentParseErrors := parseAgentsConfig(v)
+	// Agent alias configuration (for new type-based agent system)
+	agentAliasesMap, aliasParseErrors := parseAgentAliasesConfig(v)
+	// Combine all parse errors
+	var configParseErrors []error
+	configParseErrors = append(configParseErrors, agentParseErrors...)
+	configParseErrors = append(configParseErrors, aliasParseErrors...)
 	// Variant configuration
 	variantCount := v.GetInt("variant-count")
 	parallel := v.GetBool("parallel")
@@ -234,6 +296,9 @@ func Load(workingDir string) *Config {
 		Debug:               debug,
 		Agent:               agent,
 		Agents:              agentsMap,
+		AgentAliases:        agentAliasesMap,
+		ConfigFileFound:     configFileFound,
+		ConfigParseError:    configParseErrors,
 		VariantCount:        variantCount,
 		Parallel:            parallel,
 		MaxParallel:         maxParallel,
@@ -279,13 +344,15 @@ func (c *Config) IsPostCommandDisabled() bool {
 
 // parseAgentsConfig extracts the agents map from viper configuration.
 // It handles the nested YAML structure of agent configurations.
-func parseAgentsConfig(v *viper.Viper) map[string]AgentConfig {
+// Returns the parsed configs and a slice of validation errors for invalid model types.
+func parseAgentsConfig(v *viper.Viper) (map[string]AgentConfig, []error) {
 	agentsMap := make(map[string]AgentConfig)
+	var validationErrors []error
 
 	// Get the agents section as a map
 	agentsRaw := v.GetStringMap("agents")
 	if agentsRaw == nil {
-		return agentsMap
+		return agentsMap, nil
 	}
 
 	for name, cfg := range agentsRaw {
@@ -310,8 +377,14 @@ func parseAgentsConfig(v *viper.Viper) map[string]AgentConfig {
 		if v, ok := cfgMap["timeout"].(string); ok {
 			agentCfg.Timeout = v
 		}
-		if v, ok := cfgMap["model"].(string); ok {
-			agentCfg.Model = v
+		// Handle model field with type coercion
+		if modelVal, exists := cfgMap["model"]; exists {
+			model, err := coerceModelValue(name, modelVal)
+			if err != nil {
+				validationErrors = append(validationErrors, err)
+			} else {
+				agentCfg.Model = model
+			}
 		}
 		// Handle extra-args as a slice
 		if v, ok := cfgMap["extra-args"].([]interface{}); ok {
@@ -325,7 +398,97 @@ func parseAgentsConfig(v *viper.Viper) map[string]AgentConfig {
 		agentsMap[name] = agentCfg
 	}
 
-	return agentsMap
+	return agentsMap, validationErrors
+}
+
+// parseAgentAliasesConfig extracts the agents map as AgentAliasConfig from viper configuration.
+// It handles the nested YAML structure of agent alias configurations including the type field.
+// Returns the parsed configs and a slice of validation errors for invalid model types.
+func parseAgentAliasesConfig(v *viper.Viper) (map[string]AgentAliasConfig, []error) {
+	aliasesMap := make(map[string]AgentAliasConfig)
+	var validationErrors []error
+
+	// Get the agents section as a map
+	agentsRaw := v.GetStringMap("agents")
+	if agentsRaw == nil {
+		return aliasesMap, nil
+	}
+
+	for name, cfg := range agentsRaw {
+		// Each agent config is a map[string]interface{}
+		cfgMap, ok := cfg.(map[string]interface{})
+		if !ok {
+			continue
+		}
+
+		// Default AutoApprove to true for non-interactive operation.
+		// Can be explicitly set to false in config to disable.
+		aliasCfg := AgentAliasConfig{
+			AutoApprove: true,
+		}
+
+		// Parse type field (required for alias configs)
+		if v, ok := cfgMap["type"].(string); ok {
+			aliasCfg.Type = v
+		}
+		if v, ok := cfgMap["cli-path"].(string); ok {
+			aliasCfg.CLIPath = v
+		}
+		if v, ok := cfgMap["auto-approve"].(bool); ok {
+			aliasCfg.AutoApprove = v
+		}
+		if v, ok := cfgMap["timeout"].(string); ok {
+			aliasCfg.Timeout = v
+		}
+		// Handle model field with type coercion
+		if modelVal, exists := cfgMap["model"]; exists {
+			model, err := coerceModelValue(name, modelVal)
+			if err != nil {
+				validationErrors = append(validationErrors, err)
+			} else {
+				aliasCfg.Model = model
+			}
+		}
+		// Handle extra-args as a slice
+		if v, ok := cfgMap["extra-args"].([]interface{}); ok {
+			for _, arg := range v {
+				if s, ok := arg.(string); ok {
+					aliasCfg.ExtraArgs = append(aliasCfg.ExtraArgs, s)
+				}
+			}
+		}
+
+		aliasesMap[name] = aliasCfg
+	}
+
+	return aliasesMap, validationErrors
+}
+
+// coerceModelValue coerces a YAML model value to a string.
+// Valid types: string, int, int64, float64 (coerced to string)
+// Invalid types: bool, slice, map (returns error)
+func coerceModelValue(aliasName string, value interface{}) (string, error) {
+	switch v := value.(type) {
+	case string:
+		return v, nil
+	case int:
+		return fmt.Sprintf("%d", v), nil
+	case int64:
+		return fmt.Sprintf("%d", v), nil
+	case float64:
+		// Use %v for cleaner output (e.g., "4.5" not "4.500000")
+		return fmt.Sprintf("%v", v), nil
+	case nil:
+		return "", nil
+	case bool:
+		return "", fmt.Errorf("alias %q: model must be a string or number, got bool", aliasName)
+	case []interface{}:
+		return "", fmt.Errorf("alias %q: model must be a string or number, got array", aliasName)
+	case map[string]interface{}:
+		return "", fmt.Errorf("alias %q: model must be a string or number, got map", aliasName)
+	default:
+		return "", fmt.Errorf("alias %q: model must be a string or number, got %T", aliasName, v)
+	}
 }
 
 // GetAgentConfig returns the agents.AgentConfig for a specific agent.
@@ -370,4 +533,136 @@ func (c *Config) GetAllAgentConfigs() map[string]agents.AgentConfig {
 		result[name] = c.GetAgentConfig(name)
 	}
 	return result
+}
+
+// ResolveAliases validates all agent aliases and builds the ResolvedAgents map.
+// Returns error if validation fails: missing type, invalid name, duplicates, or unknown type.
+// This should be called after Load() and before using any agent references.
+func (c *Config) ResolveAliases() error {
+	// Check for parse errors from config loading
+	if len(c.ConfigParseError) > 0 {
+		// Return the first parse error
+		return c.ConfigParseError[0]
+	}
+
+	// Check if agents section is empty
+	if len(c.AgentAliases) == 0 {
+		return fmt.Errorf("no agents configured in .orbit.yaml\n\nAdd at least one agent:\n\nagents:\n  claude-code:\n    type: claude-code\n    auto-approve: true")
+	}
+
+	// Track normalized names for duplicate detection
+	normalizedToOriginal := make(map[string]string)
+	c.ResolvedAgents = make(map[string]ResolvedAgent)
+
+	// Get registered agent types
+	registeredTypes := agents.List()
+	registeredTypesSet := make(map[string]bool)
+	for _, t := range registeredTypes {
+		registeredTypesSet[t] = true
+	}
+
+	for name, aliasCfg := range c.AgentAliases {
+		// Validate alias name pattern
+		if err := ValidateAliasName(name); err != nil {
+			return err
+		}
+
+		// Normalize name for duplicate checking
+		normalized := NormalizeAliasName(name)
+
+		// Check for duplicates after normalization
+		if existingName, exists := normalizedToOriginal[normalized]; exists {
+			return fmt.Errorf("duplicate agent aliases after case normalization\n\nThe following aliases conflict:\n  - %q and %q both normalize to %q\n\nRemove duplicate definitions from .orbit.yaml", existingName, name, normalized)
+		}
+		normalizedToOriginal[normalized] = name
+
+		// Validate type field is present
+		if aliasCfg.Type == "" {
+			return fmt.Errorf("agent alias %q is missing required \"type\" field\n\nAdd a type field to specify the underlying agent:\n\nagents:\n  %s:\n    type: claude-code  # or codex, kiro, copilot", name, name)
+		}
+
+		// Validate type is a registered agent
+		if !registeredTypesSet[aliasCfg.Type] {
+			return fmt.Errorf("unknown agent type %q for alias %q\n\nValid agent types: %v\n\nUpdate the type field in .orbit.yaml to use a registered agent type", aliasCfg.Type, name, registeredTypes)
+		}
+
+		// Build resolved agent
+		c.ResolvedAgents[normalized] = ResolvedAgent{
+			Alias:  normalized,
+			Type:   aliasCfg.Type,
+			Config: aliasCfg,
+		}
+	}
+
+	return nil
+}
+
+// RequireConfigFile returns an error if no config file was found.
+// This should be called before operations that require agent configuration.
+func (c *Config) RequireConfigFile() error {
+	if !c.ConfigFileFound {
+		return fmt.Errorf("configuration file .orbit.yaml not found\n\nRun 'orbit init' to create a default configuration file")
+	}
+	return nil
+}
+
+// GetResolvedAgent returns the resolved agent for an alias.
+// Returns error if alias is not found after normalization.
+// ResolveAliases() must be called first.
+func (c *Config) GetResolvedAgent(alias string) (ResolvedAgent, error) {
+	if c.ResolvedAgents == nil {
+		return ResolvedAgent{}, fmt.Errorf("ResolveAliases() must be called before GetResolvedAgent()")
+	}
+
+	normalized := NormalizeAliasName(alias)
+	resolved, ok := c.ResolvedAgents[normalized]
+	if !ok {
+		// Build list of available agents
+		available := make([]string, 0, len(c.ResolvedAgents))
+		for name := range c.ResolvedAgents {
+			available = append(available, name)
+		}
+
+		return ResolvedAgent{}, fmt.Errorf("agent %q is not configured in .orbit.yaml\n\nAvailable agents: %v\n\nTo add this agent:\n\nagents:\n  %s:\n    type: claude-code", alias, available, normalized)
+	}
+
+	return resolved, nil
+}
+
+// defaultConfigYAML is the template for a default .orbit.yaml file.
+const defaultConfigYAML = `# Orbit configuration - see documentation for all options
+agents:
+  claude-code:
+    type: claude-code
+    auto-approve: true
+`
+
+// GenerateDefaultConfig returns the YAML bytes for a default .orbit.yaml file.
+// The default config contains a single claude-code agent with type and auto-approve: true.
+func GenerateDefaultConfig() []byte {
+	return []byte(defaultConfigYAML)
+}
+
+// GetResolvedAgentConfig converts a ResolvedAgent to agents.AgentConfig.
+// This bridges between the config package's alias system and the agents package.
+func GetResolvedAgentConfig(resolved ResolvedAgent) agents.AgentConfig {
+	cfg := agents.AgentConfig{
+		CLIPath:     resolved.Config.CLIPath,
+		AutoApprove: resolved.Config.AutoApprove,
+		ExtraArgs:   resolved.Config.ExtraArgs,
+	}
+
+	// Parse timeout duration
+	if resolved.Config.Timeout != "" {
+		if d, err := time.ParseDuration(resolved.Config.Timeout); err == nil {
+			cfg.Timeout = d
+		}
+	}
+
+	// Store model in Options map
+	if resolved.Config.Model != "" {
+		cfg.Options = map[string]string{"model": resolved.Config.Model}
+	}
+
+	return cfg
 }

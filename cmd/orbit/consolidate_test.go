@@ -136,6 +136,24 @@ func TestConsolidateCommand_VariantNotFound(t *testing.T) {
 		t.Fatalf("failed to init git repo: %v\n%s", err, out)
 	}
 
+	// Create a valid .orbit.yaml configuration file
+	// Include common agent aliases that might be defined in home config to avoid conflicts
+	orbitConfig := `# Orbit configuration
+agents:
+  claude-code:
+    type: claude-code
+    auto-approve: true
+  codex:
+    type: codex
+  kiro:
+    type: kiro
+  copilot:
+    type: copilot
+`
+	if err := os.WriteFile(filepath.Join(tmpDir, ".orbit.yaml"), []byte(orbitConfig), 0644); err != nil {
+		t.Fatalf("failed to create .orbit.yaml: %v", err)
+	}
+
 	// Create a minimal spec directory structure with variants.json
 	specDir := filepath.Join(tmpDir, "specs", "test-feature", ".orbit")
 	if err := os.MkdirAll(specDir, 0755); err != nil {

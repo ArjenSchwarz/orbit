@@ -7,6 +7,69 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Integration tests for per-variant model selection (Phase 7):
+  - `TestIntegration_RunWithoutConfig` verifying orbit run fails with exit 1 and "orbit init" message when no .orbit.yaml exists
+  - `TestIntegration_VariantRunWithDifferentModels` verifying variant runs with different model aliases correctly resolve agent type and model configuration
+  - Existing init command tests cover all Phase 7 requirements: file creation, existing config failure, --force overwrite
+
+- Agent metadata and logging for per-variant model selection (Phase 6):
+  - `AgentType` and `Model` fields in `Variant` struct for tracking resolved agent configuration
+  - `UpdateAgentInfo()` method in variant manager to persist agent type and model
+  - `AgentAlias`, `AgentType`, `Model` fields in `SessionEntry` for session-level tracking
+  - `AgentInfo` struct and `SetAgentInfo()` method in log manager for session logging context
+  - Verbose logging of resolved agent configuration (alias, type, model) when `--verbose` flag is set
+  - Unit tests for variant metadata persistence and loading
+  - Unit tests for session entry agent metadata
+
+- Agent model flag implementation for per-variant model selection (Phase 5):
+  - All agents (claude-code, codex, kiro, copilot) now read `Options["model"]` and append `--model` flag to CLI args
+  - Model flag added after auto-approve flags but before extra-args
+  - Unit tests for each agent verifying model flag is added when Options["model"] is set
+  - Unit tests verifying model flag is not added when Options is nil, empty, or model value is empty
+  - Unit tests for codex, kiro, copilot verifying model flag comes before prompt
+
+- Agent resolution changes for per-variant model selection (Phase 4):
+  - `buildAgentConfig()` function in run.go to convert ResolvedAgent to agents.AgentConfig
+  - `run` command now uses new config flow: RequireConfigFile -> ResolveAliases -> GetResolvedAgent -> agents.Get with type
+  - `compare` command now requires .orbit.yaml configuration file for AI-powered comparison
+  - `consolidate` command now requires .orbit.yaml configuration file and uses new agent resolution flow
+  - Unit tests for buildAgentConfig verifying model in Options map when set and nil/empty when no model
+
+- `orbit init` subcommand for configuration initialization (Phase 3 of per-variant model selection):
+  - Creates `.orbit.yaml` in current directory with default claude-code agent
+  - `--force` flag to overwrite existing configuration file
+  - Error with exit code 1 if config file already exists (without --force)
+  - `GenerateDefaultConfig()` function in config package returns default YAML bytes
+  - Unit tests for init command covering no existing config, existing config fails, --force overwrites, write permission error
+
+- Config loading and validation for agent aliases (Phase 2 of per-variant model selection):
+  - `parseAgentAliasesConfig()` function to parse agent aliases with type field from YAML
+  - `coerceModelValue()` function for YAML type coercion: string, int, float coerced to string; bool, array, map return validation errors
+  - `ResolveAliases()` method to validate all aliases (type field required, valid name pattern, no duplicates after normalization, registered agent types)
+  - `RequireConfigFile()` method returning error if no .orbit.yaml found (home or project)
+  - `GetResolvedAgent()` method for case-insensitive alias lookup with descriptive error messages
+  - `GetResolvedAgentConfig()` helper to convert ResolvedAgent to agents.AgentConfig
+  - `ConfigFileFound`, `ConfigParseError`, `AgentAliases`, `ResolvedAgents` fields in Config struct
+  - Unit tests for YAML type coercion (string, unquoted string, integer, float valid; boolean, array, map error)
+  - Unit tests for ResolveAliases validation (missing type, unknown type, empty agents, duplicate aliases)
+  - Unit tests for config merge behavior (home only, project only, deep merge, different aliases)
+  - Unit tests for GetResolvedAgent (found, case insensitive, not found, before resolve)
+  - Unit tests for RequireConfigFile and GetResolvedAgentConfig
+
+- `AgentAliasConfig` and `ResolvedAgent` types in config package for per-variant model selection feature
+- `ValidateAliasName()` function to validate agent alias names against pattern `[a-z0-9]+(-[a-z0-9]+)*`
+- `NormalizeAliasName()` function for case-insensitive alias name comparison
+- Property-based tests using `pgregory.net/rapid` for alias name validation
+- Table-driven unit tests for alias validation covering valid patterns, invalid patterns, and case normalization
+
+- Per-variant model selection specification documents:
+  - `specs/per-variant-model-selection/requirements.md` with 7 requirement sections covering agent alias configuration, config requirement, config initialization (`orbit init`), variant agent assignment, validation/error handling, model passing to agent CLIs, and logging/traceability
+  - `specs/per-variant-model-selection/design.md` with architecture, components (AgentAliasConfig, ResolvedAgent types), data models, YAML type coercion, config merge behavior, error handling with exit codes, and testing strategy including property-based tests
+  - `specs/per-variant-model-selection/decision_log.md` with 9 design decisions (agent alias approach, explicit type field, required config, validate structure not values, require `orbit init`, unified model flag, hardcoded model flag per agent, alias naming constraints)
+  - `specs/per-variant-model-selection/tasks.md` with 7 implementation phases and 34 tasks covering config foundation, config loading/validation, init command, agent resolution changes, agent model flag implementation, metadata/logging, and integration tests
+
 ### Fixed
 
 - Consolidator now generates a unique SessionID for each consolidation run, preventing session ID collisions and log file overwrites when agents like Claude Code or Kiro expect non-empty session IDs

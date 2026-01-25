@@ -491,6 +491,84 @@ func TestUpdateStatus(t *testing.T) {
 	}
 }
 
+func TestUpdateAgentInfo(t *testing.T) {
+	tmpDir := t.TempDir()
+	specDir := filepath.Join(tmpDir, "specs", "test-spec")
+	git := newMockGitClient()
+
+	cfg := Config{Count: 2, BranchPrefix: "orbit-impl"}
+	mgr, err := NewManager(cfg, "test-spec", specDir, tmpDir, git)
+	if err != nil {
+		t.Fatalf("NewManager: %v", err)
+	}
+
+	ctx := context.Background()
+	if err := mgr.Setup(ctx, false); err != nil {
+		t.Fatalf("Setup: %v", err)
+	}
+
+	// Update agent info for variant 1
+	if err := mgr.UpdateAgentInfo(1, "claude-sonnet", "claude-code", "claude-3-5-sonnet"); err != nil {
+		t.Fatalf("UpdateAgentInfo: %v", err)
+	}
+
+	v := mgr.GetVariant(1)
+	if v.Agent != "claude-sonnet" {
+		t.Errorf("variant Agent = %s, want claude-sonnet", v.Agent)
+	}
+	if v.AgentType != "claude-code" {
+		t.Errorf("variant AgentType = %s, want claude-code", v.AgentType)
+	}
+	if v.Model != "claude-3-5-sonnet" {
+		t.Errorf("variant Model = %s, want claude-3-5-sonnet", v.Model)
+	}
+
+	// Verify persisted to disk
+	data, err := os.ReadFile(mgr.metadataPath)
+	if err != nil {
+		t.Fatalf("read metadata: %v", err)
+	}
+	var loaded VariantsMetadata
+	if err := json.Unmarshal(data, &loaded); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	if loaded.Variants[0].Agent != "claude-sonnet" {
+		t.Errorf("persisted Agent = %s, want claude-sonnet", loaded.Variants[0].Agent)
+	}
+	if loaded.Variants[0].AgentType != "claude-code" {
+		t.Errorf("persisted AgentType = %s, want claude-code", loaded.Variants[0].AgentType)
+	}
+	if loaded.Variants[0].Model != "claude-3-5-sonnet" {
+		t.Errorf("persisted Model = %s, want claude-3-5-sonnet", loaded.Variants[0].Model)
+	}
+}
+
+func TestUpdateAgentInfo_NotFound(t *testing.T) {
+	tmpDir := t.TempDir()
+	specDir := filepath.Join(tmpDir, "specs", "test-spec")
+	git := newMockGitClient()
+
+	cfg := Config{Count: 2, BranchPrefix: "orbit-impl"}
+	mgr, err := NewManager(cfg, "test-spec", specDir, tmpDir, git)
+	if err != nil {
+		t.Fatalf("NewManager: %v", err)
+	}
+
+	ctx := context.Background()
+	if err := mgr.Setup(ctx, false); err != nil {
+		t.Fatalf("Setup: %v", err)
+	}
+
+	// Try to update non-existent variant
+	err = mgr.UpdateAgentInfo(99, "alias", "claude-code", "model")
+	if err == nil {
+		t.Fatal("expected error for non-existent variant")
+	}
+	if !contains(err.Error(), "not found") {
+		t.Errorf("unexpected error: %v", err)
+	}
+}
+
 func TestSave_AtomicWrite(t *testing.T) {
 	tmpDir := t.TempDir()
 	specDir := filepath.Join(tmpDir, "specs", "test-spec")
@@ -824,6 +902,63 @@ func TestLoad_ParsesExistingMetadata(t *testing.T) {
 	}
 	if mgr.metadata.Variants[1].Error != "some error" {
 		t.Errorf("variant 2 error = %s, want 'some error'", mgr.metadata.Variants[1].Error)
+	}
+}
+
+func TestLoad_ParsesAgentMetadata(t *testing.T) {
+	tmpDir := t.TempDir()
+	specDir := filepath.Join(tmpDir, "specs", "test-spec")
+	orbitDir := filepath.Join(specDir, ".orbit")
+	if err := os.MkdirAll(orbitDir, 0755); err != nil {
+		t.Fatalf("mkdir: %v", err)
+	}
+
+	// Write metadata with agent info
+	metadata := VariantsMetadata{
+		RunID:          "test-run-id",
+		BaseCommit:     "existing123",
+		OriginalBranch: "main",
+		StartedAt:      time.Now(),
+		Variants: []*Variant{
+			{ID: 1, Branch: "branch-1", Agent: "sonnet", AgentType: "claude-code", Model: "claude-3-5-sonnet"},
+			{ID: 2, Branch: "branch-2", Agent: "codex", AgentType: "codex", Model: "o3"},
+		},
+	}
+	data, _ := json.MarshalIndent(metadata, "", "  ")
+	metadataPath := filepath.Join(orbitDir, "variants.json")
+	if err := os.WriteFile(metadataPath, data, 0644); err != nil {
+		t.Fatalf("write metadata: %v", err)
+	}
+
+	git := newMockGitClient()
+	cfg := Config{Count: 2, BranchPrefix: "orbit-impl"}
+	mgr, err := NewManager(cfg, "test-spec", specDir, tmpDir, git)
+	if err != nil {
+		t.Fatalf("NewManager: %v", err)
+	}
+
+	if err := mgr.Load(); err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+
+	// Verify agent metadata was loaded
+	v1 := mgr.GetVariant(1)
+	if v1.Agent != "sonnet" {
+		t.Errorf("variant 1 Agent = %s, want sonnet", v1.Agent)
+	}
+	if v1.AgentType != "claude-code" {
+		t.Errorf("variant 1 AgentType = %s, want claude-code", v1.AgentType)
+	}
+	if v1.Model != "claude-3-5-sonnet" {
+		t.Errorf("variant 1 Model = %s, want claude-3-5-sonnet", v1.Model)
+	}
+
+	v2 := mgr.GetVariant(2)
+	if v2.AgentType != "codex" {
+		t.Errorf("variant 2 AgentType = %s, want codex", v2.AgentType)
+	}
+	if v2.Model != "o3" {
+		t.Errorf("variant 2 Model = %s, want o3", v2.Model)
 	}
 }
 

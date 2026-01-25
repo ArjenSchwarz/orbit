@@ -218,6 +218,63 @@ func TestAgent_DefaultPrompt(t *testing.T) {
 	}
 }
 
+func TestAgent_BuildArgs_WithModel(t *testing.T) {
+	tests := []struct {
+		name     string
+		options  map[string]string
+		wantFlag bool
+		wantVal  string
+	}{
+		{
+			name:     "no model configured",
+			options:  nil,
+			wantFlag: false,
+		},
+		{
+			name:     "empty options map",
+			options:  map[string]string{},
+			wantFlag: false,
+		},
+		{
+			name:     "empty model value",
+			options:  map[string]string{"model": ""},
+			wantFlag: false,
+		},
+		{
+			name:     "model configured",
+			options:  map[string]string{"model": "claude-opus-4"},
+			wantFlag: true,
+			wantVal:  "claude-opus-4",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			agent := New(agents.AgentConfig{
+				Options: tt.options,
+			}).(*Agent)
+
+			args := agent.buildArgs(agents.RunOptions{
+				Prompt:    "Test prompt",
+				SessionID: "test-session",
+			}, false)
+
+			modelIdx := slices.Index(args, "--model")
+			if tt.wantFlag {
+				if modelIdx == -1 {
+					t.Errorf("Expected --model flag in args, got %v", args)
+				} else if modelIdx+1 >= len(args) || args[modelIdx+1] != tt.wantVal {
+					t.Errorf("Expected --model %s in args, got %v", tt.wantVal, args)
+				}
+			} else {
+				if modelIdx != -1 {
+					t.Errorf("Did not expect --model flag in args, got %v", args)
+				}
+			}
+		})
+	}
+}
+
 func TestAgent_RegisteredInInit(t *testing.T) {
 	// Verify the agent is registered in the registry
 	agent, err := agents.Get("claude-code", agents.AgentConfig{})

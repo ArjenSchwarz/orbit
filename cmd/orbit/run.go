@@ -113,17 +113,31 @@ func runCommand(args []string) error {
 	// Load configuration (Viper handles merging of home/project configs and env vars)
 	cfg := config.Load(workingDir)
 
-	// Resolve agent: CLI flag > config file > default (claude-code)
-	agentName := resolveAgent(*agentFlag, cfg)
+	// Require config file for agent resolution
+	if err := cfg.RequireConfigFile(); err != nil {
+		return err
+	}
 
-	// Validate agent is installed
-	agentCfg := cfg.GetAgentConfig(agentName)
-	agent, err := agents.Get(agentName, agentCfg)
+	// Resolve and validate all agent aliases
+	if err := cfg.ResolveAliases(); err != nil {
+		return err
+	}
+
+	// Resolve agent alias: CLI flag > config file > default (claude-code)
+	aliasName := resolveAgent(*agentFlag, cfg)
+	resolved, err := cfg.GetResolvedAgent(aliasName)
 	if err != nil {
-		return fmt.Errorf("invalid agent %q: %w\nAvailable agents: %s", agentName, err, strings.Join(agents.List(), ", "))
+		return err
+	}
+
+	// Get agent factory by type
+	agentCfg := buildAgentConfig(resolved)
+	agent, err := agents.Get(resolved.Type, agentCfg)
+	if err != nil {
+		return fmt.Errorf("unknown agent type %q for alias %q\n\nValid agent types: %v", resolved.Type, aliasName, agents.List())
 	}
 	if !agent.IsInstalled() {
-		return fmt.Errorf("agent %q CLI (%s) not found\nInstall it from: %s", agentName, agent.CLICommand(), getAgentInstallURL(agentName))
+		return fmt.Errorf("agent %q CLI (%s) not found\nInstall it from: %s", aliasName, agent.CLICommand(), getAgentInstallURL(resolved.Type))
 	}
 
 	// Apply CLI flag overrides
@@ -204,7 +218,7 @@ func runCommand(args []string) error {
 		PostCommand:     postCommand,
 		DateSubdirs:     dateSubdirsValue,
 		ContinueSession: continueSessionValue,
-		Agent:           agentName,
+		Agent:           aliasName,
 		AgentConfig:     agentCfg,
 		AgentConfigs:    cfg.GetAllAgentConfigs(),
 		VariantCount:    *variantCount,
@@ -276,6 +290,12 @@ func resolveAgent(flagValue string, cfg *config.Config) string {
 		return cfg.Agent
 	}
 	return "claude-code"
+}
+
+// buildAgentConfig creates agents.AgentConfig from a resolved alias.
+// It converts the alias configuration including model (stored in Options).
+func buildAgentConfig(resolved config.ResolvedAgent) agents.AgentConfig {
+	return config.GetResolvedAgentConfig(resolved)
 }
 
 // getAgentInstallURL returns the installation URL for a given agent.

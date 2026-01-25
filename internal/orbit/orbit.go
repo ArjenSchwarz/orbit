@@ -173,8 +173,19 @@ func New(config Config) (*Orbit, error) {
 		if err != nil {
 			return nil, fmt.Errorf("failed to create log manager: %w", err)
 		}
+		// Set agent info for session logging
+		var model string
+		if agentConfig.Options != nil {
+			model = agentConfig.Options["model"]
+		}
+		logManager.SetAgentInfo(agentName, agent.Name(), model)
 		if config.Verbose {
 			log.Printf("Logs will be saved to: %s", logManager.SessionDir())
+			// Log resolved agent configuration
+			log.Printf("Agent: %s (type: %s)", agentName, agent.Name())
+			if model != "" {
+				log.Printf("Model: %s", model)
+			}
 		}
 	}
 
@@ -1261,6 +1272,25 @@ func (o *Orbit) runVariant(ctx context.Context, v *variants.Variant) error {
 		return fmt.Errorf("failed to get agent %q for variant %d: %w", agentName, v.ID, err)
 	}
 
+	// Populate variant agent metadata for logging and reporting
+	agentType := variantAgent.Name() // Underlying agent type (e.g., "claude-code")
+	var model string
+	if variantAgentConfig.Options != nil {
+		model = variantAgentConfig.Options["model"]
+	}
+	if err := o.variantManager.UpdateAgentInfo(v.ID, agentName, agentType, model); err != nil {
+		log.Printf("Warning: failed to update agent info for variant %d: %v", v.ID, err)
+	}
+
+	// Log resolved agent configuration in verbose mode
+	if o.config.Verbose {
+		if model != "" {
+			log.Printf("Variant %d agent config: alias=%s, type=%s, model=%s", v.ID, agentName, agentType, model)
+		} else {
+			log.Printf("Variant %d agent config: alias=%s, type=%s", v.ID, agentName, agentType)
+		}
+	}
+
 	// Build the prompt for this variant
 	variantPrompt := o.buildVariantPrompt(v)
 
@@ -1294,6 +1324,10 @@ func (o *Orbit) runVariant(ctx context.Context, v *variants.Variant) error {
 		log.Printf("Warning: failed to create log manager for variant %d: %v", v.ID, err)
 		// Continue without logging - variant execution is more important
 		variantLogManager = nil
+	}
+	if variantLogManager != nil {
+		// Set agent info for session logging
+		variantLogManager.SetAgentInfo(agentName, agentType, model)
 	}
 
 	// Track total metrics across all phases

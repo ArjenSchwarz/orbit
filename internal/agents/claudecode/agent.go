@@ -164,6 +164,11 @@ func (a *Agent) buildArgs(opts agents.RunOptions, resume bool) []string {
 		args = append(args, "--dangerously-skip-permissions")
 	}
 
+	// Add model flag if configured
+	if model, ok := a.config.Options["model"]; ok && model != "" {
+		args = append(args, "--model", model)
+	}
+
 	// Add config-level extra args
 	args = append(args, a.config.ExtraArgs...)
 

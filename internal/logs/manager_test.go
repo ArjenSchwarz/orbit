@@ -1428,3 +1428,137 @@ func TestGenerateMarkdownIndex_WithMultipleRuns(t *testing.T) {
 		t.Error("markdown should indicate run 2")
 	}
 }
+
+func TestSetAgentInfo(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	m, err := NewManager(tmpDir, "test-branch", "/tmp/test-project")
+	if err != nil {
+		t.Fatalf("NewManager failed: %v", err)
+	}
+
+	// Set agent info
+	m.SetAgentInfo("sonnet", "claude-code", "claude-3-5-sonnet")
+
+	// Verify it's stored
+	if m.agentInfo.Alias != "sonnet" {
+		t.Errorf("got Alias %q, want %q", m.agentInfo.Alias, "sonnet")
+	}
+	if m.agentInfo.Type != "claude-code" {
+		t.Errorf("got Type %q, want %q", m.agentInfo.Type, "claude-code")
+	}
+	if m.agentInfo.Model != "claude-3-5-sonnet" {
+		t.Errorf("got Model %q, want %q", m.agentInfo.Model, "claude-3-5-sonnet")
+	}
+}
+
+func TestSaveSession_IncludesAgentInfo(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	m, err := NewManager(tmpDir, "test-branch", "/tmp/test-project")
+	if err != nil {
+		t.Fatalf("NewManager failed: %v", err)
+	}
+
+	// Set agent info before saving session
+	m.SetAgentInfo("sonnet", "claude-code", "claude-3-5-sonnet")
+
+	result := &agents.RunResult{
+		SessionID: "test-session-123",
+		Cost:      &agents.CostMetrics{CostUSD: 0.15},
+		Duration:  45 * time.Second,
+		NumTurns:  5,
+		Output:    "Test output",
+		IsError:   false,
+		RawJSON:   []byte(`{"session_id": "test-session-123"}`),
+	}
+
+	startTime := time.Now().Add(-45 * time.Second)
+	if err := m.SaveSession(1, result, startTime); err != nil {
+		t.Fatalf("SaveSession failed: %v", err)
+	}
+
+	// Verify session entry includes agent info
+	if len(m.summary.Sessions) != 1 {
+		t.Fatalf("got %d sessions, want 1", len(m.summary.Sessions))
+	}
+
+	entry := m.summary.Sessions[0]
+	if entry.AgentAlias != "sonnet" {
+		t.Errorf("got AgentAlias %q, want %q", entry.AgentAlias, "sonnet")
+	}
+	if entry.AgentType != "claude-code" {
+		t.Errorf("got AgentType %q, want %q", entry.AgentType, "claude-code")
+	}
+	if entry.Model != "claude-3-5-sonnet" {
+		t.Errorf("got Model %q, want %q", entry.Model, "claude-3-5-sonnet")
+	}
+
+	// Verify persisted to disk
+	summaryPath := filepath.Join(m.SessionDir(), "summary.json")
+	data, err := os.ReadFile(summaryPath)
+	if err != nil {
+		t.Fatalf("failed to read summary: %v", err)
+	}
+
+	var summary Summary
+	if err := json.Unmarshal(data, &summary); err != nil {
+		t.Fatalf("failed to parse summary: %v", err)
+	}
+
+	if len(summary.Sessions) != 1 {
+		t.Fatalf("disk summary has %d sessions, want 1", len(summary.Sessions))
+	}
+	if summary.Sessions[0].AgentAlias != "sonnet" {
+		t.Errorf("disk AgentAlias %q, want %q", summary.Sessions[0].AgentAlias, "sonnet")
+	}
+	if summary.Sessions[0].AgentType != "claude-code" {
+		t.Errorf("disk AgentType %q, want %q", summary.Sessions[0].AgentType, "claude-code")
+	}
+	if summary.Sessions[0].Model != "claude-3-5-sonnet" {
+		t.Errorf("disk Model %q, want %q", summary.Sessions[0].Model, "claude-3-5-sonnet")
+	}
+}
+
+func TestSavePostCompletionSession_IncludesAgentInfo(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	m, err := NewManager(tmpDir, "test-branch", "/tmp/test-project")
+	if err != nil {
+		t.Fatalf("NewManager failed: %v", err)
+	}
+
+	// Set agent info before saving session
+	m.SetAgentInfo("codex", "codex", "o3")
+
+	result := &agents.RunResult{
+		SessionID: "post-completion-456",
+		Cost:      &agents.CostMetrics{CostUSD: 0.25},
+		Duration:  60 * time.Second,
+		NumTurns:  8,
+		Output:    "Review complete",
+		IsError:   false,
+		RawJSON:   []byte(`{"session_id": "post-completion-456"}`),
+	}
+
+	startTime := time.Now().Add(-60 * time.Second)
+	if err := m.SavePostCompletionSession(result, startTime); err != nil {
+		t.Fatalf("SavePostCompletionSession failed: %v", err)
+	}
+
+	// Verify session entry includes agent info
+	if len(m.summary.Sessions) != 1 {
+		t.Fatalf("got %d sessions, want 1", len(m.summary.Sessions))
+	}
+
+	entry := m.summary.Sessions[0]
+	if entry.AgentAlias != "codex" {
+		t.Errorf("got AgentAlias %q, want %q", entry.AgentAlias, "codex")
+	}
+	if entry.AgentType != "codex" {
+		t.Errorf("got AgentType %q, want %q", entry.AgentType, "codex")
+	}
+	if entry.Model != "o3" {
+		t.Errorf("got Model %q, want %q", entry.Model, "o3")
+	}
+}

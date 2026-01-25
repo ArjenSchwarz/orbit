@@ -108,15 +108,32 @@ func consolidateCommand(args []string) error {
 	}
 
 	appConfig := config.Load(workDir)
-	agentName := resolveAgent("", appConfig) // Use default agent
 
-	agentCfg := appConfig.GetAgentConfig(agentName)
-	agent, err := agents.Get(agentName, agentCfg)
+	// Require config file for agent resolution
+	if err := appConfig.RequireConfigFile(); err != nil {
+		return err
+	}
+
+	// Resolve and validate all agent aliases
+	if err := appConfig.ResolveAliases(); err != nil {
+		return err
+	}
+
+	// Resolve agent alias: use default agent
+	aliasName := resolveAgent("", appConfig)
+	resolved, err := appConfig.GetResolvedAgent(aliasName)
 	if err != nil {
-		return fmt.Errorf("invalid agent %q: %w\nAvailable agents: %s", agentName, err, strings.Join(agents.List(), ", "))
+		return err
+	}
+
+	// Get agent factory by type
+	agentCfg := buildAgentConfig(resolved)
+	agent, err := agents.Get(resolved.Type, agentCfg)
+	if err != nil {
+		return fmt.Errorf("unknown agent type %q for alias %q\n\nValid agent types: %v", resolved.Type, aliasName, agents.List())
 	}
 	if !agent.IsInstalled() {
-		return fmt.Errorf("agent %q CLI (%s) not found\nInstall it from: %s", agentName, agent.CLICommand(), getAgentInstallURL(agentName))
+		return fmt.Errorf("agent %q CLI (%s) not found\nInstall it from: %s", aliasName, agent.CLICommand(), getAgentInstallURL(resolved.Type))
 	}
 
 	// Create consolidator configuration
@@ -142,7 +159,7 @@ func consolidateCommand(args []string) error {
 	// Show what we're about to do
 	fmt.Printf("Consolidate spec: %s\n", specName)
 	fmt.Printf("Target variant:   %d\n", *variantID)
-	fmt.Printf("Agent:            %s\n", agentName)
+	fmt.Printf("Agent:            %s\n", aliasName)
 	if *customPrompt != "" {
 		fmt.Printf("Custom prompt:    %s\n", truncateString(*customPrompt, 50))
 	}

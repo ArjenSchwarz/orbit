@@ -24,7 +24,9 @@ type Variant struct {
 	Status       VariantStatus `json:"status"`
 	Error        string        `json:"error,omitempty"`
 	Guidance     string        `json:"guidance,omitempty"`
-	Agent        string        `json:"agent,omitempty"` // Agent used for this variant [Req 10.5]
+	Agent        string        `json:"agent,omitempty"`      // Agent alias name used for this variant
+	AgentType    string        `json:"agent_type,omitempty"` // Underlying agent type (e.g., "claude-code")
+	Model        string        `json:"model,omitempty"`      // Model used for this variant
 
 	// Metrics populated after completion
 	Cost     float64       `json:"cost,omitempty"`
