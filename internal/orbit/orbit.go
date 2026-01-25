@@ -1198,6 +1198,12 @@ func (o *Orbit) runVariantsSequential(ctx context.Context, variantList []*varian
 		default:
 		}
 
+		// Skip variants that are already completed (for continue mode)
+		if v.Status == variants.StatusCompleted {
+			log.Printf("Variant %d: already completed, skipping", v.ID)
+			continue
+		}
+
 		if err := o.runVariant(ctx, v); err != nil {
 			log.Printf("Variant %d failed: %v", v.ID, err)
 		}
@@ -1210,6 +1216,12 @@ func (o *Orbit) runVariantsParallel(ctx context.Context, variantList []*variants
 	var wg sync.WaitGroup
 
 	for _, v := range variantList {
+		// Skip variants that are already completed (for continue mode)
+		if v.Status == variants.StatusCompleted {
+			log.Printf("Variant %d: already completed, skipping", v.ID)
+			continue
+		}
+
 		wg.Add(1)
 		go func(variant *variants.Variant) {
 			defer wg.Done()

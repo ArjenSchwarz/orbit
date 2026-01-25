@@ -9,6 +9,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Variant continue mode now skips completed variants: When continuing an existing variant run, completed variants are now properly skipped instead of being re-run. Both sequential and parallel execution modes now check variant status before execution.
+
 - Variant agent alias resolution: When using `--variant-agents` with agent aliases (e.g., `claude-opus,claude-sonnet`), orbit now correctly resolves the alias to its underlying agent type before creating the agent. Previously, passing an alias like `claude-opus` would fail with "unknown agent" because `agents.Get()` only recognizes registered types (e.g., `claude-code`), not aliases.
 
 ### Added
