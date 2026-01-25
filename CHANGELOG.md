@@ -9,6 +9,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- CLI integration for apsis follow mode (Phase 4):
+  - `-F` and `--follow` flags to enable follow mode for live transcript monitoring
+  - `validateFollowMode()` function checking for incompatible flag combinations (`-o` with `--follow`, `-f html` with `--follow`)
+  - `resolveFollowInput()` function resolving session IDs to file paths (Claude first, then Codex) with stdin rejection
+  - `runFollow()` function with signal handling via `signal.NotifyContext` for SIGINT, returning exit code 130 (128 + 2 per Unix convention)
+  - Follow mode integration into `run()` function with early validation and branching
+  - Updated `run()` signature to return `(int, error)` for proper exit code handling
+  - Updated usage documentation with follow mode examples
+  - Unit tests for flag parsing, validation, input resolution, and follow mode execution
+
 - Follower component for apsis follow mode (Phase 3):
   - `Follower` struct with file monitoring, deduplication, and incremental rendering state
   - `NewFollower()` constructor validating file existence at creation time (requirement 7.1)

@@ -89,7 +89,7 @@ references:
 
 ## CLI Integration
 
-- [ ] 10. Add Follow flag to Config struct
+- [x] 10. Add Follow flag to Config struct
   - Add -F and --follow flags
   - Update parseFlags function
   - Update printUsage with follow mode documentation
@@ -97,7 +97,7 @@ references:
   - Requirements: [1.1](requirements.md#1.1), [1.2](requirements.md#1.2), [1.4](requirements.md#1.4)
   - References: cmd/apsis/main.go
 
-- [ ] 11. Add validateFollowMode function
+- [x] 11. Add validateFollowMode function
   - Check for -o with --follow conflict
   - Check for -f html with --follow conflict
   - Return appropriate error messages per requirements
@@ -105,7 +105,7 @@ references:
   - Requirements: [5.2](requirements.md#5.2), [5.3](requirements.md#5.3), [5.5](requirements.md#5.5), [5.6](requirements.md#5.6), [5.7](requirements.md#5.7)
   - References: cmd/apsis/main.go
 
-- [ ] 12. Add resolveFollowInput function
+- [x] 12. Add resolveFollowInput function
   - Resolve session ID to file path
   - Resolve file path directly
   - Return error for stdin input
@@ -113,7 +113,7 @@ references:
   - Requirements: [2.1](requirements.md#2.1), [2.2](requirements.md#2.2), [2.3](requirements.md#2.3), [2.4](requirements.md#2.4)
   - References: cmd/apsis/main.go
 
-- [ ] 13. Add runFollow function with signal handling
+- [x] 13. Add runFollow function with signal handling
   - Use signal.NotifyContext for SIGINT
   - Create Follower and call Run
   - Exit with code 130 on SIGINT
@@ -121,7 +121,7 @@ references:
   - Requirements: [6.1](requirements.md#6.1), [6.3](requirements.md#6.3), [6.4](requirements.md#6.4)
   - References: cmd/apsis/main.go
 
-- [ ] 14. Integrate follow mode into run function
+- [x] 14. Integrate follow mode into run function
   - Call validateFollowMode early
   - Branch to runFollow when Follow is true
   - Ensure non-follow path unchanged

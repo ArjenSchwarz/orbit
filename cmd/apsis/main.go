@@ -4,16 +4,19 @@ package main
 
 import (
 	"bufio"
+	"context"
 	"encoding/json"
 	"flag"
 	"fmt"
 	"io"
 	"io/fs"
 	"os"
+	"os/signal"
 	"path/filepath"
 	"regexp"
 	"sort"
 	"strings"
+	"syscall"
 	"time"
 
 	"github.com/arjenschwarz/orbit/internal/agents/claudecode"
@@ -30,6 +33,7 @@ type Config struct {
 	Project string // -p, --project
 	Format  string // -f, --format
 	Agent   string // -a, --agent (force agent format)
+	Follow  bool   // -F, --follow
 	Version bool   // -v, --version
 	Help    bool   // -h, --help
 	Input   string // positional argument (session ID or file path)
@@ -45,9 +49,13 @@ type SessionInfo struct {
 
 func main() {
 	cfg := parseFlags()
-	if err := run(cfg); err != nil {
+	exitCode, err := run(cfg)
+	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 		os.Exit(1)
+	}
+	if exitCode != 0 {
+		os.Exit(exitCode)
 	}
 }
 
@@ -64,6 +72,8 @@ func parseFlags() *Config {
 	flag.StringVar(&cfg.Format, "format", "md", "Output format: md, markdown, html (default: md)")
 	flag.StringVar(&cfg.Agent, "a", "", "Force agent format (claude-code, codex, kiro, copilot)")
 	flag.StringVar(&cfg.Agent, "agent", "", "Force agent format (claude-code, codex, kiro, copilot)")
+	flag.BoolVar(&cfg.Follow, "F", false, "Follow mode: monitor file for new entries")
+	flag.BoolVar(&cfg.Follow, "follow", false, "Follow mode: monitor file for new entries")
 	flag.BoolVar(&cfg.Version, "v", false, "Show version")
 	flag.BoolVar(&cfg.Version, "version", false, "Show version")
 	flag.BoolVar(&cfg.Help, "h", false, "Show help")
@@ -94,6 +104,8 @@ Options:
   -f, --format <format>   Output format: md, markdown, html (default: md)
   -a, --agent <name>      Force agent format: claude-code, codex, kiro, copilot
                           (default: auto-detect from content)
+  -F, --follow            Follow mode: continuously monitor file for new entries
+                          (like tail -f, markdown output to stdout only)
   -v, --version           Show version
   -h, --help              Show this help
 
@@ -107,20 +119,22 @@ Examples:
   apsis -a kiro session.json                     Force Kiro format parsing
   apsis --list                                   List sessions for current project
   apsis --list -p /path/to/project               List sessions for different project
+  apsis -F session-id                            Follow session in real-time
+  apsis --follow /path/to/session.jsonl          Follow file for new entries
 `)
 }
 
-func run(cfg *Config) error {
+func run(cfg *Config) (int, error) {
 	// Handle --version
 	if cfg.Version {
 		fmt.Printf("apsis version %s\n", version)
-		return nil
+		return 0, nil
 	}
 
 	// Handle --help
 	if cfg.Help {
 		printUsage()
-		return nil
+		return 0, nil
 	}
 
 	// Resolve project path
@@ -129,36 +143,54 @@ func run(cfg *Config) error {
 		var err error
 		projectPath, err = os.Getwd()
 		if err != nil {
-			return fmt.Errorf("failed to get current directory: %w", err)
+			return 0, fmt.Errorf("failed to get current directory: %w", err)
 		}
 	}
 
 	// Make project path absolute
 	absProjectPath, err := filepath.Abs(projectPath)
 	if err != nil {
-		return fmt.Errorf("failed to resolve project path: %w", err)
+		return 0, fmt.Errorf("failed to resolve project path: %w", err)
 	}
 
 	// Handle --list
 	if cfg.List {
 		// Validate that no positional argument was provided with --list
 		if cfg.Input != "" {
-			return fmt.Errorf("cannot specify both --list and a positional argument")
+			return 0, fmt.Errorf("cannot specify both --list and a positional argument")
 		}
-		return listSessions(absProjectPath)
+		return 0, listSessions(absProjectPath)
 	}
 
-	// Check for input source
+	// Validate follow mode early (requirement 5.2-5.6)
+	if err := validateFollowMode(cfg); err != nil {
+		return 0, err
+	}
+
+	// Check for input source (follow mode doesn't support stdin)
 	if cfg.Input == "" && !isInputFromPipe() {
 		// TTY with no args - show help and exit with error
 		printUsage()
-		return fmt.Errorf("no input specified")
+		return 0, fmt.Errorf("no input specified")
 	}
 
-	// Resolve input source
+	// Handle follow mode
+	if cfg.Follow {
+		filePath, err := resolveFollowInput(cfg.Input, absProjectPath)
+		if err != nil {
+			return 0, err
+		}
+		opts := transcript.RenderOptions{
+			Title: "Session Transcript",
+		}
+		exitCode := runFollow(filePath, opts)
+		return exitCode, nil
+	}
+
+	// Non-follow mode: resolve input source
 	input, sessionID, err := resolveInput(cfg.Input, absProjectPath)
 	if err != nil {
-		return err
+		return 0, err
 	}
 	defer func() { _ = input.Close() }()
 
@@ -167,13 +199,13 @@ func run(cfg *Config) error {
 	if cfg.Output != "" {
 		f, err := os.Create(cfg.Output)
 		if err != nil {
-			return fmt.Errorf("failed to create output file: %w", err)
+			return 0, fmt.Errorf("failed to create output file: %w", err)
 		}
 		defer func() { _ = f.Close() }()
 		output = f
 	}
 
-	return convert(input, output, sessionID, cfg.Format, cfg.Agent)
+	return 0, convert(input, output, sessionID, cfg.Format, cfg.Agent)
 }
 
 // isFilePath returns true if the argument appears to be a file path rather than a session ID.
@@ -590,6 +622,95 @@ func sortSessionsByTimestamp(sessions []SessionInfo) {
 		}
 		return sessions[i].CreatedAt.Before(sessions[j].CreatedAt)
 	})
+}
+
+// runFollow executes follow mode with signal handling.
+// Uses signal.NotifyContext for SIGINT handling (requirement 6.1-6.4).
+// Returns the exit code: 0 for clean exit, 130 for SIGINT (128 + 2).
+func runFollow(filePath string, opts transcript.RenderOptions) int {
+	// Set up signal handling with context
+	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT)
+	defer stop()
+
+	// Create follower
+	follower, err := transcript.NewFollower(filePath, os.Stdout, opts)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+		return 1
+	}
+
+	// Run follower
+	if err := follower.Run(ctx); err != nil {
+		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+		return 1
+	}
+
+	// Check if we were cancelled by SIGINT
+	if ctx.Err() != nil {
+		// Exit code 130 = 128 + SIGINT (2), per Unix convention
+		return 130
+	}
+
+	return 0
+}
+
+// resolveFollowInput resolves input to a file path (not io.Reader).
+// Returns error for stdin input (requirement 2.3, 2.4).
+func resolveFollowInput(input string, projectPath string) (string, error) {
+	// Check for stdin input
+	if input == "" {
+		return "", fmt.Errorf("cannot follow stdin input. Please provide a file path or session ID")
+	}
+
+	// If it's a file path, return directly
+	if isFilePath(input) {
+		return input, nil
+	}
+
+	// Treat as session ID - resolve to file path
+	homeDir, err := os.UserHomeDir()
+	if err != nil {
+		return "", fmt.Errorf("failed to get home directory: %w", err)
+	}
+
+	// Try Claude location first
+	claudeProjectPath := claudecode.BuildProjectPath(projectPath)
+	claudeSessionFile := filepath.Join(homeDir, ".claude", "projects", claudeProjectPath, input+".jsonl")
+	if _, err := os.Stat(claudeSessionFile); err == nil {
+		return claudeSessionFile, nil
+	}
+
+	// Try Codex location second
+	codexPath, err := findCodexSession(homeDir, input)
+	if err != nil {
+		return "", fmt.Errorf("failed to search Codex sessions: %w", err)
+	}
+	if codexPath != "" {
+		return codexPath, nil
+	}
+
+	// Not found in either location
+	return "", fmt.Errorf("session not found: %s", input)
+}
+
+// validateFollowMode checks for incompatible flag combinations.
+// Returns error if -F is used with -o or -f html.
+func validateFollowMode(cfg *Config) error {
+	if !cfg.Follow {
+		return nil
+	}
+
+	// Check for -o/--output conflict (requirement 5.2, 5.3)
+	if cfg.Output != "" {
+		return fmt.Errorf("cannot use --output with --follow. Follow mode only supports stdout")
+	}
+
+	// Check for HTML format conflict (requirement 5.5, 5.6)
+	if strings.ToLower(cfg.Format) == "html" {
+		return fmt.Errorf("HTML output is not supported in follow mode. Use markdown format instead")
+	}
+
+	return nil
 }
 
 // agentToFormat converts an agent name to a transcript.Format.
