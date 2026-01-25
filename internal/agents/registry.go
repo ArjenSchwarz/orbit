@@ -15,6 +15,7 @@ var (
 
 // AgentConfig holds per-agent configuration from .orbit.yaml.
 type AgentConfig struct {
+	Type        string            // Underlying agent type (e.g., "claude-code", "codex")
 	CLIPath     string            // Override CLI command path
 	AutoApprove bool              // Tool approval behavior
 	ExtraArgs   []string          // Additional CLI arguments
