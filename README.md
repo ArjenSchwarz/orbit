@@ -294,80 +294,500 @@ Orbit is inherently resumable. Since task state is tracked in the rune tasks fil
 
 With session continuation enabled (default), Orbit will also resume the agent session context, allowing it to remember what it was working on.
 
-## Multi-Variant Comparison
+## Multi-Variant Workflow
 
-Orbit supports running multiple implementation variants in parallel using different agents or guidance, then comparing the results to choose the best implementation.
+Orbit supports running multiple implementation variants using different agents or guidance, then comparing the results to choose the best implementation. This section provides a complete guide to the variants workflow.
 
-### Running Variants
+### Workflow Overview
+
+```mermaid
+flowchart TD
+    A[Start: orbit run --variants N] --> B[Setup Phase]
+    B --> C{Parallel?}
+    C -->|Yes| D[Run variants concurrently]
+    C -->|No| E[Run variants sequentially]
+    D --> F[All variants complete]
+    E --> F
+    F --> G{≥2 succeeded?}
+    G -->|Yes| H[Generate comparison report]
+    G -->|No| I[Skip comparison]
+    H --> J[Review comparison report]
+    I --> J
+    J --> K[orbit status]
+    K --> L{Choose variant}
+    L --> M[orbit finalize --variant N]
+    M --> N{Want improvements<br>from other variants?}
+    N -->|Yes| O[orbit consolidate --variant N]
+    N -->|No| P[Done]
+    O --> P
+
+    style A fill:#e1f5fe
+    style P fill:#c8e6c9
+    style H fill:#fff3e0
+    style M fill:#fce4ec
+```
+
+### Complete Workflow Steps
+
+The variants workflow consists of five main phases:
+
+```mermaid
+flowchart LR
+    subgraph Phase1[1. Setup]
+        A1[Create branches]
+        A2[Create worktrees]
+        A3[Initialize metadata]
+    end
+
+    subgraph Phase2[2. Execution]
+        B1[Run agent in each worktree]
+        B2[Track status & metrics]
+    end
+
+    subgraph Phase3[3. Comparison]
+        C1[Gather diffs]
+        C2[AI analysis]
+        C3[Generate report]
+    end
+
+    subgraph Phase4[4. Selection]
+        D1[Review report]
+        D2[Choose variant]
+        D3[Finalize]
+    end
+
+    subgraph Phase5[5. Optional]
+        E1[Consolidate improvements]
+    end
+
+    Phase1 --> Phase2 --> Phase3 --> Phase4 --> Phase5
+```
+
+---
+
+### Step 1: Run Variants
+
+Start a multi-variant run to create and execute multiple implementations:
 
 ```bash
 # Run 3 variants with the default agent
 orbit run --variants 3
 
-# Run 2 variants in parallel
+# Run 2 variants in parallel (faster)
 orbit run --variants 2 --parallel
+
+# Limit concurrent variants
+orbit run --variants 5 --parallel --max-parallel 2
 
 # Compare different agents
 orbit run --variants 3 --variant-agents claude-code,codex,kiro
 
+# Compare different models of the same agent (requires agent aliases in config)
+orbit run --variants 2 --variant-agents claude-sonnet,claude-opus
+
 # Use per-variant guidance
 orbit run --variants 2 --guidance-file guidance.yaml
+
+# Combine options
+orbit run --variants 3 --variant-agents claude-code,codex --parallel --guidance-file guidance.yaml
 ```
 
-### Guidance File Format
+**What happens during setup:**
 
-Create a YAML file with per-variant instructions:
+```mermaid
+sequenceDiagram
+    participant User
+    participant Orbit
+    participant Git
+    participant Worktree
+
+    User->>Orbit: orbit run --variants 3
+    Orbit->>Git: Check working directory clean
+    Git-->>Orbit: OK
+    Orbit->>Git: Get current branch & HEAD
+
+    loop For each variant (1 to N)
+        Orbit->>Git: Create branch orbit-impl-{id}/{spec}
+        Git->>Worktree: Create worktree in .orbit/worktrees/
+        Worktree-->>Orbit: Worktree ready
+    end
+
+    Orbit->>Orbit: Save variants.json
+    Orbit->>Orbit: Create .gitignore for worktrees/
+
+    loop For each variant
+        Orbit->>Worktree: Run agent with phases
+        Worktree-->>Orbit: Update status & metrics
+    end
+
+    Orbit->>Orbit: Generate comparison report
+    Orbit-->>User: Variants complete
+```
+
+#### Variant Flags Reference
+
+| Flag | Default | Description |
+|------|---------|-------------|
+| `--variants` | `0` | Number of implementation variants to create |
+| `--parallel` | `false` | Run variants concurrently |
+| `--max-parallel` | `3` | Maximum concurrent variants when parallel |
+| `--branch-prefix` | `orbit-impl` | Prefix for variant branch names |
+| `--variant-agents` | - | Comma-separated agent list (cycles if fewer than variants) |
+| `--guidance-file` | - | YAML file with per-variant instructions |
+
+#### Guidance File Format
+
+Provide different instructions to each variant:
 
 ```yaml
-global_guidance: "Focus on performance and code readability"
+global_guidance: |
+  Focus on performance and code readability.
+  Ensure comprehensive test coverage.
 
 variants:
   - id: 1
-    guidance: "Use a functional programming approach"
+    guidance: "Use a functional programming approach with immutable data structures"
   - id: 2
     guidance: "Use an object-oriented approach with design patterns"
+  - id: 3
+    guidance: "Prioritize simplicity and minimize dependencies"
 ```
 
-### Variant Subcommands
+#### Agent Assignment
 
-Once variants are running or complete, use these subcommands to manage them:
+When using `--variant-agents`, agents are assigned in a cycling pattern:
 
 ```bash
-# Check variant status
+# Example: 4 variants with 2 agents
+orbit run --variants 4 --variant-agents claude-code,codex
+
+# Result:
+# Variant 1: claude-code
+# Variant 2: codex
+# Variant 3: claude-code
+# Variant 4: codex
+```
+
+---
+
+### Step 2: Monitor Progress
+
+Check the status of running or completed variants:
+
+```bash
 orbit status my-feature
+```
 
-# Regenerate comparison report
+**Example output:**
+
+```
+Variant Status for my-feature
+Run ID: 550e8400-e29b-41d4-a716-446655440000
+Base Commit: abc1234
+Started: 2025-01-25 10:00:00
+
+┌─────────┬──────────────────────────┬─────────────┬───────────┬──────────┐
+│ Variant │ Branch                   │ Agent       │ Status    │ Duration │
+├─────────┼──────────────────────────┼─────────────┼───────────┼──────────┤
+│ 1       │ orbit-impl-1/my-feature  │ claude-code │ completed │ 5m30s    │
+│ 2       │ orbit-impl-2/my-feature  │ codex       │ running   │ 3m15s    │
+│ 3       │ orbit-impl-3/my-feature  │ claude-code │ pending   │ -        │
+└─────────┴──────────────────────────┴─────────────┴───────────┴──────────┘
+```
+
+**Variant States:**
+
+```mermaid
+stateDiagram-v2
+    [*] --> pending: Created
+    pending --> running: Agent starts
+    running --> completed: All phases done
+    running --> failed: Error occurred
+    running --> canceled: User canceled
+    completed --> [*]
+    failed --> [*]
+    canceled --> [*]
+```
+
+---
+
+### Step 3: Review Comparison Report
+
+After variants complete, Orbit automatically generates a comparison report (if ≥2 variants succeeded). The report is saved to `specs/{spec}/comparison-report/`.
+
+```bash
+# Regenerate comparison report (if needed)
 orbit compare my-feature
+```
 
-# Adopt a variant and clean up others
+**Report contents:**
+
+| File | Description |
+|------|-------------|
+| `index.html` | Interactive HTML report with styling |
+| `comparison-report.md` | Markdown report (AI-agent friendly) |
+| `variant-{id}.diff` | Full diffs for each variant (if large) |
+
+**Report sections:**
+
+1. **Recommendation** - Which variant to choose and why
+2. **Confidence Level** - High, medium, or low confidence
+3. **Per-Variant Summary** - Key characteristics of each implementation
+4. **File-Level Analysis** - Detailed comparison of individual files
+5. **Documentation Assessment** - Quality of docs/comments per variant
+6. **Cross-Variant Improvements** - Good ideas from non-recommended variants
+
+```mermaid
+flowchart TD
+    A[Gather Data] --> B{Diffs < 150k tokens?}
+    B -->|Yes| C[Use full diffs]
+    B -->|No| D[Use summaries]
+
+    C --> E[Build comparison prompt]
+    D --> E
+
+    E --> F[Claude analyzes variants]
+    F --> G[Generate structured result]
+    G --> H[Create HTML report]
+    G --> I[Create Markdown report]
+    G --> J[Save large diffs separately]
+
+    H --> K[comparison-report/index.html]
+    I --> L[comparison-report/comparison-report.md]
+    J --> M[comparison-report/variant-N.diff]
+```
+
+---
+
+### Step 4: Finalize a Variant
+
+After reviewing the comparison, adopt your chosen variant:
+
+```bash
+# Adopt variant 1 as the final implementation
 orbit finalize my-feature --variant 1
+```
 
-# Clean up all variants
+**What finalize does:**
+
+1. Validates the original branch hasn't diverged (no new commits)
+2. Rebases the chosen variant onto the original branch
+3. Removes all variant worktrees
+4. Deletes all variant branches
+5. Cleans up `variants.json` and worktree directory
+
+```mermaid
+sequenceDiagram
+    participant User
+    participant Orbit
+    participant Git
+
+    User->>Orbit: orbit finalize my-feature --variant 1
+    Orbit->>Git: Check original branch hasn't diverged
+    Git-->>Orbit: OK (no new commits)
+
+    Orbit->>Git: Checkout original branch
+    Orbit->>Git: Merge --ff-only orbit-impl-1/my-feature
+    Git-->>Orbit: Fast-forward successful
+
+    loop For each variant
+        Orbit->>Git: Remove worktree
+        Orbit->>Git: Delete branch
+    end
+
+    Orbit->>Orbit: Delete variants.json
+    Orbit->>Orbit: Clean up .orbit/worktrees/
+    Orbit-->>User: Finalization complete
+```
+
+**Finalize flags:**
+
+| Flag | Description |
+|------|-------------|
+| `--variant N` | Which variant to adopt (required) |
+| `--force` | Force finalization even if branch diverged |
+| `--dry-run` | Show what would happen without making changes |
+
+---
+
+### Step 5: Consolidate Improvements (Optional)
+
+If other variants had good ideas you want to incorporate, use consolidate:
+
+```bash
+# Apply improvements from other variants to chosen variant 1
+orbit consolidate my-feature --variant 1
+
+# With custom instructions
+orbit consolidate my-feature --variant 1 --prompt "Focus on error handling improvements"
+
+# Rollback if consolidation didn't work well
+orbit consolidate my-feature --rollback
+```
+
+**What consolidate does:**
+
+1. Reads the comparison report for cross-variant improvements
+2. Provides an AI agent with access to all variant worktrees
+3. Agent analyzes and applies beneficial changes to the chosen variant
+4. Creates a consolidation commit
+5. Runs tests to verify the changes
+
+```mermaid
+flowchart TD
+    A[orbit consolidate --variant N] --> B[Load comparison report]
+    B --> C[Identify cross-variant improvements]
+    C --> D[Agent analyzes all worktrees]
+    D --> E[Apply improvements to chosen variant]
+    E --> F[Run tests & validation]
+    F --> G{Tests pass?}
+    G -->|Yes| H[Create consolidation commit]
+    G -->|No| I[Agent fixes issues]
+    I --> F
+    H --> J[Log consolidation details]
+    J --> K[Done]
+
+    L[orbit consolidate --rollback] --> M[Revert last consolidation commit]
+    M --> K
+```
+
+**Consolidate flags:**
+
+| Flag | Description |
+|------|-------------|
+| `--variant N` | Which variant is the target (required unless --rollback) |
+| `--prompt` | Additional instructions for consolidation |
+| `--allow-dirty` | Allow consolidation with uncommitted changes |
+| `--rollback` | Revert the last consolidation commit |
+| `--force` | Force consolidation even if report is stale |
+
+---
+
+### Cleanup Without Finalizing
+
+If you want to abandon all variants without adopting any:
+
+```bash
+# Remove all variants
 orbit cleanup my-feature
 
-# Clean up but keep a specific variant
+# Keep one variant for manual inspection
 orbit cleanup my-feature --keep 2
+
+# Preview cleanup without executing
+orbit cleanup my-feature --dry-run
 ```
 
-### Variant Workflow
+---
 
-1. **Run variants**: `orbit run --variants N` creates N worktrees and runs the implementation in each
-2. **Monitor progress**: `orbit status` shows the status of each variant
-3. **Compare results**: After completion, a comparison report is generated in `specs/{spec}/comparison-report/`
-4. **Finalize**: Use `orbit finalize --variant N` to adopt the best implementation and clean up
+### Variant Directory Structure
 
-### Variant Structure
-
-Variants are stored in worktrees alongside the `.orbit` directory:
+During a multi-variant run, Orbit creates the following structure:
 
 ```
-specs/my-feature/.orbit/
-├── variants.json                     # Variant metadata
-└── worktrees/
-    ├── orbit-impl-1-feature-branch/  # Variant 1 worktree
-    ├── orbit-impl-2-feature-branch/  # Variant 2 worktree
-    └── orbit-impl-3-feature-branch/  # Variant 3 worktree
+specs/my-feature/
+├── tasks.md                              # Original tasks file
+├── requirements.md                       # Spec requirements
+├── design.md                             # Spec design
+├── .orbit/
+│   ├── variants.json                     # Variant metadata & status
+│   ├── .gitignore                        # Excludes worktrees/
+│   ├── worktrees/
+│   │   ├── orbit-impl-1-my-feature/      # Variant 1 worktree (full repo)
+│   │   ├── orbit-impl-2-my-feature/      # Variant 2 worktree
+│   │   └── orbit-impl-3-my-feature/      # Variant 3 worktree
+│   ├── logs/
+│   │   ├── variant-1/
+│   │   │   ├── summary.json              # Run summary for variant 1
+│   │   │   ├── phase-1-run-1-session.json
+│   │   │   └── phase-1-run-1-session.txt
+│   │   └── variant-2/
+│   │       └── ...
+│   ├── consolidation-log.json            # Consolidation history
+│   └── consolidation-*.md                # Agent reports
+└── comparison-report/
+    ├── index.html                        # HTML comparison report
+    ├── comparison-report.md              # Markdown report
+    ├── variant-1.diff                    # Full diff for variant 1
+    └── variant-2.diff                    # Full diff for variant 2
 ```
+
+**Git branch structure:**
+
+```
+main
+├── feature/my-feature                    # Original working branch
+├── orbit-impl-1/my-feature               # Variant 1 branch
+├── orbit-impl-2/my-feature               # Variant 2 branch
+└── orbit-impl-3/my-feature               # Variant 3 branch
+```
+
+---
+
+### Complete Workflow Example
+
+Here's a complete example of using the variants workflow:
+
+```bash
+# 1. Start on your feature branch
+git checkout feature/user-auth
+cd /path/to/project
+
+# 2. Run 3 variants with different agents in parallel
+orbit run --variants 3 \
+  --variant-agents claude-code,codex,claude-code \
+  --parallel \
+  --guidance-file auth-guidance.yaml
+
+# 3. Monitor progress (in another terminal)
+watch -n 30 orbit status user-auth
+
+# 4. Once complete, review the comparison report
+open specs/user-auth/comparison-report/index.html
+# or
+cat specs/user-auth/comparison-report/comparison-report.md
+
+# 5. Finalize the best variant
+orbit finalize user-auth --variant 2
+
+# 6. (Optional) If variant 1 had some good error handling, consolidate it
+orbit consolidate user-auth --variant 2 \
+  --prompt "Apply the error handling patterns from variant 1"
+
+# 7. Continue development on your feature branch
+git log --oneline -5  # See the variant commits merged in
+```
+
+### Command Quick Reference
+
+```mermaid
+flowchart LR
+    subgraph Commands
+        A[orbit run --variants N]
+        B[orbit status]
+        C[orbit compare]
+        D[orbit finalize --variant N]
+        E[orbit consolidate --variant N]
+        F[orbit cleanup]
+    end
+
+    A -->|creates variants| B
+    B -->|check progress| C
+    C -->|regenerate report| D
+    D -->|adopt variant| E
+    E -->|merge improvements| F
+
+    F -.->|alternative to finalize| A
+```
+
+| Command | Purpose | When to Use |
+|---------|---------|-------------|
+| `orbit run --variants N` | Create and run N variants | Start of workflow |
+| `orbit status <spec>` | Check variant status | Monitor progress |
+| `orbit compare <spec>` | Regenerate comparison | Report outdated or missing |
+| `orbit finalize <spec> --variant N` | Adopt a variant | Choose final implementation |
+| `orbit consolidate <spec> --variant N` | Merge improvements | Want ideas from other variants |
+| `orbit cleanup <spec>` | Remove all variants | Abandon without adopting |
 
 ## Web Interface
 
