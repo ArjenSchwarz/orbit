@@ -9,6 +9,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- README documentation for apsis follow mode (`-F/--follow` flag) with usage examples and options
+
 - End-to-end integration tests for apsis follow mode (Phase 5):
   - `TestFollowerIntegration_BasicFollowWithAppend` testing entry append with incremental rendering
   - `TestFollowerIntegration_FileTruncation` testing truncation detection and re-render
