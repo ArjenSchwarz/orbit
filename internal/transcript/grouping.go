@@ -39,10 +39,11 @@ func isSlashCommandEntry(entry *Entry) bool {
 	return false
 }
 
-// buildSkillDescriptionMap scans entries for meta entries containing skill/command descriptions
+// BuildSkillDescriptionMap scans entries for meta entries containing skill/command descriptions
 // and returns a map from sourceToolUseID (for Skill tools) or parentUUID (for slash commands)
 // to the description text.
-func buildSkillDescriptionMap(entries []Entry) map[string]string {
+// Exported for use by Follower in follow mode.
+func BuildSkillDescriptionMap(entries []Entry) map[string]string {
 	result := make(map[string]string)
 
 	// First pass: identify slash command entry UUIDs

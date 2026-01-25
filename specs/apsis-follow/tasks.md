@@ -33,7 +33,7 @@ references:
 
 ## Incremental Rendering
 
-- [ ] 4. Add RenderEntries function to markdown.go
+- [x] 4. Add RenderEntries function to markdown.go
   - Extract entry rendering logic from RenderMarkdown
   - Accept pre-built toolMeta and skillDescriptions
   - Render without header
@@ -41,7 +41,7 @@ references:
   - Requirements: [4.2](requirements.md#4.2), [4.3](requirements.md#4.3), [4.7](requirements.md#4.7)
   - References: internal/transcript/markdown.go
 
-- [ ] 5. Export buildToolMeta and buildSkillDescriptionMap
+- [x] 5. Export buildToolMeta and buildSkillDescriptionMap
   - Rename to exported functions
   - Update RenderMarkdown to use exported versions
   - Ensure existing tests still pass

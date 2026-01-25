@@ -9,6 +9,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Incremental rendering support for apsis follow mode (Phase 2):
+  - `RenderEntries()` function to render entries without header using pre-built state
+  - `BuildToolMeta()` function to accumulate tool metadata from entries for follow mode
+  - `BuildSkillDescriptionMap()` exported function (renamed from `buildSkillDescriptionMap()`)
+  - `ToolMeta` type alias exported for use by Follower component
+  - Unit tests comparing `RenderEntries()` output with `RenderMarkdown()` body
+  - Unit tests for `BuildToolMeta()` extraction, edge cases, and pre-built state usage
+
 - Core infrastructure for apsis follow mode (Phase 1):
   - `hashLine()` function computing truncated SHA-256 hash (16 bytes) for entry identification
   - `lineWithHash` struct holding raw JSON bytes and precomputed hash
