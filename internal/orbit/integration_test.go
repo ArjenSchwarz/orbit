@@ -745,9 +745,7 @@ func TestRunWithoutConfig(t *testing.T) {
 	}
 
 	// Temporarily override HOME to prevent loading ~/.orbit.yaml
-	oldHome := os.Getenv("HOME")
-	os.Setenv("HOME", tmpDir)
-	defer os.Setenv("HOME", oldHome)
+	t.Setenv("HOME", tmpDir)
 
 	// Load config (should not find .orbit.yaml)
 	cfg := orbitconfig.Load(tmpDir)
