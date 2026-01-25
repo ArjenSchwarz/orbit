@@ -34,7 +34,7 @@ The codebase follows a clean internal package structure:
 
 ```
 cmd/
-  orbit/main.go      - Orbit CLI entry point, subcommand routing (run, serve, register, status, cleanup, finalize, compare)
+  orbit/main.go      - Orbit CLI entry point, subcommand routing (run, serve, register, init, demo, status, cleanup, finalize, compare, consolidate)
   apsis/main.go      - Apsis CLI entry point, session listing and conversion
 internal/
   agents/            - Agent abstraction layer
@@ -52,6 +52,12 @@ internal/
     agent.go         - Per-variant agent assignment
   comparison/        - Variant comparison logic
     compare.go       - Comparator for analyzing variant diffs
+  consolidation/     - Variant consolidation support
+    consolidator.go  - Applies improvements from non-chosen variants
+    prompt.go        - AI prompt generation for consolidation
+    recovery.go      - Rollback support for failed consolidations
+    logger.go        - Consolidation logging and history
+    types.go         - Config, result, and report types
   report/            - Comparison report generation
   claude/client.go   - Legacy Claude Code CLI wrapper (used by comparison)
   claude/paths.go    - Claude project path utilities (shared by orbit and apsis)
@@ -59,6 +65,10 @@ internal/
   errors/errors.go   - Legacy error classification (deprecated, use agents/errors)
   logs/manager.go    - Session log storage and summary management
   config/config.go   - Configuration loading via Viper (files, env vars, defaults)
+  debug/debug.go     - Debug logging utilities
+  display/           - Terminal display utilities
+    spinner.go       - Progress spinner for long operations
+    hyperlink.go     - Terminal hyperlink support (OSC 8)
   transcript/        - JSONL parsing and Markdown/HTML rendering for apsis and web
   registry/          - Run registry for tracking orbit runs across repositories
   web/               - HTTP server, handlers, templates for web interface
@@ -141,18 +151,26 @@ Runs are tracked in `~/.orbit/runs/` as individual JSON files (one per run).
 - Registry failures are non-fatal (logged as warnings)
 - Atomic writes using temp file + rename pattern
 
-## Multi-Variant Comparison (Orbit)
+## Multi-Variant Workflow (Orbit)
 
 Orbit supports running multiple implementation variants with different agents or guidance:
 - `orbit run --variants N` creates N git worktrees and runs implementation in each
-- `--variant-agents agent1,agent2` assigns different agents to variants (cycles if fewer agents than variants)
+- `--variant-agents agent1,agent2` assigns different agents to variants (cycles if fewer than variants)
 - `--guidance-file guidance.yaml` provides per-variant instructions
 - `--parallel` runs variants concurrently (limited by `--max-parallel`)
 
-Variant management subcommands:
-- `orbit status <spec>` - shows variant status
-- `orbit compare <spec>` - regenerates comparison report
-- `orbit finalize <spec> --variant N` - adopts variant N and cleans up others
-- `orbit cleanup <spec>` - removes all variant worktrees and branches
+Variant workflow (in order):
+1. `orbit run --variants N` - create and run variants
+2. `orbit status <spec>` - monitor variant progress and status
+3. `orbit compare <spec>` - regenerate comparison report (auto-generated after run)
+4. `orbit consolidate <spec> --variant N` - (optional) merge improvements from other variants
+5. `orbit finalize <spec> --variant N` - adopt variant N and clean up others
+6. `orbit cleanup <spec>` - removes all variant worktrees and branches (alternative to finalize)
+
+Consolidation allows merging good ideas from non-chosen variants:
+- Reads cross-variant improvements from comparison report
+- Agent applies beneficial changes to chosen variant
+- Creates consolidation commit with applied improvements
+- Supports `--rollback` to revert last consolidation
 
 Variants are stored in `specs/{spec}/.orbit/worktrees/` with metadata in `variants.json`.
