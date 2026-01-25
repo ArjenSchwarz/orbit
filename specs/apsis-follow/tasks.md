@@ -8,21 +8,21 @@ references:
 
 ## Core Infrastructure
 
-- [ ] 1. Add hashLine function and lineWithHash type
+- [x] 1. Add hashLine function and lineWithHash type
   - Implement SHA-256 truncated to 16 bytes
   - Add lineWithHash struct with raw bytes and hash fields
   - Write unit tests first (table-driven)
   - Requirements: [4.4](requirements.md#4.4), [4.5](requirements.md#4.5)
   - References: internal/transcript/follow.go
 
-- [ ] 2. Add getFileInfo function for mtime/inode/size
+- [x] 2. Add getFileInfo function for mtime/inode/size
   - Implement Unix inode access via syscall.Stat_t
   - Add fallback for non-Unix platforms (inode=0)
   - Write unit tests with temp files
   - Requirements: [3.3](requirements.md#3.3), [3.6](requirements.md#3.6), [3.7](requirements.md#3.7)
   - References: internal/transcript/follow.go
 
-- [ ] 3. Add readAndHashLines function
+- [x] 3. Add readAndHashLines function
   - Read file line by line with bufio.Scanner
   - Hash raw bytes before parsing
   - Handle incomplete JSON at EOF (skip silently)

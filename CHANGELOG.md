@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Core infrastructure for apsis follow mode (Phase 1):
+  - `hashLine()` function computing truncated SHA-256 hash (16 bytes) for entry identification
+  - `lineWithHash` struct holding raw JSON bytes and precomputed hash
+  - `getFileInfo()` function returning mtime, inode, and size for file change detection
+  - Unix inode access via `syscall.Stat_t` with fallback to 0 for non-Unix platforms
+  - `readAndHashLines()` function reading JSONL files line by line with hash computation
+  - Incomplete JSON at EOF handled silently (expected during active writing)
+  - Corrupt mid-file lines logged as warnings and skipped
+  - Unit tests for all functions including edge cases (CRLF line endings, empty files, missing files)
+
 ### Fixed
 
 - Variant continue mode now skips completed variants: When continuing an existing variant run, completed variants are now properly skipped instead of being re-run. Both sequential and parallel execution modes now check variant status before execution.
