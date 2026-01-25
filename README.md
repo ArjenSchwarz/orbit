@@ -332,35 +332,34 @@ flowchart TD
 The variants workflow consists of five main phases:
 
 ```mermaid
-flowchart LR
+flowchart TB
     subgraph Phase1[1. Setup]
-        A1[Create branches]
-        A2[Create worktrees]
-        A3[Initialize metadata]
+        direction LR
+        A1[Create branches] --> A2[Create worktrees] --> A3[Initialize metadata]
     end
 
     subgraph Phase2[2. Execution]
-        B1[Run agent in each worktree]
-        B2[Track status & metrics]
+        direction LR
+        B1[Run agent in each worktree] --> B2[Track status & metrics]
     end
 
     subgraph Phase3[3. Comparison]
-        C1[Gather diffs]
-        C2[AI analysis]
-        C3[Generate report]
+        direction LR
+        C1[Gather diffs] --> C2[AI analysis] --> C3[Generate report]
     end
 
-    subgraph Phase4[4. Selection]
-        D1[Review report]
-        D2[Choose variant]
-        D3[Finalize]
+    subgraph Phase4[4. Consolidation]
+        direction LR
+        D1[Review report] --> D2[Merge improvements from other variants]
     end
 
-    subgraph Phase5[5. Optional]
-        E1[Consolidate improvements]
+    subgraph Phase5[5. Finalization]
+        direction LR
+        E1[Choose variant] --> E2[Adopt & cleanup]
     end
 
     Phase1 --> Phase2 --> Phase3 --> Phase4 --> Phase5
+    Phase4 -.->|optional| Phase5
 ```
 
 ---
