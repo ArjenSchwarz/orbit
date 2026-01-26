@@ -9,6 +9,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Status package for enhanced status command (Phase 3):
+  - `internal/status/types.go` with core types: `VariantInfo` (aggregated status for one variant), `GitInfo` (commits and dirty state), `LastActionResult` with explicit state enum (`LastActionFound`, `LastActionWaiting`, `LastActionUnavailable`, `LastActionNotSupported`), `TaskProgress` and `PhaseProgress` for phase-by-phase task counts
+  - `FromRunePhaseSummary()` helper to convert rune phase summaries to PhaseProgress
+  - `internal/status/gatherer.go` with `Gatherer` struct for collecting variant status data:
+    - `NewGatherer()` constructor with git client, spec name, base commit, and repo root
+    - `GatherAllVariants()` for concurrent status collection across all variants
+    - `GatherVariantInfo()` for single variant with graceful error handling
+    - `gatherGitInfo()` using GitClient for commits and dirty state
+    - `gatherLastAction()` with Claude-only transcript access and explicit state handling
+    - `gatherTaskProgress()` using rune client for phase summaries
+  - `GetLiveTranscriptPath()` function to build Claude transcript path from summary.json session ID
+  - Unit tests with mock GitClient covering active/non-active variants, git success/failure, non-Claude agents, concurrent gathering, and transcript path resolution
+
 - Transcript reading functions for enhanced status command (Phase 2):
   - `GetLastDisplayableEntry()` function reading from end of file with expanding window (64KB to 4MB) for efficient tail reading of live transcripts
   - Re-stats file each iteration for concurrent write safety when agent is actively writing

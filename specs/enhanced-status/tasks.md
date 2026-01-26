@@ -48,24 +48,24 @@ references:
 
 ## Phase 3: Status Package
 
-- [ ] 7. Create internal/status package with types
+- [x] 7. Create internal/status package with types
   - Create types.go with VariantInfo, GitInfo, LastActionResult, LastActionState enum, TaskProgress, PhaseProgress
   - Export all types for use by status command
 
-- [ ] 8. Implement Gatherer struct and methods
+- [x] 8. Implement Gatherer struct and methods
   - Implement NewGatherer with git client, specName, baseCommit, repoRoot
   - Implement GatherAllVariants with concurrent goroutines
   - Implement GatherVariantInfo with graceful error handling
   - Implement gatherGitInfo, gatherLastAction, gatherTaskProgress helpers
   - Requirements: 6.1, 6.2, 6.3, 6.4, 6.5
 
-- [ ] 9. Add GetLiveTranscriptPath function
+- [x] 9. Add GetLiveTranscriptPath function
   - Read session ID from summary.json CurrentPhase
   - Build path using claudecode.BuildProjectPath
   - Return empty string for non-Claude agents
   - Requirements: 3.1, 3.2, 3.3, 3.8, 3.9, 3.12
 
-- [ ] 10. Add unit tests for status gatherer
+- [x] 10. Add unit tests for status gatherer
   - Test with mocked git client and file system
   - Test concurrent gathering
   - Test graceful degradation when data sources fail
