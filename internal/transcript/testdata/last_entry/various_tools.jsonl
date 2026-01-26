@@ -1,0 +1,4 @@
+{"type":"assistant","timestamp":"2025-12-23T10:30:01+11:00","message":{"role":"assistant","content":[{"type":"tool_use","name":"Bash","input":{"command":"go test ./..."}}]}}
+{"type":"assistant","timestamp":"2025-12-23T10:30:02+11:00","message":{"role":"assistant","content":[{"type":"tool_use","name":"Grep","input":{"pattern":"TODO","path":"/src"}}]}}
+{"type":"assistant","timestamp":"2025-12-23T10:30:03+11:00","message":{"role":"assistant","content":[{"type":"tool_use","name":"WebFetch","input":{"url":"https://example.com","prompt":"Summarize"}}]}}
+{"type":"assistant","timestamp":"2025-12-23T10:30:04+11:00","message":{"role":"assistant","content":[{"type":"tool_use","name":"WebSearch","input":{"query":"golang best practices"}}]}}

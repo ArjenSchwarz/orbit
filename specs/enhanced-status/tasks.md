@@ -28,20 +28,20 @@ references:
 
 ## Phase 2: Transcript Reading
 
-- [ ] 4. Add GetLastDisplayableEntry function in internal/transcript
+- [x] 4. Add GetLastDisplayableEntry function in internal/transcript
   - Read from end of file with expanding window (64KB to 4MB)
   - Re-stat file each iteration for concurrent write safety
   - Skip incomplete JSON lines and non-displayable entries
   - Return nil,nil for empty or no displayable entries
   - Requirements: 3.4, 3.10, 3.13
 
-- [ ] 5. Add FormatToolUse and FormatLastAction functions
+- [x] 5. Add FormatToolUse and FormatLastAction functions
   - Implement parameter priority order: file_path, path, command, pattern, query, url, prompt
   - Truncate tool input to 60 chars, text to 80 chars
   - Prioritize tool_use over text in FormatLastAction
   - Requirements: 3.5, 3.6, 3.7
 
-- [ ] 6. Add unit tests for transcript functions
+- [x] 6. Add unit tests for transcript functions
   - Create fixture files for tool_use, text, mixed, incomplete, large entry scenarios
   - Test parameter extraction priority
   - Test truncation behavior

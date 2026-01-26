@@ -9,6 +9,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Transcript reading functions for enhanced status command (Phase 2):
+  - `GetLastDisplayableEntry()` function reading from end of file with expanding window (64KB to 4MB) for efficient tail reading of live transcripts
+  - Re-stats file each iteration for concurrent write safety when agent is actively writing
+  - Skips incomplete JSON lines and non-displayable entries (meta, thinking, non-assistant)
+  - `FormatToolUse()` function with parameter priority order (file_path, path, command, pattern, query, url, prompt) and 60-char truncation
+  - `FormatLastAction()` function prioritizing tool_use over text, with 80-char text truncation
+  - `isDisplayableEntry()` helper for identifying assistant messages with tool_use or text content
+  - Test fixtures for tool_use, text, mixed, thinking, meta, incomplete, and system-only scenarios
+  - Unit tests covering parameter extraction priority, truncation behavior, and edge cases
+
 - Git operations for enhanced status command (Phase 1):
   - `HasUncommittedChangesInPath()` method to check for uncommitted changes in a specific worktree path, ignoring untracked files per requirement 2.4
   - `GetRecentCommits()` method to retrieve N most recent commits since a base commit, returning short hash and subject in reverse chronological order
