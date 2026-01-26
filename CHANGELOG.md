@@ -9,6 +9,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Integration tests for enhanced status command (Phase 5):
+  - `TestStatusCommand_NoVariantsJSON` verifying exit code 1 when variants.json is missing (requirement 6.6)
+  - `TestStatusCommand_Integration` end-to-end test with git repo, worktree structure, variants.json, summary.json, tasks.md fixtures
+  - `TestStatusCommand_JSONFormat` verifying JSON output format
+  - `TestStatusCommand_AutoDetectSpec` verifying branch-based spec name auto-detection
+  - `TestExtractSpecName` unit tests for spec name extraction from branch names
+  - `TestBuildVariantHeader` unit tests for variant header formatting with git state
+
+### Changed
+
+- Status command now returns error (exit code 1) when variants.json does not exist, per requirement 6.6
+- Error messages for missing variants.json printed to stderr instead of stdout
+
 - Output types and rendering for enhanced status command (Phase 4):
   - `StatusOutput` struct with spec metadata and variant lists for JSON serialization
   - `VariantOutput` struct with status, git state, commits, last action, tasks, and error fields

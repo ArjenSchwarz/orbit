@@ -51,9 +51,9 @@ func statusCommand(args []string) error {
 	metadataPath := filepath.Join(specDir, ".orbit", "variants.json")
 
 	if _, err := os.Stat(metadataPath); os.IsNotExist(err) {
-		fmt.Printf("No variant run in progress for spec: %s\n", specName)
-		fmt.Printf("Start a variant run with: orbit run --variants N\n")
-		return nil
+		fmt.Fprintf(os.Stderr, "No variant run in progress for spec: %s\n", specName)
+		fmt.Fprintf(os.Stderr, "Start a variant run with: orbit run --variants N\n")
+		return fmt.Errorf("variants.json not found")
 	}
 
 	// Get repo root
@@ -76,8 +76,8 @@ func statusCommand(args []string) error {
 
 	metadata := mgr.GetMetadata()
 	if metadata == nil {
-		fmt.Printf("No variant run in progress for spec: %s\n", specName)
-		return nil
+		fmt.Fprintf(os.Stderr, "No variant run in progress for spec: %s\n", specName)
+		return fmt.Errorf("variants metadata not found")
 	}
 
 	// Gather status information for all variants

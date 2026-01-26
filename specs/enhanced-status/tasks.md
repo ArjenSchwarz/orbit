@@ -85,14 +85,14 @@ references:
 
 ## Phase 5: Integration
 
-- [ ] 13. Update cmd/orbit/status.go to use new components
+- [x] 13. Update cmd/orbit/status.go to use new components
   - Create Gatherer with loaded metadata
   - Call GatherAllVariants for concurrent data collection
   - Call renderStatus with collected data
   - Handle variants.json missing case
   - Requirements: 6.6
 
-- [ ] 14. Add integration test for status command
+- [x] 14. Add integration test for status command
   - Create temp git repo with worktree structure
   - Create variants.json, summary.json, transcript fixtures
   - Verify output contains all expected sections
