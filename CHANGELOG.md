@@ -9,6 +9,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Output types and rendering for enhanced status command (Phase 4):
+  - `StatusOutput` struct with spec metadata and variant lists for JSON serialization
+  - `VariantOutput` struct with status, git state, commits, last action, tasks, and error fields
+  - `CommitOutput` struct with hash and subject for commit display
+  - `TaskOutput` struct with phase name, completion counts, and active flag
+  - `BuildStatusOutput()` function to convert metadata and VariantInfo to structured output
+  - `BuildVariantOutput()` function to convert VariantInfo to output format with state handling
+  - `renderStatus()` dispatcher for format selection (text or json)
+  - `renderJSON()` using standard JSON encoder for structured output
+  - `renderTerminal()` using go-output with Markdown format for terminal display
+  - `--format` flag for `orbit status` command (text or json)
+
 - Status package for enhanced status command (Phase 3):
   - `internal/status/types.go` with core types: `VariantInfo` (aggregated status for one variant), `GitInfo` (commits and dirty state), `LastActionResult` with explicit state enum (`LastActionFound`, `LastActionWaiting`, `LastActionUnavailable`, `LastActionNotSupported`), `TaskProgress` and `PhaseProgress` for phase-by-phase task counts
   - `FromRunePhaseSummary()` helper to convert rune phase summaries to PhaseProgress

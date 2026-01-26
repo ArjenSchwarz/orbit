@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"flag"
 	"fmt"
 	"os"
@@ -10,6 +11,7 @@ import (
 	"strings"
 
 	output "github.com/ArjenSchwarz/go-output/v2"
+	"github.com/arjenschwarz/orbit/internal/status"
 	"github.com/arjenschwarz/orbit/internal/variants"
 )
 
@@ -17,13 +19,17 @@ import (
 // It displays the status of variant worktrees for a spec.
 func statusCommand(args []string) error {
 	fs := flag.NewFlagSet("status", flag.ExitOnError)
+	formatFlag := fs.String("format", "text", "Output format: text or json")
 
 	fs.Usage = func() {
-		fmt.Fprintf(os.Stderr, "Usage: orbit status <spec-name>\n\n")
+		fmt.Fprintf(os.Stderr, "Usage: orbit status [options] <spec-name>\n\n")
 		fmt.Fprintf(os.Stderr, "Display the status of variant implementations for a spec.\n\n")
-		fmt.Fprintf(os.Stderr, "Examples:\n")
+		fmt.Fprintf(os.Stderr, "Options:\n")
+		fs.PrintDefaults()
+		fmt.Fprintf(os.Stderr, "\nExamples:\n")
 		fmt.Fprintf(os.Stderr, "  orbit status my-feature\n")
 		fmt.Fprintf(os.Stderr, "  orbit status                   # Auto-detect from current branch\n")
+		fmt.Fprintf(os.Stderr, "  orbit status --format json     # Output as JSON\n")
 	}
 
 	if err := fs.Parse(args); err != nil {
@@ -74,47 +80,132 @@ func statusCommand(args []string) error {
 		return nil
 	}
 
-	// Display header
-	fmt.Printf("Variant Status: %s\n\n", specName)
-	fmt.Printf("Base Commit:     %s\n", metadata.BaseCommit[:12])
-	fmt.Printf("Original Branch: %s\n", metadata.OriginalBranch)
-	fmt.Printf("Started:         %s\n\n", metadata.StartedAt.Format("2006-01-02 15:04:05"))
+	// Gather status information for all variants
+	gatherer := status.NewGatherer(git, specName, metadata.BaseCommit, repoRoot)
+	ctx := context.Background()
+	infos := gatherer.GatherAllVariants(ctx, metadata.Variants)
 
-	// Build table data
-	rows := make([]map[string]any, 0, len(metadata.Variants))
-	for _, v := range metadata.Variants {
-		rows = append(rows, map[string]any{
-			"ID":     v.ID,
-			"Branch": v.Branch,
-			"Path":   v.WorktreePath,
-			"Status": string(v.Status),
+	// Build structured output
+	startedAt := metadata.StartedAt.Format("2006-01-02 15:04:05")
+	statusData := status.BuildStatusOutput(specName, metadata.BaseCommit, metadata.OriginalBranch, startedAt, infos)
+
+	// Render based on format
+	return renderStatus(ctx, statusData, *formatFlag)
+}
+
+// renderStatus outputs the status data in the requested format.
+func renderStatus(ctx context.Context, data *status.StatusOutput, format string) error {
+	switch format {
+	case "json":
+		return renderJSON(data)
+	default:
+		return renderTerminal(ctx, data)
+	}
+}
+
+// renderJSON outputs structured JSON.
+func renderJSON(data *status.StatusOutput) error {
+	encoder := json.NewEncoder(os.Stdout)
+	encoder.SetIndent("", "  ")
+	return encoder.Encode(data)
+}
+
+// renderTerminal outputs formatted text for terminal display.
+func renderTerminal(ctx context.Context, data *status.StatusOutput) error {
+	builder := output.New()
+
+	// Header
+	builder.Section("Variant Status", func(b *output.Builder) {
+		b.Text(fmt.Sprintf("Spec:            %s", data.SpecName))
+		b.Text(fmt.Sprintf("Base Commit:     %s", data.BaseCommit))
+		b.Text(fmt.Sprintf("Original Branch: %s", data.OriginalBranch))
+		b.Text(fmt.Sprintf("Started:         %s", data.StartedAt))
+	})
+
+	// Active variants with details
+	for _, v := range data.ActiveVariants {
+		builder.Section(buildVariantHeader(&v), func(b *output.Builder) {
+			// Commits section
+			b.Text("Commits:")
+			if v.GitState == "" && len(v.Commits) == 0 {
+				// Git info unavailable (per requirement 6.1)
+				b.Text("  Git info unavailable")
+			} else if len(v.Commits) == 0 {
+				// No commits yet (per requirement 1.4)
+				b.Text("  No commits yet")
+			} else {
+				for _, c := range v.Commits {
+					b.Text(fmt.Sprintf("  %s %s", c.Hash, c.Subject))
+				}
+			}
+			b.Text("")
+
+			// Last Action section
+			b.Text("Last Action:")
+			if v.LastAction == "" {
+				b.Text("  Waiting for activity...")
+			} else {
+				b.Text(fmt.Sprintf("  %s", v.LastAction))
+			}
+			b.Text("")
+
+			// Tasks section
+			b.Text("Tasks:")
+			if len(v.Tasks) == 0 {
+				// Task progress unavailable (per requirement 6.3)
+				b.Text("  Task progress unavailable")
+			} else {
+				for _, t := range v.Tasks {
+					prefix := "  "
+					if t.IsActive {
+						// Active phase prefix (per requirement 4.7)
+						prefix = "→ "
+					}
+					b.Text(fmt.Sprintf("%s%s: %d/%d", prefix, t.Phase, t.Completed, t.Total))
+				}
+			}
 		})
 	}
 
-	doc := output.New().
-		Table("Variants", rows, output.WithKeys("ID", "Branch", "Path", "Status")).
-		Build()
-
-	out := output.NewOutput(
-		output.WithFormat(output.Table()),
-		output.WithWriter(output.NewStdoutWriter()),
-	)
-
-	if err := out.Render(context.Background(), doc); err != nil {
-		return fmt.Errorf("failed to render table: %w", err)
+	// Other variants summary
+	if len(data.OtherVariants) > 0 {
+		sectionTitle := "Other Variants"
+		if len(data.ActiveVariants) == 0 {
+			sectionTitle = "Variants (No Active)"
+		}
+		builder.Section(sectionTitle, func(b *output.Builder) {
+			for _, v := range data.OtherVariants {
+				b.Text(fmt.Sprintf("Variant %d: %s [%s]", v.ID, v.Branch, v.Status))
+			}
+		})
 	}
 
-	return nil
+	doc := builder.Build()
+	out := output.NewOutput(
+		output.WithFormat(output.Markdown()),
+		output.WithWriter(output.NewStdoutWriter()),
+	)
+	return out.Render(ctx, doc)
+}
+
+// buildVariantHeader creates the header string for an active variant section.
+func buildVariantHeader(v *status.VariantOutput) string {
+	header := fmt.Sprintf("Variant %d: %s [%s", v.ID, v.Branch, v.Status)
+	if v.GitState != "" {
+		header += fmt.Sprintf(" (%s)", v.GitState)
+	}
+	header += "]"
+	return header
 }
 
 // getGitBranchForStatus returns the current git branch name.
 func getGitBranchForStatus() (string, error) {
 	cmd := exec.Command("git", "rev-parse", "--abbrev-ref", "HEAD")
-	output, err := cmd.Output()
+	out, err := cmd.Output()
 	if err != nil {
 		return "", fmt.Errorf("not in a git repository or git not available: %w", err)
 	}
-	return strings.TrimSpace(string(output)), nil
+	return strings.TrimSpace(string(out)), nil
 }
 
 // extractSpecName extracts the spec name from a branch name.
@@ -129,9 +220,9 @@ func extractSpecName(branch string) string {
 // getRepoRoot returns the git repository root directory.
 func getRepoRoot() (string, error) {
 	cmd := exec.Command("git", "rev-parse", "--show-toplevel")
-	output, err := cmd.Output()
+	out, err := cmd.Output()
 	if err != nil {
 		return "", fmt.Errorf("not in a git repository: %w", err)
 	}
-	return strings.TrimSpace(string(output)), nil
+	return strings.TrimSpace(string(out)), nil
 }

@@ -72,12 +72,12 @@ references:
 
 ## Phase 4: Output Types and Rendering
 
-- [ ] 11. Add output types for status rendering
+- [x] 11. Add output types for status rendering
   - Create StatusOutput, VariantOutput, CommitOutput, TaskOutput structs
   - Include JSON tags for serialization
   - Add buildStatusOutput and buildVariantOutput helper functions
 
-- [ ] 12. Implement renderStatus with format support
+- [x] 12. Implement renderStatus with format support
   - Implement renderJSON using go-output WithObject
   - Implement renderTerminal using go-output Text
   - Add format parameter to choose output mode
