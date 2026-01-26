@@ -7,6 +7,57 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- README documentation for apsis follow mode (`-F/--follow` flag) with usage examples and options
+
+- End-to-end integration tests for apsis follow mode (Phase 5):
+  - `TestFollowerIntegration_BasicFollowWithAppend` testing entry append with incremental rendering
+  - `TestFollowerIntegration_FileTruncation` testing truncation detection and re-render
+  - `TestFollowerIntegration_FileReplacement` testing inode change detection and re-render
+  - `TestFollowerIntegration_IncompleteJSONHandling` testing partial JSON line handling
+  - `TestFollowMode_SIGINTExitCode` testing context cancellation behavior
+  - `TestFollowMode_ExitCode130Logic` testing exit code for file not found
+  - `TestFollowMode_BasicFollowWithEntry` testing CLI-level follow mode validation
+  - All tests use `waitForOutput` helper with generous timeouts for poll cycle timing
+
+- CLI integration for apsis follow mode (Phase 4):
+  - `-F` and `--follow` flags to enable follow mode for live transcript monitoring
+  - `validateFollowMode()` function checking for incompatible flag combinations (`-o` with `--follow`, `-f html` with `--follow`)
+  - `resolveFollowInput()` function resolving session IDs to file paths (Claude first, then Codex) with stdin rejection
+  - `runFollow()` function with signal handling via `signal.NotifyContext` for SIGINT, returning exit code 130 (128 + 2 per Unix convention)
+  - Follow mode integration into `run()` function with early validation and branching
+  - Updated `run()` signature to return `(int, error)` for proper exit code handling
+  - Updated usage documentation with follow mode examples
+  - Unit tests for flag parsing, validation, input resolution, and follow mode execution
+
+- Follower component for apsis follow mode (Phase 3):
+  - `Follower` struct with file monitoring, deduplication, and incremental rendering state
+  - `NewFollower()` constructor validating file existence at creation time (requirement 7.1)
+  - `poll()` method detecting file changes via mtime, truncation via size decrease, and replacement via inode change
+  - `processFile()` method reading, hashing, parsing, and rendering new entries with hash-based deduplication
+  - `addSeenHash()` method with cap-based reset at 10,000 entries to prevent unbounded memory growth
+  - `Run()` method implementing 500ms poll loop with context cancellation support
+  - Unit tests for constructor validation, poll scenarios (mtime, truncation, deletion), processFile (initial and incremental rendering), hash cap reset, and Run with cancellation
+
+- Incremental rendering support for apsis follow mode (Phase 2):
+  - `RenderEntries()` function to render entries without header using pre-built state
+  - `BuildToolMeta()` function to accumulate tool metadata from entries for follow mode
+  - `BuildSkillDescriptionMap()` exported function (renamed from `buildSkillDescriptionMap()`)
+  - `ToolMeta` type alias exported for use by Follower component
+  - Unit tests comparing `RenderEntries()` output with `RenderMarkdown()` body
+  - Unit tests for `BuildToolMeta()` extraction, edge cases, and pre-built state usage
+
+- Core infrastructure for apsis follow mode (Phase 1):
+  - `hashLine()` function computing truncated SHA-256 hash (16 bytes) for entry identification
+  - `lineWithHash` struct holding raw JSON bytes and precomputed hash
+  - `getFileInfo()` function returning mtime, inode, and size for file change detection
+  - Unix inode access via `syscall.Stat_t` with fallback to 0 for non-Unix platforms
+  - `readAndHashLines()` function reading JSONL files line by line with hash computation
+  - Incomplete JSON at EOF handled silently (expected during active writing)
+  - Corrupt mid-file lines logged as warnings and skipped
+  - Unit tests for all functions including edge cases (CRLF line endings, empty files, missing files)
+
 ### Fixed
 
 - Variant continue mode now skips completed variants: When continuing an existing variant run, completed variants are now properly skipped instead of being re-run. Both sequential and parallel execution modes now check variant status before execution.

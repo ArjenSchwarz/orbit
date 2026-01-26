@@ -28,6 +28,10 @@ type toolMetadata struct {
 	SkillDescription string // Full skill description from meta entry (for Skill tools)
 }
 
+// ToolMeta stores information about a tool_use for result matching.
+// Exported for use by Follower in follow mode.
+type ToolMeta = toolMetadata
+
 // RenderMarkdown converts parsed entries to Markdown format.
 func RenderMarkdown(entries []Entry, opts RenderOptions) string {
 	var sb strings.Builder
@@ -45,6 +49,21 @@ func RenderMarkdown(entries []Entry, opts RenderOptions) string {
 
 	sb.WriteString("---\n\n")
 
+	// Build state from all entries
+	toolMeta := BuildToolMeta(entries)
+	skillDescriptions := BuildSkillDescriptionMap(entries)
+
+	// Render entries without header
+	sb.WriteString(RenderEntries(entries, toolMeta, skillDescriptions, opts))
+
+	return sb.String()
+}
+
+// RenderEntries renders entries without header, using pre-built state.
+// This is the incremental rendering function for follow mode.
+func RenderEntries(entries []Entry, toolMeta map[string]ToolMeta, skillDescriptions map[string]string, opts RenderOptions) string {
+	var sb strings.Builder
+
 	// Pre-process entries to group consecutive Read calls
 	groups := preprocessEntries(entries)
 
@@ -59,24 +78,23 @@ func RenderMarkdown(entries []Entry, opts RenderOptions) string {
 		}
 	}
 
-	// Build skill description map from meta entries
-	skillDescriptions := buildSkillDescriptionMap(entries)
-
-	// Initialize tool metadata map at render level (shared across entries)
-	// This is critical because tool_use appears in assistant entries but
-	// tool_result appears in user entries - the map must persist across both.
-	toolMeta := make(map[string]toolMetadata)
+	// Create a working copy of toolMeta to accumulate state during rendering
+	// This is needed because formatToolUse populates the map as it encounters tool_use entries
+	workingMeta := make(map[string]toolMetadata, len(toolMeta))
+	for k, v := range toolMeta {
+		workingMeta[k] = v
+	}
 
 	// Render each group
 	for _, group := range groups {
 		switch group.Type {
 		case "user":
 			for i := range group.Entries {
-				sb.WriteString(formatUserMessage(&group.Entries[i], toolMeta, skillDescriptions))
+				sb.WriteString(formatUserMessage(&group.Entries[i], workingMeta, skillDescriptions))
 			}
 		case "assistant":
 			for i := range group.Entries {
-				sb.WriteString(formatAssistantMessage(&group.Entries[i], toolMeta, skillDescriptions))
+				sb.WriteString(formatAssistantMessage(&group.Entries[i], workingMeta, skillDescriptions))
 			}
 		case "read_group":
 			sb.WriteString(formatReadGroup(group.Reads, projectDir))
@@ -86,6 +104,79 @@ func RenderMarkdown(entries []Entry, opts RenderOptions) string {
 	}
 
 	return sb.String()
+}
+
+// BuildToolMeta accumulates tool metadata from entries.
+// This processes all entries and extracts tool_use information needed
+// for correctly rendering tool_result entries that reference them.
+// Exported for use by Follower in follow mode.
+func BuildToolMeta(entries []Entry) map[string]ToolMeta {
+	skillDescriptions := BuildSkillDescriptionMap(entries)
+
+	// Pre-count tool entries for efficient map sizing
+	toolCount := 0
+	for i := range entries {
+		entry := &entries[i]
+		if entry.Message == nil {
+			continue
+		}
+		for _, item := range entry.Message.Content {
+			if item.Type == "tool_use" && item.ID != "" {
+				toolCount++
+			}
+		}
+	}
+
+	toolMeta := make(map[string]ToolMeta, toolCount)
+
+	for i := range entries {
+		entry := &entries[i]
+		if entry.Message == nil {
+			continue
+		}
+
+		for _, item := range entry.Message.Content {
+			if item.Type != "tool_use" || item.ID == "" {
+				continue
+			}
+
+			// Get summary text and description
+			summary := getToolSummary(item.Name, item.Input)
+			description := getToolDescription(item.Input)
+
+			if summary == "" {
+				switch item.Name {
+				case "Task":
+					summary = "Task"
+				case "Skill":
+					summary = "Skill"
+				default:
+					summary = "Tool: " + item.Name
+				}
+			}
+
+			// Check if this is a subagent Task
+			subagent := item.Name == "Task" && isSubagent(item.Input)
+
+			// Look up skill description if this is a Skill tool
+			var skillDesc string
+			if item.Name == "Skill" && skillDescriptions != nil {
+				skillDesc = skillDescriptions[item.ID]
+			}
+
+			toolMeta[item.ID] = toolMetadata{
+				Name:             item.Name,
+				Summary:          summary,
+				Description:      description,
+				Input:            item.Input,
+				Prompt:           getSubagentPrompt(item.Input),
+				IsSubagent:       subagent,
+				SkillDescription: skillDesc,
+			}
+		}
+	}
+
+	return toolMeta
 }
 
 // formatReadGroup formats a group of consecutive Read tool calls as a single block.

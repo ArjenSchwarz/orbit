@@ -1781,3 +1781,373 @@ func TestRenderMarkdown_EditGroupLegacyFormatPreserved(t *testing.T) {
 		t.Error("expected legacy format content to be preserved in output")
 	}
 }
+
+// Tests for RenderEntries and BuildToolMeta (Incremental Rendering)
+
+func TestRenderEntries_MatchesRenderMarkdownBody(t *testing.T) {
+	// Test that RenderEntries output matches RenderMarkdown output minus header
+	entries := []Entry{
+		{
+			Type: "user",
+			Message: &Message{
+				Role: "user",
+				Content: []ContentItem{
+					{Type: "text", Text: "Hello, Claude!"},
+				},
+			},
+		},
+		{
+			Type: "assistant",
+			Message: &Message{
+				Role: "assistant",
+				Content: []ContentItem{
+					{Type: "text", Text: "Hello! How can I help?"},
+				},
+			},
+		},
+	}
+
+	opts := RenderOptions{}
+
+	// Get full RenderMarkdown output
+	fullOutput := RenderMarkdown(entries, opts)
+
+	// Get RenderEntries output with pre-built state
+	toolMeta := BuildToolMeta(entries)
+	skillDescriptions := BuildSkillDescriptionMap(entries)
+	entriesOutput := RenderEntries(entries, toolMeta, skillDescriptions, opts)
+
+	// The header is "# Session Transcript\n\n---\n\n"
+	// Find where the body starts (after the header separator)
+	headerEnd := strings.Index(fullOutput, "---\n\n")
+	if headerEnd == -1 {
+		t.Fatal("expected header separator in RenderMarkdown output")
+	}
+	bodyStart := headerEnd + len("---\n\n")
+	expectedBody := fullOutput[bodyStart:]
+
+	if entriesOutput != expectedBody {
+		t.Errorf("RenderEntries output does not match RenderMarkdown body\n--- expected ---\n%s\n--- actual ---\n%s", expectedBody, entriesOutput)
+	}
+}
+
+func TestRenderEntries_WithToolUseAndResult(t *testing.T) {
+	// Test that RenderEntries correctly handles tool_use/tool_result pairs
+	entries := []Entry{
+		{
+			Type: "assistant",
+			Message: &Message{
+				Role: "assistant",
+				Content: []ContentItem{
+					{
+						Type: "tool_use",
+						Name: "Task",
+						ID:   "task_render_entries",
+						Input: map[string]any{
+							"subagent_type": "Explore",
+							"description":   "Find files",
+							"prompt":        "Search for files",
+						},
+					},
+				},
+			},
+		},
+		{
+			Type: "user",
+			Message: &Message{
+				Role: "user",
+				Content: []ContentItem{
+					{
+						Type:      "tool_result",
+						ToolUseID: "task_render_entries",
+						Content:   "Found 3 files",
+						IsError:   false,
+					},
+				},
+			},
+		},
+	}
+
+	opts := RenderOptions{}
+	toolMeta := BuildToolMeta(entries)
+	skillDescriptions := BuildSkillDescriptionMap(entries)
+
+	result := RenderEntries(entries, toolMeta, skillDescriptions, opts)
+
+	// Should have the combined subagent block
+	if !strings.Contains(result, "🤖🔧 Explore: Find files") {
+		t.Error("expected subagent summary in RenderEntries output")
+	}
+	if !strings.Contains(result, "**Prompt:**") {
+		t.Error("expected Prompt section in RenderEntries output")
+	}
+	if !strings.Contains(result, "**Result:**") {
+		t.Error("expected Result section in RenderEntries output")
+	}
+	if !strings.Contains(result, "Found 3 files") {
+		t.Error("expected result content in RenderEntries output")
+	}
+}
+
+func TestRenderEntries_NoHeader(t *testing.T) {
+	// Verify that RenderEntries does NOT include a header
+	entries := []Entry{
+		{
+			Type: "user",
+			Message: &Message{
+				Role: "user",
+				Content: []ContentItem{
+					{Type: "text", Text: "Test message"},
+				},
+			},
+		},
+	}
+
+	opts := RenderOptions{
+		Title:     "Custom Title",
+		SessionID: "test-session-123",
+	}
+
+	toolMeta := BuildToolMeta(entries)
+	skillDescriptions := BuildSkillDescriptionMap(entries)
+	result := RenderEntries(entries, toolMeta, skillDescriptions, opts)
+
+	// Should NOT contain title or session ID (those are in header)
+	if strings.Contains(result, "Custom Title") {
+		t.Error("RenderEntries should not include title")
+	}
+	if strings.Contains(result, "test-session-123") {
+		t.Error("RenderEntries should not include session ID")
+	}
+	// Should contain the message content
+	if !strings.Contains(result, "Test message") {
+		t.Error("expected message content in RenderEntries output")
+	}
+}
+
+func TestBuildToolMeta_ExtractsToolInfo(t *testing.T) {
+	entries := []Entry{
+		{
+			Type: "assistant",
+			Message: &Message{
+				Role: "assistant",
+				Content: []ContentItem{
+					{
+						Type: "tool_use",
+						Name: "Bash",
+						ID:   "bash_001",
+						Input: map[string]any{
+							"command":     "ls -la",
+							"description": "List files",
+						},
+					},
+					{
+						Type: "tool_use",
+						Name: "Task",
+						ID:   "task_001",
+						Input: map[string]any{
+							"subagent_type": "Explore",
+							"description":   "Search code",
+							"prompt":        "Find all Go files",
+						},
+					},
+				},
+			},
+		},
+	}
+
+	toolMeta := BuildToolMeta(entries)
+
+	// Check Bash tool metadata
+	bash, found := toolMeta["bash_001"]
+	if !found {
+		t.Fatal("expected bash_001 in toolMeta")
+	}
+	if bash.Name != "Bash" {
+		t.Errorf("expected Name 'Bash', got %q", bash.Name)
+	}
+	if bash.Description != "List files" {
+		t.Errorf("expected Description 'List files', got %q", bash.Description)
+	}
+
+	// Check Task tool metadata
+	task, found := toolMeta["task_001"]
+	if !found {
+		t.Fatal("expected task_001 in toolMeta")
+	}
+	if task.Name != "Task" {
+		t.Errorf("expected Name 'Task', got %q", task.Name)
+	}
+	if !task.IsSubagent {
+		t.Error("expected IsSubagent to be true")
+	}
+	if task.Prompt != "Find all Go files" {
+		t.Errorf("expected Prompt 'Find all Go files', got %q", task.Prompt)
+	}
+	if task.Summary != "Explore: Search code" {
+		t.Errorf("expected Summary 'Explore: Search code', got %q", task.Summary)
+	}
+}
+
+func TestBuildToolMeta_HandlesEmptyEntries(t *testing.T) {
+	// Should not panic with empty entries
+	toolMeta := BuildToolMeta([]Entry{})
+	if len(toolMeta) != 0 {
+		t.Errorf("expected empty toolMeta, got %d entries", len(toolMeta))
+	}
+}
+
+func TestBuildToolMeta_SkipsEntriesWithoutToolUse(t *testing.T) {
+	entries := []Entry{
+		{
+			Type: "user",
+			Message: &Message{
+				Role: "user",
+				Content: []ContentItem{
+					{Type: "text", Text: "Hello"},
+				},
+			},
+		},
+		{
+			Type: "assistant",
+			Message: &Message{
+				Role: "assistant",
+				Content: []ContentItem{
+					{Type: "text", Text: "Hi there"},
+				},
+			},
+		},
+	}
+
+	toolMeta := BuildToolMeta(entries)
+	if len(toolMeta) != 0 {
+		t.Errorf("expected empty toolMeta for entries without tool_use, got %d entries", len(toolMeta))
+	}
+}
+
+func TestBuildToolMeta_SkipsToolUseWithoutID(t *testing.T) {
+	entries := []Entry{
+		{
+			Type: "assistant",
+			Message: &Message{
+				Role: "assistant",
+				Content: []ContentItem{
+					{
+						Type:  "tool_use",
+						Name:  "Bash",
+						ID:    "", // Empty ID
+						Input: map[string]any{"command": "ls"},
+					},
+				},
+			},
+		},
+	}
+
+	toolMeta := BuildToolMeta(entries)
+	if len(toolMeta) != 0 {
+		t.Errorf("expected empty toolMeta for tool_use without ID, got %d entries", len(toolMeta))
+	}
+}
+
+func TestBuildSkillDescriptionMap_Exported(t *testing.T) {
+	// Test that BuildSkillDescriptionMap works correctly
+	entries := []Entry{
+		{
+			Type: "assistant",
+			Message: &Message{
+				Role: "assistant",
+				Content: []ContentItem{
+					{
+						Type: "tool_use",
+						Name: "Skill",
+						ID:   "skill_test_id",
+						Input: map[string]any{
+							"skill": "commit",
+						},
+					},
+				},
+			},
+		},
+		{
+			Type:            "user",
+			IsMeta:          true,
+			SourceToolUseID: "skill_test_id",
+			Message: &Message{
+				Role: "user",
+				Content: []ContentItem{
+					{
+						Type: "text",
+						Text: "Commits staged changes to the repository",
+					},
+				},
+			},
+		},
+	}
+
+	skillDescriptions := BuildSkillDescriptionMap(entries)
+
+	desc, found := skillDescriptions["skill_test_id"]
+	if !found {
+		t.Fatal("expected skill_test_id in skillDescriptions")
+	}
+	if desc != "Commits staged changes to the repository" {
+		t.Errorf("expected description, got %q", desc)
+	}
+}
+
+func TestRenderEntries_WithPreBuiltToolMeta(t *testing.T) {
+	// Test that RenderEntries correctly uses pre-built toolMeta
+	// This simulates follow mode where toolMeta is built from all entries,
+	// but only new entries are rendered
+
+	// Build toolMeta from first batch of entries
+	firstBatch := []Entry{
+		{
+			Type: "assistant",
+			Message: &Message{
+				Role: "assistant",
+				Content: []ContentItem{
+					{
+						Type: "tool_use",
+						Name: "Bash",
+						ID:   "prebuild_bash",
+						Input: map[string]any{
+							"command":     "echo hello",
+							"description": "Print greeting",
+						},
+					},
+				},
+			},
+		},
+	}
+	toolMeta := BuildToolMeta(firstBatch)
+	skillDescriptions := BuildSkillDescriptionMap(firstBatch)
+
+	// Now render only the tool_result (simulating new entry arriving)
+	newEntries := []Entry{
+		{
+			Type: "user",
+			Message: &Message{
+				Role: "user",
+				Content: []ContentItem{
+					{
+						Type:      "tool_result",
+						ToolUseID: "prebuild_bash",
+						Content:   "hello",
+						IsError:   false,
+					},
+				},
+			},
+		},
+	}
+
+	result := RenderEntries(newEntries, toolMeta, skillDescriptions, RenderOptions{})
+
+	// Should correctly match the result to the tool_use via pre-built toolMeta
+	if !strings.Contains(result, "Bash: Print greeting") {
+		t.Error("expected tool description from pre-built toolMeta")
+	}
+	if !strings.Contains(result, "hello") {
+		t.Error("expected result content")
+	}
+}

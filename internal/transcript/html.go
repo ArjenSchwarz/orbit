@@ -180,7 +180,7 @@ func renderEntriesToBuilder(sb *strings.Builder, entries []Entry, opts RenderOpt
 	}
 
 	// Build skill description map from meta entries
-	skillDescriptions := buildSkillDescriptionMap(entries)
+	skillDescriptions := BuildSkillDescriptionMap(entries)
 
 	// Initialize tool metadata map at render level (shared across entries)
 	// This is critical because tool_use appears in assistant entries but

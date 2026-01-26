@@ -857,6 +857,10 @@ apsis /path/to/session.jsonl
 # Convert from stdin
 cat session.jsonl | apsis
 
+# Follow mode: watch a live session (like tail -f)
+apsis -F session-id
+apsis --follow /path/to/session.jsonl
+
 # Save to file
 apsis -o transcript.md session-id
 
@@ -878,6 +882,7 @@ apsis --list -p /path/to/project
 | `-o, --output <file>` | Write output to file (default: stdout) |
 | `-p, --project <path>` | Project directory (default: current directory) |
 | `-f, --format <format>` | Output format: `md`, `markdown`, `html` (default: `md`) |
+| `-F, --follow` | Follow mode: continuously monitor file for new entries (stdout only, markdown only) |
 | `-v, --version` | Show version |
 | `-h, --help` | Show help |
 
