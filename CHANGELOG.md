@@ -9,6 +9,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Git operations for enhanced status command (Phase 1):
+  - `HasUncommittedChangesInPath()` method to check for uncommitted changes in a specific worktree path, ignoring untracked files per requirement 2.4
+  - `GetRecentCommits()` method to retrieve N most recent commits since a base commit, returning short hash and subject in reverse chronological order
+  - `Commit` type in variants package with Hash and Subject fields
+  - Updated `GitClient` interface with new methods
+  - Updated `MockGit` and test mocks to implement new interface methods
+  - Unit tests for both methods covering clean/dirty states, staged/unstaged changes, untracked file exclusion, commit count limits, ordering, and context cancellation
+
 - Enhanced status command specification documents:
   - `specs/enhanced-status/requirements.md` with 6 requirement sections covering recent commits display, git dirty state indicator, last action summary (Claude Code only), task progress overview, output format/organization, and error handling/resilience
   - `specs/enhanced-status/design.md` with architecture, components (internal/status package with Gatherer, types, transcript functions), git operations (HasUncommittedChangesInPath, GetRecentCommits), transcript reading with expanding window algorithm, go-output based rendering with JSON and terminal formats

@@ -8,20 +8,20 @@ references:
 
 ## Phase 1: Git Operations
 
-- [ ] 1. Add HasUncommittedChangesInPath method to Git struct
+- [x] 1. Add HasUncommittedChangesInPath method to Git struct
   - Implement using git status --porcelain -uno
   - Return true if any tracked files have changes
   - Return error for invalid path
   - Requirements: 2.1, 2.2, 2.3, 2.4, 2.6
 
-- [ ] 2. Add GetRecentCommits method to Git struct
+- [x] 2. Add GetRecentCommits method to Git struct
   - Implement using git log with format %h%x00%s
   - Accept limit parameter for number of commits
   - Use baseCommit..HEAD range
   - Return Commit slice with Hash and Subject
   - Requirements: 1.1, 1.2, 1.3, 1.4
 
-- [ ] 3. Add unit tests for git methods
+- [x] 3. Add unit tests for git methods
   - Test HasUncommittedChangesInPath with clean, staged, unstaged, and untracked scenarios
   - Test GetRecentCommits with varying commit counts and no commits case
   - Use real git operations in temp repo

@@ -103,6 +103,12 @@ func (m *mockGitClient) GetCommitLog(ctx context.Context, worktreePath, baseComm
 func (m *mockGitClient) GetDiffStat(ctx context.Context, worktreePath, baseCommit string) (string, error) {
 	return m.diffStat, nil
 }
+func (m *mockGitClient) HasUncommittedChangesInPath(_ string) (bool, error) {
+	return m.hasUncommittedChg, nil
+}
+func (m *mockGitClient) GetRecentCommits(_ context.Context, _, _ string, _ int) ([]variants.Commit, error) {
+	return nil, nil
+}
 
 func TestNewConsolidator(t *testing.T) {
 	t.Run("returns error when spec directory is empty", func(t *testing.T) {

@@ -191,6 +191,13 @@ func (m *MockGit) HasUncommittedChanges() (bool, error) {
 	return m.UncommittedChanges, m.UncommittedErr
 }
 
+// HasUncommittedChangesInPath returns the configured result for a specific path.
+func (m *MockGit) HasUncommittedChangesInPath(_ string) (bool, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return m.UncommittedChanges, m.UncommittedErr
+}
+
 // GetCommitLog returns mock commit messages.
 func (m *MockGit) GetCommitLog(_ context.Context, _, _ string) ([]string, error) {
 	return []string{"abc123 Mock commit message"}, nil
@@ -199,6 +206,19 @@ func (m *MockGit) GetCommitLog(_ context.Context, _, _ string) ([]string, error)
 // GetDiffStat returns mock diff stats.
 func (m *MockGit) GetDiffStat(_ context.Context, _, _ string) (string, error) {
 	return " 3 files changed, 50 insertions(+), 10 deletions(-)", nil
+}
+
+// GetRecentCommits returns mock commits.
+func (m *MockGit) GetRecentCommits(_ context.Context, _, _ string, limit int) ([]Commit, error) {
+	commits := []Commit{
+		{Hash: "abc1234", Subject: "Mock commit 1"},
+		{Hash: "def5678", Subject: "Mock commit 2"},
+		{Hash: "ghi9012", Subject: "Mock commit 3"},
+	}
+	if limit < len(commits) {
+		return commits[:limit], nil
+	}
+	return commits, nil
 }
 
 // Reset clears all recorded calls.
