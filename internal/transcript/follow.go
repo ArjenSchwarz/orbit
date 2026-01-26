@@ -96,8 +96,9 @@ func (f *Follower) poll() (bool, error) {
 		return true, nil
 	}
 
-	// Check for modification
-	changed := !mtime.Equal(f.lastMtime)
+	// Check for modification - use mtime change OR size increase as fallback
+	// for filesystems with coarse mtime resolution (e.g., 1-second granularity)
+	changed := !mtime.Equal(f.lastMtime) || size > f.lastSize
 	f.lastMtime = mtime
 	f.lastInode = inode
 	f.lastSize = size
