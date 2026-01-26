@@ -9,6 +9,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Enhanced status command specification documents:
+  - `specs/enhanced-status/requirements.md` with 6 requirement sections covering recent commits display, git dirty state indicator, last action summary (Claude Code only), task progress overview, output format/organization, and error handling/resilience
+  - `specs/enhanced-status/design.md` with architecture, components (internal/status package with Gatherer, types, transcript functions), git operations (HasUncommittedChangesInPath, GetRecentCommits), transcript reading with expanding window algorithm, go-output based rendering with JSON and terminal formats
+  - `specs/enhanced-status/decision_log.md` with 7 design decisions (running and failed variants, 3 commits display count, transcript JSONL source, replace existing output, displayable entry types, Claude-only last action, go-output for flexible formatting)
+  - `specs/enhanced-status/tasks.md` with 5 implementation phases and 14 tasks covering git operations, transcript reading, status package, output rendering, and integration
+
 - README documentation for apsis follow mode (`-F/--follow` flag) with usage examples and options
 
 - End-to-end integration tests for apsis follow mode (Phase 5):
