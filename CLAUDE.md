@@ -6,7 +6,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 This repository contains two related CLI tools for working with AI coding agents:
 
-- **Orbit** - Orchestrates AI coding agent sessions to implement spec phases sequentially. Supports Claude Code, OpenAI Codex, AWS Kiro, and GitHub Copilot. Handles session lifecycle, error recovery, log management, and multi-variant comparison runs. Includes a web interface for viewing runs and transcripts.
+- **Orbit** - Orchestrates AI coding agent sessions to implement spec phases sequentially. Supports Claude Code, OpenAI Codex, AWS Kiro, GitHub Copilot, and OpenCode. Handles session lifecycle, error recovery, log management, and multi-variant comparison runs. Includes a web interface for viewing runs and transcripts.
 - **Apsis** - Converts Claude Code session transcripts from JSONL format to readable Markdown or HTML. Lists and transforms session files stored in `~/.claude/projects/`.
 
 ## Build and Development Commands
@@ -45,6 +45,7 @@ internal/
     codex/           - OpenAI Codex agent implementation
     kiro/            - AWS Kiro agent implementation
     copilot/         - GitHub Copilot agent implementation
+    opencode/        - OpenCode agent implementation
   orbit/orbit.go     - Main orchestration loop with retry logic
   variants/          - Multi-variant comparison support
     types.go         - Variant struct and status types
@@ -81,7 +82,7 @@ internal/
 
 ### Orbit Flow
 
-`main.go` parses flags and detects tasks file from git branch → resolves agent (claude-code, codex, kiro, copilot) → `Orbit.Run()` loops through phases → `agent.Run()` executes the configured agent with `/next-task --phase` → agent-specific errors are classified and retried or propagated → logs are saved per phase.
+`main.go` parses flags and detects tasks file from git branch → resolves agent (claude-code, codex, kiro, copilot, opencode) → `Orbit.Run()` loops through phases → `agent.Run()` executes the configured agent with `/next-task --phase` → agent-specific errors are classified and retried or propagated → logs are saved per phase.
 
 For multi-variant runs: `main.go` creates a `variants.Manager` → creates worktrees for each variant → runs orchestration in each worktree (optionally in parallel) → collects diffs and runs comparison → generates comparison report.
 
@@ -118,6 +119,7 @@ Orbit requires:
   - **OpenAI Codex** (`codex`)
   - **AWS Kiro** (`kiro-cli`)
   - **GitHub Copilot** (`copilot`)
+  - **OpenCode** (`opencode`) - open-source agent supporting multiple LLM providers
 
 Apsis has no external dependencies beyond access to `~/.claude/projects/`.
 

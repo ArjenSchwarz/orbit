@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- Updated README.md and CLAUDE.md to document OpenCode as a supported agent
+
 ### Added
 
 - OpenCode agent implementation (`internal/agents/opencode/`):
