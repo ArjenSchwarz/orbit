@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"sync"
 )
 
 const (
@@ -18,6 +19,15 @@ const (
 // parameterPriority defines the order for extracting key_input from tool parameters.
 // Per requirement 3.6: file_path, path, command, pattern, query, url, prompt
 var parameterPriority = []string{"file_path", "path", "command", "pattern", "query", "url", "prompt"}
+
+// lastEntryBufferPool provides buffer reuse for GetLastDisplayableEntry to reduce GC pressure
+// when the status command is called repeatedly or with many variants.
+var lastEntryBufferPool = sync.Pool{
+	New: func() any {
+		buf := make([]byte, 0, initialChunkSize)
+		return &buf
+	},
+}
 
 // GetLastDisplayableEntry reads the transcript file from the end and returns
 // the most recent displayable entry (assistant message with tool_use or text).
@@ -63,9 +73,16 @@ func GetLastDisplayableEntry(filePath string) (*Entry, error) {
 			offset = 0
 		}
 
-		buf := make([]byte, chunkSize)
+		// Get buffer from pool and resize if needed
+		bufPtr := lastEntryBufferPool.Get().(*[]byte)
+		if cap(*bufPtr) < int(chunkSize) {
+			*bufPtr = make([]byte, 0, chunkSize)
+		}
+		buf := (*bufPtr)[:chunkSize]
+
 		n, err := f.ReadAt(buf, offset)
 		if err != nil && err != io.EOF {
+			lastEntryBufferPool.Put(bufPtr)
 			return nil, err
 		}
 		buf = buf[:n]
@@ -80,6 +97,7 @@ func GetLastDisplayableEntry(filePath string) (*Entry, error) {
 			} else {
 				// No newline found - entire chunk is a partial line
 				// Grow window and retry without trying to parse
+				lastEntryBufferPool.Put(bufPtr)
 				chunkSize *= chunkGrowFactor
 				continue
 			}
@@ -102,9 +120,12 @@ func GetLastDisplayableEntry(filePath string) (*Entry, error) {
 			}
 
 			if isDisplayableEntry(&entry) {
+				lastEntryBufferPool.Put(bufPtr)
 				return &entry, nil
 			}
 		}
+
+		lastEntryBufferPool.Put(bufPtr)
 
 		// If we've read the entire file and found nothing, return nil
 		if offset == 0 {

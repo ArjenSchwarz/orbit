@@ -125,6 +125,9 @@ func BuildStatusOutput(specName string, baseCommit, originalBranch string, start
 		BaseCommit:     truncateHash(baseCommit, 12),
 		OriginalBranch: originalBranch,
 		StartedAt:      startedAt,
+		// Pre-allocate slices with capacity to avoid repeated growth during appends
+		ActiveVariants: make([]VariantOutput, 0, len(infos)),
+		OtherVariants:  make([]VariantOutput, 0, len(infos)),
 	}
 
 	for _, info := range infos {
@@ -151,8 +154,11 @@ func BuildVariantOutput(info *VariantInfo) VariantOutput {
 	// Git info
 	if info.GitInfo != nil {
 		vo.GitState = info.GitInfo.DirtyState
-		for _, c := range info.GitInfo.Commits {
-			vo.Commits = append(vo.Commits, CommitOutput{Hash: c.Hash, Subject: c.Subject})
+		if len(info.GitInfo.Commits) > 0 {
+			vo.Commits = make([]CommitOutput, 0, len(info.GitInfo.Commits))
+			for _, c := range info.GitInfo.Commits {
+				vo.Commits = append(vo.Commits, CommitOutput{Hash: c.Hash, Subject: c.Subject})
+			}
 		}
 	}
 
@@ -171,7 +177,8 @@ func BuildVariantOutput(info *VariantInfo) VariantOutput {
 	}
 
 	// Task progress
-	if info.TaskProgress != nil {
+	if info.TaskProgress != nil && len(info.TaskProgress.Phases) > 0 {
+		vo.Tasks = make([]TaskOutput, 0, len(info.TaskProgress.Phases))
 		for _, p := range info.TaskProgress.Phases {
 			vo.Tasks = append(vo.Tasks, TaskOutput{
 				Phase:     p.Name,
