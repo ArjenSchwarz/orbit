@@ -6,19 +6,19 @@ references:
 
 ## Implementation
 
-- [ ] 1. Create OpenCode agent package structure
+- [x] 1. Create OpenCode agent package structure
 
-- [ ] 2. Implement Agent interface methods (Name, CLICommand, IsInstalled, Version)
+- [x] 2. Implement Agent interface methods (Name, CLICommand, IsInstalled, Version)
 
-- [ ] 3. Implement buildArgs() with --format json and model support
+- [x] 3. Implement buildArgs() with --format json and model support
 
-- [ ] 4. Implement Run() and Resume() execution methods
+- [x] 4. Implement Run() and Resume() execution methods
 
-- [ ] 5. Implement session discovery from ~/.local/share/opencode/storage/message/
+- [x] 5. Implement session discovery from ~/.local/share/opencode/storage/message/
 
-- [ ] 6. Create error classifier with JSON validation and pattern matching
+- [x] 6. Create error classifier with JSON validation and pattern matching
 
-- [ ] 7. Register agent in registry via init()
+- [x] 7. Register agent in registry via init()
 
 ## Testing
 

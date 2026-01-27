@@ -9,6 +9,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- OpenCode agent implementation (`internal/agents/opencode/`):
+  - Agent interface implementation with `opencode run --format json "<prompt>"` execution
+  - Session resumption via `--continue` flag
+  - Model selection via `--model provider/model` format
+  - Version parsing that handles INFO log lines (extracts last non-empty line)
+  - Session discovery from `~/.local/share/opencode/storage/message/<sessionID>/`
+  - Error classifier with JSON validation and pattern matching for OpenCode-specific errors
+  - Auto-registration via `init()` function
+
 - OpenCode agent support specification (smolspec):
   - `specs/opencode-agent/smolspec.md` with requirements for OpenCode CLI integration
   - Support for `opencode run --format json` non-interactive execution
