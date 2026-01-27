@@ -11,6 +11,15 @@ import (
 	"github.com/arjenschwarz/orbit/internal/agents"
 )
 
+const (
+	// defaultOverloadRetryAfter is the default retry delay when the API is overloaded.
+	defaultOverloadRetryAfter = 30 * time.Second
+
+	// defaultRateLimitRetryAfter is the default retry delay for rate limit errors
+	// when no specific retry-after value is provided.
+	defaultRateLimitRetryAfter = 60 * time.Second
+)
+
 func init() {
 	agents.RegisterClassifier("opencode", NewClassifier)
 }
@@ -111,7 +120,7 @@ func (c *Classifier) Classify(exitCode int, stderr, stdout string, errMsgs []str
 		return &agents.ClassifiedError{
 			Original:   errors.New("api overloaded"),
 			Class:      agents.ErrorClassRetryable,
-			RetryAfter: 30 * time.Second,
+			RetryAfter: defaultOverloadRetryAfter,
 			Message:    "API is overloaded",
 			Agent:      "opencode",
 		}
@@ -194,7 +203,7 @@ func (c *Classifier) classifyPlaintext(combined string) *agents.ClassifiedError 
 		return &agents.ClassifiedError{
 			Original:   errors.New("api overloaded"),
 			Class:      agents.ErrorClassRetryable,
-			RetryAfter: 30 * time.Second,
+			RetryAfter: defaultOverloadRetryAfter,
 			Message:    "API is overloaded",
 			Agent:      "opencode",
 		}
@@ -237,5 +246,5 @@ func parseRetryAfter(msg string) time.Duration {
 	}
 
 	// Default retry after for rate limits
-	return 60 * time.Second
+	return defaultRateLimitRetryAfter
 }

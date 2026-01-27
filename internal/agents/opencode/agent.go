@@ -15,7 +15,13 @@ import (
 	"github.com/arjenschwarz/orbit/internal/agents"
 )
 
-const defaultPrompt = "Run /next-task --phase and when complete run /commit"
+const (
+	defaultPrompt = "Run /next-task --phase and when complete run /commit"
+
+	// unixMillisecondThreshold is used to distinguish between unix timestamps
+	// in seconds vs milliseconds. Timestamps greater than this are milliseconds.
+	unixMillisecondThreshold = 1_000_000_000_000
+)
 
 func init() {
 	agents.Register("opencode", New)
@@ -135,7 +141,7 @@ func parseCreatedTime(raw json.RawMessage, fallback time.Time) time.Time {
 // Automatically handles seconds vs milliseconds based on magnitude.
 func unixToTime(value int64) time.Time {
 	switch {
-	case value > 1_000_000_000_000:
+	case value > unixMillisecondThreshold:
 		// Milliseconds
 		return time.Unix(0, value*int64(time.Millisecond))
 	case value > 0:
@@ -164,6 +170,13 @@ func (a *Agent) DiscoverSessions(ctx context.Context, projectDir string) ([]agen
 
 	var sessions []agents.SessionInfo
 	for _, entry := range entries {
+		// Check for context cancellation during directory traversal
+		select {
+		case <-ctx.Done():
+			return sessions, ctx.Err()
+		default:
+		}
+
 		if !entry.IsDir() {
 			continue
 		}
@@ -311,10 +324,18 @@ func (a *Agent) execute(ctx context.Context, opts agents.RunOptions, resume bool
 	}
 
 	// OpenCode may exit with code 0 even on errors.
-	// Detect errors by checking if stdout contains valid JSON.
-	if !isValidJSON(raw) && len(raw) > 0 {
+	// In JSON mode, empty stdout or invalid JSON indicates an error.
+	if !isValidJSON(raw) {
 		result.IsError = true
-		result.Errors = append(result.Errors, "output is not valid JSON")
+		if len(raw) == 0 {
+			result.Errors = append(result.Errors, "empty output (expected JSON)")
+		} else {
+			preview := string(raw)
+			if len(preview) > 100 {
+				preview = preview[:100] + "..."
+			}
+			result.Errors = append(result.Errors, "output is not valid JSON: "+preview)
+		}
 	}
 
 	if err != nil {

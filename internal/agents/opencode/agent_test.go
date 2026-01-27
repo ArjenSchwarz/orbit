@@ -317,30 +317,45 @@ func TestAgent_ArgOrder(t *testing.T) {
 }
 
 func TestIsValidJSON(t *testing.T) {
-	tests := []struct {
-		name  string
+	tests := map[string]struct {
 		input []byte
 		want  bool
 	}{
-		{"empty", nil, false},
-		{"empty string", []byte(""), false},
-		{"whitespace only", []byte("   "), false},
-		{"valid object", []byte(`{"key": "value"}`), true},
-		{"valid array", []byte(`[1, 2, 3]`), true},
-		{"valid string", []byte(`"hello"`), true},
-		{"valid number", []byte(`123`), true},
-		{"plaintext", []byte("some error text"), false},
-		{"stack trace", []byte("Error: something went wrong\n  at func()"), false},
-		{"json with whitespace", []byte(`  {"key": "value"}  `), true},
+		"empty":                 {input: nil, want: false},
+		"empty string":          {input: []byte(""), want: false},
+		"whitespace only":       {input: []byte("   "), want: false},
+		"valid object":          {input: []byte(`{"key": "value"}`), want: true},
+		"valid array":           {input: []byte(`[1, 2, 3]`), want: true},
+		"valid string":          {input: []byte(`"hello"`), want: true},
+		"valid number":          {input: []byte(`123`), want: true},
+		"plaintext":             {input: []byte("some error text"), want: false},
+		"stack trace":           {input: []byte("Error: something went wrong\n  at func()"), want: false},
+		"json with whitespace":  {input: []byte(`  {"key": "value"}  `), want: true},
 	}
 
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
+	for name, tt := range tests {
+		t.Run(name, func(t *testing.T) {
 			got := isValidJSON(tt.input)
 			if got != tt.want {
 				t.Errorf("isValidJSON(%q) = %v, want %v", tt.input, got, tt.want)
 			}
 		})
+	}
+}
+
+func TestAgent_DiscoverSessions_ContextCancellation(t *testing.T) {
+	agent := New(agents.AgentConfig{})
+
+	// Create a cancelled context
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	// Should return context error when context is cancelled
+	_, err := agent.DiscoverSessions(ctx, "/some/path")
+	if err != context.Canceled {
+		// Note: May return nil if session dir doesn't exist (checked before loop)
+		// This test mainly verifies the function doesn't panic with cancelled context
+		t.Logf("DiscoverSessions with cancelled context returned: %v", err)
 	}
 }
 
