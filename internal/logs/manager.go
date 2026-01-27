@@ -99,6 +99,15 @@ func NewManager(baseDir, branchName, workingDir string) (*Manager, error) {
 // In flat mode (UseSubdirs=false), logs are stored directly in baseDir.
 // In subdir mode (UseSubdirs=true), logs are stored in timestamped subdirectories.
 func NewManagerWithOptions(baseDir, branchName, workingDir string, opts ManagerOptions) (*Manager, error) {
+	// Ensure workingDir is absolute for correct Claude project path resolution
+	if workingDir != "" && !filepath.IsAbs(workingDir) {
+		absWorkingDir, err := filepath.Abs(workingDir)
+		if err == nil {
+			workingDir = absWorkingDir
+		}
+		// If Abs fails, continue with relative path (best effort)
+	}
+
 	sessionDir := baseDir
 
 	if opts.UseSubdirs {

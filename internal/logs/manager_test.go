@@ -540,6 +540,28 @@ func TestNewManagerWithOptions_SubdirMode(t *testing.T) {
 	}
 }
 
+func TestNewManagerWithOptions_RelativeWorkingDir(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	// Use a relative path for workingDir
+	relativeWorkingDir := "relative/path/to/project"
+
+	m, err := NewManagerWithOptions(tmpDir, "test-branch", relativeWorkingDir, ManagerOptions{UseSubdirs: false})
+	if err != nil {
+		t.Fatalf("NewManagerWithOptions failed: %v", err)
+	}
+
+	// The workingDir should have been converted to absolute
+	if !filepath.IsAbs(m.workingDir) {
+		t.Errorf("workingDir should be absolute, got %q", m.workingDir)
+	}
+
+	// Verify it contains the relative path components
+	if !containsString(m.workingDir, "relative") || !containsString(m.workingDir, "project") {
+		t.Errorf("workingDir should contain original path components, got %q", m.workingDir)
+	}
+}
+
 func TestLoadExistingSummary_Success(t *testing.T) {
 	tmpDir := t.TempDir()
 
