@@ -81,7 +81,7 @@ func statusCommand(args []string) error {
 	}
 
 	// Gather status information for all variants
-	gatherer := status.NewGatherer(git, specName, metadata.BaseCommit, repoRoot)
+	gatherer := status.NewGatherer(git, specName, specDir, metadata.BaseCommit, repoRoot)
 	ctx := context.Background()
 	infos := gatherer.GatherAllVariants(ctx, metadata.Variants)
 
@@ -182,7 +182,7 @@ func renderTerminal(ctx context.Context, data *status.StatusOutput) error {
 
 	doc := builder.Build()
 	out := output.NewOutput(
-		output.WithFormat(output.Markdown()),
+		output.WithFormat(output.Table()),
 		output.WithWriter(output.NewStdoutWriter()),
 	)
 	return out.Render(ctx, doc)

@@ -61,13 +61,16 @@ func (m *mockGitClient) GetRecentCommits(ctx context.Context, worktreePath, base
 
 func TestNewGatherer(t *testing.T) {
 	git := &mockGitClient{}
-	g := NewGatherer(git, "test-spec", "abc1234", "/repo")
+	g := NewGatherer(git, "test-spec", "specs/test-spec", "abc1234", "/repo")
 
 	if g.git != git {
 		t.Error("git client not set correctly")
 	}
 	if g.specName != "test-spec" {
 		t.Errorf("specName = %q, want 'test-spec'", g.specName)
+	}
+	if g.specDir != "specs/test-spec" {
+		t.Errorf("specDir = %q, want 'specs/test-spec'", g.specDir)
 	}
 	if g.baseCommit != "abc1234" {
 		t.Errorf("baseCommit = %q, want 'abc1234'", g.baseCommit)
@@ -90,7 +93,7 @@ func TestGatherVariantInfo_NonActiveVariant(t *testing.T) {
 				commits: []variants.Commit{{Hash: "abc1234", Subject: "Test"}},
 				isDirty: true,
 			}
-			g := NewGatherer(git, "test-spec", "base123", "/repo")
+			g := NewGatherer(git, "test-spec", "specs/test-spec", "base123", "/repo")
 
 			v := &variants.Variant{
 				ID:           1,
@@ -145,7 +148,7 @@ func TestGatherVariantInfo_GitInfoSuccess(t *testing.T) {
 				commits: commits,
 				isDirty: tt.isDirty,
 			}
-			g := NewGatherer(git, "test-spec", "base123", "/repo")
+			g := NewGatherer(git, "test-spec", "specs/test-spec", "base123", "/repo")
 
 			v := &variants.Variant{
 				ID:           1,
@@ -190,7 +193,7 @@ func TestGatherVariantInfo_GitInfoFailure(t *testing.T) {
 				commitsErr: tt.commitsErr,
 				dirtyErr:   tt.dirtyErr,
 			}
-			g := NewGatherer(git, "test-spec", "base123", "/repo")
+			g := NewGatherer(git, "test-spec", "specs/test-spec", "base123", "/repo")
 
 			v := &variants.Variant{
 				ID:           1,
@@ -214,7 +217,7 @@ func TestGatherVariantInfo_LastActionNonClaude(t *testing.T) {
 	git := &mockGitClient{
 		commits: []variants.Commit{{Hash: "abc", Subject: "test"}},
 	}
-	g := NewGatherer(git, "test-spec", "base123", "/repo")
+	g := NewGatherer(git, "test-spec", "specs/test-spec", "base123", "/repo")
 
 	v := &variants.Variant{
 		ID:           1,
@@ -240,7 +243,7 @@ func TestGatherVariantInfo_FailedVariant(t *testing.T) {
 		commits: []variants.Commit{{Hash: "abc1234", Subject: "Last commit before failure"}},
 		isDirty: true,
 	}
-	g := NewGatherer(git, "test-spec", "base123", "/repo")
+	g := NewGatherer(git, "test-spec", "specs/test-spec", "base123", "/repo")
 
 	v := &variants.Variant{
 		ID:           1,
@@ -266,7 +269,7 @@ func TestGatherAllVariants_Concurrent(t *testing.T) {
 	git := &mockGitClient{
 		commits: []variants.Commit{{Hash: "abc", Subject: "test"}},
 	}
-	g := NewGatherer(git, "test-spec", "base123", "/repo")
+	g := NewGatherer(git, "test-spec", "specs/test-spec", "base123", "/repo")
 
 	variantList := []*variants.Variant{
 		{ID: 1, Branch: "b1", WorktreePath: "/p1", Status: variants.StatusRunning, AgentType: "other"},
@@ -304,10 +307,10 @@ func TestGatherAllVariants_Concurrent(t *testing.T) {
 func TestGetLiveTranscriptPath(t *testing.T) {
 	tmpDir := t.TempDir()
 
-	// Create the .orbit directory structure
-	orbitDir := filepath.Join(tmpDir, "specs", "test-spec", ".orbit")
-	if err := os.MkdirAll(orbitDir, 0755); err != nil {
-		t.Fatalf("Failed to create orbit dir: %v", err)
+	// Create the variant log directory structure (simulates specs/<spec>/.orbit/logs/variant-1/)
+	variantLogDir := filepath.Join(tmpDir, "specs", "test-spec", ".orbit", "logs", "variant-1")
+	if err := os.MkdirAll(variantLogDir, 0755); err != nil {
+		t.Fatalf("Failed to create variant log dir: %v", err)
 	}
 
 	t.Run("returns path when session ID exists", func(t *testing.T) {
@@ -318,13 +321,14 @@ func TestGetLiveTranscriptPath(t *testing.T) {
 			},
 		}
 		data, _ := json.Marshal(summary)
-		summaryPath := filepath.Join(orbitDir, "summary.json")
+		summaryPath := filepath.Join(variantLogDir, "summary.json")
 		if err := os.WriteFile(summaryPath, data, 0644); err != nil {
 			t.Fatalf("Failed to write summary: %v", err)
 		}
 
-		specDir := filepath.Join(tmpDir, "specs", "test-spec")
-		path, err := GetLiveTranscriptPath(tmpDir, specDir)
+		// worktreePath is the variant's worktree (Claude's working directory)
+		worktreePath := filepath.Join(tmpDir, "worktrees", "impl-1")
+		path, err := GetLiveTranscriptPath(worktreePath, variantLogDir)
 
 		if err != nil {
 			t.Fatalf("Unexpected error: %v", err)
@@ -346,13 +350,13 @@ func TestGetLiveTranscriptPath(t *testing.T) {
 			CurrentPhase: nil,
 		}
 		data, _ := json.Marshal(summary)
-		summaryPath := filepath.Join(orbitDir, "summary.json")
+		summaryPath := filepath.Join(variantLogDir, "summary.json")
 		if err := os.WriteFile(summaryPath, data, 0644); err != nil {
 			t.Fatalf("Failed to write summary: %v", err)
 		}
 
-		specDir := filepath.Join(tmpDir, "specs", "test-spec")
-		path, err := GetLiveTranscriptPath(tmpDir, specDir)
+		worktreePath := filepath.Join(tmpDir, "worktrees", "impl-1")
+		path, err := GetLiveTranscriptPath(worktreePath, variantLogDir)
 
 		if err != nil {
 			t.Fatalf("Unexpected error: %v", err)
@@ -370,13 +374,13 @@ func TestGetLiveTranscriptPath(t *testing.T) {
 			},
 		}
 		data, _ := json.Marshal(summary)
-		summaryPath := filepath.Join(orbitDir, "summary.json")
+		summaryPath := filepath.Join(variantLogDir, "summary.json")
 		if err := os.WriteFile(summaryPath, data, 0644); err != nil {
 			t.Fatalf("Failed to write summary: %v", err)
 		}
 
-		specDir := filepath.Join(tmpDir, "specs", "test-spec")
-		path, err := GetLiveTranscriptPath(tmpDir, specDir)
+		worktreePath := filepath.Join(tmpDir, "worktrees", "impl-1")
+		path, err := GetLiveTranscriptPath(worktreePath, variantLogDir)
 
 		if err != nil {
 			t.Fatalf("Unexpected error: %v", err)
@@ -387,9 +391,10 @@ func TestGetLiveTranscriptPath(t *testing.T) {
 	})
 
 	t.Run("returns error when summary.json missing", func(t *testing.T) {
-		// Use a different spec dir that doesn't have summary.json
-		nonexistentDir := filepath.Join(tmpDir, "specs", "nonexistent")
-		path, err := GetLiveTranscriptPath(tmpDir, nonexistentDir)
+		// Use a different log dir that doesn't have summary.json
+		nonexistentDir := filepath.Join(tmpDir, "specs", "nonexistent", ".orbit", "logs", "variant-1")
+		worktreePath := filepath.Join(tmpDir, "worktrees", "impl-1")
+		path, err := GetLiveTranscriptPath(worktreePath, nonexistentDir)
 
 		if err == nil {
 			t.Error("Expected error when summary.json is missing")

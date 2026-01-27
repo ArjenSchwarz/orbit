@@ -1,6 +1,7 @@
 package transcript
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -121,20 +122,28 @@ func TestGetLastDisplayableEntry(t *testing.T) {
 }
 
 func TestGetLastDisplayableEntry_LargeFile(t *testing.T) {
-	// Create a temp file with a large entry to test window expansion
+	// Create a temp file larger than initialChunkSize (64KB) to test window expansion
 	tmpDir := t.TempDir()
 	tmpFile := filepath.Join(tmpDir, "large.jsonl")
 
-	// Write some filler entries and then a displayable entry
+	// Each line is ~100 bytes, so we need ~700 lines to exceed 64KB
+	// Add 800 user messages (about 80KB) to ensure we exceed the 64KB initial chunk
 	var content strings.Builder
-	// Add some user messages first
-	for i := 0; i < 100; i++ {
-		content.WriteString(`{"type":"user","message":{"role":"user","content":"message ` + string(rune('0'+i%10)) + `"}}` + "\n")
+	for i := 0; i < 800; i++ {
+		// Create lines that are about 100 bytes each
+		content.WriteString(`{"type":"user","message":{"role":"user","content":"This is a filler message number ` +
+			fmt.Sprintf("%04d", i) + ` with some extra padding to make it longer"}}` + "\n")
 	}
 	// Add the target entry at the end
 	content.WriteString(`{"type":"assistant","message":{"role":"assistant","content":[{"type":"tool_use","name":"TargetTool","input":{"file_path":"/target/file.go"}}]}}` + "\n")
 
-	if err := os.WriteFile(tmpFile, []byte(content.String()), 0644); err != nil {
+	data := []byte(content.String())
+	// Verify file is larger than 64KB to ensure window expansion is needed
+	if len(data) < 64*1024 {
+		t.Fatalf("test file should be > 64KB to test window expansion, got %d bytes", len(data))
+	}
+
+	if err := os.WriteFile(tmpFile, data, 0644); err != nil {
 		t.Fatalf("failed to write test file: %v", err)
 	}
 

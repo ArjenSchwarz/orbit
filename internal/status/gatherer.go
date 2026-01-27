@@ -3,6 +3,7 @@ package status
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 	"sync"
@@ -18,15 +19,17 @@ import (
 type Gatherer struct {
 	git        variants.GitClient
 	specName   string
+	specDir    string // Path to spec directory in main repo (e.g., "specs/feature")
 	baseCommit string
 	repoRoot   string
 }
 
 // NewGatherer creates a Gatherer for the given spec.
-func NewGatherer(git variants.GitClient, specName, baseCommit, repoRoot string) *Gatherer {
+func NewGatherer(git variants.GitClient, specName, specDir, baseCommit, repoRoot string) *Gatherer {
 	return &Gatherer{
 		git:        git,
 		specName:   specName,
+		specDir:    specDir,
 		baseCommit: baseCommit,
 		repoRoot:   repoRoot,
 	}
@@ -112,11 +115,12 @@ func (g *Gatherer) gatherLastAction(v *variants.Variant) *LastActionResult {
 		return &LastActionResult{State: LastActionNotSupported}
 	}
 
-	// Build path to variant's spec directory within worktree
-	worktreeSpecDir := filepath.Join(v.WorktreePath, "specs", g.specName)
+	// Build path to variant's log directory in main repo
+	// Logs are stored at: specs/<spec>/.orbit/logs/variant-<id>/summary.json
+	variantLogDir := filepath.Join(g.repoRoot, g.specDir, ".orbit", "logs", fmt.Sprintf("variant-%d", v.ID))
 
 	// Get transcript path
-	transcriptPath, err := GetLiveTranscriptPath(v.WorktreePath, worktreeSpecDir)
+	transcriptPath, err := GetLiveTranscriptPath(v.WorktreePath, variantLogDir)
 	if err != nil || transcriptPath == "" {
 		return &LastActionResult{State: LastActionWaiting}
 	}
@@ -165,13 +169,13 @@ func (g *Gatherer) gatherTaskProgress(worktreePath string) *TaskProgress {
 // Parameters:
 // - worktreePath: The variant's worktree path (e.g., "/repo/specs/feature/.orbit/worktrees/impl-1")
 //   This is used as the working directory for BuildProjectPath since Claude is invoked from here.
-// - worktreeSpecDir: Path to the spec directory within the worktree
-//   (e.g., "/repo/specs/feature/.orbit/worktrees/impl-1/specs/feature")
+// - variantLogDir: Path to the variant's log directory in the main repo
+//   (e.g., "/repo/specs/feature/.orbit/logs/variant-1")
 //
 // Returns empty string if session ID not available or agent is not Claude.
-func GetLiveTranscriptPath(worktreePath, worktreeSpecDir string) (string, error) {
-	// Read summary.json from variant's .orbit directory
-	summaryPath := filepath.Join(worktreeSpecDir, ".orbit", "summary.json")
+func GetLiveTranscriptPath(worktreePath, variantLogDir string) (string, error) {
+	// Read summary.json from variant's log directory in main repo
+	summaryPath := filepath.Join(variantLogDir, "summary.json")
 	data, err := os.ReadFile(summaryPath)
 	if err != nil {
 		return "", err

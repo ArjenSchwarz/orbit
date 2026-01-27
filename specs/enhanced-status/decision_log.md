@@ -187,7 +187,7 @@ Tool uses represent concrete actions (editing files, running commands). Text rep
 
 Orbit supports multiple AI coding agents: Claude Code, OpenAI Codex, AWS Kiro, and GitHub Copilot. The Last Action feature needs to read the live transcript file while the agent is running. However, the transcript file location differs by agent:
 
-- Claude Code: Transcripts are stored in `~/.claude/projects/{hash}/sessions/{session-id}.jsonl` and we have the session ID in summary.json
+- Claude Code: Transcripts are stored in `~/.claude/projects/{project-hash}/{session-id}.jsonl` and we have the session ID in summary.json
 - Other agents: Transcript locations are not consistently accessible during execution
 
 The transcript is only copied to the `.orbit/` directory AFTER a phase completes, so we cannot read from there for running variants.
