@@ -50,6 +50,10 @@ internal/
     types.go         - Variant struct and status types
     manager.go       - Variant lifecycle (create, run, finalize, cleanup)
     agent.go         - Per-variant agent assignment
+    git.go           - Git operations (commits, dirty state)
+  status/            - Enhanced status command support
+    gatherer.go      - Collects variant status data (git, transcript, tasks)
+    types.go         - Status data structures and output types
   comparison/        - Variant comparison logic
     compare.go       - Comparator for analyzing variant diffs
   consolidation/     - Variant consolidation support
@@ -70,6 +74,7 @@ internal/
     spinner.go       - Progress spinner for long operations
     hyperlink.go     - Terminal hyperlink support (OSC 8)
   transcript/        - JSONL parsing and Markdown/HTML rendering for apsis and web
+    last_entry.go    - Efficient last entry extraction from live transcripts
   registry/          - Run registry for tracking orbit runs across repositories
   web/               - HTTP server, handlers, templates for web interface
 ```

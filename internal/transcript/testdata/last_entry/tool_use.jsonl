@@ -1,0 +1,2 @@
+{"type":"user","timestamp":"2025-12-23T10:30:00+11:00","message":{"role":"user","content":"Help me read a file"}}
+{"type":"assistant","timestamp":"2025-12-23T10:30:05+11:00","message":{"role":"assistant","content":[{"type":"tool_use","name":"Read","input":{"file_path":"/tmp/example.txt"}}]}}
