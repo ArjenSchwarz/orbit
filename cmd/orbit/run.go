@@ -39,7 +39,7 @@ func runCommand(args []string) error {
 	noContinueSession := fs.Bool("no-continue-session", false, "Start fresh sessions instead of resuming")
 
 	// Agent selection
-	agentFlag := fs.String("agent", "", "Agent to use (claude-code, codex, kiro, copilot)")
+	agentFlag := fs.String("agent", "", "Agent to use (claude-code, codex, kiro, copilot, opencode)")
 
 	// Variant flags for multi-spec comparison
 	variantCount := fs.Int("variants", 0, "Number of implementation variants to run (0 = single-run mode)")
