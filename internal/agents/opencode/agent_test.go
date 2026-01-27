@@ -319,18 +319,19 @@ func TestAgent_ArgOrder(t *testing.T) {
 func TestIsValidJSON(t *testing.T) {
 	tests := []struct {
 		name  string
-		input string
+		input []byte
 		want  bool
 	}{
-		{"empty string", "", false},
-		{"whitespace only", "   ", false},
-		{"valid object", `{"key": "value"}`, true},
-		{"valid array", `[1, 2, 3]`, true},
-		{"valid string", `"hello"`, true},
-		{"valid number", `123`, true},
-		{"plaintext", "some error text", false},
-		{"stack trace", "Error: something went wrong\n  at func()", false},
-		{"json with whitespace", `  {"key": "value"}  `, true},
+		{"empty", nil, false},
+		{"empty string", []byte(""), false},
+		{"whitespace only", []byte("   "), false},
+		{"valid object", []byte(`{"key": "value"}`), true},
+		{"valid array", []byte(`[1, 2, 3]`), true},
+		{"valid string", []byte(`"hello"`), true},
+		{"valid number", []byte(`123`), true},
+		{"plaintext", []byte("some error text"), false},
+		{"stack trace", []byte("Error: something went wrong\n  at func()"), false},
+		{"json with whitespace", []byte(`  {"key": "value"}  `), true},
 	}
 
 	for _, tt := range tests {

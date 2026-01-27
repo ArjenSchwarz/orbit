@@ -8,6 +8,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
 
@@ -93,8 +94,56 @@ type sessionMessage struct {
 	Role      string `json:"role"`
 	Model     string `json:"model"`
 	Time      struct {
-		Created time.Time `json:"created"`
+		Created json.RawMessage `json:"created"`
 	} `json:"time"`
+}
+
+// parseCreatedTime parses the created time from various formats that OpenCode may use.
+// Supports RFC3339, RFC3339Nano, unix seconds, and unix milliseconds.
+func parseCreatedTime(raw json.RawMessage, fallback time.Time) time.Time {
+	if len(raw) == 0 {
+		return fallback
+	}
+
+	// Try to parse as a string (RFC3339/RFC3339Nano or numeric string)
+	var str string
+	if err := json.Unmarshal(raw, &str); err == nil {
+		// Try RFC3339Nano first (more precise)
+		if t, err := time.Parse(time.RFC3339Nano, str); err == nil {
+			return t
+		}
+		// Try RFC3339
+		if t, err := time.Parse(time.RFC3339, str); err == nil {
+			return t
+		}
+		// Try as numeric string (unix timestamp)
+		if unix, err := strconv.ParseInt(str, 10, 64); err == nil {
+			return unixToTime(unix)
+		}
+	}
+
+	// Try to parse as a number (unix timestamp)
+	var num float64
+	if err := json.Unmarshal(raw, &num); err == nil {
+		return unixToTime(int64(num))
+	}
+
+	return fallback
+}
+
+// unixToTime converts a unix timestamp to time.Time.
+// Automatically handles seconds vs milliseconds based on magnitude.
+func unixToTime(value int64) time.Time {
+	switch {
+	case value > 1_000_000_000_000:
+		// Milliseconds
+		return time.Unix(0, value*int64(time.Millisecond))
+	case value > 0:
+		// Seconds
+		return time.Unix(value, 0)
+	default:
+		return time.Time{}
+	}
 }
 
 // DiscoverSessions lists sessions for a given project directory.
@@ -128,6 +177,14 @@ func (a *Agent) DiscoverSessions(ctx context.Context, projectDir string) ([]agen
 			continue
 		}
 
+		info, _ := entry.Info()
+		var size int64
+		var modTime time.Time
+		if info != nil {
+			size = info.Size()
+			modTime = info.ModTime()
+		}
+
 		var createdAt time.Time
 		for _, msgFile := range msgFiles {
 			if msgFile.IsDir() || !strings.HasPrefix(msgFile.Name(), "msg_") {
@@ -145,14 +202,8 @@ func (a *Agent) DiscoverSessions(ctx context.Context, projectDir string) ([]agen
 				continue
 			}
 
-			createdAt = msg.Time.Created
+			createdAt = parseCreatedTime(msg.Time.Created, modTime)
 			break // Only need the first message for metadata
-		}
-
-		info, _ := entry.Info()
-		var size int64
-		if info != nil {
-			size = info.Size()
 		}
 
 		sessions = append(sessions, agents.SessionInfo{
@@ -189,9 +240,13 @@ func (a *Agent) buildArgs(opts agents.RunOptions, resume bool) []string {
 	// OpenCode uses: opencode run --format json "<prompt>"
 	args := []string{"run", "--format", "json"}
 
-	// Resume with --continue flag
+	// Resume with --session <id> for specific sessions or --continue for most recent
 	if resume {
-		args = append(args, "--continue")
+		if strings.HasPrefix(opts.SessionID, "ses_") {
+			args = append(args, "--session", opts.SessionID)
+		} else {
+			args = append(args, "--continue")
+		}
 	}
 
 	// Add model flag if configured
@@ -237,11 +292,13 @@ func (a *Agent) execute(ctx context.Context, opts agents.RunOptions, resume bool
 	err := cmd.Run()
 	duration := time.Since(startTime)
 
+	raw := stdout.Bytes()
 	result := &agents.RunResult{
 		SessionID: opts.SessionID,
 		Duration:  duration,
 		Output:    stdout.String(),
 		Stderr:    stderr.String(),
+		RawJSON:   raw,
 	}
 
 	// Get exit code
@@ -255,7 +312,7 @@ func (a *Agent) execute(ctx context.Context, opts agents.RunOptions, resume bool
 
 	// OpenCode may exit with code 0 even on errors.
 	// Detect errors by checking if stdout contains valid JSON.
-	if !isValidJSON(stdout.String()) && stdout.Len() > 0 {
+	if !isValidJSON(raw) && len(raw) > 0 {
 		result.IsError = true
 		result.Errors = append(result.Errors, "output is not valid JSON")
 	}
@@ -267,12 +324,11 @@ func (a *Agent) execute(ctx context.Context, opts agents.RunOptions, resume bool
 	return result, err
 }
 
-// isValidJSON checks if the string is valid JSON.
-func isValidJSON(s string) bool {
-	s = strings.TrimSpace(s)
-	if s == "" {
+// isValidJSON checks if the byte slice is valid JSON using json.Valid().
+func isValidJSON(data []byte) bool {
+	data = bytes.TrimSpace(data)
+	if len(data) == 0 {
 		return false
 	}
-	var js json.RawMessage
-	return json.Unmarshal([]byte(s), &js) == nil
+	return json.Valid(data)
 }
