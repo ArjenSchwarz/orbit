@@ -80,6 +80,40 @@ func TestClassifier_Classify_ModelNotFound(t *testing.T) {
 	}
 }
 
+func TestClassifier_Classify_RealOpenCodeModelError(t *testing.T) {
+	// Test with actual OpenCode error output for invalid model
+	c := NewClassifier()
+
+	// This is the actual output from: opencode run "test" --model github-copilot/claude-opus-4.8 --format json
+	stdout := `1076 |     const info = provider.models[modelID]
+1077 |     if (!info) {
+1078 |       const availableModels = Object.keys(provider.models)
+1079 |       const matches = fuzzysort.go(modelID, availableModels, { limit: 3, threshold: -10000 })
+1080 |       const suggestions = matches.map((m) => m.target)
+1081 |       throw new ModelNotFoundError({ providerID, modelID, suggestions })
+                   ^
+ProviderModelNotFoundError: ProviderModelNotFoundError
+ data: {
+  providerID: "github-copilot",
+  modelID: "claude-opus-4.8",
+  suggestions: [],
+},
+
+      at getModel (src/provider/provider.ts:1081:13)`
+
+	stderr := "INFO  2026-01-27T23:52:47 +39ms service=models.dev file={} refreshing"
+
+	// Exit code 0 but plaintext output (not JSON)
+	err := c.Classify(0, stderr, stdout, nil)
+
+	if err.Class != agents.ErrorClassFatal {
+		t.Errorf("Class = %v, want %v (fatal for model not found)", err.Class, agents.ErrorClassFatal)
+	}
+	if err.Agent != "opencode" {
+		t.Errorf("Agent = %q, want %q", err.Agent, "opencode")
+	}
+}
+
 func TestClassifier_Classify_SessionInvalid(t *testing.T) {
 	c := NewClassifier()
 

@@ -3,6 +3,7 @@ package opencode
 import (
 	"context"
 	"slices"
+	"strings"
 	"testing"
 
 	"github.com/arjenschwarz/orbit/internal/agents"
@@ -356,6 +357,66 @@ func TestAgent_DiscoverSessions_ContextCancellation(t *testing.T) {
 		// Note: May return nil if session dir doesn't exist (checked before loop)
 		// This test mainly verifies the function doesn't panic with cancelled context
 		t.Logf("DiscoverSessions with cancelled context returned: %v", err)
+	}
+}
+
+func TestErrorDetection_EmptyOutput(t *testing.T) {
+	// Test that empty output is correctly detected as an error.
+	// This simulates what happens when OpenCode exits 0 but produces no stdout
+	// (e.g., auth/CLI errors that only write to stderr).
+	tests := map[string]struct {
+		raw         []byte
+		wantIsError bool
+		wantMsgPart string
+	}{
+		"empty output": {
+			raw:         []byte{},
+			wantIsError: true,
+			wantMsgPart: "empty output",
+		},
+		"whitespace only": {
+			raw:         []byte("   \n\t  "),
+			wantIsError: true,
+			wantMsgPart: "not valid JSON",
+		},
+		"invalid JSON": {
+			raw:         []byte("Error: model not found"),
+			wantIsError: true,
+			wantMsgPart: "not valid JSON",
+		},
+		"valid JSON": {
+			raw:         []byte(`{"status": "ok"}`),
+			wantIsError: false,
+			wantMsgPart: "",
+		},
+	}
+
+	for name, tt := range tests {
+		t.Run(name, func(t *testing.T) {
+			// Simulate the error detection logic from execute()
+			var isError bool
+			var errMsg string
+
+			if !isValidJSON(tt.raw) {
+				isError = true
+				if len(tt.raw) == 0 {
+					errMsg = "empty output (expected JSON)"
+				} else {
+					preview := string(tt.raw)
+					if len(preview) > 100 {
+						preview = preview[:100] + "..."
+					}
+					errMsg = "output is not valid JSON: " + preview
+				}
+			}
+
+			if isError != tt.wantIsError {
+				t.Errorf("isError = %v, want %v", isError, tt.wantIsError)
+			}
+			if tt.wantMsgPart != "" && !strings.Contains(errMsg, tt.wantMsgPart) {
+				t.Errorf("errMsg = %q, want to contain %q", errMsg, tt.wantMsgPart)
+			}
+		})
 	}
 }
 
