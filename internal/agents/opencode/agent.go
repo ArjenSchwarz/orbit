@@ -58,15 +58,23 @@ func (a *Agent) Version() (string, error) {
 	if err != nil {
 		return "", err
 	}
-	// Parse the last non-empty line (version output includes INFO log lines)
-	lines := strings.Split(string(output), "\n")
+	return parseVersionOutput(string(output)), nil
+}
+
+// parseVersionOutput extracts the version string from OpenCode's --version output.
+// OpenCode outputs INFO log lines followed by the version on the last line:
+//
+//	INFO  2026-01-27T12:16:29 +27ms service=models.dev file={} refreshing
+//	1.1.36
+func parseVersionOutput(output string) string {
+	lines := strings.Split(output, "\n")
 	for i := len(lines) - 1; i >= 0; i-- {
 		line := strings.TrimSpace(lines[i])
 		if line != "" {
-			return line, nil
+			return line
 		}
 	}
-	return string(bytes.TrimSpace(output)), nil
+	return strings.TrimSpace(output)
 }
 
 // DefaultSessionDir returns the default session storage directory.

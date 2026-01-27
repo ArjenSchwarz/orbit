@@ -17,6 +17,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Session discovery from `~/.local/share/opencode/storage/message/<sessionID>/`
   - Error classifier with JSON validation and pattern matching for OpenCode-specific errors
   - Auto-registration via `init()` function
+  - Unit tests for `buildArgs()` covering model selection, resume flags, and argument ordering
+  - Unit tests for version parsing with INFO log prefix handling
+  - Unit tests for error classifier with JSON vs plaintext output detection
 
 - OpenCode agent support specification (smolspec):
   - `specs/opencode-agent/smolspec.md` with requirements for OpenCode CLI integration

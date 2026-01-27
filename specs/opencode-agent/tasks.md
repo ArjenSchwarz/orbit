@@ -22,8 +22,8 @@ references:
 
 ## Testing
 
-- [ ] 8. Add unit tests for buildArgs() covering model and resume flags
+- [x] 8. Add unit tests for buildArgs() covering model and resume flags
 
-- [ ] 9. Add unit tests for version parsing (handling INFO log prefix)
+- [x] 9. Add unit tests for version parsing (handling INFO log prefix)
 
-- [ ] 10. Add unit tests for error classifier (JSON vs plaintext detection)
+- [x] 10. Add unit tests for error classifier (JSON vs plaintext detection)
