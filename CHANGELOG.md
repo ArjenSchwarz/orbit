@@ -7,6 +7,33 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- Updated README.md and CLAUDE.md to document OpenCode as a supported agent
+
+### Added
+
+- OpenCode agent implementation (`internal/agents/opencode/`):
+  - Agent interface implementation with `opencode run --format json "<prompt>"` execution
+  - Session resumption via `--continue` flag
+  - Model selection via `--model provider/model` format
+  - Version parsing that handles INFO log lines (extracts last non-empty line)
+  - Session discovery from `~/.local/share/opencode/storage/message/<sessionID>/`
+  - Error classifier with JSON validation and pattern matching for OpenCode-specific errors
+  - Auto-registration via `init()` function
+  - Unit tests for `buildArgs()` covering model selection, resume flags, and argument ordering
+  - Unit tests for version parsing with INFO log prefix handling
+  - Unit tests for error classifier with JSON vs plaintext output detection
+
+- OpenCode agent support specification (smolspec):
+  - `specs/opencode-agent/smolspec.md` with requirements for OpenCode CLI integration
+  - Support for `opencode run --format json` non-interactive execution
+  - Model selection via `--model provider/model` format (e.g., `anthropic/claude-sonnet-4-5`)
+  - Session resumption via `--continue` flag
+  - Error classification detecting errors from JSON output validation
+  - Session discovery from `~/.local/share/opencode/storage/message/`
+  - `specs/opencode-agent/tasks.md` with 10 implementation tasks in 2 phases
+
 ### Fixed
 
 - Status command now reads variant summary.json from correct location (`specs/<spec>/.orbit/logs/variant-<id>/`) instead of worktree spec directory
