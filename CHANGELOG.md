@@ -36,6 +36,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Variant continuation now accumulates metrics (cost, duration, turns) instead of resetting them. Previously, continuing a variant run would start metrics from zero, overwriting the values from the previous run.
 - Status command now reads variant summary.json from correct location (`specs/<spec>/.orbit/logs/variant-<id>/`) instead of worktree spec directory
 - Terminal output format changed from Markdown to Table for proper text rendering in terminal
 - `TestGetLastDisplayableEntry_LargeFile` now creates file > 64KB to actually test window expansion code path

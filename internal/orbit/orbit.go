@@ -1349,8 +1349,10 @@ func (o *Orbit) runVariant(ctx context.Context, v *variants.Variant) error {
 	}
 
 	// Track total metrics across all phases
-	var totalCost float64
-	var totalTurns int
+	// Initialize from existing metrics to support accumulation when continuing a run
+	totalCost := v.Cost
+	totalTurns := v.NumTurns
+	previousDuration := v.Duration
 
 	// Track last logged phase and per-phase cost
 	var lastLoggedPhase string
@@ -1494,7 +1496,8 @@ func (o *Orbit) runVariant(ctx context.Context, v *variants.Variant) error {
 	}
 
 	// Mark variant as completed
-	duration := time.Since(startTime)
+	// Add previous duration to support accumulation when continuing a run
+	duration := previousDuration + time.Since(startTime)
 	if err := o.variantManager.UpdateStatus(v.ID, variants.StatusCompleted, nil); err != nil {
 		log.Printf("Warning: failed to update variant %d status: %v", v.ID, err)
 	}
