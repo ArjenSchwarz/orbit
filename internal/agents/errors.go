@@ -16,6 +16,9 @@ const (
 	ErrorClassFatal
 	// ErrorClassSessionInvalid represents session-related errors (session expired or not found).
 	ErrorClassSessionInvalid
+	// ErrorClassRateLimitWait represents usage limits that require waiting until a specific time.
+	// This is different from ErrorClassRetryable - the retry counter should reset after waiting.
+	ErrorClassRateLimitWait
 )
 
 // String returns a human-readable name for the error class.
@@ -27,6 +30,8 @@ func (ec ErrorClass) String() string {
 		return "fatal"
 	case ErrorClassSessionInvalid:
 		return "session-invalid"
+	case ErrorClassRateLimitWait:
+		return "rate-limit-wait"
 	default:
 		return "unknown"
 	}
@@ -34,7 +39,12 @@ func (ec ErrorClass) String() string {
 
 // IsRetryable returns true if the error class indicates the operation can be retried.
 func (ec ErrorClass) IsRetryable() bool {
-	return ec == ErrorClassRetryable
+	return ec == ErrorClassRetryable || ec == ErrorClassRateLimitWait
+}
+
+// IsRateLimitWait returns true if this is a rate limit that requires waiting until a specific time.
+func (ec ErrorClass) IsRateLimitWait() bool {
+	return ec == ErrorClassRateLimitWait
 }
 
 // ClassifiedError wraps an error with classification metadata.

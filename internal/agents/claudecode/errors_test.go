@@ -202,3 +202,115 @@ func TestClassifier_ImplementsInterface(t *testing.T) {
 		t.Error("NewClassifier() returned nil")
 	}
 }
+
+func TestClassifier_Classify_UsageLimit(t *testing.T) {
+	c := NewClassifier()
+
+	tests := []struct {
+		name   string
+		stderr string
+		stdout string
+	}{
+		{"hit your limit", "You've hit your limit · resets 3am (Australia/Melbourne)", ""},
+		{"hit your limit in stdout", "", "You've hit your limit · resets 5pm (America/New_York)"},
+		{"lowercase hit limit", "you've hit your limit resets 12am (UTC)", ""},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := c.Classify(1, tt.stderr, tt.stdout, nil)
+			if err.Class != agents.ErrorClassRateLimitWait {
+				t.Errorf("Class = %v, want %v", err.Class, agents.ErrorClassRateLimitWait)
+			}
+			if err.Agent != "claude-code" {
+				t.Errorf("Agent = %q, want %q", err.Agent, "claude-code")
+			}
+			if err.RetryAfter <= 0 {
+				t.Errorf("RetryAfter = %v, want > 0", err.RetryAfter)
+			}
+		})
+	}
+}
+
+func TestParseUsageLimitReset(t *testing.T) {
+	tests := []struct {
+		name        string
+		msg         string
+		expectValid bool
+	}{
+		{"simple am time", "resets 3am (UTC)", true},
+		{"simple pm time", "resets 5pm (UTC)", true},
+		{"time with minutes", "resets 3:30am (UTC)", true},
+		{"time with space", "resets 3 am (UTC)", true},
+		{"timezone with slash", "resets 3am (Australia/Melbourne)", true},
+		{"timezone abbreviation", "resets 3am (EST)", true},
+		{"full message", "You've hit your limit · resets 3am (Australia/Melbourne)", true},
+		{"no match", "some random error", false},
+		{"missing timezone", "resets 3am", false},
+		{"missing time", "resets (UTC)", false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := parseUsageLimitReset(tt.msg)
+			if tt.expectValid && got <= 0 {
+				t.Errorf("parseUsageLimitReset(%q) = %v, want > 0", tt.msg, got)
+			}
+			if !tt.expectValid && got > 0 {
+				t.Errorf("parseUsageLimitReset(%q) = %v, want 0", tt.msg, got)
+			}
+		})
+	}
+}
+
+func TestParseTimezoneAbbrev(t *testing.T) {
+	tests := []struct {
+		abbrev   string
+		expected bool
+	}{
+		{"EST", true},
+		{"PST", true},
+		{"UTC", true},
+		{"AEST", true},
+		{"JST", true},
+		{"INVALID", false},
+		{"XYZ", false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.abbrev, func(t *testing.T) {
+			loc := parseTimezoneAbbrev(tt.abbrev)
+			if tt.expected && loc == nil {
+				t.Errorf("parseTimezoneAbbrev(%q) = nil, want non-nil", tt.abbrev)
+			}
+			if !tt.expected && loc != nil {
+				t.Errorf("parseTimezoneAbbrev(%q) = %v, want nil", tt.abbrev, loc)
+			}
+		})
+	}
+}
+
+func TestFormatDuration(t *testing.T) {
+	tests := []struct {
+		name     string
+		duration time.Duration
+		expected string
+	}{
+		{"seconds", 30 * time.Second, "30 seconds"},
+		{"one minute", 1 * time.Minute, "1 minute"},
+		{"minutes", 5 * time.Minute, "5 minutes"},
+		{"one hour", 1 * time.Hour, "1 hour"},
+		{"hours", 3 * time.Hour, "3 hours"},
+		{"hours and minutes", 2*time.Hour + 30*time.Minute, "2 hours 30 minutes"},
+		{"one hour one minute", 1*time.Hour + 1*time.Minute, "1 hour 1 minute"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := formatDuration(tt.duration)
+			if got != tt.expected {
+				t.Errorf("formatDuration(%v) = %q, want %q", tt.duration, got, tt.expected)
+			}
+		})
+	}
+}

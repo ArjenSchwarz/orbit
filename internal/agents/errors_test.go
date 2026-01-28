@@ -33,6 +33,11 @@ func TestErrorClass_String(t *testing.T) {
 			expected: "session-invalid",
 		},
 		{
+			name:     "rate limit wait error class",
+			class:    ErrorClassRateLimitWait,
+			expected: "rate-limit-wait",
+		},
+		{
 			name:     "undefined error class returns unknown",
 			class:    ErrorClass(99),
 			expected: "unknown",
@@ -74,12 +79,59 @@ func TestErrorClass_IsRetryable(t *testing.T) {
 			class:    ErrorClassSessionInvalid,
 			expected: false,
 		},
+		{
+			name:     "rate limit wait is retryable",
+			class:    ErrorClassRateLimitWait,
+			expected: true,
+		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			if got := tt.class.IsRetryable(); got != tt.expected {
 				t.Errorf("ErrorClass.IsRetryable() = %v, want %v", got, tt.expected)
+			}
+		})
+	}
+}
+
+func TestErrorClass_IsRateLimitWait(t *testing.T) {
+	tests := []struct {
+		name     string
+		class    ErrorClass
+		expected bool
+	}{
+		{
+			name:     "unknown is not rate limit wait",
+			class:    ErrorClassUnknown,
+			expected: false,
+		},
+		{
+			name:     "retryable is not rate limit wait",
+			class:    ErrorClassRetryable,
+			expected: false,
+		},
+		{
+			name:     "fatal is not rate limit wait",
+			class:    ErrorClassFatal,
+			expected: false,
+		},
+		{
+			name:     "session invalid is not rate limit wait",
+			class:    ErrorClassSessionInvalid,
+			expected: false,
+		},
+		{
+			name:     "rate limit wait is rate limit wait",
+			class:    ErrorClassRateLimitWait,
+			expected: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := tt.class.IsRateLimitWait(); got != tt.expected {
+				t.Errorf("ErrorClass.IsRateLimitWait() = %v, want %v", got, tt.expected)
 			}
 		})
 	}

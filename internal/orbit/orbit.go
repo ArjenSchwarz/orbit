@@ -520,7 +520,16 @@ func (o *Orbit) runPhaseWithRetry(phase int) error {
 
 		// Determine wait time using RetryAfter from classifier, with fallback to exponential backoff
 		var waitTime time.Duration
-		if classified.RetryAfter > 0 {
+		if classified.Class.IsRateLimitWait() {
+			// Usage limit wait - this is a special case where we wait until a specific time
+			// and then reset the attempt counter since the limit has been lifted
+			waitTime = classified.RetryAfter
+			log.Printf("Usage limit reached. Waiting %s until reset...", waitTime)
+			o.debug.Log("Rate limit wait: resetting attempt counter after wait")
+			// Reset attempt counter after this wait - the rate limit will be lifted
+			// We use -1 because the loop will increment it to 0
+			attempt = -1
+		} else if classified.RetryAfter > 0 {
 			waitTime = classified.RetryAfter
 			log.Printf("Retryable error (attempt %d/%d). Waiting %s before retry...", attempt+1, maxRetries, waitTime)
 		} else {
@@ -1589,7 +1598,15 @@ func (o *Orbit) runVariantPhaseWithRetry(ctx context.Context, v *variants.Varian
 
 		// Determine wait time using RetryAfter from classifier, with fallback to exponential backoff
 		var waitTime time.Duration
-		if classified.RetryAfter > 0 {
+		if classified.Class.IsRateLimitWait() {
+			// Usage limit wait - this is a special case where we wait until a specific time
+			// and then reset the attempt counter since the limit has been lifted
+			waitTime = classified.RetryAfter
+			log.Printf("Variant %d: usage limit reached, waiting %s until reset...", v.ID, waitTime)
+			// Reset attempt counter after this wait - the rate limit will be lifted
+			// We use -1 because the loop will increment it to 0
+			attempt = -1
+		} else if classified.RetryAfter > 0 {
 			waitTime = classified.RetryAfter
 			log.Printf("Variant %d: retryable error, waiting %s (attempt %d/%d)",
 				v.ID, waitTime, attempt+1, maxRetries)
@@ -1648,7 +1665,15 @@ func (o *Orbit) runVariantPostCompletion(ctx context.Context, v *variants.Varian
 
 		// Determine wait time using RetryAfter from classifier, with fallback to exponential backoff
 		var waitTime time.Duration
-		if classified.RetryAfter > 0 {
+		if classified.Class.IsRateLimitWait() {
+			// Usage limit wait - this is a special case where we wait until a specific time
+			// and then reset the attempt counter since the limit has been lifted
+			waitTime = classified.RetryAfter
+			log.Printf("Variant %d post-completion: usage limit reached, waiting %s until reset...", v.ID, waitTime)
+			// Reset attempt counter after this wait - the rate limit will be lifted
+			// We use -1 because the loop will increment it to 0
+			attempt = -1
+		} else if classified.RetryAfter > 0 {
 			waitTime = classified.RetryAfter
 			log.Printf("Variant %d post-completion: retryable error, waiting %s (attempt %d/%d)",
 				v.ID, waitTime, attempt+1, maxRetries)
