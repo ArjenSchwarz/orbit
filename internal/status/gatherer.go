@@ -202,9 +202,18 @@ func GetLiveTranscriptPath(worktreePath, variantLogDir string) (string, error) {
 		return "", err
 	}
 
+	// Ensure worktreePath is absolute for correct Claude project path resolution
+	// (worktreePath from variants.json may be relative)
+	absWorktreePath := worktreePath
+	if !filepath.IsAbs(worktreePath) {
+		if abs, err := filepath.Abs(worktreePath); err == nil {
+			absWorktreePath = abs
+		}
+	}
+
 	// Example: worktreePath = "/Users/foo/repo/specs/feature/.orbit/worktrees/impl-1"
 	// BuildProjectPath converts to: "-Users-foo-repo-specs-feature--orbit-worktrees-impl-1"
 	// Claude stores at: ~/.claude/projects/{project-hash}/{session-id}.jsonl
-	projectHash := claudecode.BuildProjectPath(worktreePath)
+	projectHash := claudecode.BuildProjectPath(absWorktreePath)
 	return filepath.Join(homeDir, ".claude", "projects", projectHash, sessionID+".jsonl"), nil
 }

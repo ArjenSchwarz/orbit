@@ -403,6 +403,46 @@ func TestGetLiveTranscriptPath(t *testing.T) {
 			t.Errorf("Expected empty path on error, got %q", path)
 		}
 	})
+
+	t.Run("converts relative worktree path to absolute", func(t *testing.T) {
+		summary := logs.Summary{
+			CurrentPhase: &logs.PhaseState{
+				Phase:     1,
+				SessionID: "test-session-rel",
+			},
+		}
+		data, _ := json.Marshal(summary)
+		summaryPath := filepath.Join(variantLogDir, "summary.json")
+		if err := os.WriteFile(summaryPath, data, 0644); err != nil {
+			t.Fatalf("Failed to write summary: %v", err)
+		}
+
+		// Use a relative worktree path (simulates what variants.json might contain)
+		relativeWorktreePath := "specs/test-spec/.orbit/worktrees/impl-1"
+		path, err := GetLiveTranscriptPath(relativeWorktreePath, variantLogDir)
+
+		if err != nil {
+			t.Fatalf("Unexpected error: %v", err)
+		}
+		if path == "" {
+			t.Error("Expected non-empty path")
+		}
+		// The returned path should still be absolute (because we're looking for Claude files)
+		if !filepath.IsAbs(path) {
+			t.Error("Expected absolute path")
+		}
+		// The Claude project path portion should contain the absolute path components
+		// It should NOT start with "specs-" but should start with a dash followed by root path
+		if filepath.Base(path) != "test-session-rel.jsonl" {
+			t.Errorf("Path should end with session ID, got %q", filepath.Base(path))
+		}
+		// Path should contain an absolute-style Claude project path (starts with -)
+		// e.g., ~/.claude/projects/-home-user-specs-test-spec-...
+		homeDir, _ := os.UserHomeDir()
+		if !filepath.HasPrefix(path, homeDir) {
+			t.Errorf("Path should be under home directory, got %q", path)
+		}
+	})
 }
 
 func TestFromRunePhaseSummary(t *testing.T) {
