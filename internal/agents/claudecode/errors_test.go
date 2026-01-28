@@ -232,6 +232,22 @@ func TestClassifier_Classify_UsageLimit(t *testing.T) {
 	}
 }
 
+func TestClassifier_Classify_UsageLimitNoResetTime(t *testing.T) {
+	c := NewClassifier()
+
+	// When usage limit message is detected but time parsing fails,
+	// it should fall through to unknown error (not crash)
+	err := c.Classify(1, "you've hit your limit", "", nil)
+	// Should not be RateLimitWait because parsing failed
+	if err.Class == agents.ErrorClassRateLimitWait {
+		t.Errorf("Class = %v, should not be RateLimitWait when time parsing fails", err.Class)
+	}
+	// Should be Unknown since no other pattern matches
+	if err.Class != agents.ErrorClassUnknown {
+		t.Errorf("Class = %v, want %v", err.Class, agents.ErrorClassUnknown)
+	}
+}
+
 func TestParseUsageLimitReset(t *testing.T) {
 	tests := []struct {
 		name        string
