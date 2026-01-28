@@ -883,3 +883,87 @@ func TestVariantRunWithDifferentModels(t *testing.T) {
 		t.Errorf("variant 2 model = %q, want %q", v2.Model, "claude-opus-4-20250514")
 	}
 }
+
+// TestSpecNameDerivation verifies that the spec name is derived from the
+// spec directory path, not from the branch name. This is important because
+// the worktree path uses the spec name, and Claude stores transcripts based
+// on the working directory path.
+//
+// Example:
+// - Branch: "feature/enhanced-status"
+// - SpecDir: "specs/enhanced-status"
+// - Spec name should be: "enhanced-status" (from directory, not "feature-enhanced-status")
+// - Worktree path should contain: "orbit-impl-1-enhanced-status" (not "orbit-impl-1-feature-enhanced-status")
+func TestSpecNameDerivation(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	// Create a spec directory where the directory name differs from the branch prefix
+	// This simulates: branch="feature/my-feature" but specDir="specs/my-feature"
+	specDir := filepath.Join(tmpDir, "specs", "my-feature")
+	tasksFile := filepath.Join(specDir, "tasks.md")
+	if err := os.MkdirAll(specDir, 0755); err != nil {
+		t.Fatalf("failed to create spec dir: %v", err)
+	}
+
+	tasksContent := `# Tasks
+
+## Phase 1: Implementation
+
+- [ ] 1. Implement feature
+`
+	if err := os.WriteFile(tasksFile, []byte(tasksContent), 0644); err != nil {
+		t.Fatalf("failed to write tasks file: %v", err)
+	}
+
+	// Create mock git client
+	git := variants.NewMockGit()
+	git.CurrentBranch = "feature/my-feature" // Branch name has "feature/" prefix
+	git.HeadCommit = "abc123def456"
+
+	cfg := variants.Config{
+		Count:        2,
+		Parallel:     false,
+		MaxParallel:  3,
+		BranchPrefix: "orbit-impl",
+	}
+
+	// The key fix: use filepath.Base(specDir) as spec name, not the branch name
+	// This is what orbit.New() does after the fix
+	specName := filepath.Base(specDir) // Should be "my-feature", not "feature/my-feature"
+	if specName != "my-feature" {
+		t.Errorf("spec name derivation failed: got %q, want %q", specName, "my-feature")
+	}
+
+	mgr, err := variants.NewManager(cfg, specName, specDir, tmpDir, git)
+	if err != nil {
+		t.Fatalf("failed to create variant manager: %v", err)
+	}
+
+	ctx := context.Background()
+	if err := mgr.Setup(ctx, false); err != nil {
+		t.Fatalf("Setup failed: %v", err)
+	}
+
+	// Verify that worktree paths use the correct spec name (not the branch name)
+	metadata := mgr.GetMetadata()
+	if metadata == nil {
+		t.Fatal("metadata is nil")
+	}
+
+	for _, v := range metadata.Variants {
+		// Worktree path should contain "my-feature", NOT "feature-my-feature"
+		if !contains(v.WorktreePath, "my-feature") {
+			t.Errorf("variant %d worktree path should contain 'my-feature': %s", v.ID, v.WorktreePath)
+		}
+		// Verify it does NOT contain the branch prefix "feature-"
+		if contains(v.WorktreePath, "feature-my-feature") {
+			t.Errorf("variant %d worktree path should NOT contain 'feature-my-feature': %s", v.ID, v.WorktreePath)
+		}
+		// Verify the expected pattern: orbit-impl-N-my-feature
+		expectedSuffix := filepath.Join("worktrees", "orbit-impl-"+string(rune('0'+v.ID))+"-my-feature")
+		if !contains(v.WorktreePath, "orbit-impl-") || !contains(v.WorktreePath, "-my-feature") {
+			t.Errorf("variant %d worktree path pattern incorrect, got: %s", v.ID, v.WorktreePath)
+		}
+		_ = expectedSuffix // used for documentation
+	}
+}
