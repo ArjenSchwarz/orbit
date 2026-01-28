@@ -247,7 +247,10 @@ func New(config Config) (*Orbit, error) {
 
 		gitClient := variants.NewGit(config.RepoRoot)
 		var err error
-		variantMgr, err = variants.NewManager(variantCfg, config.BranchName, config.SpecDir, config.RepoRoot, gitClient)
+		// Derive spec name from the spec directory, not the branch name
+		// e.g., "specs/enhanced-status" -> "enhanced-status"
+		specName := filepath.Base(config.SpecDir)
+		variantMgr, err = variants.NewManager(variantCfg, specName, config.SpecDir, config.RepoRoot, gitClient)
 		if err != nil {
 			cancel() // Clean up context
 			return nil, fmt.Errorf("failed to create variant manager: %w", err)
