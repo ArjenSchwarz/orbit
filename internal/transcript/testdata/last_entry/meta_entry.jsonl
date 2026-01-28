@@ -1,0 +1,3 @@
+{"type":"user","timestamp":"2025-12-23T10:30:00+11:00","message":{"role":"user","content":"Help me"}}
+{"type":"assistant","timestamp":"2025-12-23T10:30:05+11:00","message":{"role":"assistant","content":[{"type":"text","text":"I found the answer"}]},"isMeta":false}
+{"type":"assistant","timestamp":"2025-12-23T10:30:06+11:00","message":{"role":"assistant","content":[{"type":"text","text":"Internal marker"}]},"isMeta":true}

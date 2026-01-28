@@ -6,7 +6,7 @@ Orbit is a CLI tool that orchestrates AI coding agents to implement spec phases 
 
 Orbit solves the problem of running AI coding agents through multiple implementation phases without manual intervention. It:
 
-- Supports multiple AI agents: Claude Code, OpenAI Codex, AWS Kiro, and GitHub Copilot
+- Supports multiple AI agents: Claude Code, OpenAI Codex, AWS Kiro, GitHub Copilot, and OpenCode
 - Automatically detects tasks from your git branch
 - Runs agents in non-interactive mode for each phase
 - Handles rate limits and connection errors with appropriate retries
@@ -26,6 +26,7 @@ go install github.com/arjenschwarz/orbit/cmd/orbit@latest
   - [OpenAI Codex](https://github.com/openai/codex)
   - [AWS Kiro](https://kiro.dev/docs/cli)
   - [GitHub Copilot CLI](https://docs.github.com/en/copilot/using-github-copilot/using-github-copilot-in-the-command-line)
+  - [OpenCode](https://opencode.ai) - open-source AI coding agent supporting multiple LLM providers
 - [rune](https://github.com/arjenschwarz/rune) CLI installed
 - Git repository with a spec containing a tasks file
 
@@ -75,7 +76,7 @@ orbit --no-post-command
 
 | Flag | Default | Description |
 |------|---------|-------------|
-| `--agent` | `claude-code` | Agent to use: `claude-code`, `codex`, `kiro`, `copilot` |
+| `--agent` | `claude-code` | Agent to use: `claude-code`, `codex`, `kiro`, `copilot`, `opencode` |
 
 ### Multi-Variant Comparison
 
@@ -163,6 +164,7 @@ Each agent uses its equivalent auto-approval flag:
 | Codex | `--full-auto` |
 | Kiro | `--trust-all-tools` |
 | Copilot | `--yolo` (equivalent to `--allow-all-tools --allow-all-paths --allow-all-url`) |
+| OpenCode | N/A (works non-interactively without explicit flag) |
 
 To disable auto-approval for a specific agent (requiring manual tool approval):
 
@@ -479,19 +481,37 @@ orbit status my-feature
 **Example output:**
 
 ```
-Variant Status for my-feature
-Run ID: 550e8400-e29b-41d4-a716-446655440000
-Base Commit: abc1234
-Started: 2025-01-25 10:00:00
+Variant Status: my-feature
 
-┌─────────┬──────────────────────────┬─────────────┬───────────┬──────────┐
-│ Variant │ Branch                   │ Agent       │ Status    │ Duration │
-├─────────┼──────────────────────────┼─────────────┼───────────┼──────────┤
-│ 1       │ orbit-impl-1/my-feature  │ claude-code │ completed │ 5m30s    │
-│ 2       │ orbit-impl-2/my-feature  │ codex       │ running   │ 3m15s    │
-│ 3       │ orbit-impl-3/my-feature  │ claude-code │ pending   │ -        │
-└─────────┴──────────────────────────┴─────────────┴───────────┴──────────┘
+Base Commit:     abc1234567
+Original Branch: main
+Started:         2025-01-25 10:00:00
+
+Variant 2: orbit-impl-2/my-feature [running (dirty)]
+
+Commits:
+  a1b2c3d Add user authentication handler
+  e4f5g6h Implement token validation
+  i7j8k9l Add unit tests for auth
+
+Last Action:
+  fs_write: internal/auth/handler.go
+
+Tasks:
+→ Phase 2: Implementation: 3/5
+  Phase 3: Testing: 0/2
+
+---
+
+Variant 1: orbit-impl-1/my-feature [completed]
+Variant 3: orbit-impl-3/my-feature [pending]
 ```
+
+The enhanced status command shows detailed information for active variants (running/failed):
+- **Recent commits**: Last 3 commits made by the agent
+- **Git state**: Whether the worktree has uncommitted changes (clean/dirty)
+- **Last action**: Most recent agent activity (Claude Code only)
+- **Task progress**: Phase-by-phase completion status with active phase indicator (→)
 
 **Variant States:**
 

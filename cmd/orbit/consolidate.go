@@ -14,6 +14,7 @@ import (
 	_ "github.com/arjenschwarz/orbit/internal/agents/codex"      // Register codex agent
 	_ "github.com/arjenschwarz/orbit/internal/agents/copilot"    // Register copilot agent
 	_ "github.com/arjenschwarz/orbit/internal/agents/kiro"       // Register kiro agent
+	_ "github.com/arjenschwarz/orbit/internal/agents/opencode"   // Register opencode agent
 	"github.com/arjenschwarz/orbit/internal/config"
 	"github.com/arjenschwarz/orbit/internal/consolidation"
 	"github.com/arjenschwarz/orbit/internal/variants"

@@ -462,3 +462,184 @@ func TestRebase_FailsWhenDiverged(t *testing.T) {
 		t.Errorf("error should mention merge, got: %v", err)
 	}
 }
+
+func TestHasUncommittedChangesInPath(t *testing.T) {
+	dir, cleanup := setupTestRepo(t)
+	defer cleanup()
+
+	git := NewGit(dir)
+
+	// Create a branch and worktree
+	branchName := "test-worktree-branch"
+	runGit(t, dir, "branch", branchName)
+	worktreePath := filepath.Join(dir, ".orbit", "worktrees", "test-wt")
+	runGit(t, dir, "worktree", "add", worktreePath, branchName)
+
+	t.Run("clean worktree returns false", func(t *testing.T) {
+		hasChanges, err := git.HasUncommittedChangesInPath(worktreePath)
+		if err != nil {
+			t.Fatalf("HasUncommittedChangesInPath failed: %v", err)
+		}
+		if hasChanges {
+			t.Error("expected no uncommitted changes in clean worktree")
+		}
+	})
+
+	t.Run("staged changes returns true", func(t *testing.T) {
+		// Modify an existing tracked file
+		readmeFile := filepath.Join(worktreePath, "README.md")
+		if err := os.WriteFile(readmeFile, []byte("# Modified\n"), 0644); err != nil {
+			t.Fatalf("failed to write file: %v", err)
+		}
+		runGit(t, worktreePath, "add", ".")
+
+		hasChanges, err := git.HasUncommittedChangesInPath(worktreePath)
+		if err != nil {
+			t.Fatalf("HasUncommittedChangesInPath failed: %v", err)
+		}
+		if !hasChanges {
+			t.Error("expected uncommitted changes with staged changes")
+		}
+
+		// Reset for next test
+		runGit(t, worktreePath, "reset", "HEAD")
+		runGit(t, worktreePath, "checkout", ".")
+	})
+
+	t.Run("unstaged changes returns true", func(t *testing.T) {
+		// Modify an existing tracked file without staging
+		readmeFile := filepath.Join(worktreePath, "README.md")
+		if err := os.WriteFile(readmeFile, []byte("# Unstaged Modified\n"), 0644); err != nil {
+			t.Fatalf("failed to write file: %v", err)
+		}
+
+		hasChanges, err := git.HasUncommittedChangesInPath(worktreePath)
+		if err != nil {
+			t.Fatalf("HasUncommittedChangesInPath failed: %v", err)
+		}
+		if !hasChanges {
+			t.Error("expected uncommitted changes with unstaged changes")
+		}
+
+		// Reset for next test
+		runGit(t, worktreePath, "checkout", ".")
+	})
+
+	t.Run("untracked files returns false (requirement 2.4)", func(t *testing.T) {
+		// Create an untracked file
+		untrackedFile := filepath.Join(worktreePath, "untracked.txt")
+		if err := os.WriteFile(untrackedFile, []byte("untracked content\n"), 0644); err != nil {
+			t.Fatalf("failed to write file: %v", err)
+		}
+
+		hasChanges, err := git.HasUncommittedChangesInPath(worktreePath)
+		if err != nil {
+			t.Fatalf("HasUncommittedChangesInPath failed: %v", err)
+		}
+		if hasChanges {
+			t.Error("expected no uncommitted changes with only untracked files (per requirement 2.4)")
+		}
+	})
+
+	t.Run("invalid path returns error", func(t *testing.T) {
+		_, err := git.HasUncommittedChangesInPath("/nonexistent/path")
+		if err == nil {
+			t.Error("expected error for invalid path")
+		}
+	})
+}
+
+func TestGetRecentCommits(t *testing.T) {
+	dir, cleanup := setupTestRepo(t)
+	defer cleanup()
+
+	git := NewGit(dir)
+
+	// Get base commit
+	baseCommit, _ := git.GetHeadCommit()
+
+	// Create a branch and worktree
+	branchName := "commit-test-branch"
+	runGit(t, dir, "branch", branchName)
+	worktreePath := filepath.Join(dir, ".orbit", "worktrees", "commit-wt")
+	runGit(t, dir, "worktree", "add", worktreePath, branchName)
+
+	t.Run("no commits since base returns empty slice", func(t *testing.T) {
+		ctx := context.Background()
+		commits, err := git.GetRecentCommits(ctx, worktreePath, baseCommit, 3)
+		if err != nil {
+			t.Fatalf("GetRecentCommits failed: %v", err)
+		}
+		if len(commits) != 0 {
+			t.Errorf("expected 0 commits, got %d", len(commits))
+		}
+	})
+
+	// Add some commits to the worktree
+	for i := 1; i <= 5; i++ {
+		testFile := filepath.Join(worktreePath, "file"+string(rune('0'+i))+".txt")
+		if err := os.WriteFile(testFile, []byte("content "+string(rune('0'+i))+"\n"), 0644); err != nil {
+			t.Fatalf("failed to write file: %v", err)
+		}
+		runGit(t, worktreePath, "add", ".")
+		runGit(t, worktreePath, "commit", "-m", "Commit "+string(rune('0'+i)))
+	}
+
+	t.Run("returns correct number of commits (respects limit)", func(t *testing.T) {
+		ctx := context.Background()
+		commits, err := git.GetRecentCommits(ctx, worktreePath, baseCommit, 3)
+		if err != nil {
+			t.Fatalf("GetRecentCommits failed: %v", err)
+		}
+		if len(commits) != 3 {
+			t.Errorf("expected 3 commits, got %d", len(commits))
+		}
+	})
+
+	t.Run("returns commits in reverse chronological order (newest first)", func(t *testing.T) {
+		ctx := context.Background()
+		commits, err := git.GetRecentCommits(ctx, worktreePath, baseCommit, 5)
+		if err != nil {
+			t.Fatalf("GetRecentCommits failed: %v", err)
+		}
+		if len(commits) != 5 {
+			t.Fatalf("expected 5 commits, got %d", len(commits))
+		}
+
+		// Most recent commit should be "Commit 5"
+		if commits[0].Subject != "Commit 5" {
+			t.Errorf("expected most recent commit to be 'Commit 5', got %q", commits[0].Subject)
+		}
+		// Oldest of the returned commits should be "Commit 1"
+		if commits[4].Subject != "Commit 1" {
+			t.Errorf("expected oldest commit to be 'Commit 1', got %q", commits[4].Subject)
+		}
+	})
+
+	t.Run("commit hash is 7 characters", func(t *testing.T) {
+		ctx := context.Background()
+		commits, err := git.GetRecentCommits(ctx, worktreePath, baseCommit, 1)
+		if err != nil {
+			t.Fatalf("GetRecentCommits failed: %v", err)
+		}
+		if len(commits) == 0 {
+			t.Fatal("expected at least 1 commit")
+		}
+		if len(commits[0].Hash) != 7 {
+			t.Errorf("expected 7-char short hash, got %d chars: %q", len(commits[0].Hash), commits[0].Hash)
+		}
+	})
+
+	t.Run("context cancellation stops operation", func(t *testing.T) {
+		ctx, cancel := context.WithCancel(context.Background())
+		cancel() // Cancel immediately
+
+		_, err := git.GetRecentCommits(ctx, worktreePath, baseCommit, 3)
+		if err == nil {
+			t.Error("expected error for cancelled context")
+		}
+		if !strings.Contains(err.Error(), "cancel") {
+			t.Errorf("expected cancellation error, got: %v", err)
+		}
+	})
+}

@@ -8,6 +8,12 @@ import (
 	"strings"
 )
 
+// Commit represents a single commit for status display.
+type Commit struct {
+	Hash    string
+	Subject string
+}
+
 // GitClient defines the interface for git operations used by the variant manager.
 // Long-running operations accept context.Context for cancellation support.
 type GitClient interface {
@@ -44,11 +50,19 @@ type GitClient interface {
 	// HasUncommittedChanges returns true if the working directory has uncommitted changes.
 	HasUncommittedChanges() (bool, error)
 
+	// HasUncommittedChangesInPath checks for uncommitted changes in a specific path.
+	// Only considers tracked files (ignores untracked files).
+	HasUncommittedChangesInPath(path string) (bool, error)
+
 	// GetCommitLog returns commit messages from baseCommit to HEAD in a worktree.
 	GetCommitLog(ctx context.Context, worktreePath, baseCommit string) ([]string, error)
 
 	// GetDiffStat returns a summary of changes (files changed, insertions, deletions) from baseCommit.
 	GetDiffStat(ctx context.Context, worktreePath, baseCommit string) (string, error)
+
+	// GetRecentCommits returns the N most recent commits since baseCommit in a worktree.
+	// Returns commits in reverse chronological order (newest first).
+	GetRecentCommits(ctx context.Context, worktreePath, baseCommit string, limit int) ([]Commit, error)
 }
 
 // Git implements GitClient with real git command execution.
@@ -255,6 +269,20 @@ func (g *Git) HasUncommittedChanges() (bool, error) {
 	return len(strings.TrimSpace(string(out))) > 0, nil
 }
 
+// HasUncommittedChangesInPath checks for uncommitted changes in a specific path (worktree).
+// Only considers tracked files (ignores untracked files per requirement 2.4).
+func (g *Git) HasUncommittedChangesInPath(path string) (bool, error) {
+	// Use -uno to exclude untracked files
+	cmd := exec.Command("git", "status", "--porcelain", "-uno")
+	cmd.Dir = path
+	out, err := cmd.Output()
+	if err != nil {
+		return false, fmt.Errorf("check uncommitted changes in %s: %w", path, err)
+	}
+	// Any output means there are changes (staged or unstaged to tracked files)
+	return len(strings.TrimSpace(string(out))) > 0, nil
+}
+
 // GetCommitLog returns commit messages from baseCommit to HEAD in a worktree.
 // Each entry contains the short hash and subject line.
 func (g *Git) GetCommitLog(ctx context.Context, worktreePath, baseCommit string) ([]string, error) {
@@ -297,4 +325,40 @@ func (g *Git) GetDiffStat(ctx context.Context, worktreePath, baseCommit string) 
 		return "", fmt.Errorf("get diff stat from %s: %s", baseCommit, stderr.String())
 	}
 	return string(out), nil
+}
+
+// GetRecentCommits returns the N most recent commits since baseCommit in a worktree.
+// Returns commits in reverse chronological order (newest first).
+func (g *Git) GetRecentCommits(ctx context.Context, worktreePath, baseCommit string, limit int) ([]Commit, error) {
+	// --format to get just hash and subject, separated by a null byte delimiter
+	// Using %x00 (null byte) as delimiter since it won't appear in commit messages
+	cmd := exec.CommandContext(ctx, "git", "log",
+		fmt.Sprintf("-%d", limit),
+		"--format=%h%x00%s",
+		baseCommit+"..HEAD")
+	cmd.Dir = worktreePath
+	out, err := cmd.Output()
+	if err != nil {
+		if ctx.Err() != nil {
+			return nil, fmt.Errorf("get commits cancelled: %w", ctx.Err())
+		}
+		var stderr bytes.Buffer
+		if exitErr, ok := err.(*exec.ExitError); ok {
+			stderr.Write(exitErr.Stderr)
+		}
+		return nil, fmt.Errorf("get commits: %s", stderr.String())
+	}
+
+	var commits []Commit
+	lines := strings.Split(strings.TrimSpace(string(out)), "\n")
+	for _, line := range lines {
+		if line == "" {
+			continue
+		}
+		parts := strings.SplitN(line, "\x00", 2)
+		if len(parts) == 2 {
+			commits = append(commits, Commit{Hash: parts[0], Subject: parts[1]})
+		}
+	}
+	return commits, nil
 }

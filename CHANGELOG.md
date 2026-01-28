@@ -7,7 +7,103 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- Updated README.md and CLAUDE.md to document OpenCode as a supported agent
+
 ### Added
+
+- OpenCode agent implementation (`internal/agents/opencode/`):
+  - Agent interface implementation with `opencode run --format json "<prompt>"` execution
+  - Session resumption via `--continue` flag
+  - Model selection via `--model provider/model` format
+  - Version parsing that handles INFO log lines (extracts last non-empty line)
+  - Session discovery from `~/.local/share/opencode/storage/message/<sessionID>/`
+  - Error classifier with JSON validation and pattern matching for OpenCode-specific errors
+  - Auto-registration via `init()` function
+  - Unit tests for `buildArgs()` covering model selection, resume flags, and argument ordering
+  - Unit tests for version parsing with INFO log prefix handling
+  - Unit tests for error classifier with JSON vs plaintext output detection
+
+- OpenCode agent support specification (smolspec):
+  - `specs/opencode-agent/smolspec.md` with requirements for OpenCode CLI integration
+  - Support for `opencode run --format json` non-interactive execution
+  - Model selection via `--model provider/model` format (e.g., `anthropic/claude-sonnet-4-5`)
+  - Session resumption via `--continue` flag
+  - Error classification detecting errors from JSON output validation
+  - Session discovery from `~/.local/share/opencode/storage/message/`
+  - `specs/opencode-agent/tasks.md` with 10 implementation tasks in 2 phases
+
+### Fixed
+
+- Status command now reads variant summary.json from correct location (`specs/<spec>/.orbit/logs/variant-<id>/`) instead of worktree spec directory
+- Terminal output format changed from Markdown to Table for proper text rendering in terminal
+- `TestGetLastDisplayableEntry_LargeFile` now creates file > 64KB to actually test window expansion code path
+- Corrected Claude transcript path documentation in decision log (removed erroneous `/sessions/` segment)
+
+### Added
+
+- Integration tests for enhanced status command (Phase 5):
+  - `TestStatusCommand_NoVariantsJSON` verifying exit code 1 when variants.json is missing (requirement 6.6)
+  - `TestStatusCommand_Integration` end-to-end test with git repo, worktree structure, variants.json, summary.json, tasks.md fixtures
+  - `TestStatusCommand_JSONFormat` verifying JSON output format
+  - `TestStatusCommand_AutoDetectSpec` verifying branch-based spec name auto-detection
+  - `TestExtractSpecName` unit tests for spec name extraction from branch names
+  - `TestBuildVariantHeader` unit tests for variant header formatting with git state
+
+### Changed
+
+- Status command now returns error (exit code 1) when variants.json does not exist, per requirement 6.6
+- Error messages for missing variants.json printed to stderr instead of stdout
+
+- Output types and rendering for enhanced status command (Phase 4):
+  - `StatusOutput` struct with spec metadata and variant lists for JSON serialization
+  - `VariantOutput` struct with status, git state, commits, last action, tasks, and error fields
+  - `CommitOutput` struct with hash and subject for commit display
+  - `TaskOutput` struct with phase name, completion counts, and active flag
+  - `BuildStatusOutput()` function to convert metadata and VariantInfo to structured output
+  - `BuildVariantOutput()` function to convert VariantInfo to output format with state handling
+  - `renderStatus()` dispatcher for format selection (text or json)
+  - `renderJSON()` using standard JSON encoder for structured output
+  - `renderTerminal()` using go-output with Markdown format for terminal display
+  - `--format` flag for `orbit status` command (text or json)
+
+- Status package for enhanced status command (Phase 3):
+  - `internal/status/types.go` with core types: `VariantInfo` (aggregated status for one variant), `GitInfo` (commits and dirty state), `LastActionResult` with explicit state enum (`LastActionFound`, `LastActionWaiting`, `LastActionUnavailable`, `LastActionNotSupported`), `TaskProgress` and `PhaseProgress` for phase-by-phase task counts
+  - `FromRunePhaseSummary()` helper to convert rune phase summaries to PhaseProgress
+  - `internal/status/gatherer.go` with `Gatherer` struct for collecting variant status data:
+    - `NewGatherer()` constructor with git client, spec name, base commit, and repo root
+    - `GatherAllVariants()` for concurrent status collection across all variants
+    - `GatherVariantInfo()` for single variant with graceful error handling
+    - `gatherGitInfo()` using GitClient for commits and dirty state
+    - `gatherLastAction()` with Claude-only transcript access and explicit state handling
+    - `gatherTaskProgress()` using rune client for phase summaries
+  - `GetLiveTranscriptPath()` function to build Claude transcript path from summary.json session ID
+  - Unit tests with mock GitClient covering active/non-active variants, git success/failure, non-Claude agents, concurrent gathering, and transcript path resolution
+
+- Transcript reading functions for enhanced status command (Phase 2):
+  - `GetLastDisplayableEntry()` function reading from end of file with expanding window (64KB to 4MB) for efficient tail reading of live transcripts
+  - Re-stats file each iteration for concurrent write safety when agent is actively writing
+  - Skips incomplete JSON lines and non-displayable entries (meta, thinking, non-assistant)
+  - `FormatToolUse()` function with parameter priority order (file_path, path, command, pattern, query, url, prompt) and 60-char truncation
+  - `FormatLastAction()` function prioritizing tool_use over text, with 80-char text truncation
+  - `isDisplayableEntry()` helper for identifying assistant messages with tool_use or text content
+  - Test fixtures for tool_use, text, mixed, thinking, meta, incomplete, and system-only scenarios
+  - Unit tests covering parameter extraction priority, truncation behavior, and edge cases
+
+- Git operations for enhanced status command (Phase 1):
+  - `HasUncommittedChangesInPath()` method to check for uncommitted changes in a specific worktree path, ignoring untracked files per requirement 2.4
+  - `GetRecentCommits()` method to retrieve N most recent commits since a base commit, returning short hash and subject in reverse chronological order
+  - `Commit` type in variants package with Hash and Subject fields
+  - Updated `GitClient` interface with new methods
+  - Updated `MockGit` and test mocks to implement new interface methods
+  - Unit tests for both methods covering clean/dirty states, staged/unstaged changes, untracked file exclusion, commit count limits, ordering, and context cancellation
+
+- Enhanced status command specification documents:
+  - `specs/enhanced-status/requirements.md` with 6 requirement sections covering recent commits display, git dirty state indicator, last action summary (Claude Code only), task progress overview, output format/organization, and error handling/resilience
+  - `specs/enhanced-status/design.md` with architecture, components (internal/status package with Gatherer, types, transcript functions), git operations (HasUncommittedChangesInPath, GetRecentCommits), transcript reading with expanding window algorithm, go-output based rendering with JSON and terminal formats
+  - `specs/enhanced-status/decision_log.md` with 7 design decisions (running and failed variants, 3 commits display count, transcript JSONL source, replace existing output, displayable entry types, Claude-only last action, go-output for flexible formatting)
+  - `specs/enhanced-status/tasks.md` with 5 implementation phases and 14 tasks covering git operations, transcript reading, status package, output rendering, and integration
 
 - README documentation for apsis follow mode (`-F/--follow` flag) with usage examples and options
 
