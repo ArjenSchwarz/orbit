@@ -129,8 +129,22 @@ Each agent has its own error classifier in `internal/agents/{agent}/errors.go`. 
 - `ErrorClassRetryable` - transient errors (rate limits, connection issues) - exponential backoff
 - `ErrorClassFatal` - permanent errors (auth failures, invalid config) - stops immediately
 - `ErrorClassSessionInvalid` - session expired or not found - retries with fresh session
+- `ErrorClassRateLimitWait` - usage limits that reset at a specific time - waits until reset, then continues
 
 The orchestrator uses these classifications for retry decisions with exponential backoff (1s, 2s, 4s, 8s, 16s for connection errors). Non-retryable errors stop orchestration and preserve state for manual intervention.
+
+### Usage Limit Handling (Claude Code)
+
+Claude Code has a 5-hour usage limit that displays messages like "You've hit your limit · resets 3am (Australia/Melbourne)". When this occurs, Orbit will:
+1. Parse the reset time and timezone from the error message
+2. Calculate the wait duration until that time (plus a 1-minute buffer)
+3. Wait automatically until the limit resets
+4. Resume execution without counting against the normal retry limit
+
+Supported time formats: `3am`, `12:30pm`, `3:00 am`
+Supported timezones: IANA names (e.g., `Australia/Melbourne`, `America/New_York`) and common abbreviations (EST, PST, UTC, AEST, etc.)
+
+This feature is currently implemented for Claude Code only, as other agents (Codex, Kiro, Copilot, OpenCode) use standard rate limiting with retry-after headers rather than time-based usage limits. The infrastructure (`ErrorClassRateLimitWait`) is available for other agents to use if they implement similar patterns.
 
 ## Log Structure (Orbit)
 
