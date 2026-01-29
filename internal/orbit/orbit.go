@@ -179,15 +179,6 @@ func New(config Config) (*Orbit, error) {
 		dbg.LogConfig("GlobalGuidance", config.GlobalGuidance)
 	}
 
-	// Log configuration sources to centralized log (Req 3.7)
-	// This happens regardless of debug flag since centralized logging is separate
-	dbg.LogStructured("info", "Configuration loaded", map[string]any{
-		"agent":          agentName,
-		"tasks_file":     config.TasksFile,
-		"working_dir":    config.WorkingDir,
-		"centralized_log": config.CentralizedLog,
-	})
-
 	var logManager *logs.Manager
 	if !config.DryRun {
 		var err error
@@ -323,13 +314,22 @@ func (o *Orbit) Run() error {
 	log.Println("Starting Orbit orchestration...")
 	log.Printf("Tasks file: %s", o.config.TasksFile)
 
-	// Write startup entry to centralized log
+	// Write startup entry to centralized log (must be first entry - Req 5.3)
 	o.debug.LogStartup(debug.StartupConfig{
 		OrbitVersion:     o.config.Version,
 		Agent:            o.config.Agent,
 		TasksFile:        o.config.TasksFile,
 		WorkingDirectory: o.config.WorkingDir,
 		BranchName:       o.config.BranchName,
+	})
+
+	// Log configuration sources to centralized log (Req 3.7)
+	// This happens after LogStartup to ensure schema_version is in the first entry
+	o.debug.LogStructured("info", "Configuration loaded", map[string]any{
+		"agent":           o.config.Agent,
+		"tasks_file":      o.config.TasksFile,
+		"working_dir":     o.config.WorkingDir,
+		"centralized_log": o.config.CentralizedLog,
 	})
 
 	// Check for variant mode

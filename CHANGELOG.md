@@ -10,6 +10,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 
 - Replace deprecated `filepath.HasPrefix` with `strings.HasPrefix` in `internal/status/gatherer_test.go`
+- Ensure startup entry is first in centralized log file (Req 5.3): moved configuration logging from `Orbit.New()` to `Orbit.Run()` after `LogStartup`
+- Replace `--centralized-log` flag with `--no-centralized-log` for explicit disable (follows `--no-continue-session` pattern)
 
 ### Added
 
@@ -29,8 +31,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Backward compatible API preserving existing method signatures
 - Centralized logging configuration:
   - `CentralizedLog` field in `config.Config` (default: `true`)
-  - `--centralized-log` CLI flag to enable/disable centralized logging
-  - `ORBIT_CENTRALIZED_LOG` environment variable support
+  - `--no-centralized-log` CLI flag to disable centralized logging
+  - `ORBIT_CENTRALIZED_LOG` environment variable support (set to `true` or `1` to enable, `false` or `0` to disable)
   - `centralized-log` key in `.orbit.yaml` configuration files
   - Log path output to stderr at orchestration start: `Logging to {path}`
 - `RunID` field in `orbit.Config` for log file naming and registry correlation

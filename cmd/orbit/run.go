@@ -31,7 +31,7 @@ func runCommand(args []string) error {
 	skipPermissions := fs.Bool("skip-permissions", true, "Run Claude with --dangerously-skip-permissions")
 	verbose := fs.Bool("verbose", false, "Enable verbose output")
 	debug := fs.Bool("debug", false, "Enable debug logging (detailed CLI execution info)")
-	centralizedLog := fs.Bool("centralized-log", true, "Enable centralized debug logging to ~/.orbit/logs/")
+	noCentralizedLog := fs.Bool("no-centralized-log", false, "Disable centralized debug logging (use ORBIT_CENTRALIZED_LOG=true to re-enable)")
 	dryRun := fs.Bool("dry-run", false, "Show what would be executed without running")
 	showVersion := fs.Bool("version", false, "Show version and exit")
 	commandFlag := fs.String("command", "", "Custom prompt for Claude phases")
@@ -164,11 +164,10 @@ func runCommand(args []string) error {
 		debugValue = true
 	}
 
-	// Resolve centralized-log: CLI flag overrides config
-	// Since the flag defaults to true and can be explicitly set to false,
-	// we use the CLI flag value directly (it overrides config when set via --centralized-log=false)
+	// Resolve centralized-log: CLI flag can disable (overrides config)
+	// --no-centralized-log explicitly disables, similar to --no-continue-session
 	centralizedLogValue := cfg.CentralizedLog
-	if !*centralizedLog {
+	if *noCentralizedLog {
 		centralizedLogValue = false
 	}
 
