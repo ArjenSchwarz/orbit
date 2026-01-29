@@ -244,7 +244,7 @@ references:
 
 ## Integration Tests
 
-- [ ] 23. Write integration tests <!-- id:5dh82tn -->
+- [x] 23. Write integration tests <!-- id:5dh82tn -->
   - Test full orchestration produces all expected log entries. Test variant mode creates N+1 log files with correct names. Test log file contains startup and shutdown entries. Test cross-reference paths are absolute. Test SIGTERM triggers shutdown entry. Test disabled logging creates no files. Requirements: 1.4
   - 1.6
   - 3.1
