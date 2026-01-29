@@ -543,6 +543,31 @@ orbit run --variants 4 --variant-agents claude-code,codex
 # Variant 4: codex
 ```
 
+#### Recovering from Interrupted Runs
+
+If a variant run is interrupted (Ctrl+C, system crash, or agent failure), you can recover by running the same command again. Orbit detects the existing run and prompts you:
+
+```
+Existing variant run detected. What would you like to do?
+  [c] Continue existing run
+  [n] Start new run (preserves completed variants)
+  [q] Cancel
+```
+
+- **Continue [c]**: Resume from where it left off, keeping all variants exactly as they are. Completed variants are skipped during execution.
+- **New run [n]**: Restart only unfinished variants. Completed variants are preserved with their worktrees and branches intact, while pending, running, failed, or canceled variants are cleaned up and recreated.
+- **Cancel [q]**: Abort without making any changes.
+
+This allows you to recover from partial failures without losing completed work. For example, if variants 1 and 2 completed but variant 3 failed:
+
+```bash
+# Re-run the command
+orbit run --variants 3
+
+# Choose [n] for new run
+# Result: Variants 1 and 2 are preserved, variant 3 is recreated and re-run
+```
+
 ---
 
 ### Step 2: Monitor Progress

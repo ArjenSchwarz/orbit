@@ -174,7 +174,8 @@ func (m *Manager) ensureGitignore() error {
 
 // Setup creates worktrees and branches for all variants.
 // If continueExisting is true and metadata exists, reuses existing worktrees.
-// If continueExisting is false and metadata exists, cleans up first.
+// If continueExisting is false and metadata exists, cleans up unfinished variants only,
+// preserving completed ones.
 func (m *Manager) Setup(ctx context.Context, continueExisting bool) error {
 	// Check for existing metadata first - if continuing, skip all checks
 	if m.metadata != nil && continueExisting {
@@ -201,10 +202,17 @@ func (m *Manager) Setup(ctx context.Context, continueExisting bool) error {
 		return fmt.Errorf("get head commit: %w", err)
 	}
 
-	// Clean up existing worktrees before creating new ones
+	// Track which variant IDs already have completed variants
+	completedIDs := make(map[int]bool)
+
+	// Clean up only unfinished variants, preserving completed ones
 	if m.metadata != nil {
-		if err := m.Cleanup(ctx, 0); err != nil {
-			return fmt.Errorf("cleanup existing worktrees: %w", err)
+		preserved, err := m.CleanupUnfinished(ctx)
+		if err != nil {
+			return fmt.Errorf("cleanup unfinished variants: %w", err)
+		}
+		for _, id := range preserved {
+			completedIDs[id] = true
 		}
 	}
 
@@ -218,20 +226,28 @@ func (m *Manager) Setup(ctx context.Context, continueExisting bool) error {
 		return fmt.Errorf("create worktrees directory: %w", err)
 	}
 
-	// Initialize metadata
-	m.metadata = &VariantsMetadata{
-		RunID:          uuid.New().String(),
-		BaseCommit:     headCommit,
-		OriginalBranch: currentBranch,
-		StartedAt:      time.Now().UTC(),
-		Variants:       make([]*Variant, 0, m.config.Count),
+	// If we have preserved completed variants, reuse the existing metadata
+	// Otherwise, create fresh metadata
+	if m.metadata == nil {
+		m.metadata = &VariantsMetadata{
+			RunID:          uuid.New().String(),
+			BaseCommit:     headCommit,
+			OriginalBranch: currentBranch,
+			StartedAt:      time.Now().UTC(),
+			Variants:       make([]*Variant, 0, m.config.Count),
+		}
 	}
 
-	// Create branches and worktrees for each variant
+	// Create branches and worktrees for each variant that doesn't already exist
 	sanitizedSpec := sanitizeSpecName(m.specName)
 	var createdWorktrees []string
 
 	for i := 1; i <= m.config.Count; i++ {
+		// Skip variants that are already completed
+		if completedIDs[i] {
+			continue
+		}
+
 		branchName := fmt.Sprintf("%s-%d/%s", m.config.BranchPrefix, i, m.specName)
 		worktreePath := filepath.Join(m.worktreeDir, fmt.Sprintf("%s-%d-%s", m.config.BranchPrefix, i, sanitizedSpec))
 
@@ -452,6 +468,65 @@ func (m *Manager) Cleanup(ctx context.Context, keepID int) error {
 
 	m.metadata = nil
 	return nil
+}
+
+// CleanupUnfinished removes worktrees and branches for non-completed variants only.
+// Returns the list of completed variant IDs that were preserved.
+func (m *Manager) CleanupUnfinished(ctx context.Context) ([]int, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	if m.metadata == nil {
+		return nil, nil // Nothing to clean up
+	}
+
+	var errs []error
+	var completedVariants []*Variant
+	var completedIDs []int
+
+	for _, v := range m.metadata.Variants {
+		if v.Status == StatusCompleted {
+			completedVariants = append(completedVariants, v)
+			completedIDs = append(completedIDs, v.ID)
+			continue
+		}
+
+		// Remove worktree first
+		if v.WorktreePath != "" {
+			if err := m.git.RemoveWorktree(ctx, v.WorktreePath); err != nil {
+				errs = append(errs, fmt.Errorf("remove worktree for variant %d: %w", v.ID, err))
+			}
+		}
+
+		// Then delete branch
+		if v.Branch != "" {
+			if err := m.git.DeleteBranch(v.Branch); err != nil {
+				errs = append(errs, fmt.Errorf("delete branch for variant %d: %w", v.ID, err))
+			}
+		}
+	}
+
+	if len(errs) > 0 {
+		return nil, errors.Join(errs...)
+	}
+
+	if len(completedVariants) > 0 {
+		// Update metadata to only contain completed variants
+		m.metadata.Variants = completedVariants
+		if err := m.saveLocked(); err != nil {
+			return nil, fmt.Errorf("save metadata: %w", err)
+		}
+		return completedIDs, nil
+	}
+
+	// No completed variants - remove everything
+	if err := os.Remove(m.metadataPath); err != nil && !os.IsNotExist(err) {
+		return nil, fmt.Errorf("remove variants.json: %w", err)
+	}
+
+	_ = os.Remove(m.worktreeDir)
+	m.metadata = nil
+	return nil, nil
 }
 
 // Finalize rebases the chosen variant onto the original branch.
