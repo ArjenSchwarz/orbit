@@ -134,7 +134,9 @@ func renderTerminal(ctx context.Context, data *status.StatusOutput) error {
 	// Active variants with details
 	for _, v := range data.ActiveVariants {
 		fmt.Println()
-		renderVariantDetails(ctx, out, &v)
+		if err := renderVariantDetails(ctx, out, &v); err != nil {
+			return err
+		}
 	}
 
 	// Other variants summary
@@ -164,7 +166,7 @@ func renderTerminal(ctx context.Context, data *status.StatusOutput) error {
 }
 
 // renderVariantDetails renders a single active variant's details.
-func renderVariantDetails(ctx context.Context, out *output.Output, v *status.VariantOutput) {
+func renderVariantDetails(ctx context.Context, out *output.Output, v *status.VariantOutput) error {
 	header := buildVariantHeader(v)
 	fmt.Println(header)
 	fmt.Println(strings.Repeat("-", len(header)))
@@ -216,8 +218,11 @@ func renderVariantDetails(ctx context.Context, out *output.Output, v *status.Var
 		taskDoc := output.New().
 			Table("Tasks", taskRows, output.WithKeys("", "Phase", "Done", "Total", "Pending")).
 			Build()
-		_ = out.Render(ctx, taskDoc)
+		if err := out.Render(ctx, taskDoc); err != nil {
+			return err
+		}
 	}
+	return nil
 }
 
 // buildVariantHeader creates the header string for an active variant section.
