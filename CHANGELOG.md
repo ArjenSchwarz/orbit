@@ -9,6 +9,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- FileWriter for centralized logging (`internal/debug/writer.go`):
+  - Thread-safe JSON Lines file output with mutex protection
+  - `NewFileWriter(runID)` creates files at `~/.orbit/logs/{timestamp}-{runID}.jsonl`
+  - `NewVariantFileWriter(runID, variantNum)` for variant-specific log files
+  - Rate-limited warning emission (10 second interval) for write failures
+  - `Sync()` after each write for durability
+  - Nil-safe `Path()` and `Close()` methods
+- Extended Logger with dual output support (`internal/debug/debug.go`):
+  - `NewLogger(LoggerConfig)` factory with stderr and file output configuration
+  - `LogStructured()` for explicit structured logging with fields
+  - `LogErrorWithChain()` extracts wrapped error chain for debugging
+  - `LogStartup()` and `LogShutdown()` for run lifecycle markers
+  - All existing methods (`LogCmd`, `LogRetry`, `LogConfig`, etc.) updated for dual output
+  - Backward compatible API preserving existing method signatures
+- Centralized logging configuration:
+  - `CentralizedLog` field in `config.Config` (default: `true`)
+  - `--centralized-log` CLI flag to enable/disable centralized logging
+  - `ORBIT_CENTRALIZED_LOG` environment variable support
+  - `centralized-log` key in `.orbit.yaml` configuration files
+  - Log path output to stderr at orchestration start: `Logging to {path}`
+- `RunID` field in `orbit.Config` for log file naming and registry correlation
+- Startup and shutdown logging in orchestrator with version, agent, and duration metadata
+- Unit tests for FileWriter, Logger, and configuration
+
 - LogEntry types for centralized logging (`internal/debug/entry.go`):
   - `LogEntry` struct with timestamp, level, component, message, and optional fields
   - `StartupEntry` struct for the first entry in log files (includes schema_version, orbit_version, agent, etc.)

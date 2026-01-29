@@ -58,7 +58,10 @@ type Config struct {
 	SkipPermissions bool
 	Verbose         bool
 	DryRun          bool
-	Debug           bool // Enable debug logging for troubleshooting
+	Debug           bool   // Enable debug logging for troubleshooting
+	CentralizedLog  bool   // Enable centralized file logging
+	RunID           string // UUID for this orchestration run
+	Version         string // Orbit version for logging
 	WorkingDir      string
 	Command         string // Custom phase command
 	PostCommand     string // Post-completion command (empty = disabled)
@@ -95,21 +98,34 @@ type Orbit struct {
 	spinner              *display.Spinner
 	shutdownCtx          context.Context
 	shutdownCancel       context.CancelFunc
-	registry             *registry.Registry     // Web interface run registry
-	runID                string                 // UUID of the current run in registry
-	currentPhaseRunCount int                    // Track retry count for current phase
-	debug                *debug.Logger          // Debug logger
-	variantManager       *variants.Manager      // Variant lifecycle manager (nil for single-run mode)
-	rawClaudeClient      *claude.Client         // Raw Claude client for variant mode
-	comparisonResult     *comparison.Result     // Comparison result for report generation
-	variantRunID         string                 // Shared ID to group variant registry entries
-	variantRegistryIDs   map[int]string         // Maps variant ID to registry entry ID
+	registry             *registry.Registry // Web interface run registry
+	runID                string             // UUID of the current run in registry
+	currentPhaseRunCount int                // Track retry count for current phase
+	debug                *debug.Logger      // Debug logger
+	variantManager       *variants.Manager  // Variant lifecycle manager (nil for single-run mode)
+	rawClaudeClient      *claude.Client     // Raw Claude client for variant mode
+	comparisonResult     *comparison.Result // Comparison result for report generation
+	variantRunID         string             // Shared ID to group variant registry entries
+	variantRegistryIDs   map[int]string     // Maps variant ID to registry entry ID
 }
 
 // New creates a new Orbit instance.
 func New(config Config) (*Orbit, error) {
-	// Create debug logger
-	dbg := debug.New(config.Debug, "orbit")
+	// Create debug logger with optional centralized file output
+	dbg, err := debug.NewLogger(debug.LoggerConfig{
+		StderrEnabled: config.Debug,
+		FileEnabled:   config.CentralizedLog,
+		RunID:         config.RunID,
+		Prefix:        "orbit",
+	})
+	if err != nil {
+		return nil, fmt.Errorf("failed to create logger: %w", err)
+	}
+
+	// Output log path if centralized logging is enabled
+	if config.CentralizedLog && dbg.Path() != "" {
+		log.Printf("Centralized log: %s", dbg.Path())
+	}
 
 	runeClient := rune.NewClient(config.TasksFile)
 	runeClient.SetDebug(config.Debug)
@@ -288,12 +304,24 @@ func (o *Orbit) Close() {
 	if o.spinner != nil {
 		o.spinner.Stop()
 	}
+	if o.debug != nil {
+		o.debug.Close()
+	}
 }
 
 // Run executes the orchestration loop until all tasks are complete.
 func (o *Orbit) Run() error {
 	log.Println("Starting Orbit orchestration...")
 	log.Printf("Tasks file: %s", o.config.TasksFile)
+
+	// Write startup entry to centralized log
+	o.debug.LogStartup(debug.StartupConfig{
+		OrbitVersion:     o.config.Version,
+		Agent:            o.config.Agent,
+		TasksFile:        o.config.TasksFile,
+		WorkingDirectory: o.config.WorkingDir,
+		BranchName:       o.config.BranchName,
+	})
 
 	// Check for variant mode
 	if o.variantManager != nil {
@@ -398,6 +426,9 @@ func (o *Orbit) complete() error {
 		}
 		log.Println("Post-completion command finished")
 	}
+
+	// Write shutdown entry to centralized log
+	o.debug.LogShutdown("completed")
 
 	// Update registry status to completed (req 3.2)
 	o.updateRunStatus(registry.StatusCompleted)
@@ -863,6 +894,9 @@ func (o *Orbit) fail(err error) error {
 	if o.spinner != nil {
 		o.spinner.Stop()
 	}
+
+	// Write shutdown entry to centralized log
+	o.debug.LogShutdown("failed")
 
 	// Update registry status to failed (req 3.3)
 	o.updateRunStatus(registry.StatusFailed)
@@ -1766,12 +1800,12 @@ func (o *Orbit) generateReport() error {
 	reportVariants := make([]report.VariantReportData, 0, len(variantList))
 	for _, v := range variantList {
 		reportVariants = append(reportVariants, report.VariantReportData{
-			ID:       v.ID,
-			Branch:   v.Branch,
-			Status:   string(v.Status),
-			Error:    v.Error,
-			Diff:     variantDiffs[v.ID],
-			Agent:    v.Agent,
+			ID:     v.ID,
+			Branch: v.Branch,
+			Status: string(v.Status),
+			Error:  v.Error,
+			Diff:   variantDiffs[v.ID],
+			Agent:  v.Agent,
 			Metrics: report.VariantMetrics{
 				Cost:     v.Cost,
 				Duration: v.Duration.Round(time.Second).String(),

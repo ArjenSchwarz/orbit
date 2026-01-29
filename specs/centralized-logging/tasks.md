@@ -35,7 +35,7 @@ references:
 
 ## FileWriter Implementation
 
-- [ ] 3. Create FileWriter in internal/debug/writer.go <!-- id:5dh82t3 -->
+- [x] 3. Create FileWriter in internal/debug/writer.go <!-- id:5dh82t3 -->
   - Implement FileWriter struct with file
   - mutex
   - path
@@ -48,15 +48,17 @@ references:
   - 9.4
   - Blocked-by: 5dh82t1 (Create LogEntry types in internal/debug/entry.go)
   - Stream: 1
+  - Owner: agent-stream-1
 
-- [ ] 4. Implement NewVariantFileWriter <!-- id:5dh82t4 -->
+- [x] 4. Implement NewVariantFileWriter <!-- id:5dh82t4 -->
   - Implement NewVariantFileWriter(runID
   - variantNum) for variant-specific log files. Generate filename pattern: {timestamp}-{runID}-variant-{N}.jsonl. Validate variantNum >= 1. Requirements: 1.4
   - 1.5
   - Blocked-by: 5dh82t3 (Create FileWriter in internal/debug/writer.go)
   - Stream: 1
+  - Owner: agent-stream-1
 
-- [ ] 5. Implement thread-safe Write method with rate-limited warnings <!-- id:5dh82t5 -->
+- [x] 5. Implement thread-safe Write method with rate-limited warnings <!-- id:5dh82t5 -->
   - Implement Write(entry) with mutex protection. Check closed inside mutex to avoid data race. Emit warnings outside mutex to avoid deadlock risk. Implement checkWarningLocked() for rate limiting (10 second interval). Implement Sync() after each write for durability. Requirements: 1.7
   - 9.1
   - 9.2
@@ -64,13 +66,15 @@ references:
   - 10.2
   - Blocked-by: 5dh82t3 (Create FileWriter in internal/debug/writer.go)
   - Stream: 1
+  - Owner: agent-stream-1
 
-- [ ] 6. Implement Path() and Close() methods <!-- id:5dh82t6 -->
+- [x] 6. Implement Path() and Close() methods <!-- id:5dh82t6 -->
   - Implement Path() with nil-safety returning empty string if writer is nil. Implement Close() with nil-safety. Requirements: 10.1
   - Blocked-by: 5dh82t3 (Create FileWriter in internal/debug/writer.go)
   - Stream: 1
+  - Owner: agent-stream-1
 
-- [ ] 7. Write unit tests for FileWriter <!-- id:5dh82t7 -->
+- [x] 7. Write unit tests for FileWriter <!-- id:5dh82t7 -->
   - Test NewFileWriter creates directory and file. Test NewFileWriter returns error on empty runID. Test NewFileWriter returns nil on directory creation failure. Test Write produces valid JSONL. Test Write is thread-safe with concurrent writes (property test). Test warning rate limiting. Test nil receiver safety. Requirements: 1.1
   - 1.2
   - 1.3
@@ -80,10 +84,11 @@ references:
   - 9.4
   - Blocked-by: 5dh82t5 (Implement thread-safe Write method with rate-limited warnings), 5dh82t6 (Implement Path() and Close() methods)
   - Stream: 1
+  - Owner: agent-stream-1
 
 ## Logger Extension
 
-- [ ] 8. Extend Logger struct in internal/debug/debug.go <!-- id:5dh82t8 -->
+- [x] 8. Extend Logger struct in internal/debug/debug.go <!-- id:5dh82t8 -->
   - Add stderrEnabled
   - fileEnabled
   - fileWriter
@@ -97,8 +102,9 @@ references:
   - 7.2
   - Blocked-by: 5dh82t5 (Implement thread-safe Write method with rate-limited warnings)
   - Stream: 1
+  - Owner: agent-stream-1
 
-- [ ] 9. Implement new structured logging methods <!-- id:5dh82t9 -->
+- [x] 9. Implement new structured logging methods <!-- id:5dh82t9 -->
   - Implement LogStructured(level
   - message
   - fields) for new code. Implement LogErrorWithChain(message
@@ -109,8 +115,9 @@ references:
   - 7.7
   - Blocked-by: 5dh82t8 (Extend Logger struct in internal/debug/debug.go)
   - Stream: 1
+  - Owner: agent-stream-1
 
-- [ ] 10. Update existing Logger methods for dual output <!-- id:5dh82ta -->
+- [x] 10. Update existing Logger methods for dual output <!-- id:5dh82ta -->
   - Update Log(format
   - args) to write to file if enabled (message only
   - no structured fields). Update LogCmd() to write structured JSON to file. Update LogRetry() to write structured JSON to file. Update LogConfig() to write structured JSON to file. Update LogSession() to write structured JSON to file. Update LogError() to write structured JSON to file. Update LogCmdResult() to write structured JSON to file. Preserve existing stderr format unchanged. Requirements: 7.1
@@ -120,8 +127,9 @@ references:
   - 7.6
   - Blocked-by: 5dh82t9 (Implement new structured logging methods)
   - Stream: 1
+  - Owner: agent-stream-1
 
-- [ ] 11. Write unit tests for extended Logger <!-- id:5dh82tb -->
+- [x] 11. Write unit tests for extended Logger <!-- id:5dh82tb -->
   - Test NewLogger creates FileWriter when enabled. Test Logger output modes (stderr only
   - file only
   - both
@@ -133,27 +141,31 @@ references:
   - 7.6
   - Blocked-by: 5dh82ta (Update existing Logger methods for dual output)
   - Stream: 1
+  - Owner: agent-stream-1
 
 ## Configuration
 
-- [ ] 12. Add CentralizedLog to config.Config <!-- id:5dh82tc -->
+- [x] 12. Add CentralizedLog to config.Config <!-- id:5dh82tc -->
   - Add CentralizedLog bool field to Config struct. Add default value true in Load(). Add ORBIT_CENTRALIZED_LOG environment variable handling. Add centralized-log YAML key loading. Requirements: 5.1
   - 6.2
   - 6.3
   - 6.4
   - Stream: 2
+  - Owner: agent-stream-2
 
-- [ ] 13. Add --centralized-log CLI flag <!-- id:5dh82td -->
+- [x] 13. Add --centralized-log CLI flag <!-- id:5dh82td -->
   - Add --centralized-log flag to run.go with default true. Wire flag value to orbit.Config. Requirements: 6.1
   - Blocked-by: 5dh82tc (Add CentralizedLog to config.Config)
   - Stream: 2
+  - Owner: agent-stream-2
 
-- [ ] 14. Add RunID to orbit.Config <!-- id:5dh82te -->
+- [x] 14. Add RunID to orbit.Config <!-- id:5dh82te -->
   - Add RunID field to orbit.Config struct. Generate RunID using uuid.NewString() in run.go before orbit.New().
   - Blocked-by: 5dh82tc (Add CentralizedLog to config.Config)
   - Stream: 2
+  - Owner: agent-stream-2
 
-- [ ] 15. Write tests for configuration <!-- id:5dh82tf -->
+- [x] 15. Write tests for configuration <!-- id:5dh82tf -->
   - Test default centralized-log is true. Test ORBIT_CENTRALIZED_LOG=false disables logging. Test --centralized-log=false disables logging. Test config hierarchy precedence. Requirements: 5.1
   - 6.1
   - 6.2
@@ -162,10 +174,11 @@ references:
   - 6.5
   - Blocked-by: 5dh82td (Add --centralized-log CLI flag), 5dh82te (Add RunID to orbit.Config)
   - Stream: 2
+  - Owner: agent-stream-2
 
 ## Integration
 
-- [ ] 16. Update orbit.New() to create extended Logger <!-- id:5dh82tg -->
+- [x] 16. Update orbit.New() to create extended Logger <!-- id:5dh82tg -->
   - Create Logger with RunID from config. Pass CentralizedLog and Debug flags to LoggerConfig. Store logger in Orbit struct. Output log path to stderr if centralized logging enabled. Requirements: 5.2
   - 7.1
   - 8.1
@@ -173,14 +186,16 @@ references:
   - 8.3
   - Blocked-by: 5dh82tb (Write unit tests for extended Logger), 5dh82tf (Write tests for configuration)
   - Stream: 1
+  - Owner: agent-stream-1
 
-- [ ] 17. Add startup and shutdown logging <!-- id:5dh82th -->
+- [x] 17. Add startup and shutdown logging <!-- id:5dh82th -->
   - Call LogStartup() with StartupConfig at orchestration start. Call LogShutdown() with status at orchestration completion. Update signal handler to call logger.Close() on interrupt. Requirements: 3.1
   - 3.9
   - 5.3
   - 5.4
   - Blocked-by: 5dh82tg (Update orbit.New() to create extended Logger)
   - Stream: 1
+  - Owner: agent-stream-1
 
 - [ ] 18. Add phase lifecycle logging <!-- id:5dh82ti -->
   - Log phase start with phase number and task count. Log phase completion with duration

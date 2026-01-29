@@ -17,6 +17,7 @@ import (
 	_ "github.com/arjenschwarz/orbit/internal/agents/opencode"   // Register opencode agent
 	"github.com/arjenschwarz/orbit/internal/config"
 	"github.com/arjenschwarz/orbit/internal/orbit"
+	"github.com/google/uuid"
 	"gopkg.in/yaml.v3"
 )
 
@@ -30,6 +31,7 @@ func runCommand(args []string) error {
 	skipPermissions := fs.Bool("skip-permissions", true, "Run Claude with --dangerously-skip-permissions")
 	verbose := fs.Bool("verbose", false, "Enable verbose output")
 	debug := fs.Bool("debug", false, "Enable debug logging (detailed CLI execution info)")
+	centralizedLog := fs.Bool("centralized-log", true, "Enable centralized debug logging to ~/.orbit/logs/")
 	dryRun := fs.Bool("dry-run", false, "Show what would be executed without running")
 	showVersion := fs.Bool("version", false, "Show version and exit")
 	commandFlag := fs.String("command", "", "Custom prompt for Claude phases")
@@ -162,6 +164,14 @@ func runCommand(args []string) error {
 		debugValue = true
 	}
 
+	// Resolve centralized-log: CLI flag overrides config
+	// Since the flag defaults to true and can be explicitly set to false,
+	// we use the CLI flag value directly (it overrides config when set via --centralized-log=false)
+	centralizedLogValue := cfg.CentralizedLog
+	if !*centralizedLog {
+		centralizedLogValue = false
+	}
+
 	// Resolve parallel: CLI flag can enable (overrides config)
 	parallelValue := cfg.Parallel
 	if *parallel {
@@ -223,6 +233,9 @@ func runCommand(args []string) error {
 		repoRoot = strings.TrimSpace(string(output))
 	}
 
+	// Generate unique run ID for this orchestration
+	runID := uuid.NewString()
+
 	// Create and run orchestrator
 	orbitCfg := orbit.Config{
 		TasksFile:       *tasksFile,
@@ -231,6 +244,9 @@ func runCommand(args []string) error {
 		SkipPermissions: *skipPermissions,
 		Verbose:         *verbose,
 		Debug:           debugValue,
+		CentralizedLog:  centralizedLogValue,
+		RunID:           runID,
+		Version:         version,
 		DryRun:          *dryRun,
 		WorkingDir:      workingDir,
 		Command:         command,

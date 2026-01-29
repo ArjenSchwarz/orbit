@@ -90,6 +90,7 @@ type Config struct {
 	ServePort       int
 	ServeBind       string
 	Debug           bool // Enable debug logging for troubleshooting
+	CentralizedLog  bool // Enable centralized file logging (default: true)
 
 	// Agent selection and configuration
 	Agent        string                      // Default agent alias for project
@@ -140,6 +141,7 @@ func Load(workingDir string) *Config {
 	v.SetDefault("serve-port", DefaultServePort)
 	v.SetDefault("serve-bind", DefaultServeBind)
 	v.SetDefault("debug", false)
+	v.SetDefault("centralized-log", true)
 	// Variant defaults
 	v.SetDefault("variant-count", 0)
 	v.SetDefault("parallel", false)
@@ -210,6 +212,7 @@ func Load(workingDir string) *Config {
 	servePort := v.GetInt("serve-port")
 	serveBind := v.GetString("serve-bind")
 	debug := v.GetBool("debug")
+	centralizedLog := v.GetBool("centralized-log")
 	// Agent configuration
 	agent := v.GetString("agent")
 	agentsMap, agentParseErrors := parseAgentsConfig(v)
@@ -255,6 +258,10 @@ func Load(workingDir string) *Config {
 	if envDebug, exists := os.LookupEnv("ORBIT_DEBUG"); exists {
 		debug = envDebug == "true" || envDebug == "1"
 	}
+	if envCentralizedLog, exists := os.LookupEnv("ORBIT_CENTRALIZED_LOG"); exists {
+		// Disable if explicitly set to "false" or "0", otherwise keep enabled
+		centralizedLog = envCentralizedLog != "false" && envCentralizedLog != "0"
+	}
 	// Variant environment variable overrides
 	if envVariantCount, exists := os.LookupEnv("ORBIT_VARIANT_COUNT"); exists {
 		if count, err := parsePositiveInt(envVariantCount); err == nil {
@@ -294,6 +301,7 @@ func Load(workingDir string) *Config {
 		ServePort:           servePort,
 		ServeBind:           serveBind,
 		Debug:               debug,
+		CentralizedLog:      centralizedLog,
 		Agent:               agent,
 		Agents:              agentsMap,
 		AgentAliases:        agentAliasesMap,

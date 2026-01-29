@@ -1706,3 +1706,168 @@ func TestGetResolvedAgentConfig(t *testing.T) {
 		t.Errorf("expected Options[model] = %q, got %v", "claude-opus-4", agentCfg.Options)
 	}
 }
+
+// Tests for CentralizedLog configuration
+
+func TestLoad_CentralizedLog_DefaultTrue(t *testing.T) {
+	// Create empty temp directories to isolate from real config
+	tmpDir := t.TempDir()
+	homeDir := t.TempDir()
+	t.Setenv("HOME", homeDir)
+
+	cfg := Load(tmpDir)
+
+	if !cfg.CentralizedLog {
+		t.Error("expected CentralizedLog to default to true")
+	}
+}
+
+func TestLoad_CentralizedLog_EnvFalseDisables(t *testing.T) {
+	tmpDir := t.TempDir()
+	homeDir := t.TempDir()
+	t.Setenv("HOME", homeDir)
+	t.Setenv("ORBIT_CENTRALIZED_LOG", "false")
+
+	cfg := Load(tmpDir)
+
+	if cfg.CentralizedLog {
+		t.Error("expected CentralizedLog to be false when ORBIT_CENTRALIZED_LOG=false")
+	}
+}
+
+func TestLoad_CentralizedLog_EnvZeroDisables(t *testing.T) {
+	tmpDir := t.TempDir()
+	homeDir := t.TempDir()
+	t.Setenv("HOME", homeDir)
+	t.Setenv("ORBIT_CENTRALIZED_LOG", "0")
+
+	cfg := Load(tmpDir)
+
+	if cfg.CentralizedLog {
+		t.Error("expected CentralizedLog to be false when ORBIT_CENTRALIZED_LOG=0")
+	}
+}
+
+func TestLoad_CentralizedLog_EnvTrueEnables(t *testing.T) {
+	tmpDir := t.TempDir()
+	homeDir := t.TempDir()
+	t.Setenv("HOME", homeDir)
+	t.Setenv("ORBIT_CENTRALIZED_LOG", "true")
+
+	cfg := Load(tmpDir)
+
+	if !cfg.CentralizedLog {
+		t.Error("expected CentralizedLog to be true when ORBIT_CENTRALIZED_LOG=true")
+	}
+}
+
+func TestLoad_CentralizedLog_EnvOneEnables(t *testing.T) {
+	tmpDir := t.TempDir()
+	homeDir := t.TempDir()
+	t.Setenv("HOME", homeDir)
+	t.Setenv("ORBIT_CENTRALIZED_LOG", "1")
+
+	cfg := Load(tmpDir)
+
+	if !cfg.CentralizedLog {
+		t.Error("expected CentralizedLog to be true when ORBIT_CENTRALIZED_LOG=1")
+	}
+}
+
+func TestLoad_CentralizedLog_EnvEmptyEnables(t *testing.T) {
+	// Empty string (not "false" or "0") should enable logging
+	tmpDir := t.TempDir()
+	homeDir := t.TempDir()
+	t.Setenv("HOME", homeDir)
+	t.Setenv("ORBIT_CENTRALIZED_LOG", "")
+
+	cfg := Load(tmpDir)
+
+	if !cfg.CentralizedLog {
+		t.Error("expected CentralizedLog to be true when ORBIT_CENTRALIZED_LOG is empty string")
+	}
+}
+
+func TestLoad_CentralizedLog_YAMLFalseDisables(t *testing.T) {
+	tmpDir := t.TempDir()
+	homeDir := t.TempDir()
+	t.Setenv("HOME", homeDir)
+
+	projectConfig := `centralized-log: false
+`
+	if err := os.WriteFile(filepath.Join(tmpDir, ".orbit.yaml"), []byte(projectConfig), 0644); err != nil {
+		t.Fatalf("failed to write project config: %v", err)
+	}
+
+	cfg := Load(tmpDir)
+
+	if cfg.CentralizedLog {
+		t.Error("expected CentralizedLog to be false when set in YAML")
+	}
+}
+
+func TestLoad_CentralizedLog_YAMLTrueEnables(t *testing.T) {
+	tmpDir := t.TempDir()
+	homeDir := t.TempDir()
+	t.Setenv("HOME", homeDir)
+
+	projectConfig := `centralized-log: true
+`
+	if err := os.WriteFile(filepath.Join(tmpDir, ".orbit.yaml"), []byte(projectConfig), 0644); err != nil {
+		t.Fatalf("failed to write project config: %v", err)
+	}
+
+	cfg := Load(tmpDir)
+
+	if !cfg.CentralizedLog {
+		t.Error("expected CentralizedLog to be true when set in YAML")
+	}
+}
+
+func TestLoad_CentralizedLog_EnvOverridesYAML(t *testing.T) {
+	tmpDir := t.TempDir()
+	homeDir := t.TempDir()
+	t.Setenv("HOME", homeDir)
+
+	// YAML enables it
+	projectConfig := `centralized-log: true
+`
+	if err := os.WriteFile(filepath.Join(tmpDir, ".orbit.yaml"), []byte(projectConfig), 0644); err != nil {
+		t.Fatalf("failed to write project config: %v", err)
+	}
+
+	// Env var disables it
+	t.Setenv("ORBIT_CENTRALIZED_LOG", "false")
+
+	cfg := Load(tmpDir)
+
+	if cfg.CentralizedLog {
+		t.Error("expected env var to override YAML config")
+	}
+}
+
+func TestLoad_CentralizedLog_ProjectOverridesHome(t *testing.T) {
+	tmpDir := t.TempDir()
+	homeDir := t.TempDir()
+	t.Setenv("HOME", homeDir)
+
+	// Home config enables it
+	homeConfig := `centralized-log: true
+`
+	if err := os.WriteFile(filepath.Join(homeDir, ".orbit.yaml"), []byte(homeConfig), 0644); err != nil {
+		t.Fatalf("failed to write home config: %v", err)
+	}
+
+	// Project config disables it
+	projectConfig := `centralized-log: false
+`
+	if err := os.WriteFile(filepath.Join(tmpDir, ".orbit.yaml"), []byte(projectConfig), 0644); err != nil {
+		t.Fatalf("failed to write project config: %v", err)
+	}
+
+	cfg := Load(tmpDir)
+
+	if cfg.CentralizedLog {
+		t.Error("expected project config to override home config")
+	}
+}

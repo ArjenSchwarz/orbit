@@ -5,6 +5,7 @@ go 1.25.4
 require (
 	github.com/ArjenSchwarz/go-output/v2 v2.6.0
 	github.com/briandowns/spinner v1.23.2
+	github.com/google/go-cmp v0.6.0
 	github.com/google/uuid v1.6.0
 	github.com/mattn/go-isatty v0.0.20
 	github.com/spf13/viper v1.21.0
