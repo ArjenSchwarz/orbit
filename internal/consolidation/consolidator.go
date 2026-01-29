@@ -700,19 +700,38 @@ func (c *Consolidator) runTests(ctx context.Context) (bool, error) {
 	return true, nil
 }
 
-// runPostCommand executes the configured post-command.
+// runPostCommand executes the configured post-command through the agent.
 func (c *Consolidator) runPostCommand(ctx context.Context) (bool, error) {
 	if c.config.PostCommand == "" {
 		return true, nil
 	}
 
 	worktreePath := c.recovery.worktreePath
-	cmd := exec.CommandContext(ctx, "sh", "-c", c.config.PostCommand)
-	cmd.Dir = worktreePath
-	var stderr bytes.Buffer
-	cmd.Stderr = &stderr
-	if err := cmd.Run(); err != nil {
-		return false, fmt.Errorf("post-command failed: %s", stderr.String())
+
+	opts := agents.RunOptions{
+		Prompt:      c.config.PostCommand,
+		SessionID:   uuid.NewString(),
+		WorkDir:     worktreePath,
+		AutoApprove: true,
+	}
+
+	result, err := c.config.Agent.Run(ctx, opts)
+	if err != nil {
+		return false, fmt.Errorf("post-command failed: %w", err)
+	}
+	if result != nil && result.Error != nil {
+		return false, fmt.Errorf("post-command failed: %w", result.Error)
+	}
+	if result != nil && result.ExitCode != 0 {
+		return false, fmt.Errorf("post-command failed with exit code %d: %s", result.ExitCode, result.Stderr)
+	}
+	// Check agent-reported errors (e.g., Claude Code can report IsError=true with exit code 0)
+	if result != nil && result.IsError {
+		errMsg := "agent reported error"
+		if len(result.Errors) > 0 {
+			errMsg = result.Errors[0]
+		}
+		return false, fmt.Errorf("post-command failed: %s", errMsg)
 	}
 	return true, nil
 }

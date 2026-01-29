@@ -373,8 +373,9 @@ func (m *Manager) SaveSession(phase int, result *agents.RunResult, startTime tim
 		return fmt.Errorf("failed to write session JSON: %w", err)
 	}
 
-	// Copy full transcript from ~/.claude/projects if available
-	if result.SessionID != "" {
+	// Copy full transcript from ~/.claude/projects if available (Claude Code only)
+	// Other agents use SessionExporter interface for transcript export
+	if result.SessionID != "" && m.agentInfo.Type == "claude-code" {
 		if err := m.copySessionTranscript(phase, result.SessionID); err != nil {
 			// Log but don't fail - transcript is supplementary
 			fmt.Fprintf(os.Stderr, "Warning: could not copy session transcript: %v\n", err)
@@ -451,8 +452,9 @@ func (m *Manager) SavePostCompletionSession(result *agents.RunResult, startTime 
 		return fmt.Errorf("failed to write post-completion transcript: %w", err)
 	}
 
-	// Copy full transcript from ~/.claude/projects if available
-	if result.SessionID != "" {
+	// Copy full transcript from ~/.claude/projects if available (Claude Code only)
+	// Other agents use SessionExporter interface for transcript export
+	if result.SessionID != "" && m.agentInfo.Type == "claude-code" {
 		if err := m.copyPostCompletionTranscript(result.SessionID, baseName); err != nil {
 			fmt.Fprintf(os.Stderr, "Warning: could not copy post-completion transcript: %v\n", err)
 		}
