@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- LogEntry types for centralized logging (`internal/debug/entry.go`):
+  - `LogEntry` struct with timestamp, level, component, message, and optional fields
+  - `StartupEntry` struct for the first entry in log files (includes schema_version, orbit_version, agent, etc.)
+  - `ShutdownEntry` struct for marking normal completion (includes total_duration, final_status)
+  - `StartupConfig` struct for providing metadata to LogStartup()
+- Unit tests for LogEntry JSON serialization verifying field presence, omitempty behavior, and ISO 8601 timestamps
+
 ### Fixed
 
 - Parallel and max-parallel settings now properly respect config file values (`.orbit.yaml`), with CLI flags taking precedence when explicitly provided

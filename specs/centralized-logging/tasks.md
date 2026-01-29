@@ -8,7 +8,7 @@ references:
 
 ## Types and Data Models
 
-- [ ] 1. Create LogEntry types in internal/debug/entry.go <!-- id:5dh82t1 -->
+- [x] 1. Create LogEntry types in internal/debug/entry.go <!-- id:5dh82t1 -->
   - Define LogEntry struct with Timestamp
   - Level
   - Component
@@ -24,7 +24,7 @@ references:
   - 5.3
   - Stream: 1
 
-- [ ] 2. Write unit tests for LogEntry JSON serialization <!-- id:5dh82t2 -->
+- [x] 2. Write unit tests for LogEntry JSON serialization <!-- id:5dh82t2 -->
   - Test LogEntry produces valid JSON with all required fields. Test StartupEntry produces correct JSON without embedded fields issues. Test ShutdownEntry produces correct JSON. Test Fields omitempty behavior. Requirements: 2.1
   - 2.2
   - 2.3
