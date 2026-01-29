@@ -367,6 +367,262 @@ func TestSetup_CleansUpOnNewRun(t *testing.T) {
 	}
 }
 
+func TestSetup_PreservesCompletedVariants(t *testing.T) {
+	tmpDir := t.TempDir()
+	specDir := filepath.Join(tmpDir, "specs", "test-spec")
+	git := newMockGitClient()
+
+	cfg := Config{Count: 3, BranchPrefix: "orbit-impl"}
+	mgr, err := NewManager(cfg, "test-spec", specDir, tmpDir, git)
+	if err != nil {
+		t.Fatalf("NewManager: %v", err)
+	}
+
+	// Pre-populate metadata with mixed statuses:
+	// - Variant 1: completed (should be preserved)
+	// - Variant 2: failed (should be cleaned up and recreated)
+	// - Variant 3: pending (should be cleaned up and recreated)
+	mgr.metadata = &VariantsMetadata{
+		RunID:          "existing-run",
+		BaseCommit:     "abc123",
+		OriginalBranch: "feature/test-spec",
+		StartedAt:      time.Now(),
+		Variants: []*Variant{
+			{ID: 1, Branch: "orbit-impl-1/test-spec", WorktreePath: "/tmp/wt1", Status: StatusCompleted},
+			{ID: 2, Branch: "orbit-impl-2/test-spec", WorktreePath: "/tmp/wt2", Status: StatusFailed},
+			{ID: 3, Branch: "orbit-impl-3/test-spec", WorktreePath: "/tmp/wt3", Status: StatusPending},
+		},
+	}
+
+	// Create metadata file so cleanup can update it
+	orbitDir := filepath.Join(specDir, ".orbit")
+	if err := os.MkdirAll(orbitDir, 0755); err != nil {
+		t.Fatalf("create orbit dir: %v", err)
+	}
+	metadataBytes, _ := json.Marshal(mgr.metadata)
+	if err := os.WriteFile(filepath.Join(orbitDir, "variants.json"), metadataBytes, 0644); err != nil {
+		t.Fatalf("create variants.json: %v", err)
+	}
+
+	ctx := context.Background()
+	if err := mgr.Setup(ctx, false); err != nil {
+		t.Fatalf("Setup: %v", err)
+	}
+
+	// Should have cleaned up only non-completed worktrees (2 and 3)
+	if len(git.removedWorktrees) != 2 {
+		t.Errorf("expected 2 removed worktrees, got %d: %v", len(git.removedWorktrees), git.removedWorktrees)
+	}
+	// Verify correct worktrees were removed
+	for _, removed := range git.removedWorktrees {
+		if removed == "/tmp/wt1" {
+			t.Errorf("completed variant worktree /tmp/wt1 should not have been removed")
+		}
+	}
+
+	// Should have created only 2 new branches (for variants 2 and 3)
+	if len(git.createdBranches) != 2 {
+		t.Errorf("expected 2 new branches, got %d: %v", len(git.createdBranches), git.createdBranches)
+	}
+
+	// Verify metadata has all 3 variants
+	variants := mgr.GetVariantsSnapshot()
+	if len(variants) != 3 {
+		t.Fatalf("expected 3 variants, got %d", len(variants))
+	}
+
+	// Verify variant 1 is still completed
+	v1 := mgr.GetVariant(1)
+	if v1 == nil {
+		t.Fatal("variant 1 not found")
+	}
+	if v1.Status != StatusCompleted {
+		t.Errorf("variant 1 status should be completed, got %s", v1.Status)
+	}
+
+	// Verify variants 2 and 3 are pending
+	v2 := mgr.GetVariant(2)
+	if v2 == nil {
+		t.Fatal("variant 2 not found")
+	}
+	if v2.Status != StatusPending {
+		t.Errorf("variant 2 status should be pending, got %s", v2.Status)
+	}
+
+	v3 := mgr.GetVariant(3)
+	if v3 == nil {
+		t.Fatal("variant 3 not found")
+	}
+	if v3.Status != StatusPending {
+		t.Errorf("variant 3 status should be pending, got %s", v3.Status)
+	}
+}
+
+func TestCleanupUnfinished(t *testing.T) {
+	tmpDir := t.TempDir()
+	specDir := filepath.Join(tmpDir, "specs", "test-spec")
+	git := newMockGitClient()
+
+	cfg := Config{Count: 3, BranchPrefix: "orbit-impl"}
+	mgr, err := NewManager(cfg, "test-spec", specDir, tmpDir, git)
+	if err != nil {
+		t.Fatalf("NewManager: %v", err)
+	}
+
+	// Create metadata file
+	orbitDir := filepath.Join(specDir, ".orbit")
+	if err := os.MkdirAll(orbitDir, 0755); err != nil {
+		t.Fatalf("create orbit dir: %v", err)
+	}
+
+	// Set up metadata with mixed statuses
+	mgr.metadata = &VariantsMetadata{
+		RunID:          "test-run",
+		BaseCommit:     "abc123",
+		OriginalBranch: "feature/test-spec",
+		StartedAt:      time.Now(),
+		Variants: []*Variant{
+			{ID: 1, Branch: "orbit-impl-1/test-spec", WorktreePath: "/tmp/wt1", Status: StatusCompleted},
+			{ID: 2, Branch: "orbit-impl-2/test-spec", WorktreePath: "/tmp/wt2", Status: StatusFailed},
+			{ID: 3, Branch: "orbit-impl-3/test-spec", WorktreePath: "/tmp/wt3", Status: StatusRunning},
+		},
+	}
+
+	ctx := context.Background()
+	completedIDs, err := mgr.CleanupUnfinished(ctx)
+	if err != nil {
+		t.Fatalf("CleanupUnfinished: %v", err)
+	}
+
+	// Should return completed variant IDs
+	if len(completedIDs) != 1 || completedIDs[0] != 1 {
+		t.Errorf("expected completedIDs=[1], got %v", completedIDs)
+	}
+
+	// Should have removed only non-completed worktrees
+	if len(git.removedWorktrees) != 2 {
+		t.Errorf("expected 2 removed worktrees, got %d", len(git.removedWorktrees))
+	}
+
+	// Should have deleted only non-completed branches
+	if len(git.deletedBranches) != 2 {
+		t.Errorf("expected 2 deleted branches, got %d", len(git.deletedBranches))
+	}
+
+	// Metadata should only contain completed variant
+	if len(mgr.metadata.Variants) != 1 {
+		t.Errorf("expected 1 variant in metadata, got %d", len(mgr.metadata.Variants))
+	}
+	if mgr.metadata.Variants[0].ID != 1 {
+		t.Errorf("expected variant ID 1, got %d", mgr.metadata.Variants[0].ID)
+	}
+}
+
+func TestCleanupUnfinished_AllCompleted(t *testing.T) {
+	tmpDir := t.TempDir()
+	specDir := filepath.Join(tmpDir, "specs", "test-spec")
+	git := newMockGitClient()
+
+	cfg := Config{Count: 2, BranchPrefix: "orbit-impl"}
+	mgr, err := NewManager(cfg, "test-spec", specDir, tmpDir, git)
+	if err != nil {
+		t.Fatalf("NewManager: %v", err)
+	}
+
+	// Create metadata file
+	orbitDir := filepath.Join(specDir, ".orbit")
+	if err := os.MkdirAll(orbitDir, 0755); err != nil {
+		t.Fatalf("create orbit dir: %v", err)
+	}
+
+	// All variants completed
+	mgr.metadata = &VariantsMetadata{
+		RunID:          "test-run",
+		BaseCommit:     "abc123",
+		OriginalBranch: "feature/test-spec",
+		StartedAt:      time.Now(),
+		Variants: []*Variant{
+			{ID: 1, Branch: "orbit-impl-1/test-spec", WorktreePath: "/tmp/wt1", Status: StatusCompleted},
+			{ID: 2, Branch: "orbit-impl-2/test-spec", WorktreePath: "/tmp/wt2", Status: StatusCompleted},
+		},
+	}
+
+	ctx := context.Background()
+	completedIDs, err := mgr.CleanupUnfinished(ctx)
+	if err != nil {
+		t.Fatalf("CleanupUnfinished: %v", err)
+	}
+
+	// Should return all completed variant IDs
+	if len(completedIDs) != 2 {
+		t.Errorf("expected 2 completedIDs, got %d", len(completedIDs))
+	}
+
+	// Should not have removed any worktrees
+	if len(git.removedWorktrees) != 0 {
+		t.Errorf("expected 0 removed worktrees, got %d", len(git.removedWorktrees))
+	}
+
+	// Metadata should still contain both variants
+	if len(mgr.metadata.Variants) != 2 {
+		t.Errorf("expected 2 variants in metadata, got %d", len(mgr.metadata.Variants))
+	}
+}
+
+func TestCleanupUnfinished_NoneCompleted(t *testing.T) {
+	tmpDir := t.TempDir()
+	specDir := filepath.Join(tmpDir, "specs", "test-spec")
+	git := newMockGitClient()
+
+	cfg := Config{Count: 2, BranchPrefix: "orbit-impl"}
+	mgr, err := NewManager(cfg, "test-spec", specDir, tmpDir, git)
+	if err != nil {
+		t.Fatalf("NewManager: %v", err)
+	}
+
+	// Create metadata file
+	orbitDir := filepath.Join(specDir, ".orbit")
+	if err := os.MkdirAll(orbitDir, 0755); err != nil {
+		t.Fatalf("create orbit dir: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(orbitDir, "variants.json"), []byte("{}"), 0644); err != nil {
+		t.Fatalf("create variants.json: %v", err)
+	}
+
+	// No variants completed
+	mgr.metadata = &VariantsMetadata{
+		RunID:          "test-run",
+		BaseCommit:     "abc123",
+		OriginalBranch: "feature/test-spec",
+		StartedAt:      time.Now(),
+		Variants: []*Variant{
+			{ID: 1, Branch: "orbit-impl-1/test-spec", WorktreePath: "/tmp/wt1", Status: StatusFailed},
+			{ID: 2, Branch: "orbit-impl-2/test-spec", WorktreePath: "/tmp/wt2", Status: StatusPending},
+		},
+	}
+
+	ctx := context.Background()
+	completedIDs, err := mgr.CleanupUnfinished(ctx)
+	if err != nil {
+		t.Fatalf("CleanupUnfinished: %v", err)
+	}
+
+	// Should return no completed IDs
+	if len(completedIDs) != 0 {
+		t.Errorf("expected 0 completedIDs, got %d", len(completedIDs))
+	}
+
+	// Should have removed all worktrees
+	if len(git.removedWorktrees) != 2 {
+		t.Errorf("expected 2 removed worktrees, got %d", len(git.removedWorktrees))
+	}
+
+	// Metadata should be nil (fully cleaned up)
+	if mgr.metadata != nil {
+		t.Errorf("expected nil metadata, got %+v", mgr.metadata)
+	}
+}
+
 func TestSetup_FailsOnDirtyWorkingDirectory(t *testing.T) {
 	tmpDir := t.TempDir()
 	specDir := filepath.Join(tmpDir, "specs", "test-spec")

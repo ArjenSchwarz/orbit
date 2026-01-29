@@ -188,6 +188,15 @@ Variant workflow (in order):
 5. `orbit finalize <spec> --variant N` - adopt variant N and clean up others
 6. `orbit cleanup <spec>` - removes all variant worktrees and branches (alternative to finalize)
 
+### Variant Session Recovery
+
+When re-running `orbit run --variants` with an existing variant run, you're prompted to choose:
+- **Continue [c]**: Resume from where it left off, keeping all variants as-is
+- **New run [n]**: Restart unfinished variants only - completed variants are preserved, while pending/failed/running variants are cleaned up and recreated
+- **Cancel [q]**: Abort without changes
+
+This allows recovering from partial failures without losing completed work.
+
 Consolidation allows merging good ideas from non-chosen variants:
 - Reads cross-variant improvements from comparison report
 - Agent applies beneficial changes to chosen variant

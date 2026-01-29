@@ -9,6 +9,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- Variant session recovery now preserves completed variants when starting a new run - only unfinished variants (pending, running, failed, canceled) are cleaned up and recreated
+
+### Added
+
+- `CleanupUnfinished` method in variants manager to selectively remove only non-completed variants
+- Documentation for variant session recovery behavior in CLAUDE.md and README.md
+
+### Changed
+
 - Status command output now uses proper tables instead of text-based formatting
   - Header section displays as a key-value table (Field/Value columns)
   - Tasks subsection displays as a table with columns: active marker, Phase, Done, Total, Pending
