@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- Replace deprecated `filepath.HasPrefix` with `strings.HasPrefix` in `internal/status/gatherer_test.go`
+
 ### Added
 
 - FileWriter for centralized logging (`internal/debug/writer.go`):

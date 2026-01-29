@@ -6,6 +6,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/arjenschwarz/orbit/internal/logs"
@@ -439,7 +440,7 @@ func TestGetLiveTranscriptPath(t *testing.T) {
 		// Path should contain an absolute-style Claude project path (starts with -)
 		// e.g., ~/.claude/projects/-home-user-specs-test-spec-...
 		homeDir, _ := os.UserHomeDir()
-		if !filepath.HasPrefix(path, homeDir) {
+		if !strings.HasPrefix(path, homeDir) {
 			t.Errorf("Path should be under home directory, got %q", path)
 		}
 	})
