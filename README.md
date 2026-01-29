@@ -63,7 +63,8 @@ orbit --no-post-command
 | `--tasks-file` | auto-detect | Path to rune tasks file |
 | `--log-dir` | `.orbit` next to tasks file | Base directory for session logs |
 | `--verbose` | `false` | Enable verbose output |
-| `--debug` | `false` | Enable debug logging (detailed CLI execution info) |
+| `--debug` | `false` | Enable debug logging to stderr |
+| `--centralized-log` | `true` | Enable centralized logging to `~/.orbit/logs/` |
 | `--dry-run` | `false` | Show what would be executed without running |
 | `--command` | see below | Custom prompt for agent phases |
 | `--post-command` | see below | Command to run after all tasks complete |
@@ -194,6 +195,7 @@ date_subdirs: true
 | `ORBIT_POST_COMMAND` | Override the post-completion command (empty string disables) |
 | `ORBIT_DATE_SUBDIRS` | Use date-based subdirectories (`true`/`false`) |
 | `ORBIT_CONTINUE_SESSION` | Enable session continuation (`true`/`false`) |
+| `ORBIT_CENTRALIZED_LOG` | Enable centralized logging to `~/.orbit/logs/` (`true`/`false`) |
 | `ORBIT_AGENT` | Default agent to use |
 
 Setting an environment variable to an empty string explicitly overrides config file values:
@@ -258,6 +260,79 @@ specs/my-feature/.orbit/
     ├── phase-1-session.json
     ├── phase-1-session.txt
     └── ...
+```
+
+## Centralized Logging
+
+Orbit writes structured debug logs to a central location (`~/.orbit/logs/`) for debugging and analysis. This is enabled by default and independent of the `--debug` flag (which controls stderr output).
+
+### Log Location
+
+Centralized logs are stored in `~/.orbit/logs/` with the naming pattern:
+- `{timestamp}-{run-id}.jsonl` - Main log file
+- `{timestamp}-{run-id}-variant-{N}.jsonl` - Per-variant logs in multi-variant mode
+
+Example: `~/.orbit/logs/20250128-120530-abc123def.jsonl`
+
+At orchestration start, Orbit prints the log file path:
+```
+Centralized log: /home/user/.orbit/logs/20250128-120530-abc123def.jsonl
+```
+
+### Log Format
+
+Logs are written in JSON Lines format (one JSON object per line), enabling queries with `jq` and `grep`:
+
+```bash
+# Show all errors
+jq 'select(.level == "error")' ~/.orbit/logs/*.jsonl
+
+# Find phase completion times
+jq 'select(.message == "Phase completed")' ~/.orbit/logs/*.jsonl
+
+# Extract retry attempts
+grep -h '"Retry attempt"' ~/.orbit/logs/*.jsonl | jq
+```
+
+### Log Content
+
+The centralized logs capture Orbit's internal operations:
+- Orchestration start and shutdown (with version, agent, and configuration)
+- Phase lifecycle (start, completion, duration)
+- Agent invocations and completions
+- Retry attempts with backoff details
+- Errors with full wrapped error chains
+- Configuration loading sources
+
+The first entry in each log file contains a `schema_version` field (currently `1`) to support future format changes. The presence of a shutdown entry indicates normal completion; its absence indicates the run was interrupted.
+
+### Configuration
+
+Disable centralized logging for a single run:
+```bash
+orbit run --centralized-log=false
+```
+
+Via environment variable:
+```bash
+ORBIT_CENTRALIZED_LOG=false orbit run
+```
+
+In `.orbit.yaml`:
+```yaml
+centralized-log: false
+```
+
+### Cleanup
+
+Orbit does not automatically delete log files. To clean up old logs:
+
+```bash
+# Delete logs older than 30 days
+find ~/.orbit/logs -name "*.jsonl" -mtime +30 -delete
+
+# Delete all centralized logs
+rm -rf ~/.orbit/logs/
 ```
 
 ## Session Management

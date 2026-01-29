@@ -46,6 +46,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - `ShutdownEntry` struct for marking normal completion (includes total_duration, final_status)
   - `StartupConfig` struct for providing metadata to LogStartup()
 - Unit tests for LogEntry JSON serialization verifying field presence, omitempty behavior, and ISO 8601 timestamps
+- README documentation for centralized logging:
+  - Log location (`~/.orbit/logs/`) and file naming patterns
+  - JSON Lines log format with jq/grep query examples
+  - Log content coverage (orchestration, phases, agents, retries, errors)
+  - Configuration options (CLI flag, environment variable, YAML)
+  - Cleanup instructions for old log files
+  - `--centralized-log` and `ORBIT_CENTRALIZED_LOG` documented in options tables
 
 ### Fixed
 
