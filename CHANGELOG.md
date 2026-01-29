@@ -7,6 +7,71 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- Replace deprecated `filepath.HasPrefix` with `strings.HasPrefix` in `internal/status/gatherer_test.go`
+- Ensure startup entry is first in centralized log file (Req 5.3): moved configuration logging from `Orbit.New()` to `Orbit.Run()` after `LogStartup`
+- Replace `--centralized-log` flag with `--no-centralized-log` for explicit disable (follows `--no-continue-session` pattern)
+
+### Added
+
+- FileWriter for centralized logging (`internal/debug/writer.go`):
+  - Thread-safe JSON Lines file output with mutex protection
+  - `NewFileWriter(runID)` creates files at `~/.orbit/logs/{timestamp}-{runID}.jsonl`
+  - `NewVariantFileWriter(runID, variantNum)` for variant-specific log files
+  - Rate-limited warning emission (10 second interval) for write failures
+  - `Sync()` after each write for durability
+  - Nil-safe `Path()` and `Close()` methods
+- Extended Logger with dual output support (`internal/debug/debug.go`):
+  - `NewLogger(LoggerConfig)` factory with stderr and file output configuration
+  - `LogStructured()` for explicit structured logging with fields
+  - `LogErrorWithChain()` extracts wrapped error chain for debugging
+  - `LogStartup()` and `LogShutdown()` for run lifecycle markers
+  - All existing methods (`LogCmd`, `LogRetry`, `LogConfig`, etc.) updated for dual output
+  - Backward compatible API preserving existing method signatures
+- Centralized logging configuration:
+  - `CentralizedLog` field in `config.Config` (default: `true`)
+  - `--no-centralized-log` CLI flag to disable centralized logging
+  - `ORBIT_CENTRALIZED_LOG` environment variable support (set to `true` or `1` to enable, `false` or `0` to disable)
+  - `centralized-log` key in `.orbit.yaml` configuration files
+  - Log path output to stderr at orchestration start: `Logging to {path}`
+- `RunID` field in `orbit.Config` for log file naming and registry correlation
+- Startup and shutdown logging in orchestrator with version, agent, and duration metadata
+- Unit tests for FileWriter, Logger, and configuration
+- Centralized logging integration throughout orchestrator (`internal/orbit/orbit.go`):
+  - Phase lifecycle logging: phase start (with task count) and completion (with duration, status, transcript_path)
+  - Agent execution logging: invocation (agent, session_id, working_dir) and completion (exit_code, duration, session_log_path)
+  - Retry and error logging with error chain extraction and structured backoff details
+  - Configuration source tracking in `config.Config.ConfigSources` (home, project, env)
+  - Variant-specific loggers with separate log files per variant (`{timestamp}-{runID}-variant-{N}.jsonl`)
+  - Parent orchestrator logging for variant lifecycle (creation, parallel execution start, all variants completed)
+
+- LogEntry types for centralized logging (`internal/debug/entry.go`):
+  - `LogEntry` struct with timestamp, level, component, message, and optional fields
+  - `StartupEntry` struct for the first entry in log files (includes schema_version, orbit_version, agent, etc.)
+  - `ShutdownEntry` struct for marking normal completion (includes total_duration, final_status)
+  - `StartupConfig` struct for providing metadata to LogStartup()
+- Unit tests for LogEntry JSON serialization verifying field presence, omitempty behavior, and ISO 8601 timestamps
+- README documentation for centralized logging:
+  - Log location (`~/.orbit/logs/`) and file naming patterns
+  - JSON Lines log format with jq/grep query examples
+  - Log content coverage (orchestration, phases, agents, retries, errors)
+  - Configuration options (CLI flag, environment variable, YAML)
+  - Cleanup instructions for old log files
+  - `--centralized-log` and `ORBIT_CENTRALIZED_LOG` documented in options tables
+
+### Fixed
+
+- Parallel and max-parallel settings now properly respect config file values (`.orbit.yaml`), with CLI flags taking precedence when explicitly provided
+
+### Added
+
+- Centralized logging feature specification (`specs/centralized-logging/`):
+  - `requirements.md` with 10 requirement sections covering storage, format, content, configuration, and error resilience
+  - `design.md` with LogEntry types, FileWriter implementation, Logger extension, and variant mode architecture
+  - `decision_log.md` with 16 architectural decisions (JSON Lines format, extend debug.Logger, rate-limited warnings, etc.)
+  - `tasks.md` with 23 implementation tasks across 2 parallel work streams
+
 ### Changed
 
 - Updated README.md and CLAUDE.md to document OpenCode as a supported agent

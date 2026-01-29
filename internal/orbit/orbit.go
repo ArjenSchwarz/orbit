@@ -58,7 +58,10 @@ type Config struct {
 	SkipPermissions bool
 	Verbose         bool
 	DryRun          bool
-	Debug           bool // Enable debug logging for troubleshooting
+	Debug           bool   // Enable debug logging for troubleshooting
+	CentralizedLog  bool   // Enable centralized file logging
+	RunID           string // UUID for this orchestration run
+	Version         string // Orbit version for logging
 	WorkingDir      string
 	Command         string // Custom phase command
 	PostCommand     string // Post-completion command (empty = disabled)
@@ -95,21 +98,34 @@ type Orbit struct {
 	spinner              *display.Spinner
 	shutdownCtx          context.Context
 	shutdownCancel       context.CancelFunc
-	registry             *registry.Registry     // Web interface run registry
-	runID                string                 // UUID of the current run in registry
-	currentPhaseRunCount int                    // Track retry count for current phase
-	debug                *debug.Logger          // Debug logger
-	variantManager       *variants.Manager      // Variant lifecycle manager (nil for single-run mode)
-	rawClaudeClient      *claude.Client         // Raw Claude client for variant mode
-	comparisonResult     *comparison.Result     // Comparison result for report generation
-	variantRunID         string                 // Shared ID to group variant registry entries
-	variantRegistryIDs   map[int]string         // Maps variant ID to registry entry ID
+	registry             *registry.Registry // Web interface run registry
+	runID                string             // UUID of the current run in registry
+	currentPhaseRunCount int                // Track retry count for current phase
+	debug                *debug.Logger      // Debug logger
+	variantManager       *variants.Manager  // Variant lifecycle manager (nil for single-run mode)
+	rawClaudeClient      *claude.Client     // Raw Claude client for variant mode
+	comparisonResult     *comparison.Result // Comparison result for report generation
+	variantRunID         string             // Shared ID to group variant registry entries
+	variantRegistryIDs   map[int]string     // Maps variant ID to registry entry ID
 }
 
 // New creates a new Orbit instance.
 func New(config Config) (*Orbit, error) {
-	// Create debug logger
-	dbg := debug.New(config.Debug, "orbit")
+	// Create debug logger with optional centralized file output
+	dbg, err := debug.NewLogger(debug.LoggerConfig{
+		StderrEnabled: config.Debug,
+		FileEnabled:   config.CentralizedLog,
+		RunID:         config.RunID,
+		Prefix:        "orbit",
+	})
+	if err != nil {
+		return nil, fmt.Errorf("failed to create logger: %w", err)
+	}
+
+	// Output log path if centralized logging is enabled
+	if config.CentralizedLog && dbg.Path() != "" {
+		log.Printf("Centralized log: %s", dbg.Path())
+	}
 
 	runeClient := rune.NewClient(config.TasksFile)
 	runeClient.SetDebug(config.Debug)
@@ -288,12 +304,33 @@ func (o *Orbit) Close() {
 	if o.spinner != nil {
 		o.spinner.Stop()
 	}
+	if o.debug != nil {
+		o.debug.Close()
+	}
 }
 
 // Run executes the orchestration loop until all tasks are complete.
 func (o *Orbit) Run() error {
 	log.Println("Starting Orbit orchestration...")
 	log.Printf("Tasks file: %s", o.config.TasksFile)
+
+	// Write startup entry to centralized log (must be first entry - Req 5.3)
+	o.debug.LogStartup(debug.StartupConfig{
+		OrbitVersion:     o.config.Version,
+		Agent:            o.config.Agent,
+		TasksFile:        o.config.TasksFile,
+		WorkingDirectory: o.config.WorkingDir,
+		BranchName:       o.config.BranchName,
+	})
+
+	// Log configuration sources to centralized log (Req 3.7)
+	// This happens after LogStartup to ensure schema_version is in the first entry
+	o.debug.LogStructured("info", "Configuration loaded", map[string]any{
+		"agent":           o.config.Agent,
+		"tasks_file":      o.config.TasksFile,
+		"working_dir":     o.config.WorkingDir,
+		"centralized_log": o.config.CentralizedLog,
+	})
 
 	// Check for variant mode
 	if o.variantManager != nil {
@@ -377,6 +414,11 @@ func (o *Orbit) runSingle() error {
 
 		// Log phase start
 		log.Printf("Starting phase %d: %s (%d tasks)", phaseNum, nextPhase.PhaseName, len(nextPhase.Tasks))
+		o.debug.LogStructured("info", "Phase started", map[string]any{
+			"phase":      phaseNum,
+			"phase_name": nextPhase.PhaseName,
+			"task_count": len(nextPhase.Tasks),
+		})
 
 		// Run the phase
 		if err := o.runPhaseWithRetry(phaseNum); err != nil {
@@ -398,6 +440,9 @@ func (o *Orbit) complete() error {
 		}
 		log.Println("Post-completion command finished")
 	}
+
+	// Write shutdown entry to centralized log
+	o.debug.LogShutdown("completed")
 
 	// Update registry status to completed (req 3.2)
 	o.updateRunStatus(registry.StatusCompleted)
@@ -479,6 +524,8 @@ func (o *Orbit) runPhaseWithRetry(phase int) error {
 
 	o.debug.Log("Starting phase %d with up to %d retries", phase, maxRetries)
 
+	phaseStart := time.Now()
+
 	for attempt := 0; attempt < maxRetries; attempt++ {
 		o.currentPhaseRunCount++
 		o.debug.Log("Phase %d attempt %d/%d", phase, attempt+1, maxRetries)
@@ -491,6 +538,19 @@ func (o *Orbit) runPhaseWithRetry(phase int) error {
 			o.debug.Log("Phase %d completed successfully on attempt %d", phase, attempt+1)
 			// Update phase status to completed (req 3.6)
 			o.updatePhaseStatus(phase, registry.PhaseStatusCompleted, o.currentPhaseRunCount)
+
+			// Log phase completion with duration and transcript path (Req 3.3, 4.2)
+			phaseDuration := time.Since(phaseStart)
+			logFields := map[string]any{
+				"phase":    phase,
+				"status":   "completed",
+				"duration": phaseDuration.String(),
+			}
+			if o.logManager != nil {
+				logFields["transcript_path"] = o.logManager.SessionDir()
+			}
+			o.debug.LogStructured("info", "Phase completed", logFields)
+
 			return nil
 		}
 
@@ -505,6 +565,16 @@ func (o *Orbit) runPhaseWithRetry(phase int) error {
 		}
 
 		o.debug.LogError(classified.Class.String(), classified.Message, classified.Class.IsRetryable())
+
+		// Log error with chain for structured output (Req 3.8)
+		o.debug.LogErrorWithChain("Phase execution failed", err, map[string]any{
+			"phase":           phase,
+			"attempt":         attempt + 1,
+			"error_class":     classified.Class.String(),
+			"retryable":       classified.Class.IsRetryable(),
+			"is_rate_limit":   classified.Class.IsRateLimitWait(),
+		})
+
 		lastErr = err
 
 		if !classified.Class.IsRetryable() {
@@ -539,6 +609,15 @@ func (o *Orbit) runPhaseWithRetry(phase int) error {
 
 		o.debug.LogRetry(attempt+1, maxRetries, classified.Class.String(), waitTime.String())
 
+		// Log retry with structured fields (Req 3.6)
+		o.debug.LogStructured("info", "Retry attempt", map[string]any{
+			"phase":            phase,
+			"attempt":          attempt + 1,
+			"max_attempts":     maxRetries,
+			"error_class":      classified.Class.String(),
+			"backoff_duration": waitTime.String(),
+		})
+
 		// Resume spinner with wait countdown during retry wait
 		if o.spinner != nil {
 			o.spinner.UpdateWait(waitTime)
@@ -556,6 +635,18 @@ func (o *Orbit) runPhaseWithRetry(phase int) error {
 	o.debug.Log("Phase %d failed after %d attempts", phase, maxRetries)
 	// Update phase status to failed after max retries (req 3.6)
 	o.updatePhaseStatus(phase, registry.PhaseStatusFailed, o.currentPhaseRunCount)
+
+	// Log phase failure with duration and transcript path (Req 3.3, 4.2)
+	phaseDuration := time.Since(phaseStart)
+	logFields := map[string]any{
+		"phase":    phase,
+		"status":   "failed",
+		"duration": phaseDuration.String(),
+	}
+	if o.logManager != nil {
+		logFields["transcript_path"] = o.logManager.SessionDir()
+	}
+	o.debug.LogStructured("error", "Phase failed", logFields)
 
 	return fmt.Errorf("max retries exceeded: %w", lastErr)
 }
@@ -588,6 +679,16 @@ func (o *Orbit) runPhase(phase int) error {
 	}
 
 	o.debug.Log("Executing Claude for phase %d...", phase)
+
+	// Log agent invocation (Req 3.4)
+	o.debug.LogStructured("info", "Agent invocation", map[string]any{
+		"agent":       o.config.Agent,
+		"phase":       phase,
+		"session_id":  sessionID,
+		"is_resume":   isResume,
+		"working_dir": o.config.WorkingDir,
+	})
+
 	result, err := o.claudeClient.RunPhase(sessionID, isResume)
 	o.debug.Log("Claude execution completed: err=%v", err)
 
@@ -671,6 +772,20 @@ func (o *Orbit) runPhase(phase int) error {
 			o.debug.Log("Session exported successfully to %s", exportFilename)
 		}
 	}
+
+	// Log agent completion (Req 3.5, 4.1)
+	agentLogFields := map[string]any{
+		"phase":      phase,
+		"exit_code":  0,
+		"duration":   result.Duration.String(),
+		"session_id": result.SessionID,
+		"num_turns":  result.NumTurns,
+		"cost_usd":   getCostUSD(result),
+	}
+	if o.logManager != nil {
+		agentLogFields["session_log_path"] = o.logManager.SessionDir()
+	}
+	o.debug.LogStructured("info", "Agent completed", agentLogFields)
 
 	o.debug.Log("Phase %d completed successfully: cost=$%.4f duration=%s turns=%d",
 		phase, getCostUSD(result), result.Duration, result.NumTurns)
@@ -863,6 +978,9 @@ func (o *Orbit) fail(err error) error {
 	if o.spinner != nil {
 		o.spinner.Stop()
 	}
+
+	// Write shutdown entry to centralized log
+	o.debug.LogShutdown("failed")
 
 	// Update registry status to failed (req 3.3)
 	o.updateRunStatus(registry.StatusFailed)
@@ -1121,6 +1239,16 @@ func (o *Orbit) runWithVariants(ctx context.Context) error {
 
 	log.Printf("Running %d variants...", len(variantList))
 
+	// Log variant creation to parent logger (Req 1.6, 3.10)
+	for _, v := range variantList {
+		o.debug.LogStructured("info", "Variant created", map[string]any{
+			"variant_id":    v.ID,
+			"branch":        v.Branch,
+			"worktree_path": v.WorktreePath,
+			"agent":         v.Agent,
+		})
+	}
+
 	// Create context with cancellation for interrupt handling
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
@@ -1137,9 +1265,18 @@ func (o *Orbit) runWithVariants(ctx context.Context) error {
 
 	if o.config.Parallel {
 		log.Printf("Starting parallel execution of %d variants...", len(variantList))
+		// Log parallel execution start to parent logger (Req 1.6)
+		o.debug.LogStructured("info", "Parallel execution started", map[string]any{
+			"variant_count": len(variantList),
+			"max_parallel":  o.config.MaxParallel,
+		})
 		o.runVariantsParallel(ctx, variantList)
 		log.Println("All variant goroutines completed")
 	} else {
+		// Log sequential execution start
+		o.debug.LogStructured("info", "Sequential execution started", map[string]any{
+			"variant_count": len(variantList),
+		})
 		o.runVariantsSequential(ctx, variantList)
 	}
 
@@ -1150,6 +1287,13 @@ func (o *Orbit) runWithVariants(ctx context.Context) error {
 
 	log.Printf("Variant execution complete: %d succeeded, %d failed, %d canceled",
 		successCount, failedCount, canceledCount)
+
+	// Log all variants completed to parent logger (Req 1.6)
+	o.debug.LogStructured("info", "All variants completed", map[string]any{
+		"succeeded": successCount,
+		"failed":    failedCount,
+		"canceled":  canceledCount,
+	})
 
 	// Generate report based on outcomes
 	if successCount == 0 {
@@ -1271,6 +1415,36 @@ func (o *Orbit) runVariantsParallel(ctx context.Context, variantList []*variants
 func (o *Orbit) runVariant(ctx context.Context, v *variants.Variant) error {
 	startTime := time.Now()
 	log.Printf("Starting variant %d (branch: %s, agent: %s)", v.ID, v.Branch, v.Agent)
+
+	// Create variant-specific logger (Req 1.4, 1.5)
+	variantLogger, err := debug.NewLogger(debug.LoggerConfig{
+		StderrEnabled: o.config.Debug,
+		FileEnabled:   o.config.CentralizedLog,
+		RunID:         o.config.RunID,
+		VariantNum:    v.ID,
+		Prefix:        fmt.Sprintf("variant-%d", v.ID),
+	})
+	if err != nil {
+		// Log to parent logger but continue - centralized logging is best-effort
+		o.debug.Log("Warning: failed to create variant %d logger: %v", v.ID, err)
+	}
+	// Ensure we close the variant logger when done
+	defer func() {
+		if variantLogger != nil {
+			variantLogger.Close()
+		}
+	}()
+
+	// Log variant start to variant's own log
+	if variantLogger != nil {
+		variantLogger.LogStartup(debug.StartupConfig{
+			OrbitVersion:     o.config.Version,
+			Agent:            v.Agent,
+			TasksFile:        o.config.TasksFile,
+			WorkingDirectory: v.WorktreePath,
+			BranchName:       v.Branch,
+		})
+	}
 
 	// Mark variant as running
 	if err := o.variantManager.UpdateStatus(v.ID, variants.StatusRunning, nil); err != nil {
@@ -1451,6 +1625,10 @@ func (o *Orbit) runVariant(ctx context.Context, v *variants.Variant) error {
 			if variantLogManager != nil {
 				_ = variantLogManager.Fail(variantErr)
 			}
+			// Log failure to variant's log
+			if variantLogger != nil {
+				variantLogger.LogShutdown("failed")
+			}
 			return variantErr
 		}
 
@@ -1492,6 +1670,10 @@ func (o *Orbit) runVariant(ctx context.Context, v *variants.Variant) error {
 			if variantLogManager != nil {
 				_ = variantLogManager.Fail(variantErr)
 			}
+			// Log failure to variant's log
+			if variantLogger != nil {
+				variantLogger.LogShutdown("failed")
+			}
 			return variantErr
 		}
 		// Save successful post-completion session
@@ -1527,6 +1709,11 @@ func (o *Orbit) runVariant(ctx context.Context, v *variants.Variant) error {
 
 	log.Printf("Variant %d completed: cost=$%.4f, duration=%s, turns=%d",
 		v.ID, totalCost, duration.Round(time.Second), totalTurns)
+
+	// Log shutdown to variant's own log
+	if variantLogger != nil {
+		variantLogger.LogShutdown("completed")
+	}
 
 	return nil
 }
@@ -1766,12 +1953,12 @@ func (o *Orbit) generateReport() error {
 	reportVariants := make([]report.VariantReportData, 0, len(variantList))
 	for _, v := range variantList {
 		reportVariants = append(reportVariants, report.VariantReportData{
-			ID:       v.ID,
-			Branch:   v.Branch,
-			Status:   string(v.Status),
-			Error:    v.Error,
-			Diff:     variantDiffs[v.ID],
-			Agent:    v.Agent,
+			ID:     v.ID,
+			Branch: v.Branch,
+			Status: string(v.Status),
+			Error:  v.Error,
+			Diff:   variantDiffs[v.ID],
+			Agent:  v.Agent,
 			Metrics: report.VariantMetrics{
 				Cost:     v.Cost,
 				Duration: v.Duration.Round(time.Second).String(),

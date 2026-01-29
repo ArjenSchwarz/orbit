@@ -17,6 +17,7 @@ import (
 	_ "github.com/arjenschwarz/orbit/internal/agents/opencode"   // Register opencode agent
 	"github.com/arjenschwarz/orbit/internal/config"
 	"github.com/arjenschwarz/orbit/internal/orbit"
+	"github.com/google/uuid"
 	"gopkg.in/yaml.v3"
 )
 
@@ -30,6 +31,7 @@ func runCommand(args []string) error {
 	skipPermissions := fs.Bool("skip-permissions", true, "Run Claude with --dangerously-skip-permissions")
 	verbose := fs.Bool("verbose", false, "Enable verbose output")
 	debug := fs.Bool("debug", false, "Enable debug logging (detailed CLI execution info)")
+	noCentralizedLog := fs.Bool("no-centralized-log", false, "Disable centralized debug logging (use ORBIT_CENTRALIZED_LOG=true to re-enable)")
 	dryRun := fs.Bool("dry-run", false, "Show what would be executed without running")
 	showVersion := fs.Bool("version", false, "Show version and exit")
 	commandFlag := fs.String("command", "", "Custom prompt for Claude phases")
@@ -162,6 +164,31 @@ func runCommand(args []string) error {
 		debugValue = true
 	}
 
+	// Resolve centralized-log: CLI flag can disable (overrides config)
+	// --no-centralized-log explicitly disables, similar to --no-continue-session
+	centralizedLogValue := cfg.CentralizedLog
+	if *noCentralizedLog {
+		centralizedLogValue = false
+	}
+
+	// Resolve parallel: CLI flag can enable (overrides config)
+	parallelValue := cfg.Parallel
+	if *parallel {
+		parallelValue = true
+	}
+
+	// Resolve max-parallel: CLI flag overrides config if explicitly provided
+	// Since we can't detect if the flag was explicitly set, we only override
+	// if the CLI value differs from the built-in default of 3
+	maxParallelValue := cfg.MaxParallel
+	if *maxParallel != 3 {
+		maxParallelValue = *maxParallel
+	}
+	// If config value is 0, use the CLI default
+	if maxParallelValue == 0 {
+		maxParallelValue = *maxParallel
+	}
+
 	// Parse guidance file if provided
 	var guidance []string
 	if *guidanceFile != "" {
@@ -205,6 +232,9 @@ func runCommand(args []string) error {
 		repoRoot = strings.TrimSpace(string(output))
 	}
 
+	// Generate unique run ID for this orchestration
+	runID := uuid.NewString()
+
 	// Create and run orchestrator
 	orbitCfg := orbit.Config{
 		TasksFile:       *tasksFile,
@@ -213,6 +243,9 @@ func runCommand(args []string) error {
 		SkipPermissions: *skipPermissions,
 		Verbose:         *verbose,
 		Debug:           debugValue,
+		CentralizedLog:  centralizedLogValue,
+		RunID:           runID,
+		Version:         version,
 		DryRun:          *dryRun,
 		WorkingDir:      workingDir,
 		Command:         command,
@@ -223,8 +256,8 @@ func runCommand(args []string) error {
 		AgentConfig:     agentCfg,
 		AgentConfigs:    cfg.GetAllAgentConfigs(),
 		VariantCount:    *variantCount,
-		Parallel:        *parallel,
-		MaxParallel:     *maxParallel,
+		Parallel:        parallelValue,
+		MaxParallel:     maxParallelValue,
 		BranchPrefix:    *branchPrefix,
 		Guidance:        guidance,
 		CompareCommand:  *compareCommand,
