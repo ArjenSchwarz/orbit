@@ -112,80 +112,117 @@ func renderJSON(data *status.StatusOutput) error {
 
 // renderTerminal outputs formatted text for terminal display.
 func renderTerminal(ctx context.Context, data *status.StatusOutput) error {
-	builder := output.New()
-
-	// Header
-	builder.Section("Variant Status", func(b *output.Builder) {
-		b.Text(fmt.Sprintf("Spec:            %s", data.SpecName))
-		b.Text(fmt.Sprintf("Base Commit:     %s", data.BaseCommit))
-		b.Text(fmt.Sprintf("Original Branch: %s", data.OriginalBranch))
-		b.Text(fmt.Sprintf("Started:         %s", data.StartedAt))
-	})
-
-	// Active variants with details
-	for _, v := range data.ActiveVariants {
-		builder.Section(buildVariantHeader(&v), func(b *output.Builder) {
-			// Commits section
-			b.Text("Commits:")
-			if v.GitState == "" && len(v.Commits) == 0 {
-				// Git info unavailable (per requirement 6.1)
-				b.Text("  Git info unavailable")
-			} else if len(v.Commits) == 0 {
-				// No commits yet (per requirement 1.4)
-				b.Text("  No commits yet")
-			} else {
-				for _, c := range v.Commits {
-					b.Text(fmt.Sprintf("  %s %s", c.Hash, c.Subject))
-				}
-			}
-			b.Text("")
-
-			// Last Action section
-			b.Text("Last Action:")
-			if v.LastAction == "" {
-				b.Text("  Waiting for activity...")
-			} else {
-				b.Text(fmt.Sprintf("  %s", v.LastAction))
-			}
-			b.Text("")
-
-			// Tasks section
-			b.Text("Tasks:")
-			if len(v.Tasks) == 0 {
-				// Task progress unavailable (per requirement 6.3)
-				b.Text("  Task progress unavailable")
-			} else {
-				for _, t := range v.Tasks {
-					prefix := "  "
-					if t.IsActive {
-						// Active phase prefix (per requirement 4.7)
-						prefix = "→ "
-					}
-					b.Text(fmt.Sprintf("%s%s: %d/%d", prefix, t.Phase, t.Completed, t.Total))
-				}
-			}
-		})
-	}
-
-	// Other variants summary
-	if len(data.OtherVariants) > 0 {
-		sectionTitle := "Other Variants"
-		if len(data.ActiveVariants) == 0 {
-			sectionTitle = "Variants (No Active)"
-		}
-		builder.Section(sectionTitle, func(b *output.Builder) {
-			for _, v := range data.OtherVariants {
-				b.Text(fmt.Sprintf("Variant %d: %s [%s]", v.ID, v.Branch, v.Status))
-			}
-		})
-	}
-
-	doc := builder.Build()
 	out := output.NewOutput(
 		output.WithFormat(output.Table()),
 		output.WithWriter(output.NewStdoutWriter()),
 	)
-	return out.Render(ctx, doc)
+
+	// Header table
+	headerRows := []map[string]any{
+		{"Field": "Spec", "Value": data.SpecName},
+		{"Field": "Base Commit", "Value": data.BaseCommit},
+		{"Field": "Original Branch", "Value": data.OriginalBranch},
+		{"Field": "Started", "Value": data.StartedAt},
+	}
+	headerDoc := output.New().
+		Table("Variant Status", headerRows, output.WithKeys("Field", "Value")).
+		Build()
+	if err := out.Render(ctx, headerDoc); err != nil {
+		return err
+	}
+
+	// Active variants with details
+	for _, v := range data.ActiveVariants {
+		fmt.Println()
+		if err := renderVariantDetails(ctx, out, &v); err != nil {
+			return err
+		}
+	}
+
+	// Other variants summary
+	if len(data.OtherVariants) > 0 {
+		fmt.Println()
+		sectionTitle := "Other Variants"
+		if len(data.ActiveVariants) == 0 {
+			sectionTitle = "Variants (No Active)"
+		}
+		otherRows := make([]map[string]any, 0, len(data.OtherVariants))
+		for _, v := range data.OtherVariants {
+			otherRows = append(otherRows, map[string]any{
+				"Variant": v.ID,
+				"Branch":  v.Branch,
+				"Status":  v.Status,
+			})
+		}
+		otherDoc := output.New().
+			Table(sectionTitle, otherRows, output.WithKeys("Variant", "Branch", "Status")).
+			Build()
+		if err := out.Render(ctx, otherDoc); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+// renderVariantDetails renders a single active variant's details.
+func renderVariantDetails(ctx context.Context, out *output.Output, v *status.VariantOutput) error {
+	header := buildVariantHeader(v)
+	fmt.Println(header)
+	fmt.Println(strings.Repeat("-", len(header)))
+
+	// Worktree path
+	if v.Worktree != "" {
+		fmt.Printf("Directory: %s\n", v.Worktree)
+	}
+
+	// Commits
+	fmt.Print("Commits: ")
+	if v.GitState == "" && len(v.Commits) == 0 {
+		fmt.Println("Git info unavailable")
+	} else if len(v.Commits) == 0 {
+		fmt.Println("No commits yet")
+	} else {
+		fmt.Println()
+		for _, c := range v.Commits {
+			fmt.Printf("  %s %s\n", c.Hash, c.Subject)
+		}
+	}
+
+	// Last Action
+	fmt.Print("Last Action: ")
+	if v.LastAction == "" {
+		fmt.Println("Waiting for activity...")
+	} else {
+		fmt.Println(v.LastAction)
+	}
+
+	// Tasks table
+	if len(v.Tasks) == 0 {
+		fmt.Println("Tasks: Task progress unavailable")
+	} else {
+		taskRows := make([]map[string]any, 0, len(v.Tasks))
+		for _, t := range v.Tasks {
+			active := ""
+			if t.IsActive {
+				active = "→"
+			}
+			taskRows = append(taskRows, map[string]any{
+				"":        active,
+				"Phase":   t.Phase,
+				"Done":    t.Completed,
+				"Total":   t.Total,
+				"Pending": t.Total - t.Completed,
+			})
+		}
+		taskDoc := output.New().
+			Table("Tasks", taskRows, output.WithKeys("", "Phase", "Done", "Total", "Pending")).
+			Build()
+		if err := out.Render(ctx, taskDoc); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 // buildVariantHeader creates the header string for an active variant section.

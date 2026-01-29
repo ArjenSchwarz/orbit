@@ -11,12 +11,35 @@ import (
 	output "github.com/ArjenSchwarz/go-output/v2"
 
 	"github.com/arjenschwarz/orbit/internal/display"
+	"github.com/arjenschwarz/orbit/internal/status"
 )
 
-// RunDemo executes a demonstration of orbit's UX features.
+// demoCommand routes to the appropriate demo based on arguments.
+func demoCommand(args []string) error {
+	if len(args) > 0 {
+		switch args[0] {
+		case "status":
+			return RunStatusDemo()
+		case "spinner", "phase":
+			return RunSpinnerDemo()
+		default:
+			fmt.Fprintf(os.Stderr, "Unknown demo: %s\n", args[0])
+			fmt.Fprintf(os.Stderr, "Available demos: status, spinner\n")
+			return fmt.Errorf("unknown demo: %s", args[0])
+		}
+	}
+	// Default: show available demos
+	fmt.Fprintf(os.Stderr, "Usage: orbit demo <type>\n\n")
+	fmt.Fprintf(os.Stderr, "Available demos:\n")
+	fmt.Fprintf(os.Stderr, "  status   Show the status command output format\n")
+	fmt.Fprintf(os.Stderr, "  spinner  Show the spinner/phase overview animation\n")
+	return nil
+}
+
+// RunSpinnerDemo executes the spinner/phase animation demo.
 // It shows a simulated phase overview, runs spinner animations,
 // and displays completion links when interrupted.
-func RunDemo() error {
+func RunSpinnerDemo() error {
 	// Create spinner - requires TTY
 	spin := display.NewSpinner()
 	if spin == nil {
@@ -101,4 +124,63 @@ func displayMockPhaseOverview() {
 // displayDemoLinks shows sample completion links.
 func displayDemoLinks() {
 	display.PrintIndexLinks("/tmp/orbit-demo")
+}
+
+// RunStatusDemo executes a demonstration of the orbit status command output.
+// It renders mock variant data to show the status display format.
+func RunStatusDemo() error {
+	mockData := buildMockStatusData()
+	return renderStatus(context.Background(), mockData, "text")
+}
+
+// buildMockStatusData creates sample status data for demo purposes.
+func buildMockStatusData() *status.StatusOutput {
+	return &status.StatusOutput{
+		SpecName:       "demo-feature",
+		BaseCommit:     "abc123def456",
+		OriginalBranch: "main",
+		StartedAt:      time.Now().Add(-45 * time.Minute).Format("2006-01-02 15:04:05"),
+		ActiveVariants: []status.VariantOutput{
+			{
+				ID:       1,
+				Branch:   "orbit/demo-feature/variant-1",
+				Worktree: "specs/demo-feature/.orbit/worktrees/variant-1",
+				Status:   "running",
+				GitState: "dirty",
+				Commits: []status.CommitOutput{
+					{Hash: "f8e7d6c5b4a3", Subject: "Add user authentication endpoint"},
+					{Hash: "a1b2c3d4e5f6", Subject: "Implement session management"},
+				},
+				LastAction: "Writing auth middleware in internal/auth/middleware.go",
+				Tasks: []status.TaskOutput{
+					{Phase: "Setup", Completed: 3, Total: 3, IsActive: false},
+					{Phase: "Implementation", Completed: 2, Total: 5, IsActive: true},
+					{Phase: "Testing", Completed: 0, Total: 4, IsActive: false},
+				},
+			},
+			{
+				ID:       2,
+				Branch:   "orbit/demo-feature/variant-2",
+				Worktree: "specs/demo-feature/.orbit/worktrees/variant-2",
+				Status:   "running",
+				GitState: "clean",
+				Commits: []status.CommitOutput{
+					{Hash: "9a8b7c6d5e4f", Subject: "Add OAuth2 provider support"},
+				},
+				LastAction: "Reading specs/demo-feature/design.md",
+				Tasks: []status.TaskOutput{
+					{Phase: "Setup", Completed: 3, Total: 3, IsActive: false},
+					{Phase: "Implementation", Completed: 1, Total: 5, IsActive: true},
+					{Phase: "Testing", Completed: 0, Total: 4, IsActive: false},
+				},
+			},
+		},
+		OtherVariants: []status.VariantOutput{
+			{
+				ID:     3,
+				Branch: "orbit/demo-feature/variant-3",
+				Status: "pending",
+			},
+		},
+	}
 }
