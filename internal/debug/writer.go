@@ -185,5 +185,19 @@ func (w *FileWriter) Close() error {
 	}
 
 	w.closed = true
-	return w.file.Close()
+
+	if w.file == nil {
+		return nil
+	}
+
+	// Sync before close for durability
+	if err := w.file.Sync(); err != nil {
+		return fmt.Errorf("failed to sync file before close: %w", err)
+	}
+
+	if err := w.file.Close(); err != nil {
+		return fmt.Errorf("failed to close file: %w", err)
+	}
+
+	return nil
 }

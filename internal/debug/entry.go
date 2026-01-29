@@ -49,3 +49,27 @@ type StartupConfig struct {
 	WorkingDirectory string // Absolute path to working directory
 	BranchName       string // Current git branch
 }
+
+// Level constants for log entries (Req 2.3)
+const (
+	LevelDebug = "debug"
+	LevelInfo  = "info"
+	LevelWarn  = "warn"
+	LevelError = "error"
+)
+
+// Component constants for log entries (Req 2.5)
+const (
+	ComponentOrchestrator = "orchestrator"
+	ComponentAgent        = "agent"
+	ComponentConfig       = "config"
+	ComponentRetry        = "retry"
+	ComponentVariant      = "variant"
+	ComponentRegistry     = "registry"
+)
+
+// Status constants for shutdown entry
+const (
+	StatusCompleted = "completed"
+	StatusFailed    = "failed"
+)

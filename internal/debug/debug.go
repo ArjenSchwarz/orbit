@@ -496,3 +496,154 @@ func (l *Logger) Path() string {
 	}
 	return l.fileWriter.Path()
 }
+
+// LogPhaseStart logs the start of a phase with phase number and task count.
+// Satisfies Req 3.2, 4.2.
+func (l *Logger) LogPhaseStart(phaseNum, taskCount int) {
+	if l == nil {
+		return
+	}
+
+	// Stderr output
+	if l.stderrEnabled || l.enabled {
+		l.logToStderr("Phase %d started with %d tasks", phaseNum, taskCount)
+	}
+
+	// File output (structured)
+	if l.fileEnabled && l.fileWriter != nil {
+		_ = l.fileWriter.Write(LogEntry{
+			Timestamp: time.Now(),
+			Level:     LevelInfo,
+			Component: ComponentOrchestrator,
+			Message:   "Phase started",
+			Fields: map[string]any{
+				"phase":      phaseNum,
+				"task_count": taskCount,
+			},
+		})
+	}
+}
+
+// LogPhaseCompletion logs the completion of a phase with duration, status, and transcript path.
+// Satisfies Req 3.3, 4.2.
+func (l *Logger) LogPhaseCompletion(phaseNum int, duration time.Duration, status string, transcriptPath string) {
+	if l == nil {
+		return
+	}
+
+	// Stderr output
+	if l.stderrEnabled || l.enabled {
+		l.logToStderr("Phase %d completed: status=%s duration=%s", phaseNum, status, duration)
+		if transcriptPath != "" {
+			l.logToStderr("Transcript: %s", transcriptPath)
+		}
+	}
+
+	// File output (structured)
+	if l.fileEnabled && l.fileWriter != nil {
+		fields := map[string]any{
+			"phase":    phaseNum,
+			"duration": duration.String(),
+			"status":   status,
+		}
+		if transcriptPath != "" {
+			fields["transcript_path"] = transcriptPath
+		}
+
+		level := LevelInfo
+		if status == StatusFailed {
+			level = LevelError
+		}
+
+		_ = l.fileWriter.Write(LogEntry{
+			Timestamp: time.Now(),
+			Level:     level,
+			Component: ComponentOrchestrator,
+			Message:   "Phase completed",
+			Fields:    fields,
+		})
+	}
+}
+
+// LogAgentInvocation logs the start of agent execution.
+// Satisfies requirement 3.4 (agent invocation details).
+func (l *Logger) LogAgentInvocation(agentName, command string, args []string, workingDir string) {
+	if l == nil {
+		return
+	}
+
+	fullCmd := command
+	if len(args) > 0 {
+		fullCmd = command + " " + strings.Join(args, " ")
+	}
+
+	// Stderr output
+	if l.stderrEnabled || l.enabled {
+		l.logToStderr("Agent invocation: %s", agentName)
+		l.logToStderr("Command: %s", fullCmd)
+		if workingDir != "" {
+			l.logToStderr("Working dir: %s", workingDir)
+		}
+	}
+
+	// File output (structured)
+	if l.fileEnabled && l.fileWriter != nil {
+		_ = l.fileWriter.Write(LogEntry{
+			Timestamp: time.Now(),
+			Level:     LevelInfo,
+			Component: ComponentAgent,
+			Message:   "Agent invocation",
+			Fields: map[string]any{
+				"agent":       agentName,
+				"command":     fullCmd,
+				"working_dir": workingDir,
+			},
+		})
+	}
+}
+
+// LogAgentCompletion logs the completion of agent execution.
+// Satisfies requirements 3.5 (agent completion with exit code, duration, session ID)
+// and 4.1 (session_log_path field with absolute path).
+func (l *Logger) LogAgentCompletion(agentName string, exitCode int, duration time.Duration, sessionID, sessionLogPath string) {
+	if l == nil {
+		return
+	}
+
+	// Stderr output
+	if l.stderrEnabled || l.enabled {
+		l.logToStderr("Agent completion: %s", agentName)
+		l.logToStderr("Exit code: %d, Duration: %s, Session: %s", exitCode, duration, sessionID)
+		if sessionLogPath != "" {
+			l.logToStderr("Session log: %s", sessionLogPath)
+		}
+	}
+
+	// File output (structured)
+	if l.fileEnabled && l.fileWriter != nil {
+		fields := map[string]any{
+			"agent":     agentName,
+			"exit_code": exitCode,
+			"duration":  duration.String(),
+		}
+		if sessionID != "" {
+			fields["session_id"] = sessionID
+		}
+		if sessionLogPath != "" {
+			fields["session_log_path"] = sessionLogPath
+		}
+
+		level := LevelInfo
+		if exitCode != 0 {
+			level = LevelError
+		}
+
+		_ = l.fileWriter.Write(LogEntry{
+			Timestamp: time.Now(),
+			Level:     level,
+			Component: ComponentAgent,
+			Message:   "Agent completion",
+			Fields:    fields,
+		})
+	}
+}
