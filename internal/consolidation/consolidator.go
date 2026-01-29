@@ -725,6 +725,14 @@ func (c *Consolidator) runPostCommand(ctx context.Context) (bool, error) {
 	if result != nil && result.ExitCode != 0 {
 		return false, fmt.Errorf("post-command failed with exit code %d: %s", result.ExitCode, result.Stderr)
 	}
+	// Check agent-reported errors (e.g., Claude Code can report IsError=true with exit code 0)
+	if result != nil && result.IsError {
+		errMsg := "agent reported error"
+		if len(result.Errors) > 0 {
+			errMsg = result.Errors[0]
+		}
+		return false, fmt.Errorf("post-command failed: %s", errMsg)
+	}
 	return true, nil
 }
 
