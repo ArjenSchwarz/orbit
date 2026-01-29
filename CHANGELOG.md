@@ -32,6 +32,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `RunID` field in `orbit.Config` for log file naming and registry correlation
 - Startup and shutdown logging in orchestrator with version, agent, and duration metadata
 - Unit tests for FileWriter, Logger, and configuration
+- Centralized logging integration throughout orchestrator (`internal/orbit/orbit.go`):
+  - Phase lifecycle logging: phase start (with task count) and completion (with duration, status, transcript_path)
+  - Agent execution logging: invocation (agent, session_id, working_dir) and completion (exit_code, duration, session_log_path)
+  - Retry and error logging with error chain extraction and structured backoff details
+  - Configuration source tracking in `config.Config.ConfigSources` (home, project, env)
+  - Variant-specific loggers with separate log files per variant (`{timestamp}-{runID}-variant-{N}.jsonl`)
+  - Parent orchestrator logging for variant lifecycle (creation, parallel execution start, all variants completed)
 
 - LogEntry types for centralized logging (`internal/debug/entry.go`):
   - `LogEntry` struct with timestamp, level, component, message, and optional fields

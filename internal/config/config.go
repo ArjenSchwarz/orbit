@@ -100,8 +100,9 @@ type Config struct {
 	ResolvedAgents map[string]ResolvedAgent
 
 	// Config file state
-	ConfigFileFound  bool    // Whether .orbit.yaml was found (home or project)
-	ConfigParseError []error // Errors from parsing config (e.g., invalid model types)
+	ConfigFileFound   bool     // Whether .orbit.yaml was found (home or project)
+	ConfigParseError  []error  // Errors from parsing config (e.g., invalid model types)
+	ConfigSources     []string // List of config sources loaded (e.g., "home", "project", "env")
 
 	// Variant configuration for multi-spec comparison
 	VariantCount   int    // Number of variants (0 = single-run mode)
@@ -159,6 +160,8 @@ func Load(workingDir string) *Config {
 	postCommandExplicit := false
 	// Track if any config file was found (home or project)
 	configFileFound := false
+	// Track which config sources were loaded
+	var configSources []string
 
 	// Load home config first (lowest priority for files)
 	if homeDir, err := os.UserHomeDir(); err == nil {
@@ -170,6 +173,7 @@ func Load(workingDir string) *Config {
 				log.Printf("Warning: could not read %s: %v", homeConfigPath, err)
 			} else {
 				configFileFound = true
+				configSources = append(configSources, "home")
 				// Track if home config explicitly set post-command
 				if homeViper.IsSet("post-command") {
 					postCommandExplicit = true
@@ -192,6 +196,7 @@ func Load(workingDir string) *Config {
 			log.Printf("Warning: could not read %s: %v", projectConfigPath, err)
 		} else {
 			configFileFound = true
+			configSources = append(configSources, "project")
 			// Check if post-command was explicitly set in project config
 			if projectViper.IsSet("post-command") {
 				postCommandExplicit = true
@@ -233,64 +238,86 @@ func Load(workingDir string) *Config {
 
 	// Apply environment variable overrides (highest priority)
 	// Using os.LookupEnv to detect both set values and explicitly empty values
+	envUsed := false
 	if envCmd, exists := os.LookupEnv("ORBIT_COMMAND"); exists {
 		command = envCmd
+		envUsed = true
 	}
 	if envPostCmd, exists := os.LookupEnv("ORBIT_POST_COMMAND"); exists {
 		postCommand = envPostCmd
 		postCommandExplicit = true
+		envUsed = true
 	}
 	if envDateSubdirs, exists := os.LookupEnv("ORBIT_DATE_SUBDIRS"); exists {
 		dateSubdirs = envDateSubdirs == "true" || envDateSubdirs == "1"
+		envUsed = true
 	}
 	if envContinueSession, exists := os.LookupEnv("ORBIT_CONTINUE_SESSION"); exists {
 		continueSession = envContinueSession == "true" || envContinueSession == "1"
+		envUsed = true
 	}
 	if envServePort, exists := os.LookupEnv("ORBIT_SERVE_PORT"); exists {
 		if port, err := parsePort(envServePort); err == nil {
 			servePort = port
+			envUsed = true
 		}
 		// Invalid port values are silently ignored (use config/default)
 	}
 	if envServeBind, exists := os.LookupEnv("ORBIT_SERVE_BIND"); exists {
 		serveBind = envServeBind
+		envUsed = true
 	}
 	if envDebug, exists := os.LookupEnv("ORBIT_DEBUG"); exists {
 		debug = envDebug == "true" || envDebug == "1"
+		envUsed = true
 	}
 	if envCentralizedLog, exists := os.LookupEnv("ORBIT_CENTRALIZED_LOG"); exists {
 		// Disable if explicitly set to "false" or "0", otherwise keep enabled
 		centralizedLog = envCentralizedLog != "false" && envCentralizedLog != "0"
+		envUsed = true
 	}
 	// Variant environment variable overrides
 	if envVariantCount, exists := os.LookupEnv("ORBIT_VARIANT_COUNT"); exists {
 		if count, err := parsePositiveInt(envVariantCount); err == nil {
 			variantCount = count
+			envUsed = true
 		}
 	}
 	if envParallel, exists := os.LookupEnv("ORBIT_PARALLEL"); exists {
 		parallel = envParallel == "true" || envParallel == "1"
+		envUsed = true
 	}
 	if envMaxParallel, exists := os.LookupEnv("ORBIT_MAX_PARALLEL"); exists {
 		if max, err := parsePositiveInt(envMaxParallel); err == nil {
 			maxParallel = max
+			envUsed = true
 		}
 	}
 	if envBranchPrefix, exists := os.LookupEnv("ORBIT_BRANCH_PREFIX"); exists {
 		branchPrefix = envBranchPrefix
+		envUsed = true
 	}
 	if envGuidanceFile, exists := os.LookupEnv("ORBIT_GUIDANCE_FILE"); exists {
 		guidanceFile = envGuidanceFile
+		envUsed = true
 	}
 	if envCompareCommand, exists := os.LookupEnv("ORBIT_COMPARE_COMMAND"); exists {
 		compareCommand = envCompareCommand
+		envUsed = true
 	}
 	if envGlobalGuidance, exists := os.LookupEnv("ORBIT_GLOBAL_GUIDANCE"); exists {
 		globalGuidance = envGlobalGuidance
+		envUsed = true
 	}
 	// Agent environment variable override
 	if envAgent, exists := os.LookupEnv("ORBIT_AGENT"); exists {
 		agent = envAgent
+		envUsed = true
+	}
+
+	// Add env source if any environment variables were used
+	if envUsed {
+		configSources = append(configSources, "env")
 	}
 
 	return &Config{
@@ -307,6 +334,7 @@ func Load(workingDir string) *Config {
 		AgentAliases:        agentAliasesMap,
 		ConfigFileFound:     configFileFound,
 		ConfigParseError:    configParseErrors,
+		ConfigSources:       configSources,
 		VariantCount:        variantCount,
 		Parallel:            parallel,
 		MaxParallel:         maxParallel,

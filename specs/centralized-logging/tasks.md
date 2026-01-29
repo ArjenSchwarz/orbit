@@ -197,7 +197,7 @@ references:
   - Stream: 1
   - Owner: agent-stream-1
 
-- [ ] 18. Add phase lifecycle logging <!-- id:5dh82ti -->
+- [x] 18. Add phase lifecycle logging <!-- id:5dh82ti -->
   - Log phase start with phase number and task count. Log phase completion with duration
   - status
   - and transcript_path. Requirements: 3.2
@@ -206,7 +206,7 @@ references:
   - Blocked-by: 5dh82th (Add startup and shutdown logging)
   - Stream: 1
 
-- [ ] 19. Add agent execution logging <!-- id:5dh82tj -->
+- [x] 19. Add agent execution logging <!-- id:5dh82tj -->
   - Log agent invocation with command
   - args
   - working directory. Log agent completion with exit code
@@ -218,7 +218,7 @@ references:
   - Blocked-by: 5dh82th (Add startup and shutdown logging)
   - Stream: 1
 
-- [ ] 20. Add retry and error logging <!-- id:5dh82tk -->
+- [x] 20. Add retry and error logging <!-- id:5dh82tk -->
   - Log retry attempts with attempt number
   - error classification
   - backoff duration. Log errors with full message and error_chain array. Requirements: 3.6
@@ -226,7 +226,7 @@ references:
   - Blocked-by: 5dh82th (Add startup and shutdown logging)
   - Stream: 1
 
-- [ ] 21. Add configuration loading logging <!-- id:5dh82tl -->
+- [x] 21. Add configuration loading logging <!-- id:5dh82tl -->
   - Log configuration loading from each source (CLI
   - env
   - project config
@@ -234,7 +234,7 @@ references:
   - Blocked-by: 5dh82th (Add startup and shutdown logging)
   - Stream: 1
 
-- [ ] 22. Add variant logging support <!-- id:5dh82tm -->
+- [x] 22. Add variant logging support <!-- id:5dh82tm -->
   - Create variant-specific Logger in variants.Manager.runVariant(). Log variant creation and cleanup to parent logger. Log parallel execution start to parent logger. Requirements: 1.4
   - 1.5
   - 1.6
