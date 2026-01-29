@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- Parallel and max-parallel settings now properly respect config file values (`.orbit.yaml`), with CLI flags taking precedence when explicitly provided
+
 ### Added
 
 - Centralized logging feature specification (`specs/centralized-logging/`):

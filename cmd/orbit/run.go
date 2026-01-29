@@ -162,6 +162,24 @@ func runCommand(args []string) error {
 		debugValue = true
 	}
 
+	// Resolve parallel: CLI flag can enable (overrides config)
+	parallelValue := cfg.Parallel
+	if *parallel {
+		parallelValue = true
+	}
+
+	// Resolve max-parallel: CLI flag overrides config if explicitly provided
+	// Since we can't detect if the flag was explicitly set, we only override
+	// if the CLI value differs from the built-in default of 3
+	maxParallelValue := cfg.MaxParallel
+	if *maxParallel != 3 {
+		maxParallelValue = *maxParallel
+	}
+	// If config value is 0, use the CLI default
+	if maxParallelValue == 0 {
+		maxParallelValue = *maxParallel
+	}
+
 	// Parse guidance file if provided
 	var guidance []string
 	if *guidanceFile != "" {
@@ -223,8 +241,8 @@ func runCommand(args []string) error {
 		AgentConfig:     agentCfg,
 		AgentConfigs:    cfg.GetAllAgentConfigs(),
 		VariantCount:    *variantCount,
-		Parallel:        *parallel,
-		MaxParallel:     *maxParallel,
+		Parallel:        parallelValue,
+		MaxParallel:     maxParallelValue,
 		BranchPrefix:    *branchPrefix,
 		Guidance:        guidance,
 		CompareCommand:  *compareCommand,
