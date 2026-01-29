@@ -96,6 +96,7 @@ type StatusOutput struct {
 type VariantOutput struct {
 	ID         int            `json:"id"`
 	Branch     string         `json:"branch"`
+	Worktree   string         `json:"worktree,omitempty"`
 	Status     string         `json:"status"`
 	GitState   string         `json:"git_state,omitempty"`
 	Commits    []CommitOutput `json:"commits,omitempty"`
@@ -145,10 +146,11 @@ func BuildStatusOutput(specName string, baseCommit, originalBranch string, start
 // BuildVariantOutput creates a VariantOutput from a VariantInfo.
 func BuildVariantOutput(info *VariantInfo) VariantOutput {
 	vo := VariantOutput{
-		ID:     info.ID,
-		Branch: info.Branch,
-		Status: string(info.Status),
-		Error:  info.Error,
+		ID:       info.ID,
+		Branch:   info.Branch,
+		Worktree: info.WorktreePath,
+		Status:   string(info.Status),
+		Error:    info.Error,
 	}
 
 	// Git info

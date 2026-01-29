@@ -49,7 +49,7 @@ func main() {
 	case "register":
 		err = registerCommand(cmdArgs)
 	case "demo":
-		err = RunDemo()
+		err = demoCommand(cmdArgs)
 	case "status":
 		err = statusCommand(cmdArgs)
 	case "cleanup":
@@ -152,7 +152,7 @@ Commands:
   cleanup      Remove all variant worktrees and branches
   serve        Start web interface for viewing runs
   register     Manually register a run in the registry
-  demo         Run a demo session
+  demo         Run demo (status, spinner)
 
 Global Options:
   --help, -h       Show this help message

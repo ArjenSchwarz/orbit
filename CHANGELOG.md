@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- Status command output now uses proper tables instead of text-based formatting
+  - Header section displays as a key-value table (Field/Value columns)
+  - Tasks subsection displays as a table with columns: active marker, Phase, Done, Total, Pending
+  - Other variants summary displays as a table with Variant, Branch, Status columns
+  - Reduced vertical whitespace for more compact output
+
+### Added
+
+- Status demo command (`orbit demo status`) to preview status output format with mock data
+- Demo command routing: `orbit demo` now shows available demos (status, spinner)
+- Worktree directory path displayed for each active variant in status output
+
 ### Fixed
 
 - Consolidator post-command now runs through the agent instead of as a shell command
