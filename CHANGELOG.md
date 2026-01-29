@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Centralized logging feature specification (`specs/centralized-logging/`):
+  - `requirements.md` with 10 requirement sections covering storage, format, content, configuration, and error resilience
+  - `design.md` with LogEntry types, FileWriter implementation, Logger extension, and variant mode architecture
+  - `decision_log.md` with 16 architectural decisions (JSON Lines format, extend debug.Logger, rate-limited warnings, etc.)
+  - `tasks.md` with 23 implementation tasks across 2 parallel work streams
+
 ### Changed
 
 - Updated README.md and CLAUDE.md to document OpenCode as a supported agent
