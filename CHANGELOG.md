@@ -14,6 +14,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Error types: `ErrDatabaseNotFound`, `ErrSchemaInvalid`, `ErrSessionNotFound`, `ErrDatabaseLocked`
   - OS-specific database path resolution via `DBPath()` (macOS, Linux, Windows)
   - Path normalization with symlink resolution via `normalizePath()`
+  - `DB` struct with `NewTestDB()` and `DefaultDB()` for connection management
+  - Schema verification via `sqlite_master` query for `conversations_v2` table
+  - SQLite error classification (`classifyError()`) for BUSY, LOCKED, READONLY, and PERM errors
+  - Test utilities: `createTestDB()`, `insertSession()`, `insertSessionWithTimes()`, `createTestDBWithoutSchema()`
 
 ### Removed
 

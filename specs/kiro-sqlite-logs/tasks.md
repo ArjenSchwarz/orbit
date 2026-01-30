@@ -32,7 +32,7 @@ references:
   - Owner: agent-stream-1
   - Requirements: [1.1](requirements.md#1.1), [1.2](requirements.md#1.2), [2.1](requirements.md#2.1), [2.2](requirements.md#2.2)
 
-- [ ] 4. Create DB struct and connection management in internal/agents/kiro/logs/db.go <!-- id:3wwt01c -->
+- [x] 4. Create DB struct and connection management in internal/agents/kiro/logs/db.go <!-- id:3wwt01c -->
   - Implement DB struct with NewTestDB(), DefaultDB(), openConn(), verifySchema(), classifyError()
   - Use url.PathEscape for DSN
   - _busy_timeout=5000 in DSN
@@ -64,7 +64,7 @@ references:
 
 ## Unit Tests
 
-- [ ] 7. Create test utilities in internal/agents/kiro/logs/testutil_test.go <!-- id:3wwt01f -->
+- [x] 7. Create test utilities in internal/agents/kiro/logs/testutil_test.go <!-- id:3wwt01f -->
   - Implement createTestDB(), insertSession(), createTestDBWithoutSchema()
   - Use t.TempDir() for temp database
   - NewTestDB() for dependency injection
