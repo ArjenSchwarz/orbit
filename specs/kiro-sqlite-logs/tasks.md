@@ -71,13 +71,13 @@ references:
   - Blocked-by: 3wwt01s (Add modernc.org/sqlite dependency to go.mod)
   - Stream: 1
 
-- [ ] 8. Write unit tests for path.go <!-- id:3wwt01g -->
+- [x] 8. Write unit tests for path.go <!-- id:3wwt01g -->
   - Test DBPath() OS detection and normalizePath() behavior
   - Blocked-by: 3wwt01b (Create path resolution in internal/agents/kiro/logs/path.go), 3wwt01f (Create test utilities in internal/agents/kiro/logs/testutil_test.go)
   - Stream: 1
   - Requirements: [1.1](requirements.md#1.1), [1.2](requirements.md#1.2), [2.1](requirements.md#2.1), [2.2](requirements.md#2.2)
 
-- [ ] 9. Write unit tests for db.go <!-- id:3wwt01h -->
+- [x] 9. Write unit tests for db.go <!-- id:3wwt01h -->
   - Test openConn(), verifySchema(), classifyError()
   - Test ErrSchemaInvalid for missing table
   - Test ErrDatabaseLocked classification
@@ -85,13 +85,13 @@ references:
   - Stream: 1
   - Requirements: [1.4](requirements.md#1.4), [1.6](requirements.md#1.6), [1.7](requirements.md#1.7), [1.8](requirements.md#1.8)
 
-- [ ] 10. Write unit tests for discover.go <!-- id:3wwt01i -->
+- [x] 10. Write unit tests for discover.go <!-- id:3wwt01i -->
   - Test DiscoverForDirectory() filtering, deduplication, and symlink handling
   - Blocked-by: 3wwt01d (Create session discovery in internal/agents/kiro/logs/discover.go), 3wwt01f (Create test utilities in internal/agents/kiro/logs/testutil_test.go)
   - Stream: 1
   - Requirements: [2.1](requirements.md#2.1), [2.2](requirements.md#2.2), [2.3](requirements.md#2.3), [2.6](requirements.md#2.6), [2.7](requirements.md#2.7), [2.8](requirements.md#2.8)
 
-- [ ] 11. Write unit tests for session.go <!-- id:3wwt01j -->
+- [x] 11. Write unit tests for session.go <!-- id:3wwt01j -->
   - Test GetSession() retrieval and ErrSessionNotFound
   - Blocked-by: 3wwt01e (Create session retrieval in internal/agents/kiro/logs/session.go), 3wwt01f (Create test utilities in internal/agents/kiro/logs/testutil_test.go)
   - Stream: 1

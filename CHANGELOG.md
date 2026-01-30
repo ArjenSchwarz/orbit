@@ -9,6 +9,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Unit tests for Kiro SQLite log parsing (`internal/agents/kiro/logs/`)
+  - `path_test.go`: Tests for `DBPath()` OS detection and `normalizePath()` behavior including symlink handling
+  - `db_test.go`: Tests for `openConn()`, `verifySchema()`, `classifyError()`, read-only mode, and ErrSchemaInvalid/ErrDatabaseLocked classification
+  - `discover_test.go`: Tests for `DiscoverForDirectory()` filtering, deduplication, symlink resolution, and path normalization
+  - `session_test.go`: Tests for `GetSession()` retrieval, ErrSessionNotFound, symlink resolution, and large/empty JSON handling
+
 - Kiro session operations in `internal/agents/kiro/logs/`
   - `DiscoverForDirectory()` for session discovery with path normalization and symlink support
   - `GetSession()` for retrieving session JSON blobs from SQLite database
