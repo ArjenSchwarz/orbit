@@ -69,16 +69,14 @@ func TestAgent_DefaultSessionDir(t *testing.T) {
 	}
 }
 
-func TestAgent_ImplementsSessionExporter(t *testing.T) {
+func TestAgent_DoesNotImplementSessionExporter(t *testing.T) {
 	agent := New(agents.AgentConfig{})
 
-	// Kiro implements SessionExporter interface
-	exporter, ok := agent.(agents.SessionExporter)
-	if !ok {
-		t.Fatal("Kiro agent should implement SessionExporter interface")
-	}
-	if exporter == nil {
-		t.Fatal("SessionExporter is nil")
+	// Kiro should NOT implement SessionExporter interface anymore
+	// (ExportSession was removed in favor of reading SQLite logs directly)
+	_, ok := agent.(agents.SessionExporter)
+	if ok {
+		t.Fatal("Kiro agent should NOT implement SessionExporter interface")
 	}
 }
 
@@ -379,62 +377,3 @@ func TestAgent_ArgOrder(t *testing.T) {
 	}
 }
 
-func TestAgent_ExportSession_BuildsCorrectArgs(t *testing.T) {
-	agent := New(agents.AgentConfig{}).(*Agent)
-
-	// Test the export session args building
-	args := agent.buildExportArgs("test-output.json")
-
-	// Should have chat command
-	if len(args) < 1 || args[0] != "chat" {
-		t.Errorf("Expected args to start with 'chat', got %v", args)
-	}
-
-	// Should have --no-interactive
-	if !slices.Contains(args, "--no-interactive") {
-		t.Errorf("Expected --no-interactive in args, got %v", args)
-	}
-
-	// Should have --resume
-	if !slices.Contains(args, "--resume") {
-		t.Errorf("Expected --resume in args, got %v", args)
-	}
-
-	// Should NOT have --trust-all-tools when AutoApprove is false
-	if slices.Contains(args, "--trust-all-tools") {
-		t.Errorf("Should not have --trust-all-tools without AutoApprove, got %v", args)
-	}
-
-	// Should have the save command with quoted filename
-	foundSaveCmd := false
-	for _, arg := range args {
-		if arg == `/chat save "test-output.json"` {
-			foundSaveCmd = true
-			break
-		}
-	}
-	if !foundSaveCmd {
-		t.Errorf(`Expected '/chat save "test-output.json"' in args, got %v`, args)
-	}
-}
-
-func TestAgent_ExportSession_WithAutoApprove(t *testing.T) {
-	agent := New(agents.AgentConfig{
-		AutoApprove: true,
-	}).(*Agent)
-
-	args := agent.buildExportArgs("test-output.json")
-
-	// Should have --trust-all-tools when AutoApprove is true
-	if !slices.Contains(args, "--trust-all-tools") {
-		t.Errorf("Expected --trust-all-tools in args with AutoApprove, got %v", args)
-	}
-
-	// Should still have all required args
-	if !slices.Contains(args, "--no-interactive") {
-		t.Errorf("Expected --no-interactive in args, got %v", args)
-	}
-	if !slices.Contains(args, "--resume") {
-		t.Errorf("Expected --resume in args, got %v", args)
-	}
-}

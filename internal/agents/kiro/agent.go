@@ -24,10 +24,7 @@ type Agent struct {
 }
 
 // Compile-time interface checks.
-var (
-	_ agents.Agent           = (*Agent)(nil)
-	_ agents.SessionExporter = (*Agent)(nil)
-)
+var _ agents.Agent = (*Agent)(nil)
 
 // New creates a new Kiro agent.
 func New(cfg agents.AgentConfig) agents.Agent {
@@ -88,18 +85,6 @@ func (a *Agent) Resume(ctx context.Context, sessionID string, opts agents.RunOpt
 	return a.execute(ctx, opts, true)
 }
 
-// ExportSession implements agents.SessionExporter.
-// This runs a follow-up command to save the session since Kiro doesn't store logs automatically.
-// Called by the orchestrator after each phase completes.
-func (a *Agent) ExportSession(ctx context.Context, filename string) error {
-	args := a.buildExportArgs(filename)
-
-	cmd := exec.CommandContext(ctx, a.cliPath, args...)
-	cmd.Stdin = nil // Explicitly close stdin so Kiro doesn't wait for input
-
-	return cmd.Run()
-}
-
 // buildArgs constructs the command-line arguments for a Kiro session.
 func (a *Agent) buildArgs(opts agents.RunOptions, resume bool) []string {
 	prompt := opts.Prompt
@@ -134,21 +119,6 @@ func (a *Agent) buildArgs(opts agents.RunOptions, resume bool) []string {
 	// Prompt comes last
 	args = append(args, prompt)
 
-	return args
-}
-
-// buildExportArgs constructs the command-line arguments for exporting a session.
-func (a *Agent) buildExportArgs(filename string) []string {
-	// Export uses: kiro-cli chat --no-interactive "/chat save <filename>" --resume
-	// With --trust-all-tools for automatic approval when AutoApprove is enabled
-	// Quote the filename to handle paths with spaces or special characters
-	args := []string{"chat", "--no-interactive"}
-
-	if a.config.AutoApprove {
-		args = append(args, "--trust-all-tools")
-	}
-
-	args = append(args, "/chat save \""+filename+"\"", "--resume")
 	return args
 }
 

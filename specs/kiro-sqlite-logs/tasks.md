@@ -8,25 +8,28 @@ references:
 
 ## Setup
 
-- [ ] 1. Add modernc.org/sqlite dependency to go.mod <!-- id:3wwt01s -->
+- [x] 1. Add modernc.org/sqlite dependency to go.mod <!-- id:3wwt01s -->
   - Run go get modernc.org/sqlite
   - Pure Go SQLite driver
   - No CGO required
   - Stream: 1
+  - Owner: agent-stream-1
 
 ## Foundation
 
-- [ ] 2. Create error types in internal/agents/kiro/logs/errors.go <!-- id:3wwt01a -->
+- [x] 2. Create error types in internal/agents/kiro/logs/errors.go <!-- id:3wwt01a -->
   - Define ErrDatabaseNotFound, ErrSchemaInvalid, ErrSessionNotFound, ErrDatabaseLocked
   - Stream: 1
+  - Owner: agent-stream-1
   - Requirements: [1.3](requirements.md#1.3), [1.5](requirements.md#1.5), [3.3](requirements.md#3.3), [7.1](requirements.md#7.1), [7.2](requirements.md#7.2), [7.3](requirements.md#7.3), [7.4](requirements.md#7.4)
 
-- [ ] 3. Create path resolution in internal/agents/kiro/logs/path.go <!-- id:3wwt01b -->
+- [x] 3. Create path resolution in internal/agents/kiro/logs/path.go <!-- id:3wwt01b -->
   - Implement DBPath() with OS detection (darwin/linux/windows) and normalizePath() for symlink handling
   - Use runtime.GOOS switch
   - os.UserConfigDir() for Windows
   - filepath.EvalSymlinks for symlink resolution
   - Stream: 1
+  - Owner: agent-stream-1
   - Requirements: [1.1](requirements.md#1.1), [1.2](requirements.md#1.2), [2.1](requirements.md#2.1), [2.2](requirements.md#2.2)
 
 - [ ] 4. Create DB struct and connection management in internal/agents/kiro/logs/db.go <!-- id:3wwt01c -->
@@ -103,10 +106,11 @@ references:
   - Stream: 2
   - Requirements: [5.1](requirements.md#5.1), [5.2](requirements.md#5.2)
 
-- [ ] 13. Remove ExportSession from Kiro agent <!-- id:3wwt01l -->
+- [x] 13. Remove ExportSession from Kiro agent <!-- id:3wwt01l -->
   - Delete ExportSession() method and SessionExporter interface implementation
   - Orbit interface check will naturally skip Kiro
   - Stream: 2
+  - Owner: agent-stream-2
   - Requirements: [5.3](requirements.md#5.3), [5.4](requirements.md#5.4)
 
 - [ ] 14. Write integration tests for Kiro agent <!-- id:3wwt01m -->

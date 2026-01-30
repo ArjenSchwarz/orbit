@@ -9,6 +9,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Kiro SQLite log parsing foundation (`internal/agents/kiro/logs/`)
+  - `modernc.org/sqlite` pure Go SQLite driver dependency (CGO-free)
+  - Error types: `ErrDatabaseNotFound`, `ErrSchemaInvalid`, `ErrSessionNotFound`, `ErrDatabaseLocked`
+  - OS-specific database path resolution via `DBPath()` (macOS, Linux, Windows)
+  - Path normalization with symlink resolution via `normalizePath()`
+
+### Removed
+
+- `ExportSession()` method from Kiro agent - replaced by direct SQLite database access
+- `SessionExporter` interface implementation from Kiro agent
+
+### Added
+
 - Feature spec for Kiro SQLite log parsing (`specs/kiro-sqlite-logs/`)
   - Requirements document defining SQLite database access, session discovery, and Apsis/Orbit integration
   - Design document with architecture, components, error handling, and testing strategy
