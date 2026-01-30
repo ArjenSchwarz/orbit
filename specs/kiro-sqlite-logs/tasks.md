@@ -44,7 +44,7 @@ references:
 
 ## Session Operations
 
-- [ ] 5. Create session discovery in internal/agents/kiro/logs/discover.go <!-- id:3wwt01d -->
+- [x] 5. Create session discovery in internal/agents/kiro/logs/discover.go <!-- id:3wwt01d -->
   - Implement DiscoverForDirectory() and querySessions() with deduplication
   - Query both normalized and resolved paths
   - Deduplicate by ConversationID keeping most recent UpdatedAt
@@ -53,7 +53,7 @@ references:
   - Stream: 1
   - Requirements: [2.3](requirements.md#2.3), [2.4](requirements.md#2.4), [2.5](requirements.md#2.5), [2.6](requirements.md#2.6), [2.7](requirements.md#2.7), [2.8](requirements.md#2.8)
 
-- [ ] 6. Create session retrieval in internal/agents/kiro/logs/session.go <!-- id:3wwt01e -->
+- [x] 6. Create session retrieval in internal/agents/kiro/logs/session.go <!-- id:3wwt01e -->
   - Implement GetSession() and querySessionValue() returning bytes.Reader
   - Read entire JSON blob into memory
   - Return bytes.NewReader for io.Reader interface

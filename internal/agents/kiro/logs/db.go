@@ -32,8 +32,6 @@ func NewTestDB(path string) *DB {
 
 // openConn opens a connection, configures it, and verifies schema.
 // The caller is responsible for closing the returned connection.
-//
-//nolint:unused // Used by discover.go and session.go (tasks 5, 6)
 func (d *DB) openConn(ctx context.Context) (*sql.DB, error) {
 	// Escape path for URI - handles paths with ?, #, or other special chars
 	// Replace backslashes with forward slashes for Windows compatibility in URI
@@ -67,8 +65,6 @@ func (d *DB) openConn(ctx context.Context) (*sql.DB, error) {
 }
 
 // verifySchema checks that the conversations_v2 table exists.
-//
-//nolint:unused // Used by openConn above
 func (d *DB) verifySchema(ctx context.Context, db *sql.DB) error {
 	var name string
 	err := db.QueryRowContext(ctx, `
@@ -87,8 +83,6 @@ func (d *DB) verifySchema(ctx context.Context, db *sql.DB) error {
 
 // classifyError converts SQLite-specific errors to application errors.
 // Uses sqlite.Error type with error codes for robust detection.
-//
-//nolint:unused // Used by openConn and verifySchema above, and discover.go/session.go
 func classifyError(err error) error {
 	if err == nil {
 		return nil

@@ -55,8 +55,6 @@ func DBPath() (string, error) {
 // The normalized path uses filepath.Abs followed by filepath.Clean.
 // If the symlink-resolved path differs from normalized, it is returned as the second value.
 // If symlink resolution fails or produces the same path, resolved is empty.
-//
-//nolint:unused // Used by db.go (task 4) in next phase
 func normalizePath(dir string) (normalized string, resolved string, err error) {
 	normalized, err = filepath.Abs(dir)
 	if err != nil {

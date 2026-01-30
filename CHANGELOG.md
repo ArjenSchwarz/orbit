@@ -9,6 +9,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Kiro session operations in `internal/agents/kiro/logs/`
+  - `DiscoverForDirectory()` for session discovery with path normalization and symlink support
+  - `GetSession()` for retrieving session JSON blobs from SQLite database
+  - `SessionMetadata` type containing ConversationID, Directory, timestamps, and Size
+  - Deduplication by ConversationID keeping most recent UpdatedAt
+  - Results sorted by updated_at DESC (most recent first)
+
 - Kiro SQLite log parsing foundation (`internal/agents/kiro/logs/`)
   - `modernc.org/sqlite` pure Go SQLite driver dependency (CGO-free)
   - Error types: `ErrDatabaseNotFound`, `ErrSchemaInvalid`, `ErrSessionNotFound`, `ErrDatabaseLocked`
