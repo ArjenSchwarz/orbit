@@ -9,6 +9,64 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- Update Apsis description in CLAUDE.md and README.md to reflect support for Claude Code (JSONL), Codex (JSONL), and Kiro (SQLite) sessions
+
+### Added
+
+- Apsis Kiro session integration (`cmd/apsis/`)
+  - `listKiroSessions()` discovers Kiro sessions from SQLite for current working directory
+  - `resolveKiroSession()` retrieves Kiro session JSON by session ID
+  - `listAllSessions()` now includes Kiro sessions alongside Claude and Codex
+  - `resolveInput()` searches Kiro database after Claude and Codex lookups
+  - Sessions display with `[kiro]` source indicator in session listings
+  - Graceful fallback when Kiro database unavailable (returns empty, logs warning)
+  - Unit tests for session listing, resolution, and error handling
+
+- Kiro agent integration with SQLite session discovery (`internal/agents/kiro/`)
+  - `DiscoverSessions()` now queries Kiro's SQLite database for sessions matching the project directory
+  - Converts `logs.SessionMetadata` to `agents.SessionInfo` format with proper field mapping
+  - Gracefully handles missing Kiro database (returns nil, nil - not an error)
+  - `DB.Path()` method exposed for testing purposes
+  - Integration tests verifying SQLite-based session discovery, empty results, and SessionInfo field population
+
+- Unit tests for Kiro SQLite log parsing (`internal/agents/kiro/logs/`)
+  - `path_test.go`: Tests for `DBPath()` OS detection and `normalizePath()` behavior including symlink handling
+  - `db_test.go`: Tests for `openConn()`, `verifySchema()`, `classifyError()`, read-only mode, and ErrSchemaInvalid/ErrDatabaseLocked classification
+  - `discover_test.go`: Tests for `DiscoverForDirectory()` filtering, deduplication, symlink resolution, and path normalization
+  - `session_test.go`: Tests for `GetSession()` retrieval, ErrSessionNotFound, symlink resolution, and large/empty JSON handling
+
+- Kiro session operations in `internal/agents/kiro/logs/`
+  - `DiscoverForDirectory()` for session discovery with path normalization and symlink support
+  - `GetSession()` for retrieving session JSON blobs from SQLite database
+  - `SessionMetadata` type containing ConversationID, Directory, timestamps, and Size
+  - Deduplication by ConversationID keeping most recent UpdatedAt
+  - Results sorted by updated_at DESC (most recent first)
+
+- Kiro SQLite log parsing foundation (`internal/agents/kiro/logs/`)
+  - `modernc.org/sqlite` pure Go SQLite driver dependency (CGO-free)
+  - Error types: `ErrDatabaseNotFound`, `ErrSchemaInvalid`, `ErrSessionNotFound`, `ErrDatabaseLocked`
+  - OS-specific database path resolution via `DBPath()` (macOS, Linux, Windows)
+  - Path normalization with symlink resolution via `normalizePath()`
+  - `DB` struct with `NewTestDB()` and `DefaultDB()` for connection management
+  - Schema verification via `sqlite_master` query for `conversations_v2` table
+  - SQLite error classification (`classifyError()`) for BUSY, LOCKED, READONLY, and PERM errors
+  - Test utilities: `createTestDB()`, `insertSession()`, `insertSessionWithTimes()`, `createTestDBWithoutSchema()`
+
+### Removed
+
+- `ExportSession()` method from Kiro agent - replaced by direct SQLite database access
+- `SessionExporter` interface implementation from Kiro agent
+
+### Added
+
+- Feature spec for Kiro SQLite log parsing (`specs/kiro-sqlite-logs/`)
+  - Requirements document defining SQLite database access, session discovery, and Apsis/Orbit integration
+  - Design document with architecture, components, error handling, and testing strategy
+  - Decision log with 12 architectural decisions (SQLite driver choice, connection lifecycle, deduplication, etc.)
+  - Task list with 19 implementation tasks across 2 parallel work streams
+
+### Changed
+
 - Variant session recovery now preserves completed variants when starting a new run - only unfinished variants (pending, running, failed, canceled) are cleaned up and recreated
 
 ### Added

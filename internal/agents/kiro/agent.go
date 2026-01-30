@@ -4,11 +4,13 @@ package kiro
 import (
 	"bytes"
 	"context"
+	"errors"
 	"os"
 	"os/exec"
 	"time"
 
 	"github.com/arjenschwarz/orbit/internal/agents"
+	"github.com/arjenschwarz/orbit/internal/agents/kiro/logs"
 )
 
 const defaultPrompt = "Run /next-task --phase and when complete run /commit"
@@ -24,10 +26,7 @@ type Agent struct {
 }
 
 // Compile-time interface checks.
-var (
-	_ agents.Agent           = (*Agent)(nil)
-	_ agents.SessionExporter = (*Agent)(nil)
-)
+var _ agents.Agent = (*Agent)(nil)
 
 // New creates a new Kiro agent.
 func New(cfg agents.AgentConfig) agents.Agent {
@@ -70,10 +69,30 @@ func (a *Agent) DefaultSessionDir() string {
 }
 
 // DiscoverSessions lists sessions for a given project directory.
-// Kiro does not store sessions automatically, so this always returns nil.
+// Sessions are retrieved from Kiro's SQLite database.
 func (a *Agent) DiscoverSessions(ctx context.Context, projectDir string) ([]agents.SessionInfo, error) {
-	// Kiro doesn't have automatic session storage per Decision 7
-	return nil, nil
+	sessions, err := logs.DiscoverForDirectory(ctx, projectDir)
+	if err != nil {
+		if errors.Is(err, logs.ErrDatabaseNotFound) {
+			// Kiro not installed or never used, not an error
+			return nil, nil
+		}
+		return nil, err
+	}
+
+	result := make([]agents.SessionInfo, len(sessions))
+	for i, s := range sessions {
+		result[i] = agents.SessionInfo{
+			ID:        s.ConversationID,
+			Agent:     "kiro",
+			Path:      "", // No filesystem path - sessions are in SQLite
+			CreatedAt: s.CreatedAt,
+			Size:      s.Size,
+			Project:   s.Directory,
+		}
+	}
+
+	return result, nil
 }
 
 // Run executes a prompt in a new session.
@@ -86,18 +105,6 @@ func (a *Agent) Run(ctx context.Context, opts agents.RunOptions) (*agents.RunRes
 func (a *Agent) Resume(ctx context.Context, sessionID string, opts agents.RunOptions) (*agents.RunResult, error) {
 	opts.SessionID = sessionID
 	return a.execute(ctx, opts, true)
-}
-
-// ExportSession implements agents.SessionExporter.
-// This runs a follow-up command to save the session since Kiro doesn't store logs automatically.
-// Called by the orchestrator after each phase completes.
-func (a *Agent) ExportSession(ctx context.Context, filename string) error {
-	args := a.buildExportArgs(filename)
-
-	cmd := exec.CommandContext(ctx, a.cliPath, args...)
-	cmd.Stdin = nil // Explicitly close stdin so Kiro doesn't wait for input
-
-	return cmd.Run()
 }
 
 // buildArgs constructs the command-line arguments for a Kiro session.
@@ -134,21 +141,6 @@ func (a *Agent) buildArgs(opts agents.RunOptions, resume bool) []string {
 	// Prompt comes last
 	args = append(args, prompt)
 
-	return args
-}
-
-// buildExportArgs constructs the command-line arguments for exporting a session.
-func (a *Agent) buildExportArgs(filename string) []string {
-	// Export uses: kiro-cli chat --no-interactive "/chat save <filename>" --resume
-	// With --trust-all-tools for automatic approval when AutoApprove is enabled
-	// Quote the filename to handle paths with spaces or special characters
-	args := []string{"chat", "--no-interactive"}
-
-	if a.config.AutoApprove {
-		args = append(args, "--trust-all-tools")
-	}
-
-	args = append(args, "/chat save \""+filename+"\"", "--resume")
 	return args
 }
 
