@@ -99,7 +99,7 @@ references:
 
 ## Agent Integration
 
-- [ ] 12. Update Kiro agent DiscoverSessions in internal/agents/kiro/agent.go <!-- id:3wwt01k -->
+- [x] 12. Update Kiro agent DiscoverSessions in internal/agents/kiro/agent.go <!-- id:3wwt01k -->
   - Replace nil return with logs.DiscoverForDirectory() call
   - Convert SessionMetadata to agents.SessionInfo
   - Blocked-by: 3wwt01d (Create session discovery in internal/agents/kiro/logs/discover.go)
@@ -113,7 +113,7 @@ references:
   - Owner: agent-stream-2
   - Requirements: [5.3](requirements.md#5.3), [5.4](requirements.md#5.4)
 
-- [ ] 14. Write integration tests for Kiro agent <!-- id:3wwt01m -->
+- [x] 14. Write integration tests for Kiro agent <!-- id:3wwt01m -->
   - Test DiscoverSessions() with SQLite
   - Blocked-by: 3wwt01k (Update Kiro agent DiscoverSessions in internal/agents/kiro/agent.go)
   - Stream: 2
@@ -121,7 +121,7 @@ references:
 
 ## Apsis Integration
 
-- [ ] 15. Add listKiroSessions in cmd/apsis/main.go <!-- id:3wwt01n -->
+- [x] 15. Add listKiroSessions in cmd/apsis/main.go <!-- id:3wwt01n -->
   - Implement function to list Kiro sessions from SQLite for current directory
   - Return Source: kiro in SessionInfo
   - Handle ErrDatabaseNotFound gracefully
@@ -129,26 +129,26 @@ references:
   - Stream: 2
   - Requirements: [4.1](requirements.md#4.1), [4.2](requirements.md#4.2), [4.6](requirements.md#4.6), [4.7](requirements.md#4.7)
 
-- [ ] 16. Update listAllSessions in cmd/apsis/main.go <!-- id:3wwt01o -->
+- [x] 16. Update listAllSessions in cmd/apsis/main.go <!-- id:3wwt01o -->
   - Add Kiro sessions to combined listing alongside Claude and Codex
   - Blocked-by: 3wwt01n (Add listKiroSessions in cmd/apsis/main.go)
   - Stream: 2
   - Requirements: [4.1](requirements.md#4.1)
 
-- [ ] 17. Add resolveKiroSession in cmd/apsis/main.go <!-- id:3wwt01p -->
+- [x] 17. Add resolveKiroSession in cmd/apsis/main.go <!-- id:3wwt01p -->
   - Implement function to resolve Kiro session ID from SQLite
   - Blocked-by: 3wwt01e (Create session retrieval in internal/agents/kiro/logs/session.go)
   - Stream: 2
   - Requirements: [4.3](requirements.md#4.3)
 
-- [ ] 18. Update resolveInput in cmd/apsis/main.go <!-- id:3wwt01q -->
+- [x] 18. Update resolveInput in cmd/apsis/main.go <!-- id:3wwt01q -->
   - Add Kiro session lookup after Claude and Codex checks
   - Handle ErrSessionNotFound to continue searching
   - Blocked-by: 3wwt01p (Add resolveKiroSession in cmd/apsis/main.go)
   - Stream: 2
   - Requirements: [4.3](requirements.md#4.3), [4.4](requirements.md#4.4), [4.5](requirements.md#4.5)
 
-- [ ] 19. Write tests for Apsis Kiro integration <!-- id:3wwt01r -->
+- [x] 19. Write tests for Apsis Kiro integration <!-- id:3wwt01r -->
   - Test listKiroSessions(), resolveKiroSession(), updated resolveInput()
   - Blocked-by: 3wwt01n (Add listKiroSessions in cmd/apsis/main.go), 3wwt01o (Update listAllSessions in cmd/apsis/main.go), 3wwt01p (Add resolveKiroSession in cmd/apsis/main.go), 3wwt01q (Update resolveInput in cmd/apsis/main.go)
   - Stream: 2

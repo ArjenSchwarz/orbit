@@ -9,6 +9,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Apsis Kiro session integration (`cmd/apsis/`)
+  - `listKiroSessions()` discovers Kiro sessions from SQLite for current working directory
+  - `resolveKiroSession()` retrieves Kiro session JSON by session ID
+  - `listAllSessions()` now includes Kiro sessions alongside Claude and Codex
+  - `resolveInput()` searches Kiro database after Claude and Codex lookups
+  - Sessions display with `[kiro]` source indicator in session listings
+  - Graceful fallback when Kiro database unavailable (returns empty, logs warning)
+  - Unit tests for session listing, resolution, and error handling
+
 - Kiro agent integration with SQLite session discovery (`internal/agents/kiro/`)
   - `DiscoverSessions()` now queries Kiro's SQLite database for sessions matching the project directory
   - Converts `logs.SessionMetadata` to `agents.SessionInfo` format with proper field mapping

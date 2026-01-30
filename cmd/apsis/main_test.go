@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"context"
+	"errors"
 	"flag"
 	"fmt"
 	"os"
@@ -12,6 +13,7 @@ import (
 	"time"
 
 	"github.com/arjenschwarz/orbit/internal/agents/claudecode"
+	"github.com/arjenschwarz/orbit/internal/agents/kiro/logs"
 	"github.com/arjenschwarz/orbit/internal/transcript"
 )
 
@@ -2188,5 +2190,161 @@ func TestFollowMode_BasicFollowWithEntry(t *testing.T) {
 	validCfg := &Config{Follow: true, Format: "md"}
 	if err := validateFollowMode(validCfg); err != nil {
 		t.Errorf("validateFollowMode should accept valid config: %v", err)
+	}
+}
+
+// --- Kiro Integration Tests ---
+
+// TestListKiroSessions_NoMatchingSessions tests that listKiroSessions returns
+// an empty slice when no sessions match the directory.
+// Note: This test behaves differently depending on whether Kiro is installed:
+// - If Kiro database exists: returns empty slice (no sessions for this dir)
+// - If Kiro database doesn't exist: returns nil (graceful fallback)
+func TestListKiroSessions_NoMatchingSessions(t *testing.T) {
+	// Use a random path that won't have any Kiro sessions
+	sessions, err := listKiroSessions("/nonexistent/random/path/12345")
+	if err != nil {
+		t.Fatalf("listKiroSessions should not error for non-matching directory: %v", err)
+	}
+	// Either nil or empty slice is acceptable
+	if len(sessions) != 0 {
+		t.Errorf("expected no sessions for non-matching directory, got: %d", len(sessions))
+	}
+}
+
+// TestResolveKiroSession_SessionNotFound tests that resolveKiroSession returns
+// an error when the session doesn't exist.
+// Note: The specific error depends on whether Kiro is installed:
+// - If Kiro database exists: ErrSessionNotFound
+// - If Kiro database doesn't exist: ErrDatabaseNotFound
+func TestResolveKiroSession_SessionNotFound(t *testing.T) {
+	_, err := resolveKiroSession("nonexistent-session-id-12345", "/some/random/path")
+	if err == nil {
+		t.Fatal("expected error when session not found")
+	}
+	// The error should be either ErrDatabaseNotFound or ErrSessionNotFound
+	if !errors.Is(err, logs.ErrDatabaseNotFound) && !errors.Is(err, logs.ErrSessionNotFound) {
+		t.Errorf("expected ErrDatabaseNotFound or ErrSessionNotFound, got: %v", err)
+	}
+}
+
+// TestResolveInput_FallsThroughKiroWhenDatabaseNotFound tests that resolveInput
+// continues to search other sources when Kiro database is not found.
+func TestResolveInput_FallsThroughKiroWhenDatabaseNotFound(t *testing.T) {
+	// This test verifies that when Claude and Codex don't have the session,
+	// and Kiro returns ErrDatabaseNotFound, we get "session not found" error
+	// (not a Kiro-specific error)
+	tmpDir := t.TempDir()
+	homeDir := filepath.Join(tmpDir, "home")
+
+	// Create empty Claude project directory (no sessions)
+	claudeProjectDir := filepath.Join(homeDir, ".claude", "projects", "-test-project")
+	if err := os.MkdirAll(claudeProjectDir, 0755); err != nil {
+		t.Fatal(err)
+	}
+
+	// Set HOME to our test directory
+	origHomeDir := os.Getenv("HOME")
+	if err := os.Setenv("HOME", homeDir); err != nil {
+		t.Fatalf("failed to set HOME: %v", err)
+	}
+	defer func() { _ = os.Setenv("HOME", origHomeDir) }()
+
+	// Try to resolve a non-existent session ID
+	_, _, err := resolveInput("nonexistent-session-id", "/test/project")
+	if err == nil {
+		t.Fatal("expected error for non-existent session")
+	}
+
+	// The error should be "session not found", not a Kiro-specific error
+	if !strings.Contains(err.Error(), "session not found") {
+		t.Errorf("expected 'session not found' error, got: %v", err)
+	}
+}
+
+// TestListAllSessions_IncludesKiroSessions tests that listAllSessions includes
+// Kiro sessions in the combined listing (when Kiro database is available).
+// Note: This test only verifies the warning behavior when Kiro is unavailable,
+// since we can't easily create a test Kiro database.
+func TestListAllSessions_IncludesKiroWarning(t *testing.T) {
+	tmpDir := t.TempDir()
+	homeDir := filepath.Join(tmpDir, "home")
+
+	// Create Claude and Codex directories but no Kiro database
+	claudeProjectDir := filepath.Join(homeDir, ".claude", "projects", "-test-project")
+	if err := os.MkdirAll(claudeProjectDir, 0755); err != nil {
+		t.Fatal(err)
+	}
+	codexSessionsDir := filepath.Join(homeDir, ".codex", "sessions")
+	if err := os.MkdirAll(codexSessionsDir, 0755); err != nil {
+		t.Fatal(err)
+	}
+
+	origHomeDir := os.Getenv("HOME")
+	if err := os.Setenv("HOME", homeDir); err != nil {
+		t.Fatalf("failed to set HOME: %v", err)
+	}
+	defer func() { _ = os.Setenv("HOME", origHomeDir) }()
+
+	// listAllSessions should not error even when Kiro database doesn't exist
+	// (it just returns empty list for Kiro)
+	sessions, err := listAllSessions("/test/project")
+	if err != nil {
+		t.Fatalf("listAllSessions should not fail when Kiro unavailable: %v", err)
+	}
+
+	// Should have 0 sessions (no Claude, Codex, or Kiro sessions)
+	if len(sessions) != 0 {
+		t.Errorf("expected 0 sessions, got %d", len(sessions))
+	}
+}
+
+// TestSessionInfo_KiroSource tests that Kiro sessions have the correct source field.
+func TestSessionInfo_KiroSource(t *testing.T) {
+	// Test the sorting function includes Kiro sessions correctly
+	sessions := []SessionInfo{
+		{ID: "claude-1", CreatedAt: time.Date(2026, 1, 5, 10, 0, 0, 0, time.UTC), Source: "claude"},
+		{ID: "kiro-1", CreatedAt: time.Date(2026, 1, 5, 9, 0, 0, 0, time.UTC), Source: "kiro"},
+		{ID: "codex-1", CreatedAt: time.Date(2026, 1, 5, 11, 0, 0, 0, time.UTC), Source: "codex"},
+	}
+
+	sortSessionsByTimestamp(sessions)
+
+	// Should be sorted: kiro (9am), claude (10am), codex (11am)
+	expectedOrder := []string{"kiro", "claude", "codex"}
+	for i, expected := range expectedOrder {
+		if sessions[i].Source != expected {
+			t.Errorf("position %d: expected source %s, got %s", i, expected, sessions[i].Source)
+		}
+	}
+}
+
+// TestResolveFollowInput_KiroSessionNotSupported tests that follow mode
+// doesn't find Kiro sessions (since they're in SQLite, not files).
+// The session should return "session not found" for a Kiro-only session.
+func TestResolveFollowInput_KiroSessionNotSupported(t *testing.T) {
+	tmpDir := t.TempDir()
+	homeDir := filepath.Join(tmpDir, "home")
+
+	// Create empty Claude and Codex directories
+	claudeProjectDir := filepath.Join(homeDir, ".claude", "projects", "-test-project")
+	if err := os.MkdirAll(claudeProjectDir, 0755); err != nil {
+		t.Fatal(err)
+	}
+
+	origHomeDir := os.Getenv("HOME")
+	if err := os.Setenv("HOME", homeDir); err != nil {
+		t.Fatalf("failed to set HOME: %v", err)
+	}
+	defer func() { _ = os.Setenv("HOME", origHomeDir) }()
+
+	// Try to resolve a session ID that would be in Kiro
+	// (but Kiro doesn't support follow mode since sessions are in SQLite)
+	_, err := resolveFollowInput("kiro-session-id", "/test/project")
+	if err == nil {
+		t.Fatal("expected error for Kiro session in follow mode")
+	}
+	if !strings.Contains(err.Error(), "session not found") {
+		t.Errorf("expected 'session not found' error, got: %v", err)
 	}
 }

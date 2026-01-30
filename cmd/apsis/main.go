@@ -6,6 +6,7 @@ import (
 	"bufio"
 	"context"
 	"encoding/json"
+	"errors"
 	"flag"
 	"fmt"
 	"io"
@@ -20,6 +21,7 @@ import (
 	"time"
 
 	"github.com/arjenschwarz/orbit/internal/agents/claudecode"
+	"github.com/arjenschwarz/orbit/internal/agents/kiro/logs"
 	"github.com/arjenschwarz/orbit/internal/transcript"
 )
 
@@ -238,7 +240,7 @@ func isInputFromPipe() bool {
 }
 
 // resolveInput determines the input source and returns a reader and session ID.
-// It checks Claude location first, then Codex location.
+// It checks Claude location first, then Codex, then Kiro.
 func resolveInput(arg string, projectPath string) (io.ReadCloser, string, error) {
 	// If no argument, read from stdin
 	if arg == "" {
@@ -259,7 +261,7 @@ func resolveInput(arg string, projectPath string) (io.ReadCloser, string, error)
 		return f, sessionID, nil
 	}
 
-	// Treat as session ID - check Claude location first, then Codex
+	// Treat as session ID - check Claude location first, then Codex, then Kiro
 	homeDir, err := os.UserHomeDir()
 	if err != nil {
 		return nil, "", fmt.Errorf("failed to get home directory: %w", err)
@@ -285,7 +287,17 @@ func resolveInput(arg string, projectPath string) (io.ReadCloser, string, error)
 		return f, arg, nil
 	}
 
-	// Not found in either location
+	// Try Kiro location third
+	reader, err := resolveKiroSession(arg, projectPath)
+	if err == nil {
+		return io.NopCloser(reader), arg, nil
+	}
+	// Only continue searching if session not found or database not available
+	if !errors.Is(err, logs.ErrSessionNotFound) && !errors.Is(err, logs.ErrDatabaseNotFound) {
+		return nil, "", fmt.Errorf("kiro lookup: %w", err)
+	}
+
+	// Not found in any location
 	return nil, "", fmt.Errorf("session not found: %s", arg)
 }
 
@@ -580,7 +592,37 @@ func listClaudeSessions(projectPath string) ([]SessionInfo, error) {
 	return sessions, nil
 }
 
-// listAllSessions returns sessions from both Claude and Codex locations, merged and sorted.
+// listKiroSessions returns all Kiro sessions for the current working directory.
+// Returns nil with no error if the Kiro database is not found (Kiro not installed).
+func listKiroSessions(cwd string) ([]SessionInfo, error) {
+	sessions, err := logs.DiscoverForDirectory(context.Background(), cwd)
+	if err != nil {
+		if errors.Is(err, logs.ErrDatabaseNotFound) {
+			return nil, nil // Kiro not available, not an error
+		}
+		return nil, fmt.Errorf("discover kiro sessions: %w", err)
+	}
+
+	result := make([]SessionInfo, len(sessions))
+	for i, s := range sessions {
+		result[i] = SessionInfo{
+			ID:        s.ConversationID,
+			CreatedAt: s.UpdatedAt, // Use updated_at for sorting consistency
+			Size:      s.Size,
+			Source:    "kiro",
+		}
+	}
+
+	return result, nil
+}
+
+// resolveKiroSession attempts to find a Kiro session by ID in the given directory.
+// Returns an io.Reader for the session JSON, or ErrSessionNotFound/ErrDatabaseNotFound.
+func resolveKiroSession(sessionID, cwd string) (io.Reader, error) {
+	return logs.GetSession(context.Background(), sessionID, cwd)
+}
+
+// listAllSessions returns sessions from Claude, Codex, and Kiro locations, merged and sorted.
 func listAllSessions(projectPath string) ([]SessionInfo, error) {
 	homeDir, err := os.UserHomeDir()
 	if err != nil {
@@ -590,21 +632,29 @@ func listAllSessions(projectPath string) ([]SessionInfo, error) {
 	// Get Claude sessions
 	claudeSessions, err := listClaudeSessions(projectPath)
 	if err != nil {
-		// Log warning but continue with Codex sessions
+		// Log warning but continue with other sessions
 		fmt.Fprintf(os.Stderr, "Warning: could not list Claude sessions: %v\n", err)
 	}
 
 	// Get Codex sessions
 	codexSessions, err := listCodexSessions(homeDir)
 	if err != nil {
-		// Log warning but continue with Claude sessions
+		// Log warning but continue with other sessions
 		fmt.Fprintf(os.Stderr, "Warning: could not list Codex sessions: %v\n", err)
 	}
 
+	// Get Kiro sessions
+	kiroSessions, err := listKiroSessions(projectPath)
+	if err != nil {
+		// Log warning but continue with other sessions
+		fmt.Fprintf(os.Stderr, "Warning: could not list Kiro sessions: %v\n", err)
+	}
+
 	// Merge sessions
-	allSessions := make([]SessionInfo, 0, len(claudeSessions)+len(codexSessions))
+	allSessions := make([]SessionInfo, 0, len(claudeSessions)+len(codexSessions)+len(kiroSessions))
 	allSessions = append(allSessions, claudeSessions...)
 	allSessions = append(allSessions, codexSessions...)
+	allSessions = append(allSessions, kiroSessions...)
 
 	// Sort by timestamp (oldest first) with Claude first for ties
 	sortSessionsByTimestamp(allSessions)
