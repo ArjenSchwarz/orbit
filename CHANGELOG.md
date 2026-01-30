@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Feature spec for Kiro SQLite log parsing (`specs/kiro-sqlite-logs/`)
+  - Requirements document defining SQLite database access, session discovery, and Apsis/Orbit integration
+  - Design document with architecture, components, error handling, and testing strategy
+  - Decision log with 12 architectural decisions (SQLite driver choice, connection lifecycle, deduplication, etc.)
+  - Task list with 19 implementation tasks across 2 parallel work streams
+
 ### Changed
 
 - Variant session recovery now preserves completed variants when starting a new run - only unfinished variants (pending, running, failed, canceled) are cleaned up and recreated
