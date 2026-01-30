@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"modernc.org/sqlite"
+	sqlite3 "modernc.org/sqlite/lib"
 )
 
 // DB provides access to the Kiro SQLite database.
@@ -96,11 +97,10 @@ func classifyError(err error) error {
 	// Use driver-specific error type for reliable detection
 	var sqliteErr *sqlite.Error
 	if errors.As(err, &sqliteErr) {
-		code := sqliteErr.Code()
-		switch code {
-		case 5, 6: // SQLITE_BUSY=5, SQLITE_LOCKED=6
+		switch sqliteErr.Code() {
+		case sqlite3.SQLITE_BUSY, sqlite3.SQLITE_LOCKED:
 			return fmt.Errorf("%w: %v", ErrDatabaseLocked, err)
-		case 8, 3: // SQLITE_READONLY=8, SQLITE_PERM=3
+		case sqlite3.SQLITE_READONLY, sqlite3.SQLITE_PERM:
 			return fmt.Errorf("database access denied: %w", err)
 		}
 	}

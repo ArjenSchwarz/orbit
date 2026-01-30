@@ -11,7 +11,7 @@ import (
 //
 // Path conventions by OS:
 //   - macOS: ~/Library/Application Support/kiro-cli/data.sqlite3
-//   - Linux: ~/.local/share/kiro-cli/data.sqlite3
+//   - Linux: $XDG_DATA_HOME/kiro-cli/data.sqlite3 (defaults to ~/.local/share/kiro-cli/data.sqlite3)
 //   - Windows: %APPDATA%\kiro-cli\data.sqlite3
 //
 // Returns ErrDatabaseNotFound if the database file does not exist.
@@ -26,11 +26,16 @@ func DBPath() (string, error) {
 		}
 		base = filepath.Join(home, "Library", "Application Support", "kiro-cli")
 	case "linux":
-		home, err := os.UserHomeDir()
-		if err != nil {
-			return "", fmt.Errorf("get home directory: %w", err)
+		// Check XDG_DATA_HOME first per XDG Base Directory Specification
+		if xdgData := os.Getenv("XDG_DATA_HOME"); xdgData != "" {
+			base = filepath.Join(xdgData, "kiro-cli")
+		} else {
+			home, err := os.UserHomeDir()
+			if err != nil {
+				return "", fmt.Errorf("get home directory: %w", err)
+			}
+			base = filepath.Join(home, ".local", "share", "kiro-cli")
 		}
-		base = filepath.Join(home, ".local", "share", "kiro-cli")
 	case "windows":
 		// Windows uses %APPDATA% (Roaming AppData) for application data
 		configDir, err := os.UserConfigDir()
@@ -55,6 +60,12 @@ func DBPath() (string, error) {
 // The normalized path uses filepath.Abs followed by filepath.Clean.
 // If the symlink-resolved path differs from normalized, it is returned as the second value.
 // If symlink resolution fails or produces the same path, resolved is empty.
+//
+// Note on race conditions: If Kiro creates a session between the two queries,
+// the session will be found on the second query. This is acceptable because:
+//   - The session is still discovered (just on the fallback query)
+//   - The directory association uses whichever path matched
+//   - This race is rare in practice (requires active Kiro session during listing)
 func normalizePath(dir string) (normalized string, resolved string, err error) {
 	normalized, err = filepath.Abs(dir)
 	if err != nil {
