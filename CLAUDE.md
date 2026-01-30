@@ -7,7 +7,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 This repository contains two related CLI tools for working with AI coding agents:
 
 - **Orbit** - Orchestrates AI coding agent sessions to implement spec phases sequentially. Supports Claude Code, OpenAI Codex, AWS Kiro, GitHub Copilot, and OpenCode. Handles session lifecycle, error recovery, log management, and multi-variant comparison runs. Includes a web interface for viewing runs and transcripts.
-- **Apsis** - Converts Claude Code session transcripts from JSONL format to readable Markdown or HTML. Lists and transforms session files stored in `~/.claude/projects/`.
+- **Apsis** - Converts AI coding agent session transcripts to readable Markdown or HTML. Supports Claude Code (JSONL), OpenAI Codex (JSONL), and AWS Kiro (SQLite) sessions.
 
 ## Build and Development Commands
 
