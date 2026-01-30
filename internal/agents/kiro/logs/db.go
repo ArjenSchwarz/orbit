@@ -30,6 +30,11 @@ func NewTestDB(path string) *DB {
 	return &DB{path: path}
 }
 
+// Path returns the database path. Used for testing.
+func (d *DB) Path() string {
+	return d.path
+}
+
 // openConn opens a connection, configures it, and verifies schema.
 // The caller is responsible for closing the returned connection.
 func (d *DB) openConn(ctx context.Context) (*sql.DB, error) {

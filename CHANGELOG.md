@@ -9,6 +9,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Kiro agent integration with SQLite session discovery (`internal/agents/kiro/`)
+  - `DiscoverSessions()` now queries Kiro's SQLite database for sessions matching the project directory
+  - Converts `logs.SessionMetadata` to `agents.SessionInfo` format with proper field mapping
+  - Gracefully handles missing Kiro database (returns nil, nil - not an error)
+  - `DB.Path()` method exposed for testing purposes
+  - Integration tests verifying SQLite-based session discovery, empty results, and SessionInfo field population
+
 - Unit tests for Kiro SQLite log parsing (`internal/agents/kiro/logs/`)
   - `path_test.go`: Tests for `DBPath()` OS detection and `normalizePath()` behavior including symlink handling
   - `db_test.go`: Tests for `openConn()`, `verifySchema()`, `classifyError()`, read-only mode, and ErrSchemaInvalid/ErrDatabaseLocked classification

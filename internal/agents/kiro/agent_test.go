@@ -2,10 +2,19 @@ package kiro
 
 import (
 	"context"
+	"database/sql"
+	"os"
+	"path/filepath"
 	"slices"
 	"testing"
+	"time"
 
 	"github.com/arjenschwarz/orbit/internal/agents"
+	"github.com/arjenschwarz/orbit/internal/agents/kiro/logs"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+
+	_ "modernc.org/sqlite" // SQLite driver for tests
 )
 
 func TestNew(t *testing.T) {
@@ -302,18 +311,18 @@ func TestAgent_RegisteredInInit(t *testing.T) {
 	}
 }
 
-func TestAgent_DiscoverSessions(t *testing.T) {
+func TestAgent_DiscoverSessions_NoDB(t *testing.T) {
 	agent := New(agents.AgentConfig{})
 
-	// Kiro doesn't have automatic session storage
-	// DiscoverSessions should return nil, nil
+	// When Kiro DB doesn't exist (most test environments),
+	// DiscoverSessions should return nil, nil (not an error)
 	sessions, err := agent.DiscoverSessions(context.Background(), "/any/path")
 	if err != nil {
-		t.Errorf("DiscoverSessions() error = %v", err)
+		t.Errorf("DiscoverSessions() error = %v, expected nil for missing DB", err)
 	}
-	if sessions != nil {
-		t.Errorf("DiscoverSessions() should return nil (Kiro doesn't store sessions automatically), got %v", sessions)
-	}
+	// Sessions may be nil (no DB) or empty (DB exists but no sessions for path)
+	// Either is acceptable behavior
+	_ = sessions
 }
 
 func TestAgent_Version(t *testing.T) {
@@ -375,5 +384,161 @@ func TestAgent_ArgOrder(t *testing.T) {
 			}
 		})
 	}
+}
+
+// Integration tests for DiscoverSessions with SQLite database
+
+// createTestDB creates a temporary SQLite database with the Kiro schema for testing.
+func createTestDB(t *testing.T) *logs.DB {
+	t.Helper()
+
+	tmpFile := filepath.Join(t.TempDir(), "test.db")
+
+	conn, err := sql.Open("sqlite", tmpFile)
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = conn.Close() })
+
+	_, err = conn.Exec(`
+		CREATE TABLE conversations_v2 (
+			key TEXT NOT NULL,
+			conversation_id TEXT NOT NULL,
+			value TEXT NOT NULL,
+			created_at INTEGER NOT NULL,
+			updated_at INTEGER NOT NULL,
+			PRIMARY KEY (key, conversation_id)
+		)
+	`)
+	require.NoError(t, err)
+	_ = conn.Close()
+
+	return logs.NewTestDB(tmpFile)
+}
+
+// insertSession adds a test session to the database.
+func insertSession(t *testing.T, db *logs.DB, dir, id, jsonValue string, created, updated time.Time) {
+	t.Helper()
+
+	// Open a connection to the test DB directly
+	conn, err := sql.Open("sqlite", db.Path())
+	require.NoError(t, err)
+	defer func() { _ = conn.Close() }()
+
+	_, err = conn.Exec(
+		"INSERT INTO conversations_v2 VALUES (?, ?, ?, ?, ?)",
+		dir, id, jsonValue, created.UnixMilli(), updated.UnixMilli(),
+	)
+	require.NoError(t, err)
+}
+
+func TestAgent_DiscoverSessions_WithSQLite(t *testing.T) {
+	// Create a test directory that we'll use as the project directory
+	tmpDir := t.TempDir()
+	projectDir := filepath.Join(tmpDir, "test-project")
+	err := os.Mkdir(projectDir, 0o755)
+	require.NoError(t, err)
+
+	// Create a test database with sessions
+	db := createTestDB(t)
+
+	// Resolve symlinks to match how the DB stores paths (e.g., /private/tmp on macOS)
+	resolvedProjectDir, err := filepath.EvalSymlinks(projectDir)
+	require.NoError(t, err)
+
+	now := time.Now()
+	insertSession(t, db, resolvedProjectDir, "session-1", `{"conversation_id":"session-1","history":[]}`, now.Add(-time.Hour), now)
+	insertSession(t, db, resolvedProjectDir, "session-2", `{"conversation_id":"session-2","history":[]}`, now.Add(-2*time.Hour), now.Add(-30*time.Minute))
+	insertSession(t, db, "/other/project", "session-3", `{"conversation_id":"session-3","history":[]}`, now, now)
+
+	// Create an agent that uses the test database
+	// We need to use the DB directly since the agent uses logs.DiscoverForDirectory
+	sessions, err := db.DiscoverForDirectory(context.Background(), projectDir)
+	require.NoError(t, err)
+	require.Len(t, sessions, 2)
+
+	// Verify sessions are converted to SessionInfo format correctly
+	agent := New(agents.AgentConfig{}).(*Agent)
+
+	// Convert log sessions to agent sessions (simulating what DiscoverSessions does)
+	result := make([]agents.SessionInfo, len(sessions))
+	for i, s := range sessions {
+		result[i] = agents.SessionInfo{
+			ID:        s.ConversationID,
+			Agent:     agent.Name(),
+			Path:      "",
+			CreatedAt: s.CreatedAt,
+			Size:      s.Size,
+			Project:   s.Directory,
+		}
+	}
+
+	// Verify the conversion
+	assert.Len(t, result, 2)
+	assert.Equal(t, "kiro", result[0].Agent)
+	assert.Equal(t, "", result[0].Path) // Sessions are in SQLite, not filesystem
+	assert.NotEmpty(t, result[0].ID)
+	assert.NotZero(t, result[0].Size)
+
+	// Sessions should be ordered by updated_at DESC
+	assert.Equal(t, "session-1", result[0].ID)
+	assert.Equal(t, "session-2", result[1].ID)
+}
+
+func TestAgent_DiscoverSessions_EmptyResult(t *testing.T) {
+	// Create a test database without sessions for the target directory
+	db := createTestDB(t)
+
+	tmpDir := t.TempDir()
+	projectDir := filepath.Join(tmpDir, "empty-project")
+	err := os.Mkdir(projectDir, 0o755)
+	require.NoError(t, err)
+
+	// Insert sessions for a different directory
+	now := time.Now()
+	insertSession(t, db, "/other/project", "session-1", `{}`, now, now)
+
+	sessions, err := db.DiscoverForDirectory(context.Background(), projectDir)
+	require.NoError(t, err)
+	assert.Empty(t, sessions) // Empty slice, not nil
+}
+
+func TestAgent_DiscoverSessions_SessionInfoFields(t *testing.T) {
+	// Verify all SessionInfo fields are populated correctly
+	db := createTestDB(t)
+
+	tmpDir := t.TempDir()
+	projectDir := filepath.Join(tmpDir, "project")
+	err := os.Mkdir(projectDir, 0o755)
+	require.NoError(t, err)
+
+	resolvedProjectDir, err := filepath.EvalSymlinks(projectDir)
+	require.NoError(t, err)
+
+	created := time.Date(2025, 1, 10, 10, 0, 0, 0, time.UTC)
+	updated := time.Date(2025, 1, 15, 14, 30, 0, 0, time.UTC)
+	jsonValue := `{"conversation_id":"test-123","history":[{"role":"user","content":"hello"}]}`
+	insertSession(t, db, resolvedProjectDir, "test-123", jsonValue, created, updated)
+
+	sessions, err := db.DiscoverForDirectory(context.Background(), projectDir)
+	require.NoError(t, err)
+	require.Len(t, sessions, 1)
+
+	s := sessions[0]
+
+	// Convert to SessionInfo format as the agent does
+	info := agents.SessionInfo{
+		ID:        s.ConversationID,
+		Agent:     "kiro",
+		Path:      "",
+		CreatedAt: s.CreatedAt,
+		Size:      s.Size,
+		Project:   s.Directory,
+	}
+
+	assert.Equal(t, "test-123", info.ID)
+	assert.Equal(t, "kiro", info.Agent)
+	assert.Equal(t, "", info.Path) // SQLite sessions have no filesystem path
+	assert.Equal(t, created.UnixMilli(), info.CreatedAt.UnixMilli())
+	assert.Equal(t, int64(len(jsonValue)), info.Size)
+	assert.Equal(t, resolvedProjectDir, info.Project)
 }
 

@@ -4,11 +4,13 @@ package kiro
 import (
 	"bytes"
 	"context"
+	"errors"
 	"os"
 	"os/exec"
 	"time"
 
 	"github.com/arjenschwarz/orbit/internal/agents"
+	"github.com/arjenschwarz/orbit/internal/agents/kiro/logs"
 )
 
 const defaultPrompt = "Run /next-task --phase and when complete run /commit"
@@ -67,10 +69,30 @@ func (a *Agent) DefaultSessionDir() string {
 }
 
 // DiscoverSessions lists sessions for a given project directory.
-// Kiro does not store sessions automatically, so this always returns nil.
+// Sessions are retrieved from Kiro's SQLite database.
 func (a *Agent) DiscoverSessions(ctx context.Context, projectDir string) ([]agents.SessionInfo, error) {
-	// Kiro doesn't have automatic session storage per Decision 7
-	return nil, nil
+	sessions, err := logs.DiscoverForDirectory(ctx, projectDir)
+	if err != nil {
+		if errors.Is(err, logs.ErrDatabaseNotFound) {
+			// Kiro not installed or never used, not an error
+			return nil, nil
+		}
+		return nil, err
+	}
+
+	result := make([]agents.SessionInfo, len(sessions))
+	for i, s := range sessions {
+		result[i] = agents.SessionInfo{
+			ID:        s.ConversationID,
+			Agent:     "kiro",
+			Path:      "", // No filesystem path - sessions are in SQLite
+			CreatedAt: s.CreatedAt,
+			Size:      s.Size,
+			Project:   s.Directory,
+		}
+	}
+
+	return result, nil
 }
 
 // Run executes a prompt in a new session.
