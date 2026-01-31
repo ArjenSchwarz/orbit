@@ -120,7 +120,7 @@ references:
 
 ## Shell Command Execution
 
-- [ ] 14. Create shell.go with ShellCommandResult and executeShellCommand <!-- id:yvhgqm1 -->
+- [x] 14. Create shell.go with ShellCommandResult and executeShellCommand <!-- id:yvhgqm1 -->
   - Create internal/orbit/shell.go
   - Define ShellCommandResult struct
   - Implement executeShellCommand with timeout via context.WithTimeout
@@ -131,14 +131,14 @@ references:
   - Stream: 1
   - Requirements: [7.1](requirements.md#7.1), [7.2](requirements.md#7.2), [7.3](requirements.md#7.3), [7.4](requirements.md#7.4), [7.5](requirements.md#7.5), [7.6](requirements.md#7.6), [7.9](requirements.md#7.9), [7.10](requirements.md#7.10)
 
-- [ ] 15. Implement saveShellCommandLog function <!-- id:yvhgqm2 -->
+- [x] 15. Implement saveShellCommandLog function <!-- id:yvhgqm2 -->
   - Save command output to .orbit/pre-command-run-N.txt or post-command-run-N.txt
   - Include command, exit code, timestamps, duration, stdout, stderr
   - Blocked-by: yvhgqm1 (Create shell.go with ShellCommandResult and executeShellCommand)
   - Stream: 1
   - Requirements: [8.2](requirements.md#8.2), [8.3](requirements.md#8.3), [8.4](requirements.md#8.4)
 
-- [ ] 16. Write unit tests for shell command execution <!-- id:yvhgqm3 -->
+- [x] 16. Write unit tests for shell command execution <!-- id:yvhgqm3 -->
   - TestExecuteShellCommand_Success
   - TestExecuteShellCommand_NonZeroExit
   - TestExecuteShellCommand_Timeout

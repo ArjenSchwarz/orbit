@@ -15,6 +15,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `ShellCommandState` struct for tracking shell command execution with exit code, timestamps, and duration
 - Pre-prompt tracking methods in log manager: `StartPrePrompt()`, `CompletePrePrompt()`, `GetPrePromptState()`
 - `RecordShellCommand()` method for recording pre-command and post-command execution in summary.json
+- Shell command execution infrastructure (`internal/orbit/shell.go`)
+  - `ShellCommandResult` struct for capturing command output, exit code, and timing
+  - `executeShellCommand()` method with timeout support via context.WithTimeout
+  - `saveShellCommandLog()` for writing command logs to `.orbit/pre-command-run-N.txt` or `post-command-run-N.txt`
+  - Environment variables `ORBIT_PHASE_COUNT` and `ORBIT_AGENT` set for shell commands
+  - Graceful shutdown handling when parent context is canceled
+- Comprehensive unit tests for shell command execution (`internal/orbit/shell_test.go`)
 - `StartPrePrompt()` spinner method for displaying "Running pre-prompt" status
 - Shell command status display in run index (index.md and index.html) with command, exit code, and duration
 - Comprehensive unit tests for log manager state tracking and index generation
