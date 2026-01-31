@@ -642,6 +642,12 @@ func (m *Manager) generatePostCompletionMarkdownTranscript(srcPath, dstPath, ses
 		SessionID: sessionID,
 	}
 
+	// Copy cost metadata from ParseResult if available
+	if result.Metadata != nil {
+		opts.TotalCost = result.Metadata.TotalCost
+		opts.CostUnit = result.Metadata.CostUnit
+	}
+
 	// Write Markdown
 	markdown := transcript.RenderMarkdown(result.Entries, opts)
 	if err := os.WriteFile(dstPath, []byte(markdown), 0644); err != nil {
@@ -842,6 +848,12 @@ func (m *Manager) generateMarkdownTranscript(srcPath, dstPath string, phase int,
 	opts := transcript.RenderOptions{
 		Title:     fmt.Sprintf("Phase %d Session Transcript", phase),
 		SessionID: sessionID,
+	}
+
+	// Copy cost metadata from ParseResult if available
+	if result.Metadata != nil {
+		opts.TotalCost = result.Metadata.TotalCost
+		opts.CostUnit = result.Metadata.CostUnit
 	}
 
 	// Write Markdown

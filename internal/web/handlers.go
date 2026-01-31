@@ -518,6 +518,13 @@ func (s *Server) handleTranscript(w http.ResponseWriter, r *http.Request) {
 		Title:      title,
 		ProjectDir: entry.LogDir,
 	}
+
+	// Copy cost metadata from ParseResult if available
+	if result.Metadata != nil {
+		opts.TotalCost = result.Metadata.TotalCost
+		opts.CostUnit = result.Metadata.CostUnit
+	}
+
 	content := transcript.RenderHTMLFragment(result.Entries, opts)
 
 	// Build page title
