@@ -93,7 +93,7 @@ func (o *Orbit) executeShellCommand(command, logName string) (*ShellCommandResul
 
 	// Check for context errors to provide better error messages
 	if ctx.Err() == context.DeadlineExceeded {
-		return result, fmt.Errorf("command timed out after %v", o.config.CommandTimeout)
+		return result, fmt.Errorf("command timed out after %v: %s", o.config.CommandTimeout, command)
 	}
 	if ctx.Err() == context.Canceled && o.shutdownCtx.Err() != nil {
 		return result, fmt.Errorf("command interrupted by shutdown")
