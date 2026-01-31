@@ -200,7 +200,7 @@ func (g *Gatherer) gatherKiroLastAction(v *variants.Variant, variantLogDir strin
 	// Find last displayable entry from parsed entries (search from end)
 	for i := len(result.Entries) - 1; i >= 0; i-- {
 		entry := &result.Entries[i]
-		if isKiroDisplayableEntry(entry) {
+		if transcript.IsDisplayableEntry(entry) {
 			return &LastActionResult{
 				State:   LastActionFound,
 				Summary: transcript.FormatLastAction(entry),
@@ -209,23 +209,6 @@ func (g *Gatherer) gatherKiroLastAction(v *variants.Variant, variantLogDir strin
 	}
 
 	return &LastActionResult{State: LastActionWaiting}
-}
-
-// isKiroDisplayableEntry checks if an entry should be considered for "last action" display.
-// Similar to transcript.isDisplayableEntry but exported for use here.
-func isKiroDisplayableEntry(e *transcript.Entry) bool {
-	if e.IsMeta {
-		return false
-	}
-	if e.Message == nil || e.Message.Role != "assistant" {
-		return false
-	}
-	for _, c := range e.Message.Content {
-		if c.Type == "tool_use" || c.Type == "text" {
-			return true
-		}
-	}
-	return false
 }
 
 // gatherTaskProgress retrieves task progress via rune CLI.

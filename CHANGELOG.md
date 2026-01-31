@@ -11,6 +11,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Update Apsis description in CLAUDE.md and README.md to reflect support for Claude Code (JSONL), Codex (JSONL), and Kiro (SQLite) sessions
 - Apsis now displays Kiro CLI sessions as `[kiro-cli]` instead of `[kiro]` to differentiate from IDE sessions
+- Export `IsDisplayableEntry` from transcript package to enable reuse across packages
 
 ### Added
 
@@ -18,6 +19,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - `gatherKiroLastAction()` queries Kiro SQLite database for session data
   - Parses session JSON and finds last displayable entry
   - Refactored `gatherLastAction()` to dispatch to agent-specific handlers
+- Test coverage for Kiro last action in status gatherer (`TestGatherVariantInfo_LastActionKiro`)
 
 - Apsis Kiro session integration (`cmd/apsis/`)
   - `listKiroSessions()` discovers Kiro sessions from SQLite for current working directory

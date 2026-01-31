@@ -464,9 +464,9 @@ func TestIsDisplayableEntry(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := isDisplayableEntry(tt.entry)
+			got := IsDisplayableEntry(tt.entry)
 			if got != tt.expect {
-				t.Errorf("isDisplayableEntry() = %v, want %v", got, tt.expect)
+				t.Errorf("IsDisplayableEntry() = %v, want %v", got, tt.expect)
 			}
 		})
 	}
