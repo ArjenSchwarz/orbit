@@ -108,38 +108,101 @@ Configuration priority (highest to lowest):
 
 Empty string environment variables explicitly disable features (e.g., `ORBIT_POST_PROMPT=""` disables post-prompt).
 
-Agent configuration in `.orbit.yaml` supports per-agent settings under the `agents` key with `cli-path`, `auto-approve` (default: `true`), `timeout`, and `extra-args` options. Auto-approve is enabled by default to allow non-interactive operation.
+Agent configuration in `.orbit.yaml` supports per-agent settings under the `agents` key with `cli-path`, `auto-approve` (default: `true`), `timeout`, `extra-args`, `pre-command`, and `post-command` options. Auto-approve is enabled by default to allow non-interactive operation.
 
-### Commands and Prompts
+## Command Hooks and Prompts (Orbit)
 
-Orbit supports two types of hooks that run at different points in the orchestration lifecycle:
+Orbit supports both shell command hooks and AI prompts at different stages of execution. Understanding the distinction is important:
 
-**Prompts (AI agent interactions):**
-- `pre-prompt` - AI prompt executed before phase 1, sharing the same session
-- `post-prompt` - AI prompt executed after the final phase completes (renamed from `post-command`)
+- **Commands** (pre-command, post-command) - Shell commands executed on the host system
+- **Prompts** (pre-prompt, post-prompt) - AI agent interactions
 
-**Shell Commands (per-agent):**
-- `agents.<agent>.pre-command` - Shell command run before the agent starts
-- `agents.<agent>.post-command` - Shell command run after the agent completes
+### Execution Order
 
-**Execution Order:**
-1. Agent pre-command (shell) - failure aborts the run
-2. Global pre-prompt (AI) - failure aborts the run
-3. Phase loop (all task phases)
-4. Global post-prompt (AI) - failure completes with warnings
-5. Agent post-command (shell) - failure completes with warnings
+When all hooks and prompts are configured, they execute in this order:
 
-**Key Differences:**
-- **Prompts** are sent to the AI agent and can interact with the codebase (e.g., review code, run analysis, make changes)
-- **Commands** are shell commands that run in your terminal (e.g., `make lint`, `npm test`)
-- Shell commands must be non-interactive (no user input required)
+1. **Agent pre-command** (shell) - Runs once before any phases
+2. **Global pre-prompt** (AI) - Runs once, starts session that phase 1 continues
+3. **Phase loop** - Phases 1 through N execute sequentially
+4. **Global post-prompt** (AI) - Runs once after all phases complete
+5. **Agent post-command** (shell) - Runs once after post-prompt
 
-**Command Timeout:**
-- `command-timeout` - Duration string for shell command execution (default: `5m`)
-- Applies to both pre-command and post-command
-- Supports Go duration format (e.g., `30s`, `5m`, `1h30m`)
+Any unconfigured hook or prompt is skipped.
 
-**Example Configuration:**
+### Global Prompts (AI Agent Interactions)
+
+Global prompts are AI agent interactions that run before or after the phase loop:
+
+**Pre-Prompt:**
+- Runs before the first phase begins
+- Starts a new agent session that phase 1 continues
+- Useful for initial codebase review or context setup
+- Failure aborts the run
+- Configuration:
+  - Config file: `pre-prompt: "Review the codebase..."`
+  - CLI flag: `--pre-prompt "Review the codebase..."`
+  - Environment: `ORBIT_PRE_PROMPT="Review the codebase..."`
+  - Disable: `--no-pre-prompt`
+- No default value (empty by default)
+- If resuming an interrupted run where pre-prompt already completed, it will not re-run
+
+**Post-Prompt:**
+- Runs after all phases complete
+- Uses the same session as the last phase
+- Useful for final review, testing, or cleanup
+- Failure is retried (up to 5 attempts with exponential backoff)
+- Configuration:
+  - Config file: `post-prompt: "Review implementation..."`
+  - CLI flag: `--post-prompt "Review implementation..."`
+  - Environment: `ORBIT_POST_PROMPT="Review implementation..."`
+  - Disable: `--no-post-prompt`
+- Default: "Review the implementation to verify it meets the requirements and all tests pass. If issues are found, fix them."
+
+### Agent-Level Commands (Shell Execution)
+
+Agent-level commands are shell commands that run on the host system. They are configured per-agent and only execute for the configured agent:
+
+**Pre-Command:**
+- Runs once before the first phase (before pre-prompt if configured)
+- Executes as a shell command: `/bin/sh -c "<command>"`
+- Working directory: repository root (or worktree root in variant mode)
+- Environment variables available:
+  - `ORBIT_PHASE_COUNT` - total number of phases
+  - `ORBIT_AGENT` - agent name being used
+  - `ORBIT_VARIANT` - variant ID (in variant mode only)
+- Failure (non-zero exit code) aborts the run
+- Configuration: under `agents.<agent-name>.pre-command` in `.orbit.yaml`
+- No default value (empty by default)
+- Example use cases: run linters, update dependencies, verify environment
+
+**Post-Command:**
+- Runs once after the last phase (after post-prompt if configured)
+- Same execution environment as pre-command
+- Failure logs a warning but marks run as completed
+- Configuration: under `agents.<agent-name>.post-command` in `.orbit.yaml`
+- No default value (empty by default)
+- Example use cases: run tests, format code, generate documentation
+
+**Important Notes:**
+- Commands must be non-interactive (no user input)
+- Commands have a configurable timeout (default: 5 minutes)
+- Commands are agent-specific (no global commands that apply to all agents)
+- Empty string values are treated as not configured (no-op)
+- In dry-run mode (`--dry-run`), commands are printed but not executed
+
+### Command Timeout Configuration
+
+Shell commands have a configurable timeout to prevent hanging:
+
+- Default: 5 minutes
+- Config file: `command-timeout: "10m"` (duration string)
+- Environment: `ORBIT_COMMAND_TIMEOUT="15m"`
+- If a command exceeds the timeout, it is terminated and treated as a failure
+
+Supported duration formats: `"5m"`, `"1h"`, `"30s"`, `"1h30m"`
+
+### Configuration Example
+
 ```yaml
 # Global prompts (AI agent interactions)
 pre-prompt: "Review the codebase structure and identify potential areas of concern before we begin implementation."
@@ -155,7 +218,49 @@ agents:
     auto-approve: true
     pre-command: "make lint && make test-short"
     post-command: "make format && make lint"
+
+  codex:
+    type: codex
+    pre-command: "npm run lint"
+    post-command: "npm run format"
 ```
+
+### Variant Mode Behavior
+
+In variant mode, each variant executes its own complete hook sequence independently:
+- Each variant runs in its own worktree
+- Pre-commands and post-commands execute in the variant's worktree
+- Pre-prompts and post-prompts execute with the variant's working directory
+- `ORBIT_VARIANT` environment variable is set to the variant ID
+- In parallel mode, hooks may run concurrently across variants
+
+### Hook Logging
+
+Hook and prompt execution is logged:
+- Pre-command output: `.orbit/pre-command-run-N.txt`
+- Post-command output: `.orbit/post-command-run-N.txt`
+- Pre-prompt and post-prompt: included in phase transcripts
+- Shell command metadata (exit code, duration) tracked in `summary.json`
+
+### Migration from Deprecated post-command
+
+The top-level `post-command` configuration has been renamed to `post-prompt` for clarity. The old configuration is no longer supported:
+
+**Deprecated (will cause error):**
+```yaml
+post-command: "Review implementation..."  # Top-level - ERROR
+```
+
+**New (correct):**
+```yaml
+post-prompt: "Review implementation..."   # Top-level - AI prompt
+
+agents:
+  claude-code:
+    post-command: "make test"             # Agent-level - shell command (OK)
+```
+
+If you have existing configuration using top-level `post-command`, `ORBIT_POST_COMMAND` environment variable, or `--post-command` CLI flag, Orbit will exit with a clear error message explaining how to migrate.
 
 ## External Dependencies
 

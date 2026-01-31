@@ -25,7 +25,12 @@ type ShellCommandResult struct {
 // executeShellCommand runs a shell command with timeout and environment setup.
 // It executes the command using /bin/sh -c, sets the working directory,
 // and adds ORBIT_PHASE_COUNT and ORBIT_AGENT environment variables.
+// Returns an error if the command is empty.
 func (o *Orbit) executeShellCommand(command, logName string) (*ShellCommandResult, error) {
+	if command == "" {
+		return nil, fmt.Errorf("command cannot be empty")
+	}
+
 	startTime := time.Now()
 	result := &ShellCommandResult{
 		Command:   command,
