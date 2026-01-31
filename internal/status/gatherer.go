@@ -75,7 +75,7 @@ func (g *Gatherer) GatherVariantInfo(ctx context.Context, v *variants.Variant) *
 	info.GitInfo = g.gatherGitInfo(ctx, v.WorktreePath)
 
 	// Last action from transcript
-	info.LastAction = g.gatherLastAction(v)
+	info.LastAction = g.gatherLastAction(ctx, v)
 
 	// Task progress via rune
 	info.TaskProgress = g.gatherTaskProgress(v.WorktreePath)
@@ -110,7 +110,7 @@ func (g *Gatherer) gatherGitInfo(ctx context.Context, worktreePath string) *GitI
 }
 
 // gatherLastAction retrieves the last action from the transcript.
-func (g *Gatherer) gatherLastAction(v *variants.Variant) *LastActionResult {
+func (g *Gatherer) gatherLastAction(ctx context.Context, v *variants.Variant) *LastActionResult {
 	// Build path to variant's log directory in main repo
 	// Logs are stored at: specs/<spec>/.orbit/logs/variant-<id>/summary.json
 	variantLogDir := filepath.Join(g.repoRoot, g.specDir, ".orbit", "logs", fmt.Sprintf("variant-%d", v.ID))
@@ -119,7 +119,7 @@ func (g *Gatherer) gatherLastAction(v *variants.Variant) *LastActionResult {
 	case "claude-code":
 		return g.gatherClaudeLastAction(v, variantLogDir)
 	case "kiro":
-		return g.gatherKiroLastAction(v, variantLogDir)
+		return g.gatherKiroLastAction(ctx, v, variantLogDir)
 	default:
 		return &LastActionResult{State: LastActionNotSupported}
 	}
@@ -154,7 +154,7 @@ func (g *Gatherer) gatherClaudeLastAction(v *variants.Variant, variantLogDir str
 }
 
 // gatherKiroLastAction retrieves the last action from a Kiro session via SQLite.
-func (g *Gatherer) gatherKiroLastAction(v *variants.Variant, variantLogDir string) *LastActionResult {
+func (g *Gatherer) gatherKiroLastAction(ctx context.Context, v *variants.Variant, variantLogDir string) *LastActionResult {
 	// Read summary.json to get session ID
 	summaryPath := filepath.Join(variantLogDir, "summary.json")
 	data, err := os.ReadFile(summaryPath)
@@ -185,7 +185,6 @@ func (g *Gatherer) gatherKiroLastAction(v *variants.Variant, variantLogDir strin
 	}
 
 	// Query Kiro database for session
-	ctx := context.Background()
 	reader, err := kirologs.GetSession(ctx, sessionID, absWorktreePath)
 	if err != nil {
 		return &LastActionResult{State: LastActionUnavailable}
