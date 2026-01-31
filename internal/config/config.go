@@ -22,8 +22,9 @@ var aliasNamePattern = regexp.MustCompile(`^[a-z0-9]+(-[a-z0-9]+)*$`)
 const (
 	// DefaultCommand is the default prompt used for Claude during phase execution.
 	DefaultCommand = "Run /next-task --phase and when complete run /commit"
-	// DefaultPostCommand is the default prompt executed after all tasks complete.
-	DefaultPostCommand = "Review the implementation to verify it meets the requirements and all tests pass. If issues are found, fix them."
+	// DefaultPostPrompt is the default prompt executed after all tasks complete.
+	// Note: This was previously named DefaultPostCommand but renamed to clarify it's an AI prompt.
+	DefaultPostPrompt = "Review the implementation to verify it meets the requirements and all tests pass. If issues are found, fix them."
 	// DefaultServePort is the default port for the web server.
 	DefaultServePort = 8080
 	// DefaultServeBind is the default bind address for the web server.
@@ -32,6 +33,8 @@ const (
 	DefaultMaxParallel = 3
 	// DefaultBranchPrefix is the default prefix for variant branch names.
 	DefaultBranchPrefix = "orbit-impl"
+	// DefaultCommandTimeout is the default timeout for shell command execution.
+	DefaultCommandTimeout = 5 * time.Minute
 )
 
 // AgentConfig holds per-agent settings from .orbit.yaml.
@@ -52,6 +55,8 @@ type AgentAliasConfig struct {
 	AutoApprove bool     `yaml:"auto-approve"` // Tool approval behavior
 	ExtraArgs   []string `yaml:"extra-args"`   // Additional CLI arguments
 	Timeout     string   `yaml:"timeout"`      // Execution timeout as duration string (e.g., "30m", "1h")
+	PreCommand  string   `yaml:"pre-command"`  // Shell command to run before first phase
+	PostCommand string   `yaml:"post-command"` // Shell command to run after last phase
 }
 
 // ResolvedAgent contains a validated and resolved agent alias.
@@ -84,7 +89,9 @@ func NormalizeAliasName(name string) string {
 // Config holds the resolved configuration values.
 type Config struct {
 	Command         string
-	PostCommand     string
+	PrePrompt       string        // AI prompt before phases start (empty = disabled)
+	PostPrompt      string        // AI prompt after phases complete (renamed from PostCommand)
+	CommandTimeout  time.Duration // Timeout for shell commands (default 5m)
 	DateSubdirs     bool
 	ContinueSession bool
 	ServePort       int
@@ -113,9 +120,12 @@ type Config struct {
 	CompareCommand string // Custom comparison command (empty = use Claude)
 	GlobalGuidance string // Global guidance applied to all variants
 
-	// postCommandExplicit tracks whether post-command was explicitly set in config.
+	// prePromptExplicit tracks whether pre-prompt was explicitly set in config.
+	// This allows distinguishing "not set" (no pre-prompt) from "set to empty" (disabled).
+	prePromptExplicit bool
+	// postPromptExplicit tracks whether post-prompt was explicitly set in config.
 	// This allows distinguishing "not set" (use default) from "set to empty" (disabled).
-	postCommandExplicit bool
+	postPromptExplicit bool
 }
 
 // Load reads configuration from home and project directories using Viper.
@@ -136,7 +146,9 @@ func Load(workingDir string) *Config {
 
 	// Set defaults
 	v.SetDefault("command", DefaultCommand)
-	v.SetDefault("post-command", DefaultPostCommand)
+	v.SetDefault("pre-prompt", "")
+	v.SetDefault("post-prompt", DefaultPostPrompt)
+	v.SetDefault("command-timeout", DefaultCommandTimeout.String())
 	v.SetDefault("date-subdirs", false)
 	v.SetDefault("continue-session", true)
 	v.SetDefault("serve-port", DefaultServePort)
@@ -156,8 +168,9 @@ func Load(workingDir string) *Config {
 	v.SetConfigName(".orbit")
 	v.SetConfigType("yaml")
 
-	// Track if post-command was explicitly set in either config file
-	postCommandExplicit := false
+	// Track if pre-prompt/post-prompt was explicitly set in either config file
+	prePromptExplicit := false
+	postPromptExplicit := false
 	// Track if any config file was found (home or project)
 	configFileFound := false
 	// Track which config sources were loaded
@@ -174,9 +187,12 @@ func Load(workingDir string) *Config {
 			} else {
 				configFileFound = true
 				configSources = append(configSources, "home")
-				// Track if home config explicitly set post-command
-				if homeViper.IsSet("post-command") {
-					postCommandExplicit = true
+				// Track if home config explicitly set pre-prompt or post-prompt
+				if homeViper.IsSet("pre-prompt") {
+					prePromptExplicit = true
+				}
+				if homeViper.IsSet("post-prompt") {
+					postPromptExplicit = true
 				}
 				// Merge home config into main viper
 				if err := v.MergeConfigMap(homeViper.AllSettings()); err != nil {
@@ -197,9 +213,12 @@ func Load(workingDir string) *Config {
 		} else {
 			configFileFound = true
 			configSources = append(configSources, "project")
-			// Check if post-command was explicitly set in project config
-			if projectViper.IsSet("post-command") {
-				postCommandExplicit = true
+			// Check if pre-prompt or post-prompt was explicitly set in project config
+			if projectViper.IsSet("pre-prompt") {
+				prePromptExplicit = true
+			}
+			if projectViper.IsSet("post-prompt") {
+				postPromptExplicit = true
 			}
 
 			// Merge project config into main viper
@@ -211,7 +230,15 @@ func Load(workingDir string) *Config {
 
 	// Get values from config files (with defaults as fallback)
 	command := v.GetString("command")
-	postCommand := v.GetString("post-command")
+	prePrompt := v.GetString("pre-prompt")
+	postPrompt := v.GetString("post-prompt")
+	commandTimeoutStr := v.GetString("command-timeout")
+	commandTimeout := DefaultCommandTimeout
+	if commandTimeoutStr != "" {
+		if d, err := time.ParseDuration(commandTimeoutStr); err == nil {
+			commandTimeout = d
+		}
+	}
 	dateSubdirs := v.GetBool("date-subdirs")
 	continueSession := v.GetBool("continue-session")
 	servePort := v.GetInt("serve-port")
@@ -243,9 +270,20 @@ func Load(workingDir string) *Config {
 		command = envCmd
 		envUsed = true
 	}
-	if envPostCmd, exists := os.LookupEnv("ORBIT_POST_COMMAND"); exists {
-		postCommand = envPostCmd
-		postCommandExplicit = true
+	if envPrePrompt, exists := os.LookupEnv("ORBIT_PRE_PROMPT"); exists {
+		prePrompt = envPrePrompt
+		prePromptExplicit = true
+		envUsed = true
+	}
+	if envPostPrompt, exists := os.LookupEnv("ORBIT_POST_PROMPT"); exists {
+		postPrompt = envPostPrompt
+		postPromptExplicit = true
+		envUsed = true
+	}
+	if envCmdTimeout, exists := os.LookupEnv("ORBIT_COMMAND_TIMEOUT"); exists {
+		if d, err := time.ParseDuration(envCmdTimeout); err == nil {
+			commandTimeout = d
+		}
 		envUsed = true
 	}
 	if envDateSubdirs, exists := os.LookupEnv("ORBIT_DATE_SUBDIRS"); exists {
@@ -321,28 +359,31 @@ func Load(workingDir string) *Config {
 	}
 
 	return &Config{
-		Command:             command,
-		PostCommand:         postCommand,
-		DateSubdirs:         dateSubdirs,
-		ContinueSession:     continueSession,
-		ServePort:           servePort,
-		ServeBind:           serveBind,
-		Debug:               debug,
-		CentralizedLog:      centralizedLog,
-		Agent:               agent,
-		Agents:              agentsMap,
-		AgentAliases:        agentAliasesMap,
-		ConfigFileFound:     configFileFound,
-		ConfigParseError:    configParseErrors,
-		ConfigSources:       configSources,
-		VariantCount:        variantCount,
-		Parallel:            parallel,
-		MaxParallel:         maxParallel,
-		BranchPrefix:        branchPrefix,
-		GuidanceFile:        guidanceFile,
-		CompareCommand:      compareCommand,
-		GlobalGuidance:      globalGuidance,
-		postCommandExplicit: postCommandExplicit,
+		Command:            command,
+		PrePrompt:          prePrompt,
+		PostPrompt:         postPrompt,
+		CommandTimeout:     commandTimeout,
+		DateSubdirs:        dateSubdirs,
+		ContinueSession:    continueSession,
+		ServePort:          servePort,
+		ServeBind:          serveBind,
+		Debug:              debug,
+		CentralizedLog:     centralizedLog,
+		Agent:              agent,
+		Agents:             agentsMap,
+		AgentAliases:       agentAliasesMap,
+		ConfigFileFound:    configFileFound,
+		ConfigParseError:   configParseErrors,
+		ConfigSources:      configSources,
+		VariantCount:       variantCount,
+		Parallel:           parallel,
+		MaxParallel:        maxParallel,
+		BranchPrefix:       branchPrefix,
+		GuidanceFile:       guidanceFile,
+		CompareCommand:     compareCommand,
+		GlobalGuidance:     globalGuidance,
+		prePromptExplicit:  prePromptExplicit,
+		postPromptExplicit: postPromptExplicit,
 	}
 }
 
@@ -372,10 +413,16 @@ func parsePositiveInt(s string) (int, error) {
 	return n, nil
 }
 
-// IsPostCommandDisabled returns true if post-command was explicitly set to empty.
+// IsPrePromptDisabled returns true if pre-prompt was explicitly set to empty.
+// This allows distinguishing "not set" (no pre-prompt) from "explicitly disabled".
+func (c *Config) IsPrePromptDisabled() bool {
+	return c.prePromptExplicit && c.PrePrompt == ""
+}
+
+// IsPostPromptDisabled returns true if post-prompt was explicitly set to empty.
 // This allows distinguishing "use default" from "disable".
-func (c *Config) IsPostCommandDisabled() bool {
-	return c.postCommandExplicit && c.PostCommand == ""
+func (c *Config) IsPostPromptDisabled() bool {
+	return c.postPromptExplicit && c.PostPrompt == ""
 }
 
 // parseAgentsConfig extracts the agents map from viper configuration.
@@ -492,6 +539,13 @@ func parseAgentAliasesConfig(v *viper.Viper) (map[string]AgentAliasConfig, []err
 					aliasCfg.ExtraArgs = append(aliasCfg.ExtraArgs, s)
 				}
 			}
+		}
+		// Handle pre-command and post-command shell commands
+		if v, ok := cfgMap["pre-command"].(string); ok {
+			aliasCfg.PreCommand = v
+		}
+		if v, ok := cfgMap["post-command"].(string); ok {
+			aliasCfg.PostCommand = v
 		}
 
 		aliasesMap[name] = aliasCfg

@@ -9,6 +9,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- `PrePrompt` configuration field for AI prompts before phases start (`internal/config/config.go`)
+- `CommandTimeout` configuration field with 5-minute default for shell command execution
+- `PreCommand` and `PostCommand` fields in `AgentAliasConfig` for agent-level shell commands
+- Environment variable support: `ORBIT_PRE_PROMPT`, `ORBIT_POST_PROMPT`, `ORBIT_COMMAND_TIMEOUT`
+- Explicit setting tracking for prompts to distinguish "not set" from "set to empty"
+- Unit tests for all new configuration fields and behaviors
+
+### Changed
+
+- Renamed `PostCommand` to `PostPrompt` throughout codebase to clarify it's an AI prompt, not a shell command
+- CLI flags renamed: `--post-command` → `--post-prompt`, `--no-post-command` → `--no-post-prompt`
+- Environment variable renamed: `ORBIT_POST_COMMAND` → `ORBIT_POST_PROMPT`
+
+### Added
+
 - Spec for orbit-command-hooks feature (`specs/orbit-command-hooks/`)
   - Requirements document with 10 requirement sections covering prompt renaming, pre-prompt, agent-level shell commands, deprecation detection, execution order, shell environment, logging, and failure handling
   - Design document with architecture, component interfaces, data models, error handling, and testing strategy for both single-run and variant modes

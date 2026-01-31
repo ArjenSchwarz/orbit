@@ -13,17 +13,17 @@ type Config struct {
 	VariantID    int
 	Agent        agents.Agent
 	AllowDirty   bool
-	PostCommand  string
+	PostPrompt   string // AI prompt after consolidation (renamed from PostCommand)
 	CustomPrompt string // User-provided instructions via --prompt
 }
 
 // ConsolidationResult contains the outcome of a consolidation run.
 type ConsolidationResult struct {
-	CommitSHA         string
-	AgentReport       string // Raw report from agent (displayed to user)
-	TestsPassed       bool
-	PostCommandPassed bool
-	Errors            []string
+	CommitSHA        string
+	AgentReport      string // Raw report from agent (displayed to user)
+	TestsPassed      bool
+	PostPromptPassed bool // Whether post-prompt completed successfully
+	Errors           []string
 }
 
 // ConsolidationReport is parsed from agent output for logging purposes.

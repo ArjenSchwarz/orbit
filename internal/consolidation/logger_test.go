@@ -25,8 +25,8 @@ func TestLogger_Append(t *testing.T) {
 			ImprovementsAttempted: 3,
 			ImprovementsApplied:   2,
 			ImprovementsSkipped:   1,
-			TestsPassed:           true,
-			PostCommandPassed:     true,
+			TestsPassed:      true,
+			PostPromptPassed: true,
 		}
 
 		err := logger.Append(entry)

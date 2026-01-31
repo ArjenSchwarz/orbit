@@ -35,8 +35,8 @@ func runCommand(args []string) error {
 	dryRun := fs.Bool("dry-run", false, "Show what would be executed without running")
 	showVersion := fs.Bool("version", false, "Show version and exit")
 	commandFlag := fs.String("command", "", "Custom prompt for Claude phases")
-	postCommandFlag := fs.String("post-command", "", "Command after all tasks complete")
-	noPostCommand := fs.Bool("no-post-command", false, "Skip post-completion command")
+	postPromptFlag := fs.String("post-prompt", "", "AI prompt after all tasks complete")
+	noPostPrompt := fs.Bool("no-post-prompt", false, "Skip post-completion AI prompt")
 	dateSubdirs := fs.Bool("date-subdirs", false, "Use timestamped subdirectories for logs")
 	noContinueSession := fs.Bool("no-continue-session", false, "Start fresh sessions instead of resuming")
 
@@ -144,7 +144,7 @@ func runCommand(args []string) error {
 	}
 
 	// Apply CLI flag overrides
-	command, postCommand := resolveCommands(cfg, *commandFlag, *postCommandFlag, *noPostCommand)
+	command, postPrompt := resolvePrompts(cfg, *commandFlag, *postPromptFlag, *noPostPrompt)
 
 	// Resolve date-subdirs: CLI flag can enable (overrides config)
 	dateSubdirsValue := cfg.DateSubdirs
@@ -248,8 +248,8 @@ func runCommand(args []string) error {
 		Version:         version,
 		DryRun:          *dryRun,
 		WorkingDir:      workingDir,
-		Command:         command,
-		PostCommand:     postCommand,
+		Command:    command,
+		PostPrompt: postPrompt,
 		DateSubdirs:     dateSubdirsValue,
 		ContinueSession: continueSessionValue,
 		Agent:           aliasName,
@@ -290,28 +290,28 @@ func getGitBranch() (string, error) {
 	return strings.TrimSpace(string(output)), nil
 }
 
-// resolveCommands applies CLI flag overrides to config values.
+// resolvePrompts applies CLI flag overrides to config values.
 // Priority: CLI flags > config (which includes env vars > project > home > defaults).
-func resolveCommands(cfg *config.Config, commandFlag, postCommandFlag string, noPostCommand bool) (command, postCommand string) {
+func resolvePrompts(cfg *config.Config, commandFlag, postPromptFlag string, noPostPrompt bool) (command, postPrompt string) {
 	// Resolve effective command (priority: flag > config/env > default)
 	command = cfg.Command // Already has default from Viper
 	if commandFlag != "" {
 		command = commandFlag
 	}
 
-	// Resolve effective post-command (priority: flag > config/env > default)
-	postCommand = cfg.PostCommand
-	if cfg.IsPostCommandDisabled() {
-		postCommand = "" // Config explicitly disabled
+	// Resolve effective post-prompt (priority: flag > config/env > default)
+	postPrompt = cfg.PostPrompt
+	if cfg.IsPostPromptDisabled() {
+		postPrompt = "" // Config explicitly disabled
 	}
-	if postCommandFlag != "" {
-		postCommand = postCommandFlag
+	if postPromptFlag != "" {
+		postPrompt = postPromptFlag
 	}
-	if noPostCommand {
-		postCommand = "" // Flag disables
+	if noPostPrompt {
+		postPrompt = "" // Flag disables
 	}
 
-	return command, postCommand
+	return command, postPrompt
 }
 
 // resolveAgent determines which agent to use based on priority:

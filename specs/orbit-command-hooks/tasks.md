@@ -8,19 +8,19 @@ references:
 
 ## Configuration Layer
 
-- [ ] 1. Add new fields to Config struct <!-- id:yvhgqlo -->
+- [x] 1. Add new fields to Config struct <!-- id:yvhgqlo -->
   - Add PrePrompt, PostPrompt (renamed from PostCommand), CommandTimeout fields to internal/config/config.go
   - Add tracking fields for explicit setting detection
   - Stream: 1
   - Requirements: [1.1](requirements.md#1.1), [2.1](requirements.md#2.1), [7.6](requirements.md#7.6)
 
-- [ ] 2. Add PreCommand and PostCommand to AgentAliasConfig <!-- id:yvhgqlp -->
+- [x] 2. Add PreCommand and PostCommand to AgentAliasConfig <!-- id:yvhgqlp -->
   - Add pre-command and post-command string fields to AgentAliasConfig struct
   - Add yaml tags for configuration parsing
   - Stream: 1
   - Requirements: [3.1](requirements.md#3.1), [4.1](requirements.md#4.1)
 
-- [ ] 3. Implement config loading for new fields <!-- id:yvhgqlq -->
+- [x] 3. Implement config loading for new fields <!-- id:yvhgqlq -->
   - Load pre-prompt from config, env (ORBIT_PRE_PROMPT), CLI flag
   - Load post-prompt from config, env (ORBIT_POST_PROMPT), CLI flag
   - Load command-timeout from config, env (ORBIT_COMMAND_TIMEOUT)
@@ -29,7 +29,7 @@ references:
   - Stream: 1
   - Requirements: [1.3](requirements.md#1.3), [2.2](requirements.md#2.2), [2.3](requirements.md#2.3), [7.7](requirements.md#7.7), [7.8](requirements.md#7.8)
 
-- [ ] 4. Write unit tests for config loading <!-- id:yvhgqlr -->
+- [x] 4. Write unit tests for config loading <!-- id:yvhgqlr -->
   - TestLoadPrePrompt, TestLoadPostPrompt, TestLoadCommandTimeout
   - TestLoadAgentPreCommand, TestLoadAgentPostCommand
   - TestIsPrePromptDisabled, TestIsPostPromptDisabled

@@ -119,29 +119,29 @@ func TestConfig_CommandFields(t *testing.T) {
 		BranchName:  "feature/test",
 		WorkingDir:  "/path/to/project",
 		Command:     "Run /next-task --phase",
-		PostCommand: "Review the implementation",
+		PostPrompt: "Review the implementation",
 	}
 
 	if config.Command != "Run /next-task --phase" {
 		t.Errorf("Command = %q, want %q", config.Command, "Run /next-task --phase")
 	}
-	if config.PostCommand != "Review the implementation" {
-		t.Errorf("PostCommand = %q, want %q", config.PostCommand, "Review the implementation")
+	if config.PostPrompt != "Review the implementation" {
+		t.Errorf("PostPrompt = %q, want %q", config.PostPrompt, "Review the implementation")
 	}
 }
 
-func TestConfig_EmptyPostCommand(t *testing.T) {
+func TestConfig_EmptyPostPrompt(t *testing.T) {
 	config := Config{
 		TasksFile:   "specs/test/tasks.md",
 		LogDir:      ".claude/logs",
 		BranchName:  "feature/test",
 		WorkingDir:  "/path/to/project",
 		Command:     "Run /next-task --phase",
-		PostCommand: "", // Explicitly disabled
+		PostPrompt: "", // Explicitly disabled
 	}
 
-	if config.PostCommand != "" {
-		t.Errorf("PostCommand should be empty when disabled, got %q", config.PostCommand)
+	if config.PostPrompt != "" {
+		t.Errorf("PostPrompt should be empty when disabled, got %q", config.PostPrompt)
 	}
 }
 
@@ -151,23 +151,23 @@ func TestMaxRetries_Constant(t *testing.T) {
 	}
 }
 
-func TestComplete_PostCommandSkippedWhenEmpty(t *testing.T) {
-	// Create an Orbit instance with empty PostCommand
+func TestComplete_PostPromptSkippedWhenEmpty(t *testing.T) {
+	// Create an Orbit instance with empty PostPrompt
 	o := &Orbit{
 		config: Config{
-			PostCommand: "",
+			PostPrompt: "",
 		},
 		logManager: nil, // No log manager for this test
 	}
 
-	// Call complete() - should not error because PostCommand is empty
+	// Call complete() - should not error because PostPrompt is empty
 	err := o.complete()
 	if err != nil {
-		t.Errorf("complete() returned error when PostCommand is empty: %v", err)
+		t.Errorf("complete() returned error when PostPrompt is empty: %v", err)
 	}
 }
 
-func TestRunPostCommandWithRetry_Success(t *testing.T) {
+func TestRunPostPromptWithRetry_Success(t *testing.T) {
 	callCount := 0
 	mockAg := &mockAgent{
 		name: "test-agent",
@@ -189,7 +189,7 @@ func TestRunPostCommandWithRetry_Success(t *testing.T) {
 
 	o := &Orbit{
 		config: Config{
-			PostCommand: "test command",
+			PostPrompt: "test command",
 		},
 		agent:           mockAg,
 		logManager:      nil,
@@ -197,16 +197,16 @@ func TestRunPostCommandWithRetry_Success(t *testing.T) {
 		shutdownCtx:     ctx,
 	}
 
-	err := o.runPostCommandWithRetry()
+	err := o.runPostPromptWithRetry()
 	if err != nil {
-		t.Errorf("runPostCommandWithRetry() returned error: %v", err)
+		t.Errorf("runPostPromptWithRetry() returned error: %v", err)
 	}
 	if callCount != 1 {
 		t.Errorf("expected 1 call, got %d", callCount)
 	}
 }
 
-func TestRunPostCommandWithRetry_NonRetryableError(t *testing.T) {
+func TestRunPostPromptWithRetry_NonRetryableError(t *testing.T) {
 	callCount := 0
 	mockAg := &mockAgent{
 		name: "test-agent",
@@ -224,7 +224,7 @@ func TestRunPostCommandWithRetry_NonRetryableError(t *testing.T) {
 
 	o := &Orbit{
 		config: Config{
-			PostCommand: "test command",
+			PostPrompt: "test command",
 		},
 		agent:           mockAg,
 		logManager:      nil,
@@ -232,7 +232,7 @@ func TestRunPostCommandWithRetry_NonRetryableError(t *testing.T) {
 		shutdownCtx:     ctx,
 	}
 
-	err := o.runPostCommandWithRetry()
+	err := o.runPostPromptWithRetry()
 	if err == nil {
 		t.Error("expected error, got nil")
 	}
@@ -242,7 +242,7 @@ func TestRunPostCommandWithRetry_NonRetryableError(t *testing.T) {
 	}
 }
 
-func TestRunPostCommandWithRetry_RetryableError_EventualSuccess(t *testing.T) {
+func TestRunPostPromptWithRetry_RetryableError_EventualSuccess(t *testing.T) {
 	t.Skip("disabled: test uses real 3s delays - would slow down CI/commit validation")
 
 	callCount := 0
@@ -267,22 +267,22 @@ func TestRunPostCommandWithRetry_RetryableError_EventualSuccess(t *testing.T) {
 
 	o := &Orbit{
 		config: Config{
-			PostCommand: "test command",
+			PostPrompt: "test command",
 		},
 		claudeClient: mock,
 		logManager:   nil,
 	}
 
-	err := o.runPostCommandWithRetry()
+	err := o.runPostPromptWithRetry()
 	if err != nil {
-		t.Errorf("runPostCommandWithRetry() returned error: %v", err)
+		t.Errorf("runPostPromptWithRetry() returned error: %v", err)
 	}
 	if callCount != 3 {
 		t.Errorf("expected 3 calls (2 retries then success), got %d", callCount)
 	}
 }
 
-func TestRunPostCommandWithRetry_MaxRetriesExceeded(t *testing.T) {
+func TestRunPostPromptWithRetry_MaxRetriesExceeded(t *testing.T) {
 	t.Skip("disabled: test uses real 31s delays - would slow down CI/commit validation")
 
 	callCount := 0
@@ -299,13 +299,13 @@ func TestRunPostCommandWithRetry_MaxRetriesExceeded(t *testing.T) {
 
 	o := &Orbit{
 		config: Config{
-			PostCommand: "test command",
+			PostPrompt: "test command",
 		},
 		claudeClient: mock,
 		logManager:   nil,
 	}
 
-	err := o.runPostCommandWithRetry()
+	err := o.runPostPromptWithRetry()
 	if err == nil {
 		t.Error("expected error after max retries, got nil")
 	}

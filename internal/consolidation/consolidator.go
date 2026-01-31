@@ -445,16 +445,16 @@ func (c *Consolidator) Run(ctx context.Context) (*ConsolidationResult, error) {
 		consolidationResult.Errors = append(consolidationResult.Errors, fmt.Sprintf("tests failed: %v", testErr))
 	}
 
-	// Run post-command
-	if c.config.PostCommand != "" {
-		c.updateSpinnerMessage("Running post-command...")
-		postPassed, postErr := c.runPostCommand(ctx)
-		consolidationResult.PostCommandPassed = postPassed
+	// Run post-prompt
+	if c.config.PostPrompt != "" {
+		c.updateSpinnerMessage("Running post-prompt...")
+		postPassed, postErr := c.runPostPrompt(ctx)
+		consolidationResult.PostPromptPassed = postPassed
 		if postErr != nil {
-			consolidationResult.Errors = append(consolidationResult.Errors, fmt.Sprintf("post-command failed: %v", postErr))
+			consolidationResult.Errors = append(consolidationResult.Errors, fmt.Sprintf("post-prompt failed: %v", postErr))
 		}
 	} else {
-		consolidationResult.PostCommandPassed = true
+		consolidationResult.PostPromptPassed = true
 	}
 
 	c.stopSpinner()
@@ -700,16 +700,16 @@ func (c *Consolidator) runTests(ctx context.Context) (bool, error) {
 	return true, nil
 }
 
-// runPostCommand executes the configured post-command through the agent.
-func (c *Consolidator) runPostCommand(ctx context.Context) (bool, error) {
-	if c.config.PostCommand == "" {
+// runPostPrompt executes the configured post-prompt through the agent.
+func (c *Consolidator) runPostPrompt(ctx context.Context) (bool, error) {
+	if c.config.PostPrompt == "" {
 		return true, nil
 	}
 
 	worktreePath := c.recovery.worktreePath
 
 	opts := agents.RunOptions{
-		Prompt:      c.config.PostCommand,
+		Prompt:      c.config.PostPrompt,
 		SessionID:   uuid.NewString(),
 		WorkDir:     worktreePath,
 		AutoApprove: true,
@@ -717,13 +717,13 @@ func (c *Consolidator) runPostCommand(ctx context.Context) (bool, error) {
 
 	result, err := c.config.Agent.Run(ctx, opts)
 	if err != nil {
-		return false, fmt.Errorf("post-command failed: %w", err)
+		return false, fmt.Errorf("post-prompt failed: %w", err)
 	}
 	if result != nil && result.Error != nil {
-		return false, fmt.Errorf("post-command failed: %w", result.Error)
+		return false, fmt.Errorf("post-prompt failed: %w", result.Error)
 	}
 	if result != nil && result.ExitCode != 0 {
-		return false, fmt.Errorf("post-command failed with exit code %d: %s", result.ExitCode, result.Stderr)
+		return false, fmt.Errorf("post-prompt failed with exit code %d: %s", result.ExitCode, result.Stderr)
 	}
 	// Check agent-reported errors (e.g., Claude Code can report IsError=true with exit code 0)
 	if result != nil && result.IsError {
@@ -731,7 +731,7 @@ func (c *Consolidator) runPostCommand(ctx context.Context) (bool, error) {
 		if len(result.Errors) > 0 {
 			errMsg = result.Errors[0]
 		}
-		return false, fmt.Errorf("post-command failed: %s", errMsg)
+		return false, fmt.Errorf("post-prompt failed: %s", errMsg)
 	}
 	return true, nil
 }
@@ -755,8 +755,8 @@ func (c *Consolidator) logConsolidation(result *ConsolidationResult, report stri
 		ImprovementsAttempted: applied + skipped,
 		ImprovementsApplied:   applied,
 		ImprovementsSkipped:   skipped,
-		TestsPassed:           result.TestsPassed,
-		PostCommandPassed:     result.PostCommandPassed,
+		TestsPassed:      result.TestsPassed,
+		PostPromptPassed: result.PostPromptPassed,
 		Errors:                result.Errors,
 	}
 

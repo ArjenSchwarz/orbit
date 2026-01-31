@@ -63,8 +63,8 @@ type Config struct {
 	RunID           string // UUID for this orchestration run
 	Version         string // Orbit version for logging
 	WorkingDir      string
-	Command         string // Custom phase command
-	PostCommand     string // Post-completion command (empty = disabled)
+	Command    string // Custom phase command
+	PostPrompt string // Post-completion AI prompt (renamed from PostCommand, empty = disabled)
 	DateSubdirs     bool   // If true, use timestamped subdirectories for logs
 	ContinueSession bool   // If true, continue existing Claude sessions when resuming
 
@@ -168,7 +168,7 @@ func New(config Config) (*Orbit, error) {
 		dbg.LogConfig("DryRun", config.DryRun)
 		dbg.LogConfig("WorkingDir", config.WorkingDir)
 		dbg.LogConfig("Command", config.Command)
-		dbg.LogConfig("PostCommand", config.PostCommand)
+		dbg.LogConfig("PostPrompt", config.PostPrompt)
 		dbg.LogConfig("DateSubdirs", config.DateSubdirs)
 		dbg.LogConfig("ContinueSession", config.ContinueSession)
 		// Variant configuration
@@ -404,8 +404,8 @@ func (o *Orbit) runSingle() error {
 			log.Printf("[DRY RUN] Would execute phase %d with %d pending tasks", phaseNum, len(pending))
 			log.Printf("[DRY RUN] Next phase: %s with %d tasks", nextPhase.PhaseName, len(nextPhase.Tasks))
 			log.Printf("[DRY RUN] Phase command: %s", o.config.Command)
-			if o.config.PostCommand != "" {
-				log.Printf("[DRY RUN] Post-command: %s", o.config.PostCommand)
+			if o.config.PostPrompt != "" {
+				log.Printf("[DRY RUN] Post-command: %s", o.config.PostPrompt)
 			} else {
 				log.Printf("[DRY RUN] Post-command: (disabled)")
 			}
@@ -429,13 +429,13 @@ func (o *Orbit) runSingle() error {
 	}
 }
 
-// complete handles successful orchestration completion, including post-command execution.
+// complete handles successful orchestration completion, including post-prompt execution.
 func (o *Orbit) complete() error {
-	// Run post-command if configured
-	if o.config.PostCommand != "" {
+	// Run post-prompt if configured
+	if o.config.PostPrompt != "" {
 		log.Println("Running post-completion command...")
-		if err := o.runPostCommandWithRetry(); err != nil {
-			log.Printf("Orchestration succeeded but post-command failed: %v", err)
+		if err := o.runPostPromptWithRetry(); err != nil {
+			log.Printf("Orchestration succeeded but post-prompt failed: %v", err)
 			return o.fail(err)
 		}
 		log.Println("Post-completion command finished")
@@ -798,10 +798,10 @@ func (o *Orbit) runPhase(phase int) error {
 	return nil
 }
 
-// runPostCommand executes the post-completion command.
-func (o *Orbit) runPostCommand() error {
+// runPostPrompt executes the post-completion command.
+func (o *Orbit) runPostPrompt() error {
 	startTime := time.Now()
-	o.debug.Log("runPostCommand starting")
+	o.debug.Log("runPostPrompt starting")
 
 	// Start spinner for post-completion
 	if o.spinner != nil {
@@ -829,7 +829,7 @@ func (o *Orbit) runPostCommand() error {
 
 	// Execute using the configured agent (not hardcoded to Claude)
 	opts := agents.RunOptions{
-		Prompt:    o.config.PostCommand,
+		Prompt:    o.config.PostPrompt,
 		WorkDir:   o.config.WorkingDir,
 		SessionID: sessionID,
 	}
@@ -918,12 +918,12 @@ func (o *Orbit) runPostCommand() error {
 	return nil
 }
 
-// runPostCommandWithRetry executes the post-command with retry logic for transient errors.
-func (o *Orbit) runPostCommandWithRetry() error {
+// runPostPromptWithRetry executes the post-prompt with retry logic for transient errors.
+func (o *Orbit) runPostPromptWithRetry() error {
 	var lastErr error
 
 	for attempt := 0; attempt < maxRetries; attempt++ {
-		err := o.runPostCommand()
+		err := o.runPostPrompt()
 		if err == nil {
 			return nil
 		}
@@ -963,7 +963,7 @@ func (o *Orbit) runPostCommandWithRetry() error {
 
 		time.Sleep(waitTime)
 
-		// Stop spinner before next attempt (runPostCommand will start it again)
+		// Stop spinner before next attempt (runPostPrompt will start it again)
 		if o.spinner != nil {
 			o.spinner.Stop()
 		}
@@ -1653,7 +1653,7 @@ func (o *Orbit) runVariant(ctx context.Context, v *variants.Variant) error {
 	}
 
 	// Run post-completion command if configured
-	if o.config.PostCommand != "" {
+	if o.config.PostPrompt != "" {
 		log.Printf("Variant %d: running post-completion command...", v.ID)
 		postStartTime := time.Now()
 		postResult, err := o.runVariantPostCompletion(ctx, v, variantAgent)
@@ -1827,7 +1827,7 @@ func (o *Orbit) runVariantPostCompletion(ctx context.Context, v *variants.Varian
 
 		// Execute the post-completion command in the variant's worktree
 		opts := agents.RunOptions{
-			Prompt:    o.config.PostCommand,
+			Prompt:    o.config.PostPrompt,
 			SessionID: uuid.NewString(),
 			WorkDir:   v.WorktreePath,
 		}
