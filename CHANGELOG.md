@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- Updated Apsis description in README to include GitHub Copilot session support
+
 ### Added
 
 - Copilot session discovery for Apsis (`cmd/apsis/main.go`)
