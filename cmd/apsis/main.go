@@ -830,6 +830,12 @@ func convert(input io.Reader, output io.Writer, sessionID string, format string,
 		SessionID: sessionID,
 	}
 
+	// Copy cost metadata from ParseResult if available
+	if result.Metadata != nil {
+		opts.TotalCost = result.Metadata.TotalCost
+		opts.CostUnit = result.Metadata.CostUnit
+	}
+
 	var rendered string
 	switch strings.ToLower(format) {
 	case "html":

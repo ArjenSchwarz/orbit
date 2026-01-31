@@ -26,6 +26,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Cost display in transcript headers when TotalCost is provided (`internal/transcript/markdown.go`, `internal/transcript/html.go`)
   - Markdown: `**Cost:** X.XX credits` after Session ID, before content separator
   - HTML: `<p class="session-cost">Cost: X.XX credits</p>` in header with matching CSS styling
+- Apsis CLI passes cost metadata from ParseResult to RenderOptions (`cmd/apsis/main.go`)
+  - Copies TotalCost and CostUnit from parsed result metadata to render options
+  - Enables cost display in rendered output when source format provides cost data
+- Test coverage for cost display in Markdown and HTML renderers (`internal/transcript/markdown_test.go`, `internal/transcript/html_test.go`)
+  - Tests cost rendering with credits, custom units, rounding, threshold behavior, nil/zero values
 - Spec for kiro-transcript-improvements feature (`specs/kiro-transcript-improvements/`)
   - Smolspec with requirements for displaying session cost and parsing Json tool result variant
   - Task list with 8 tasks across 4 phases (Core Infrastructure, Kiro Parser Enhancements, Renderer Updates, Integration)

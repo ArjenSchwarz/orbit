@@ -24,6 +24,6 @@ references:
 
 ## Integration
 
-- [ ] 7. Apsis CLI passes metadata from ParseResult to RenderOptions
+- [x] 7. Apsis CLI passes metadata from ParseResult to RenderOptions
 
-- [ ] 8. All existing tests pass and new functionality is covered
+- [x] 8. All existing tests pass and new functionality is covered

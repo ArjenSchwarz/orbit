@@ -242,6 +242,88 @@ func TestRenderMarkdown_DefaultTitle(t *testing.T) {
 	}
 }
 
+func TestRenderMarkdown_CostDisplay(t *testing.T) {
+	tests := map[string]struct {
+		totalCost *float64
+		costUnit  string
+		wantCost  bool
+		expected  string
+	}{
+		"cost displayed with credits": {
+			totalCost: ptr(0.14),
+			costUnit:  "credits",
+			wantCost:  true,
+			expected:  "**Cost:** 0.14 credits",
+		},
+		"cost displayed with default unit": {
+			totalCost: ptr(0.14),
+			costUnit:  "",
+			wantCost:  true,
+			expected:  "**Cost:** 0.14 credits",
+		},
+		"cost displayed with custom unit": {
+			totalCost: ptr(1.50),
+			costUnit:  "USD",
+			wantCost:  true,
+			expected:  "**Cost:** 1.50 USD",
+		},
+		"cost rounded to 2 decimals": {
+			totalCost: ptr(0.139),
+			costUnit:  "credits",
+			wantCost:  true,
+			expected:  "**Cost:** 0.14 credits",
+		},
+		"cost at threshold displayed": {
+			totalCost: ptr(0.005),
+			costUnit:  "credits",
+			wantCost:  true,
+			expected:  "**Cost:** 0.01 credits",
+		},
+		"cost below threshold not displayed": {
+			totalCost: ptr(0.004),
+			costUnit:  "credits",
+			wantCost:  false,
+		},
+		"nil cost not displayed": {
+			totalCost: nil,
+			costUnit:  "credits",
+			wantCost:  false,
+		},
+		"zero cost not displayed": {
+			totalCost: ptr(0.0),
+			costUnit:  "credits",
+			wantCost:  false,
+		},
+	}
+
+	for name, tc := range tests {
+		t.Run(name, func(t *testing.T) {
+			entries := []Entry{}
+			opts := RenderOptions{
+				TotalCost: tc.totalCost,
+				CostUnit:  tc.costUnit,
+			}
+
+			result := RenderMarkdown(entries, opts)
+
+			if tc.wantCost {
+				if !strings.Contains(result, tc.expected) {
+					t.Errorf("expected %q in output, got:\n%s", tc.expected, result)
+				}
+			} else {
+				if strings.Contains(result, "**Cost:**") {
+					t.Errorf("expected no cost in output, got:\n%s", result)
+				}
+			}
+		})
+	}
+}
+
+// ptr returns a pointer to the given float64 value.
+func ptr(v float64) *float64 {
+	return &v
+}
+
 func TestRenderMarkdown_HorizontalRulesBetweenMessages(t *testing.T) {
 	entries := []Entry{
 		{
