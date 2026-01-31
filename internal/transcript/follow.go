@@ -213,8 +213,8 @@ func (f *Follower) Run(ctx context.Context) error {
 
 // lineWithHash holds a raw JSON line and its precomputed hash.
 type lineWithHash struct {
-	raw  []byte    // Original bytes for parsing
-	hash [16]byte  // SHA-256 truncated to 16 bytes
+	raw  []byte   // Original bytes for parsing
+	hash [16]byte // SHA-256 truncated to 16 bytes
 }
 
 // hashLine computes a truncated SHA-256 hash of a JSON line.

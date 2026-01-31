@@ -47,6 +47,14 @@ func RenderMarkdown(entries []Entry, opts RenderOptions) string {
 		sb.WriteString(fmt.Sprintf("**Session ID:** `%s`\n\n", opts.SessionID))
 	}
 
+	if opts.TotalCost != nil && *opts.TotalCost >= 0.005 {
+		unit := opts.CostUnit
+		if unit == "" {
+			unit = "credits"
+		}
+		sb.WriteString(fmt.Sprintf("**Cost:** %.2f %s\n\n", *opts.TotalCost, unit))
+	}
+
 	sb.WriteString("---\n\n")
 
 	// Build state from all entries

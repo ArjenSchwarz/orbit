@@ -205,4 +205,6 @@ type RenderOptions struct {
 	SessionID  string             // Session ID to display in header
 	ProjectDir string             // Project directory to strip from file paths (e.g., "/Users/foo/project")
 	Navigation *NavigationContext // Optional navigation context for prev/next/back links
+	TotalCost  *float64           // nil = don't display, pointer = display if > 0.005
+	CostUnit   string             // e.g., "credits" (default if empty)
 }

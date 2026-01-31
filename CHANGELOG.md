@@ -9,6 +9,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- `KiroJsonOutput` type to parse structured command output from Kiro tool results (`internal/transcript/kiro_types.go`)
+  - Handles `exit_status`, `stdout`, and `stderr` fields from Json variant
+- Json variant parsing in Kiro tool results alongside Text variant (`internal/transcript/kiro_parser.go`)
+  - `formatKiroJsonOutput()` formats Json output with stdout, stderr prefix, and exit status
+  - Combined Text and Json content when both present in the same tool result
+- Cost metadata population from `usage_info` in Kiro parser (`internal/transcript/kiro_parser.go`)
+  - `ParseKiro()` now populates `ParseResult.Metadata` with credit costs when available
+- `ParseResultMetadata` type for carrying format-specific cost information in parse results (`internal/transcript/parser.go`)
+  - `TotalCost` pointer field for cost value (nil means not available)
+  - `CostUnit` string field for unit display (e.g., "credits")
+  - `ParseResult.Metadata` optional field populated by format-specific parsers
+- Cost display fields in `RenderOptions` for transcript rendering (`internal/transcript/types.go`)
+  - `TotalCost` pointer for conditional cost display (renders when non-nil and > 0.005)
+  - `CostUnit` string for unit label with "credits" default
+- Cost display in transcript headers when TotalCost is provided (`internal/transcript/markdown.go`, `internal/transcript/html.go`)
+  - Markdown: `**Cost:** X.XX credits` after Session ID, before content separator
+  - HTML: `<p class="session-cost">Cost: X.XX credits</p>` in header with matching CSS styling
+- Cost metadata passed from ParseResult to RenderOptions in all callers
+  - Apsis CLI (`cmd/apsis/main.go`): Copies TotalCost and CostUnit from parsed result metadata
+  - Orbit logs manager (`internal/logs/manager.go`): Enables cost display in saved phase transcripts
+  - Orbit web handlers (`internal/web/handlers.go`): Enables cost display in web transcript viewer
+- Test coverage for cost display in Markdown and HTML renderers (`internal/transcript/markdown_test.go`, `internal/transcript/html_test.go`)
+  - Tests cost rendering with credits, custom units, rounding, threshold behavior, nil/zero values
+- Spec for kiro-transcript-improvements feature (`specs/kiro-transcript-improvements/`)
+  - Smolspec with requirements for displaying session cost and parsing Json tool result variant
+  - Task list with 8 tasks across 4 phases (Core Infrastructure, Kiro Parser Enhancements, Renderer Updates, Integration)
 - Kiro credit usage tracking in Orbit (`internal/agents/kiro/agent.go`)
   - `extractSessionCredits()` fetches the most recent Kiro session from SQLite after execution
   - Parses `user_turn_metadata.usage_info` to extract credit usage

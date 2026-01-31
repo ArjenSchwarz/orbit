@@ -54,8 +54,8 @@ func convertCopilotToEntries(events []CopilotEvent) []Entry {
 	var entries []Entry
 
 	// Track tool calls and their results for matching
-	toolCalls := make(map[string]CopilotToolRequest)  // toolCallId -> request
-	toolResults := make(map[string]string)             // toolCallId -> result
+	toolCalls := make(map[string]CopilotToolRequest) // toolCallId -> request
+	toolResults := make(map[string]string)           // toolCallId -> result
 
 	// First pass: collect tool calls and results
 	for _, event := range events {
