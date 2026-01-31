@@ -4,6 +4,7 @@ package main
 
 import (
 	"bufio"
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -70,8 +71,8 @@ func parseFlags() *Config {
 	flag.StringVar(&cfg.Output, "output", "", "Output file (default: stdout)")
 	flag.StringVar(&cfg.Project, "p", "", "Project directory (default: current directory)")
 	flag.StringVar(&cfg.Project, "project", "", "Project directory (default: current directory)")
-	flag.StringVar(&cfg.Format, "f", "md", "Output format: md, markdown, html (default: md)")
-	flag.StringVar(&cfg.Format, "format", "md", "Output format: md, markdown, html (default: md)")
+	flag.StringVar(&cfg.Format, "f", "md", "Output format: md, markdown, html, json (default: md)")
+	flag.StringVar(&cfg.Format, "format", "md", "Output format: md, markdown, html, json (default: md)")
 	flag.StringVar(&cfg.Agent, "a", "", "Force agent format (claude-code, codex, kiro, copilot)")
 	flag.StringVar(&cfg.Agent, "agent", "", "Force agent format (claude-code, codex, kiro, copilot)")
 	flag.BoolVar(&cfg.Follow, "F", false, "Follow mode: monitor file for new entries")
@@ -103,7 +104,8 @@ Options:
   -l, --list              List available sessions for the project
   -o, --output <file>     Write output to file (default: stdout)
   -p, --project <path>    Project directory (default: current directory)
-  -f, --format <format>   Output format: md, markdown, html (default: md)
+  -f, --format <format>   Output format: md, markdown, html, json (default: md)
+                          json outputs the raw session data as pretty-printed JSON
   -a, --agent <name>      Force agent format: claude-code, codex, kiro, copilot
                           (default: auto-detect from content)
   -F, --follow            Follow mode: continuously monitor file for new entries
@@ -118,6 +120,7 @@ Examples:
   cat session.jsonl | apsis                      Convert from stdin
   apsis -o transcript.md session-id              Save to file
   apsis -f html -o transcript.html session-id    Save as HTML
+  apsis -f json session-id                       Output raw JSON (pretty-printed)
   apsis -a kiro session.json                     Force Kiro format parsing
   apsis --list                                   List sessions for current project
   apsis --list -p /path/to/project               List sessions for different project
@@ -760,6 +763,11 @@ func validateFollowMode(cfg *Config) error {
 		return fmt.Errorf("HTML output is not supported in follow mode. Use markdown format instead")
 	}
 
+	// Check for JSON format conflict
+	if strings.ToLower(cfg.Format) == "json" {
+		return fmt.Errorf("JSON output is not supported in follow mode. Use markdown format instead")
+	}
+
 	return nil
 }
 
@@ -779,9 +787,14 @@ func agentToFormat(agent string) transcript.Format {
 	}
 }
 
-// convert reads a transcript file from input and writes formatted output (Markdown or HTML).
+// convert reads a transcript file from input and writes formatted output (Markdown, HTML, or JSON).
 // If agent is specified, it forces the use of that agent's parser instead of auto-detection.
 func convert(input io.Reader, output io.Writer, sessionID string, format string, agent string) error {
+	// Handle JSON format separately (outputs raw data, not parsed entries)
+	if strings.ToLower(format) == "json" {
+		return convertToJSON(input, output, agent)
+	}
+
 	var result *transcript.ParseResult
 	var err error
 
@@ -824,13 +837,90 @@ func convert(input io.Reader, output io.Writer, sessionID string, format string,
 	case "md", "markdown", "":
 		rendered = transcript.RenderMarkdown(result.Entries, opts)
 	default:
-		return fmt.Errorf("unsupported format: %s (use md, markdown, or html)", format)
+		return fmt.Errorf("unsupported format: %s (use md, markdown, html, or json)", format)
 	}
 
 	_, err = output.Write([]byte(rendered))
 	if err != nil {
 		return fmt.Errorf("failed to write output: %w", err)
 	}
+
+	return nil
+}
+
+// convertToJSON outputs the raw session data as pretty-printed JSON.
+// For JSONL formats (Claude, Codex, Copilot), it outputs an array of entries.
+// For Kiro (JSON), it outputs the session object directly.
+func convertToJSON(input io.Reader, output io.Writer, agent string) error {
+	// Read all input
+	data, err := io.ReadAll(input)
+	if err != nil {
+		return fmt.Errorf("failed to read input: %w", err)
+	}
+
+	if len(data) == 0 {
+		fmt.Fprintln(os.Stderr, "Session contains no data")
+		return nil
+	}
+
+	// Determine format
+	var detectedFormat transcript.Format
+	if agent != "" {
+		detectedFormat = agentToFormat(agent)
+	} else {
+		detectedFormat, _, err = transcript.DetectFormat(bytes.NewReader(data))
+		if err != nil {
+			return fmt.Errorf("failed to detect format: %w", err)
+		}
+	}
+
+	var result any
+
+	if detectedFormat == transcript.FormatKiro {
+		// Kiro is already JSON - unmarshal to preserve structure
+		if err := json.Unmarshal(data, &result); err != nil {
+			return fmt.Errorf("failed to parse Kiro JSON: %w", err)
+		}
+	} else {
+		// JSONL formats - parse each line and collect into array
+		var entries []json.RawMessage
+		scanner := bufio.NewScanner(bytes.NewReader(data))
+		buf := make([]byte, 0, 64*1024)
+		scanner.Buffer(buf, 10*1024*1024) // 10MB max line
+
+		for scanner.Scan() {
+			line := scanner.Bytes()
+			if len(bytes.TrimSpace(line)) == 0 {
+				continue
+			}
+			// Validate it's valid JSON
+			var check json.RawMessage
+			if err := json.Unmarshal(line, &check); err != nil {
+				// Skip invalid lines but warn
+				fmt.Fprintf(os.Stderr, "Warning: skipping invalid JSON line\n")
+				continue
+			}
+			entries = append(entries, json.RawMessage(line))
+		}
+		if err := scanner.Err(); err != nil {
+			return fmt.Errorf("failed to scan input: %w", err)
+		}
+		result = entries
+	}
+
+	// Pretty-print the JSON
+	prettyJSON, err := json.MarshalIndent(result, "", "  ")
+	if err != nil {
+		return fmt.Errorf("failed to format JSON: %w", err)
+	}
+
+	_, err = output.Write(prettyJSON)
+	if err != nil {
+		return fmt.Errorf("failed to write output: %w", err)
+	}
+
+	// Add trailing newline
+	_, _ = output.Write([]byte("\n"))
 
 	return nil
 }

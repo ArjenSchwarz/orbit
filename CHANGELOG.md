@@ -9,6 +9,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Kiro credit usage tracking in Orbit (`internal/agents/kiro/agent.go`)
+  - `extractSessionCredits()` fetches the most recent Kiro session from SQLite after execution
+  - Parses `user_turn_metadata.usage_info` to extract credit usage
+  - Populates `RunResult.Cost.Credits` for cost tracking and display
+- Kiro session types for usage info parsing (`internal/transcript/kiro_types.go`)
+  - `KiroUserTurnMetadata` contains session-level metadata including usage info
+  - `KiroUsageInfo` represents credit usage with unit, unit_plural, and value fields
+- Kiro usage info parser (`internal/transcript/kiro_parser.go`)
+  - `ParseKiroUsageInfo()` extracts total credits from session JSON
+  - `extractKiroCredits()` sums credit usage from parsed session
+- Apsis JSON output format (`cmd/apsis/main.go`)
+  - `-f json` outputs raw session data as pretty-printed JSON
+  - Useful for inspecting session metadata including usage info
+  - JSONL formats output as JSON array, Kiro outputs session object directly
 - Integration tests for full run with hooks (`internal/orbit/integration_test.go`)
   - `TestFullRunWithAllHooks`: verifies complete hook execution order (pre-command → pre-prompt → phases → post-prompt → post-command)
   - `TestDeprecationBlocksRun`: verifies deprecated post-command config blocks the run with proper error messages
@@ -76,6 +90,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- Cost display formatting updated to 2 decimal places (`internal/orbit/orbit.go`)
+  - USD costs display as `$0.12` instead of `$0.1234`
+  - Credits display as `0.09 credits` instead of `0.0902 credits`
+  - `formatCost()` function handles both USD and credit-based costs
+  - `getCostUSD()` now falls back to credits when USD is not available
 - Updated CLAUDE.md with comprehensive documentation for new configuration options
   - `pre-prompt` and `post-prompt` (renamed from `post-command`) for AI prompts
   - `agents.<agent>.pre-command` and `agents.<agent>.post-command` for shell commands
