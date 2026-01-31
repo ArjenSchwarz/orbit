@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"strings"
 )
 
 // ParseKiro parses a Kiro session JSON file and returns the result.
@@ -20,9 +21,20 @@ func ParseKiro(r io.Reader) (*ParseResult, error) {
 
 	entries, warnings := convertKiroToEntries(&session)
 
+	// Extract cost metadata from usage_info
+	totalCost := extractKiroCredits(&session)
+	var metadata *ParseResultMetadata
+	if totalCost > 0 {
+		metadata = &ParseResultMetadata{
+			TotalCost: &totalCost,
+			CostUnit:  "credits",
+		}
+	}
+
 	return &ParseResult{
 		Entries:  entries,
 		Warnings: warnings,
+		Metadata: metadata,
 	}, nil
 }
 
@@ -77,6 +89,15 @@ func convertKiroUserMessage(userMsg *KiroUserMessage) []Entry {
 			for _, content := range result.Content {
 				if content.Text != "" {
 					text += content.Text
+				}
+				if content.Json != nil {
+					jsonText := formatKiroJsonOutput(content.Json)
+					if jsonText != "" {
+						if text != "" {
+							text += "\n"
+						}
+						text += jsonText
+					}
 				}
 			}
 			resultItems = append(resultItems, ContentItem{
@@ -203,4 +224,20 @@ func convertKiroToolUse(toolUse *KiroToolUse) Entry {
 			Content: contentItems,
 		},
 	}
+}
+
+// formatKiroJsonOutput formats a Json variant output into readable text.
+// Combines stdout, stderr (with prefix), and non-zero exit status.
+func formatKiroJsonOutput(j *KiroJsonOutput) string {
+	var parts []string
+	if j.Stdout != "" {
+		parts = append(parts, j.Stdout)
+	}
+	if j.Stderr != "" {
+		parts = append(parts, "stderr: "+j.Stderr)
+	}
+	if j.ExitStatus != "" && j.ExitStatus != "0" {
+		parts = append(parts, fmt.Sprintf("[exit: %s]", j.ExitStatus))
+	}
+	return strings.Join(parts, "\n")
 }

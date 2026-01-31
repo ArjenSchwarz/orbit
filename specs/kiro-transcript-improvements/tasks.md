@@ -12,9 +12,9 @@ references:
 
 ## Kiro Parser Enhancements
 
-- [ ] 3. Json variant in tool results is parsed alongside Text variant
+- [x] 3. Json variant in tool results is parsed alongside Text variant
 
-- [ ] 4. Kiro parser populates cost metadata from usage_info
+- [x] 4. Kiro parser populates cost metadata from usage_info
 
 ## Renderer Updates
 

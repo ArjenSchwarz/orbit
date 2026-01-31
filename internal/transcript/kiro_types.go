@@ -76,7 +76,15 @@ type KiroToolUseResult struct {
 
 // KiroResultContent represents content in a tool result.
 type KiroResultContent struct {
-	Text string `json:"Text,omitempty"`
+	Text string          `json:"Text,omitempty"`
+	Json *KiroJsonOutput `json:"Json,omitempty"`
+}
+
+// KiroJsonOutput represents structured command output in Json variant.
+type KiroJsonOutput struct {
+	ExitStatus string `json:"exit_status"` // Always string in observed logs
+	Stdout     string `json:"stdout"`
+	Stderr     string `json:"stderr"`
 }
 
 // KiroImage represents an image attachment.

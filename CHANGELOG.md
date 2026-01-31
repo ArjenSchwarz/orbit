@@ -9,6 +9,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- `KiroJsonOutput` type to parse structured command output from Kiro tool results (`internal/transcript/kiro_types.go`)
+  - Handles `exit_status`, `stdout`, and `stderr` fields from Json variant
+- Json variant parsing in Kiro tool results alongside Text variant (`internal/transcript/kiro_parser.go`)
+  - `formatKiroJsonOutput()` formats Json output with stdout, stderr prefix, and exit status
+  - Combined Text and Json content when both present in the same tool result
+- Cost metadata population from `usage_info` in Kiro parser (`internal/transcript/kiro_parser.go`)
+  - `ParseKiro()` now populates `ParseResult.Metadata` with credit costs when available
 - `ParseResultMetadata` type for carrying format-specific cost information in parse results (`internal/transcript/parser.go`)
   - `TotalCost` pointer field for cost value (nil means not available)
   - `CostUnit` string field for unit display (e.g., "credits")
