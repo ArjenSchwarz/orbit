@@ -100,15 +100,62 @@ When `--tasks-file` is not specified, Orbit detects it from the git branch:
 ## Configuration (Orbit)
 
 Configuration priority (highest to lowest):
-1. CLI flags (`--agent`, `--command`, `--post-command`, etc.)
-2. Environment variables (`ORBIT_AGENT`, `ORBIT_COMMAND`, `ORBIT_POST_COMMAND`, `ORBIT_DATE_SUBDIRS`, `ORBIT_CONTINUE_SESSION`)
+1. CLI flags (`--agent`, `--command`, `--pre-prompt`, `--post-prompt`, etc.)
+2. Environment variables (`ORBIT_AGENT`, `ORBIT_COMMAND`, `ORBIT_PRE_PROMPT`, `ORBIT_POST_PROMPT`, `ORBIT_DATE_SUBDIRS`, `ORBIT_CONTINUE_SESSION`)
 3. Project config (`.orbit.yaml` in working directory)
 4. Home config (`~/.orbit.yaml`)
 5. Built-in defaults
 
-Empty string environment variables explicitly disable features (e.g., `ORBIT_POST_COMMAND=""` disables post-command).
+Empty string environment variables explicitly disable features (e.g., `ORBIT_POST_PROMPT=""` disables post-prompt).
 
 Agent configuration in `.orbit.yaml` supports per-agent settings under the `agents` key with `cli-path`, `auto-approve` (default: `true`), `timeout`, and `extra-args` options. Auto-approve is enabled by default to allow non-interactive operation.
+
+### Commands and Prompts
+
+Orbit supports two types of hooks that run at different points in the orchestration lifecycle:
+
+**Prompts (AI agent interactions):**
+- `pre-prompt` - AI prompt executed before phase 1, sharing the same session
+- `post-prompt` - AI prompt executed after the final phase completes (renamed from `post-command`)
+
+**Shell Commands (per-agent):**
+- `agents.<agent>.pre-command` - Shell command run before the agent starts
+- `agents.<agent>.post-command` - Shell command run after the agent completes
+
+**Execution Order:**
+1. Agent pre-command (shell) - failure aborts the run
+2. Global pre-prompt (AI) - failure aborts the run
+3. Phase loop (all task phases)
+4. Global post-prompt (AI) - failure completes with warnings
+5. Agent post-command (shell) - failure completes with warnings
+
+**Key Differences:**
+- **Prompts** are sent to the AI agent and can interact with the codebase (e.g., review code, run analysis, make changes)
+- **Commands** are shell commands that run in your terminal (e.g., `make lint`, `npm test`)
+- Shell commands must be non-interactive (no user input required)
+
+**Command Timeout:**
+- `command-timeout` - Duration string for shell command execution (default: `5m`)
+- Applies to both pre-command and post-command
+- Supports Go duration format (e.g., `30s`, `5m`, `1h30m`)
+
+**Example Configuration:**
+```yaml
+# Global prompts (AI agent interactions)
+pre-prompt: "Review the codebase structure and identify potential areas of concern before we begin implementation."
+post-prompt: "Review the implementation to verify it meets the requirements and all tests pass. If issues are found, fix them."
+
+# Shell command timeout (default: 5m)
+command-timeout: "15m"
+
+# Agent configuration with shell commands
+agents:
+  claude-code:
+    type: claude-code
+    auto-approve: true
+    pre-command: "make lint && make test-short"
+    post-command: "make format && make lint"
+```
 
 ## External Dependencies
 

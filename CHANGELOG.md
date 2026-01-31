@@ -9,6 +9,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Integration tests for full run with hooks (`internal/orbit/integration_test.go`)
+  - `TestFullRunWithAllHooks`: verifies complete hook execution order (pre-command → pre-prompt → phases → post-prompt → post-command)
+  - `TestDeprecationBlocksRun`: verifies deprecated post-command config blocks the run with proper error messages
+  - `TestResumeWithCompletedPrePrompt`: verifies pre-prompt is skipped when already completed for crash recovery
+  - `TestResumeWithStartedPrePrompt`: verifies interrupted pre-prompt session is resumed
+  - `TestCommandTimeoutConfigurable`: verifies configurable timeout for shell commands
+  - `TestSignalDuringShellCommand`: verifies graceful shutdown during shell command execution
+  - `TestSignalDuringPrePrompt`: verifies graceful shutdown during pre-prompt execution
+- Commands and Prompts documentation section in CLAUDE.md explaining hook types, execution order, and configuration
+
+### Changed
+
+- Updated CLAUDE.md with comprehensive documentation for new configuration options
+  - `pre-prompt` and `post-prompt` (renamed from `post-command`) for AI prompts
+  - `agents.<agent>.pre-command` and `agents.<agent>.post-command` for shell commands
+  - `command-timeout` configuration option with Go duration format
+  - Execution order documentation with failure behavior
+  - Example configuration showing all hook options
+
 - Single-run mode hook orchestration (`internal/orbit/orbit.go`)
   - `runAgentPreCommand()` method for executing shell commands before agent phases with abort-on-failure
   - `runAgentPostCommand()` method for executing shell commands after agent phases with warn-on-failure

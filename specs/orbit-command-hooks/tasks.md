@@ -267,7 +267,7 @@ references:
   - Owner: agent-stream-2
   - Requirements: [8.6](requirements.md#8.6)
 
-- [ ] 30. Write integration tests for full run with hooks <!-- id:yvhgqmh -->
+- [x] 30. Write integration tests for full run with hooks <!-- id:yvhgqmh -->
   - TestFullRunWithAllHooks
   - TestDeprecationBlocksRun
   - TestResumeWithCompletedPrePrompt
@@ -277,13 +277,15 @@ references:
   - TestSignalDuringPrePrompt
   - Blocked-by: yvhgqmb (Write unit tests for single-run hooks), yvhgqmf (Write integration tests for variant mode hooks)
   - Stream: 1
+  - Owner: agent-stream-1
   - Requirements: [6.1](requirements.md#6.1), [5.1](requirements.md#5.1), [5.2](requirements.md#5.2), [5.3](requirements.md#5.3), [2.12](requirements.md#2.12), [7.6](requirements.md#7.6), [7.9](requirements.md#7.9), [2.9](requirements.md#2.9)
 
-- [ ] 31. Update CLAUDE.md with new configuration options <!-- id:yvhgqmi -->
+- [x] 31. Update CLAUDE.md with new configuration options <!-- id:yvhgqmi -->
   - Document pre-prompt and post-prompt configuration
   - Document agent-level pre-command and post-command
   - Document command-timeout configuration
   - Explain execution order and difference between commands and prompts
   - Blocked-by: yvhgqm8 (Update runSingle to call hooks in order), yvhgqme (Update runVariant to integrate hooks)
   - Stream: 2
+  - Owner: agent-stream-2
   - Requirements: [10.1](requirements.md#10.1), [10.2](requirements.md#10.2), [10.3](requirements.md#10.3), [10.4](requirements.md#10.4), [10.5](requirements.md#10.5)
