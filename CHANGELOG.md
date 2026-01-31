@@ -10,15 +10,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 
 - Update Apsis description in CLAUDE.md and README.md to reflect support for Claude Code (JSONL), Codex (JSONL), and Kiro (SQLite) sessions
+- Apsis now displays Kiro CLI sessions as `[kiro-cli]` instead of `[kiro]` to differentiate from IDE sessions
+- Export `IsDisplayableEntry` from transcript package to enable reuse across packages
 
 ### Added
+
+- Orbit status command now supports Kiro agent for last action display (`internal/status/gatherer.go`)
+  - `gatherKiroLastAction()` queries Kiro SQLite database for session data
+  - Parses session JSON and finds last displayable entry
+  - Refactored `gatherLastAction()` to dispatch to agent-specific handlers
+- Test coverage for Kiro last action in status gatherer (`TestGatherVariantInfo_LastActionKiro`)
 
 - Apsis Kiro session integration (`cmd/apsis/`)
   - `listKiroSessions()` discovers Kiro sessions from SQLite for current working directory
   - `resolveKiroSession()` retrieves Kiro session JSON by session ID
   - `listAllSessions()` now includes Kiro sessions alongside Claude and Codex
   - `resolveInput()` searches Kiro database after Claude and Codex lookups
-  - Sessions display with `[kiro]` source indicator in session listings
+  - Sessions display with `[kiro-cli]` source indicator in session listings
   - Graceful fallback when Kiro database unavailable (returns empty, logs warning)
   - Unit tests for session listing, resolution, and error handling
 

@@ -119,7 +119,7 @@ func GetLastDisplayableEntry(filePath string) (*Entry, error) {
 				continue
 			}
 
-			if isDisplayableEntry(&entry) {
+			if IsDisplayableEntry(&entry) {
 				lastEntryBufferPool.Put(bufPtr)
 				return &entry, nil
 			}
@@ -137,10 +137,10 @@ func GetLastDisplayableEntry(filePath string) (*Entry, error) {
 	}
 }
 
-// isDisplayableEntry checks if an entry should be considered for "last action" display.
+// IsDisplayableEntry checks if an entry should be considered for "last action" display.
 // Returns true for assistant messages with tool_use or text content.
 // Excludes meta entries and thinking content.
-func isDisplayableEntry(e *Entry) bool {
+func IsDisplayableEntry(e *Entry) bool {
 	if e.IsMeta {
 		return false
 	}

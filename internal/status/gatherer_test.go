@@ -214,7 +214,8 @@ func TestGatherVariantInfo_GitInfoFailure(t *testing.T) {
 	}
 }
 
-func TestGatherVariantInfo_LastActionNonClaude(t *testing.T) {
+func TestGatherVariantInfo_LastActionUnsupportedAgent(t *testing.T) {
+	// Agents that don't support last action (not claude-code or kiro)
 	git := &mockGitClient{
 		commits: []variants.Commit{{Hash: "abc", Subject: "test"}},
 	}
@@ -225,7 +226,7 @@ func TestGatherVariantInfo_LastActionNonClaude(t *testing.T) {
 		Branch:       "test-branch",
 		WorktreePath: "/path/to/worktree",
 		Status:       variants.StatusRunning,
-		AgentType:    "codex", // Non-Claude agent
+		AgentType:    "codex", // Unsupported agent for last action
 	}
 
 	info := g.GatherVariantInfo(context.Background(), v)
@@ -235,6 +236,32 @@ func TestGatherVariantInfo_LastActionNonClaude(t *testing.T) {
 	}
 	if info.LastAction.State != LastActionNotSupported {
 		t.Errorf("LastAction.State = %v, want LastActionNotSupported", info.LastAction.State)
+	}
+}
+
+func TestGatherVariantInfo_LastActionKiro(t *testing.T) {
+	// Kiro agent returns LastActionWaiting when summary.json doesn't exist
+	git := &mockGitClient{
+		commits: []variants.Commit{{Hash: "abc", Subject: "test"}},
+	}
+	g := NewGatherer(git, "test-spec", "specs/test-spec", "base123", "/nonexistent/repo")
+
+	v := &variants.Variant{
+		ID:           1,
+		Branch:       "test-branch",
+		WorktreePath: "/path/to/worktree",
+		Status:       variants.StatusRunning,
+		AgentType:    "kiro",
+	}
+
+	info := g.GatherVariantInfo(context.Background(), v)
+
+	if info.LastAction == nil {
+		t.Fatal("LastAction should not be nil")
+	}
+	// Without summary.json, Kiro returns LastActionWaiting
+	if info.LastAction.State != LastActionWaiting {
+		t.Errorf("LastAction.State = %v, want LastActionWaiting", info.LastAction.State)
 	}
 }
 
