@@ -9,6 +9,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Spec for apsis-copilot-support feature (`specs/apsis-copilot-support/`)
+  - Smolspec with requirements for full Copilot CLI session support in Apsis
+  - Covers session discovery, UUID lookup, extended thinking display, and missing event types
+  - Task list with 7 tasks across 2 phases (Parser Improvements, Session Discovery)
 - `KiroJsonOutput` type to parse structured command output from Kiro tool results (`internal/transcript/kiro_types.go`)
   - Handles `exit_status`, `stdout`, and `stderr` fields from Json variant
 - Json variant parsing in Kiro tool results alongside Text variant (`internal/transcript/kiro_parser.go`)
