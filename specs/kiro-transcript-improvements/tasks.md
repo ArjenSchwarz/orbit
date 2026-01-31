@@ -18,9 +18,9 @@ references:
 
 ## Renderer Updates
 
-- [ ] 5. Markdown renderer displays cost in transcript header
+- [x] 5. Markdown renderer displays cost in transcript header
 
-- [ ] 6. HTML renderer displays cost in transcript header
+- [x] 6. HTML renderer displays cost in transcript header
 
 ## Integration
 

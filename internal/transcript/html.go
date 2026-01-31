@@ -50,7 +50,8 @@ header h1 {
     font-size: 1.75rem;
 }
 
-.session-id {
+.session-id,
+.session-cost {
     color: var(--text-secondary);
     font-size: 0.9rem;
     margin: 0;
@@ -112,6 +113,14 @@ func RenderHTML(entries []Entry, opts RenderOptions) string {
 	if opts.SessionID != "" {
 		sb.WriteString(fmt.Sprintf("        <p class=\"session-id\">Session ID: <code>%s</code></p>\n",
 			stdhtml.EscapeString(opts.SessionID)))
+	}
+	if opts.TotalCost != nil && *opts.TotalCost >= 0.005 {
+		unit := opts.CostUnit
+		if unit == "" {
+			unit = "credits"
+		}
+		sb.WriteString(fmt.Sprintf("        <p class=\"session-cost\">Cost: %.2f %s</p>\n",
+			*opts.TotalCost, stdhtml.EscapeString(unit)))
 	}
 	sb.WriteString("    </header>\n")
 

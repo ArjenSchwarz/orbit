@@ -23,6 +23,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Cost display fields in `RenderOptions` for transcript rendering (`internal/transcript/types.go`)
   - `TotalCost` pointer for conditional cost display (renders when non-nil and > 0.005)
   - `CostUnit` string for unit label with "credits" default
+- Cost display in transcript headers when TotalCost is provided (`internal/transcript/markdown.go`, `internal/transcript/html.go`)
+  - Markdown: `**Cost:** X.XX credits` after Session ID, before content separator
+  - HTML: `<p class="session-cost">Cost: X.XX credits</p>` in header with matching CSS styling
 - Spec for kiro-transcript-improvements feature (`specs/kiro-transcript-improvements/`)
   - Smolspec with requirements for displaying session cost and parsing Json tool result variant
   - Task list with 8 tasks across 4 phases (Core Infrastructure, Kiro Parser Enhancements, Renderer Updates, Integration)
