@@ -7,6 +7,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"time"
 )
@@ -25,10 +26,14 @@ type ShellCommandResult struct {
 // executeShellCommand runs a shell command with timeout and environment setup.
 // It executes the command using /bin/sh -c, sets the working directory,
 // and adds ORBIT_PHASE_COUNT and ORBIT_AGENT environment variables.
-// Returns an error if the command is empty.
+// Returns an error if the command is empty or if running on Windows.
 func (o *Orbit) executeShellCommand(command, logName string) (*ShellCommandResult, error) {
 	if command == "" {
 		return nil, fmt.Errorf("command cannot be empty")
+	}
+
+	if runtime.GOOS == "windows" {
+		return nil, fmt.Errorf("shell commands are not supported on Windows (requires /bin/sh)")
 	}
 
 	startTime := time.Now()
