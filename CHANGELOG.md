@@ -9,6 +9,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Copilot session discovery for Apsis (`cmd/apsis/main.go`)
+  - `listCopilotSessions()` function to discover sessions in `~/.copilot/session-state/`
+  - `findCopilotSession()` function for UUID-based session lookup with case-insensitive matching
+  - `parseCopilotWorkspace()` function to parse `workspace.yaml` metadata (id, cwd, git_root, created_at)
+  - `CopilotWorkspace` struct for workspace.yaml parsing with graceful handling of missing/malformed files
+  - `apsis -l` now includes `[copilot]` sessions filtered by project directory (git_root or cwd)
+  - `apsis <uuid>` resolves Copilot session UUIDs to events.jsonl files
+  - Updated sort order: Claude > Copilot > Codex > Kiro (when timestamps tie)
+  - Follow mode (`-F`) now supports Copilot sessions
 - Extended thinking support for Copilot transcripts (`internal/transcript/copilot_types.go`, `internal/transcript/copilot_parser.go`)
   - `ReasoningText` field in `CopilotData` struct for parsing extended thinking content
   - Thinking content emitted as ContentItem before text content in assistant messages

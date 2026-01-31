@@ -24,6 +24,7 @@ import (
 	"github.com/arjenschwarz/orbit/internal/agents/claudecode"
 	"github.com/arjenschwarz/orbit/internal/agents/kiro/logs"
 	"github.com/arjenschwarz/orbit/internal/transcript"
+	"gopkg.in/yaml.v3"
 )
 
 // version is set at build time via -ldflags
@@ -290,7 +291,20 @@ func resolveInput(arg string, projectPath string) (io.ReadCloser, string, error)
 		return f, arg, nil
 	}
 
-	// Try Kiro location third
+	// Try Copilot location third
+	copilotPath, err := findCopilotSession(homeDir, arg)
+	if err != nil {
+		return nil, "", fmt.Errorf("failed to search Copilot sessions: %w", err)
+	}
+	if copilotPath != "" {
+		f, err := os.Open(copilotPath)
+		if err != nil {
+			return nil, "", fmt.Errorf("failed to open Copilot session file: %w", err)
+		}
+		return f, arg, nil
+	}
+
+	// Try Kiro location fourth
 	reader, err := resolveKiroSession(arg, projectPath)
 	if err == nil {
 		return io.NopCloser(reader), arg, nil
@@ -625,7 +639,154 @@ func resolveKiroSession(sessionID, cwd string) (io.Reader, error) {
 	return logs.GetSession(context.Background(), sessionID, cwd)
 }
 
-// listAllSessions returns sessions from Claude, Codex, and Kiro locations, merged and sorted.
+// CopilotWorkspace represents the metadata from a Copilot workspace.yaml file.
+type CopilotWorkspace struct {
+	ID        string     `yaml:"id"`
+	Cwd       string     `yaml:"cwd"`
+	GitRoot   string     `yaml:"git_root"`
+	CreatedAt *time.Time `yaml:"created_at"`
+	Summary   string     `yaml:"summary"`
+}
+
+// parseCopilotWorkspace parses a Copilot workspace.yaml file.
+// Returns nil with no error if the file doesn't exist or is malformed.
+func parseCopilotWorkspace(path string) (*CopilotWorkspace, error) {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil, nil
+		}
+		return nil, err
+	}
+
+	var ws CopilotWorkspace
+	if err := yaml.Unmarshal(data, &ws); err != nil {
+		return nil, nil // Malformed file, skip gracefully
+	}
+
+	return &ws, nil
+}
+
+// listCopilotSessions returns all Copilot sessions for a project directory.
+// Sessions are matched by git_root field (falling back to cwd if git_root is empty).
+// Returns nil with no error if Copilot is not installed.
+func listCopilotSessions(projectPath string) ([]SessionInfo, error) {
+	homeDir, err := os.UserHomeDir()
+	if err != nil {
+		return nil, fmt.Errorf("failed to get home directory: %w", err)
+	}
+
+	sessionDir := filepath.Join(homeDir, ".copilot", "session-state")
+
+	// Check if directory exists
+	if _, err := os.Stat(sessionDir); os.IsNotExist(err) {
+		return nil, nil // Copilot not installed, not an error
+	}
+
+	entries, err := os.ReadDir(sessionDir)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read session directory: %w", err)
+	}
+
+	var sessions []SessionInfo
+	for _, entry := range entries {
+		if !entry.IsDir() {
+			continue
+		}
+
+		sessionPath := filepath.Join(sessionDir, entry.Name())
+		workspacePath := filepath.Join(sessionPath, "workspace.yaml")
+		eventsPath := filepath.Join(sessionPath, "events.jsonl")
+
+		// Skip if events.jsonl doesn't exist
+		eventsInfo, err := os.Stat(eventsPath)
+		if err != nil {
+			continue
+		}
+
+		// Skip empty sessions
+		if eventsInfo.Size() == 0 {
+			continue
+		}
+
+		// Parse workspace.yaml for metadata
+		ws, err := parseCopilotWorkspace(workspacePath)
+		if err != nil || ws == nil {
+			continue // Skip directories without valid workspace.yaml
+		}
+
+		// Filter by project path using git_root (falling back to cwd)
+		matchPath := ws.GitRoot
+		if matchPath == "" {
+			matchPath = ws.Cwd
+		}
+		if matchPath != "" && matchPath != projectPath {
+			continue
+		}
+
+		// Determine timestamp
+		var createdAt time.Time
+		if ws.CreatedAt != nil {
+			createdAt = *ws.CreatedAt
+		} else {
+			// Fall back to file modification time
+			createdAt = eventsInfo.ModTime()
+		}
+
+		sessions = append(sessions, SessionInfo{
+			ID:        entry.Name(),
+			CreatedAt: createdAt,
+			Size:      eventsInfo.Size(),
+			Source:    "copilot",
+		})
+	}
+
+	return sessions, nil
+}
+
+// findCopilotSession searches ~/.copilot/session-state/ for a session by UUID.
+// Returns the path to the events.jsonl file if found, empty string if not found.
+func findCopilotSession(homeDir, sessionID string) (string, error) {
+	// Validate sessionID is a proper UUID (36 chars with hyphens)
+	if len(sessionID) != 36 || !uuidPattern.MatchString(sessionID) {
+		return "", nil // Not a valid UUID, skip Copilot search
+	}
+
+	// Normalize sessionID for case-insensitive matching
+	normalizedID := strings.ToLower(sessionID)
+
+	sessionDir := filepath.Join(homeDir, ".copilot", "session-state")
+
+	// Check if directory exists
+	if _, err := os.Stat(sessionDir); os.IsNotExist(err) {
+		return "", nil // Copilot not installed, not an error
+	}
+
+	entries, err := os.ReadDir(sessionDir)
+	if err != nil {
+		return "", err
+	}
+
+	for _, entry := range entries {
+		if !entry.IsDir() {
+			continue
+		}
+
+		// Case-insensitive UUID matching
+		if strings.ToLower(entry.Name()) != normalizedID {
+			continue
+		}
+
+		eventsPath := filepath.Join(sessionDir, entry.Name(), "events.jsonl")
+		if _, err := os.Stat(eventsPath); err == nil {
+			return eventsPath, nil
+		}
+	}
+
+	return "", nil
+}
+
+// listAllSessions returns sessions from Claude, Copilot, Codex, and Kiro locations, merged and sorted.
 func listAllSessions(projectPath string) ([]SessionInfo, error) {
 	homeDir, err := os.UserHomeDir()
 	if err != nil {
@@ -637,6 +798,13 @@ func listAllSessions(projectPath string) ([]SessionInfo, error) {
 	if err != nil {
 		// Log warning but continue with other sessions
 		fmt.Fprintf(os.Stderr, "Warning: could not list Claude sessions: %v\n", err)
+	}
+
+	// Get Copilot sessions
+	copilotSessions, err := listCopilotSessions(projectPath)
+	if err != nil {
+		// Log warning but continue with other sessions
+		fmt.Fprintf(os.Stderr, "Warning: could not list Copilot sessions: %v\n", err)
 	}
 
 	// Get Codex sessions
@@ -654,8 +822,9 @@ func listAllSessions(projectPath string) ([]SessionInfo, error) {
 	}
 
 	// Merge sessions
-	allSessions := make([]SessionInfo, 0, len(claudeSessions)+len(codexSessions)+len(kiroSessions))
+	allSessions := make([]SessionInfo, 0, len(claudeSessions)+len(copilotSessions)+len(codexSessions)+len(kiroSessions))
 	allSessions = append(allSessions, claudeSessions...)
+	allSessions = append(allSessions, copilotSessions...)
 	allSessions = append(allSessions, codexSessions...)
 	allSessions = append(allSessions, kiroSessions...)
 
@@ -666,12 +835,20 @@ func listAllSessions(projectPath string) ([]SessionInfo, error) {
 }
 
 // sortSessionsByTimestamp sorts sessions by creation time (oldest first).
-// When timestamps are equal, Claude sessions come before Codex sessions.
+// When timestamps are equal, sources are ordered: claude > copilot > codex > kiro.
 func sortSessionsByTimestamp(sessions []SessionInfo) {
+	// Source priority: claude=0, copilot=1, codex=2, kiro-cli=3
+	sourcePriority := map[string]int{
+		"claude":   0,
+		"copilot":  1,
+		"codex":    2,
+		"kiro-cli": 3,
+	}
+
 	sort.Slice(sessions, func(i, j int) bool {
 		if sessions[i].CreatedAt.Equal(sessions[j].CreatedAt) {
-			// Claude comes before Codex for tie-breaking
-			return sessions[i].Source == "claude" && sessions[j].Source != "claude"
+			// Use source priority for tie-breaking
+			return sourcePriority[sessions[i].Source] < sourcePriority[sessions[j].Source]
 		}
 		return sessions[i].CreatedAt.Before(sessions[j].CreatedAt)
 	})
@@ -742,7 +919,16 @@ func resolveFollowInput(input string, projectPath string) (string, error) {
 		return codexPath, nil
 	}
 
-	// Not found in either location
+	// Try Copilot location third
+	copilotPath, err := findCopilotSession(homeDir, input)
+	if err != nil {
+		return "", fmt.Errorf("failed to search Copilot sessions: %w", err)
+	}
+	if copilotPath != "" {
+		return copilotPath, nil
+	}
+
+	// Not found in any location
 	return "", fmt.Errorf("session not found: %s", input)
 }
 
