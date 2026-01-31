@@ -6,15 +6,15 @@ references:
 
 ## Parser Improvements
 
-- [ ] 1. Extended thinking appears in Copilot transcripts
+- [x] 1. Extended thinking appears in Copilot transcripts
   - Add reasoningText field to CopilotData struct in copilot_types.go. Update convertCopilotToEntries() in copilot_parser.go to emit thinking ContentItem before text content.
   - Verify: Run apsis on a session with extended thinking and confirm thinking block renders in collapsible details.
 
-- [ ] 2. All Copilot event types are recognized for format detection
+- [x] 2. All Copilot event types are recognized for format detection
   - Add session.model_change, skill.invoked, and abort to copilotTypes map in parser.go.
   - Verify: Format detection succeeds on sessions containing these event types without warnings.
 
-- [ ] 3. Parser improvements verified with real session data
+- [x] 3. Parser improvements verified with real session data
   - Test parsing against real Copilot sessions in ~/.copilot/session-state/.
   - Verify: Extended thinking renders correctly, all event types parse without errors, tool results display properly.
 

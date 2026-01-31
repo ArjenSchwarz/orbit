@@ -9,6 +9,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Extended thinking support for Copilot transcripts (`internal/transcript/copilot_types.go`, `internal/transcript/copilot_parser.go`)
+  - `ReasoningText` field in `CopilotData` struct for parsing extended thinking content
+  - Thinking content emitted as ContentItem before text content in assistant messages
+  - Renders in collapsible details blocks using existing thinking block format
+- Additional Copilot event types for format detection (`internal/transcript/parser.go`)
+  - `session.model_change`, `skill.invoked`, and `abort` added to `copilotTypes` map
+  - Enables parsing sessions with these event types without warnings
 - Spec for apsis-copilot-support feature (`specs/apsis-copilot-support/`)
   - Smolspec with requirements for full Copilot CLI session support in Apsis
   - Covers session discovery, UUID lookup, extended thinking display, and missing event types

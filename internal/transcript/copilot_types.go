@@ -32,8 +32,9 @@ type CopilotData struct {
 	TurnID string `json:"turnId,omitempty"`
 
 	// assistant.message fields
-	MessageID    string               `json:"messageId,omitempty"`
-	ToolRequests []CopilotToolRequest `json:"toolRequests,omitempty"`
+	MessageID     string               `json:"messageId,omitempty"`
+	ToolRequests  []CopilotToolRequest `json:"toolRequests,omitempty"`
+	ReasoningText string               `json:"reasoningText,omitempty"`
 
 	// assistant.reasoning fields
 	ReasoningID string `json:"reasoningId,omitempty"`
