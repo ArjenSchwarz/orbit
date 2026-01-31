@@ -2,37 +2,37 @@ package transcript
 
 // CopilotEvent represents a single event line in the Copilot JSONL format.
 type CopilotEvent struct {
-	Type      string          `json:"type"`
-	Data      CopilotData     `json:"data"`
-	ID        string          `json:"id"`
-	Timestamp string          `json:"timestamp"`
-	ParentID  *string         `json:"parentId"`
+	Type      string      `json:"type"`
+	Data      CopilotData `json:"data"`
+	ID        string      `json:"id"`
+	Timestamp string      `json:"timestamp"`
+	ParentID  *string     `json:"parentId"`
 }
 
 // CopilotData holds the polymorphic data payload for different event types.
 // Different event types use different fields.
 type CopilotData struct {
 	// session.start fields
-	SessionID     string `json:"sessionId,omitempty"`
-	Version       int    `json:"version,omitempty"`
-	Producer      string `json:"producer,omitempty"`
+	SessionID      string `json:"sessionId,omitempty"`
+	Version        int    `json:"version,omitempty"`
+	Producer       string `json:"producer,omitempty"`
 	CopilotVersion string `json:"copilotVersion,omitempty"`
-	StartTime     string `json:"startTime,omitempty"`
+	StartTime      string `json:"startTime,omitempty"`
 
 	// session.info fields
 	InfoType string `json:"infoType,omitempty"`
 	Message  string `json:"message,omitempty"`
 
 	// user.message fields
-	Content            string               `json:"content,omitempty"`
-	TransformedContent string               `json:"transformedContent,omitempty"`
-	Attachments        []CopilotAttachment  `json:"attachments,omitempty"`
+	Content            string              `json:"content,omitempty"`
+	TransformedContent string              `json:"transformedContent,omitempty"`
+	Attachments        []CopilotAttachment `json:"attachments,omitempty"`
 
 	// assistant.turn_start / assistant.turn_end fields
 	TurnID string `json:"turnId,omitempty"`
 
 	// assistant.message fields
-	MessageID    string              `json:"messageId,omitempty"`
+	MessageID    string               `json:"messageId,omitempty"`
 	ToolRequests []CopilotToolRequest `json:"toolRequests,omitempty"`
 
 	// assistant.reasoning fields
@@ -44,8 +44,8 @@ type CopilotData struct {
 	Arguments  map[string]any `json:"arguments,omitempty"`
 
 	// tool.execution_complete fields
-	Success       bool                 `json:"success,omitempty"`
-	Result        *CopilotToolResult   `json:"result,omitempty"`
+	Success       bool                  `json:"success,omitempty"`
+	Result        *CopilotToolResult    `json:"result,omitempty"`
 	ToolTelemetry *CopilotToolTelemetry `json:"toolTelemetry,omitempty"`
 }
 

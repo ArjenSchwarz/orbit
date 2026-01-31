@@ -6,9 +6,9 @@ references:
 
 ## Core Infrastructure
 
-- [ ] 1. ParseResult carries format-specific metadata for cost information
+- [x] 1. ParseResult carries format-specific metadata for cost information
 
-- [ ] 2. RenderOptions supports cost display fields without signature changes
+- [x] 2. RenderOptions supports cost display fields without signature changes
 
 ## Kiro Parser Enhancements
 

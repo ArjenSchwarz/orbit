@@ -31,15 +31,15 @@ var codexTypes = map[string]bool{
 // copilotTypes are the type values that indicate Copilot format.
 // Copilot uses dot-notation type fields like "session.start", "user.message", etc.
 var copilotTypes = map[string]bool{
-	"session.start":            true,
-	"session.info":             true,
-	"user.message":             true,
-	"assistant.turn_start":     true,
-	"assistant.message":        true,
-	"assistant.reasoning":      true,
-	"assistant.turn_end":       true,
-	"tool.execution_start":     true,
-	"tool.execution_complete":  true,
+	"session.start":           true,
+	"session.info":            true,
+	"user.message":            true,
+	"assistant.turn_start":    true,
+	"assistant.message":       true,
+	"assistant.reasoning":     true,
+	"assistant.turn_end":      true,
+	"tool.execution_start":    true,
+	"tool.execution_complete": true,
 }
 
 // infrastructureTypes are entry types that should be skipped during format detection.
@@ -223,10 +223,17 @@ func detectFormatFromLine(line []byte) (Format, error) {
 	return FormatUnknown, fmt.Errorf("unrecognized log format: type field value '%s'", obj.Type)
 }
 
+// ParseResultMetadata contains optional format-specific metadata.
+type ParseResultMetadata struct {
+	TotalCost *float64 // nil = not available, pointer to value = available
+	CostUnit  string   // e.g., "credits"
+}
+
 // ParseResult contains the parsed entries and any warnings encountered.
 type ParseResult struct {
 	Entries  []Entry
 	Warnings []ParseWarning
+	Metadata *ParseResultMetadata // nil for formats without metadata
 }
 
 // ParseWarning represents a non-fatal parsing issue.

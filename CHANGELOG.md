@@ -9,6 +9,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- `ParseResultMetadata` type for carrying format-specific cost information in parse results (`internal/transcript/parser.go`)
+  - `TotalCost` pointer field for cost value (nil means not available)
+  - `CostUnit` string field for unit display (e.g., "credits")
+  - `ParseResult.Metadata` optional field populated by format-specific parsers
+- Cost display fields in `RenderOptions` for transcript rendering (`internal/transcript/types.go`)
+  - `TotalCost` pointer for conditional cost display (renders when non-nil and > 0.005)
+  - `CostUnit` string for unit label with "credits" default
 - Spec for kiro-transcript-improvements feature (`specs/kiro-transcript-improvements/`)
   - Smolspec with requirements for displaying session cost and parsing Json tool result variant
   - Task list with 8 tasks across 4 phases (Core Infrastructure, Kiro Parser Enhancements, Renderer Updates, Integration)

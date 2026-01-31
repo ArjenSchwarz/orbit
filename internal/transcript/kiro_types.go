@@ -2,17 +2,17 @@ package transcript
 
 // KiroSession represents the top-level Kiro session JSON structure.
 type KiroSession struct {
-	ConversationID   string               `json:"conversation_id"`
-	NextMessage      *KiroHistoryEntry    `json:"next_message"`
-	History          []KiroHistoryEntry   `json:"history"`
+	ConversationID   string                `json:"conversation_id"`
+	NextMessage      *KiroHistoryEntry     `json:"next_message"`
+	History          []KiroHistoryEntry    `json:"history"`
 	UserTurnMetadata *KiroUserTurnMetadata `json:"user_turn_metadata,omitempty"`
 }
 
 // KiroUserTurnMetadata contains session-level metadata including usage info.
 type KiroUserTurnMetadata struct {
-	ContinuationID string           `json:"continuation_id"`
-	Requests       []any            `json:"requests"`
-	UsageInfo      []KiroUsageInfo  `json:"usage_info"`
+	ContinuationID string          `json:"continuation_id"`
+	Requests       []any           `json:"requests"`
+	UsageInfo      []KiroUsageInfo `json:"usage_info"`
 }
 
 // KiroUsageInfo represents usage/cost information for a session.
@@ -69,9 +69,9 @@ type KiroToolUseResults struct {
 
 // KiroToolUseResult represents a single tool result.
 type KiroToolUseResult struct {
-	ToolUseID string             `json:"tool_use_id"`
+	ToolUseID string              `json:"tool_use_id"`
 	Content   []KiroResultContent `json:"content"`
-	Status    string             `json:"status"` // "Success", "Error", etc.
+	Status    string              `json:"status"` // "Success", "Error", etc.
 }
 
 // KiroResultContent represents content in a tool result.
@@ -116,19 +116,19 @@ type KiroTextResponse struct {
 
 // KiroRequestMetadata contains telemetry and metadata about the request.
 type KiroRequestMetadata struct {
-	RequestID               string     `json:"request_id"`
-	ContextUsagePercentage  *float64   `json:"context_usage_percentage"`
-	MessageID               string     `json:"message_id"`
-	RequestStartTimestampMs int64      `json:"request_start_timestamp_ms"`
-	StreamEndTimestampMs    int64      `json:"stream_end_timestamp_ms"`
-	TimeToFirstChunk        *KiroDuration `json:"time_to_first_chunk,omitempty"`
+	RequestID               string         `json:"request_id"`
+	ContextUsagePercentage  *float64       `json:"context_usage_percentage"`
+	MessageID               string         `json:"message_id"`
+	RequestStartTimestampMs int64          `json:"request_start_timestamp_ms"`
+	StreamEndTimestampMs    int64          `json:"stream_end_timestamp_ms"`
+	TimeToFirstChunk        *KiroDuration  `json:"time_to_first_chunk,omitempty"`
 	TimeBetweenChunks       []KiroDuration `json:"time_between_chunks,omitempty"`
-	UserPromptLength        int        `json:"user_prompt_length"`
-	ResponseSize            int        `json:"response_size"`
-	ChatConversationType    string     `json:"chat_conversation_type"`
-	ToolUseIDsAndNames      [][]string `json:"tool_use_ids_and_names"`
-	ModelID                 string     `json:"model_id"`
-	MessageMetaTags         []string   `json:"message_meta_tags"`
+	UserPromptLength        int            `json:"user_prompt_length"`
+	ResponseSize            int            `json:"response_size"`
+	ChatConversationType    string         `json:"chat_conversation_type"`
+	ToolUseIDsAndNames      [][]string     `json:"tool_use_ids_and_names"`
+	ModelID                 string         `json:"model_id"`
+	MessageMetaTags         []string       `json:"message_meta_tags"`
 }
 
 // KiroDuration represents a duration with seconds and nanoseconds.
