@@ -9,6 +9,7 @@ import (
 	"sync"
 
 	"github.com/arjenschwarz/orbit/internal/agents/claudecode"
+	kirologs "github.com/arjenschwarz/orbit/internal/agents/kiro/logs"
 	"github.com/arjenschwarz/orbit/internal/logs"
 	"github.com/arjenschwarz/orbit/internal/rune"
 	"github.com/arjenschwarz/orbit/internal/transcript"
@@ -110,15 +111,22 @@ func (g *Gatherer) gatherGitInfo(ctx context.Context, worktreePath string) *GitI
 
 // gatherLastAction retrieves the last action from the transcript.
 func (g *Gatherer) gatherLastAction(v *variants.Variant) *LastActionResult {
-	// Check agent type first - only Claude Code supports live transcript access
-	if v.AgentType != "claude-code" {
-		return &LastActionResult{State: LastActionNotSupported}
-	}
-
 	// Build path to variant's log directory in main repo
 	// Logs are stored at: specs/<spec>/.orbit/logs/variant-<id>/summary.json
 	variantLogDir := filepath.Join(g.repoRoot, g.specDir, ".orbit", "logs", fmt.Sprintf("variant-%d", v.ID))
 
+	switch v.AgentType {
+	case "claude-code":
+		return g.gatherClaudeLastAction(v, variantLogDir)
+	case "kiro":
+		return g.gatherKiroLastAction(v, variantLogDir)
+	default:
+		return &LastActionResult{State: LastActionNotSupported}
+	}
+}
+
+// gatherClaudeLastAction retrieves the last action from a Claude Code transcript.
+func (g *Gatherer) gatherClaudeLastAction(v *variants.Variant, variantLogDir string) *LastActionResult {
 	// Get transcript path
 	transcriptPath, err := GetLiveTranscriptPath(v.WorktreePath, variantLogDir)
 	if err != nil || transcriptPath == "" {
@@ -143,6 +151,81 @@ func (g *Gatherer) gatherLastAction(v *variants.Variant) *LastActionResult {
 		State:   LastActionFound,
 		Summary: transcript.FormatLastAction(entry),
 	}
+}
+
+// gatherKiroLastAction retrieves the last action from a Kiro session via SQLite.
+func (g *Gatherer) gatherKiroLastAction(v *variants.Variant, variantLogDir string) *LastActionResult {
+	// Read summary.json to get session ID
+	summaryPath := filepath.Join(variantLogDir, "summary.json")
+	data, err := os.ReadFile(summaryPath)
+	if err != nil {
+		return &LastActionResult{State: LastActionWaiting}
+	}
+
+	var summary logs.Summary
+	if err := json.Unmarshal(data, &summary); err != nil {
+		return &LastActionResult{State: LastActionUnavailable}
+	}
+
+	// Get current session ID from in-progress phase
+	var sessionID string
+	if summary.CurrentPhase != nil {
+		sessionID = summary.CurrentPhase.SessionID
+	}
+	if sessionID == "" {
+		return &LastActionResult{State: LastActionWaiting}
+	}
+
+	// Ensure worktreePath is absolute
+	absWorktreePath := v.WorktreePath
+	if !filepath.IsAbs(v.WorktreePath) {
+		if abs, err := filepath.Abs(v.WorktreePath); err == nil {
+			absWorktreePath = abs
+		}
+	}
+
+	// Query Kiro database for session
+	ctx := context.Background()
+	reader, err := kirologs.GetSession(ctx, sessionID, absWorktreePath)
+	if err != nil {
+		return &LastActionResult{State: LastActionUnavailable}
+	}
+
+	// Parse the Kiro session
+	result, err := transcript.ParseKiro(reader)
+	if err != nil {
+		return &LastActionResult{State: LastActionUnavailable}
+	}
+
+	// Find last displayable entry from parsed entries (search from end)
+	for i := len(result.Entries) - 1; i >= 0; i-- {
+		entry := &result.Entries[i]
+		if isKiroDisplayableEntry(entry) {
+			return &LastActionResult{
+				State:   LastActionFound,
+				Summary: transcript.FormatLastAction(entry),
+			}
+		}
+	}
+
+	return &LastActionResult{State: LastActionWaiting}
+}
+
+// isKiroDisplayableEntry checks if an entry should be considered for "last action" display.
+// Similar to transcript.isDisplayableEntry but exported for use here.
+func isKiroDisplayableEntry(e *transcript.Entry) bool {
+	if e.IsMeta {
+		return false
+	}
+	if e.Message == nil || e.Message.Role != "assistant" {
+		return false
+	}
+	for _, c := range e.Message.Content {
+		if c.Type == "tool_use" || c.Type == "text" {
+			return true
+		}
+	}
+	return false
 }
 
 // gatherTaskProgress retrieves task progress via rune CLI.

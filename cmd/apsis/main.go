@@ -609,7 +609,7 @@ func listKiroSessions(cwd string) ([]SessionInfo, error) {
 			ID:        s.ConversationID,
 			CreatedAt: s.UpdatedAt, // Use updated_at for sorting consistency
 			Size:      s.Size,
-			Source:    "kiro",
+			Source:    "kiro-cli",
 		}
 	}
 
