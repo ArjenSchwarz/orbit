@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Spec for orbit-command-hooks feature (`specs/orbit-command-hooks/`)
+  - Requirements document with 10 requirement sections covering prompt renaming, pre-prompt, agent-level shell commands, deprecation detection, execution order, shell environment, logging, and failure handling
+  - Design document with architecture, component interfaces, data models, error handling, and testing strategy for both single-run and variant modes
+  - Decision log with 17 documented design decisions
+  - Task list with 31 implementation tasks across 8 phases with dependencies and work streams
+- AGENTS.md symlink to CLAUDE.md for broader AI agent compatibility
+
 ### Changed
 
 - Update Apsis description in CLAUDE.md and README.md to reflect support for Claude Code (JSONL), Codex (JSONL), and Kiro (SQLite) sessions
