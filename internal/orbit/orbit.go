@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"os/exec"
 	"os/signal"
 	"path/filepath"
 	"strings"
@@ -1789,7 +1790,60 @@ func (o *Orbit) runVariant(ctx context.Context, v *variants.Variant) error {
 		return 0
 	}
 
-	// Run all phases in this variant
+	// === Step 1: Agent Pre-Command (shell) ===
+	if variantAgentConfig.PreCommand != "" {
+		if o.config.DryRun {
+			log.Printf("[DRY RUN] Variant %d would execute pre-command: %s", v.ID, variantAgentConfig.PreCommand)
+			log.Printf("[DRY RUN] Working directory: %s", v.WorktreePath)
+		} else {
+			result, err := o.executeVariantShellCommand(ctx, v, variantAgentConfig.PreCommand, "pre-command", variantLogManager)
+			if err != nil {
+				variantErr := fmt.Errorf("pre-command failed (exit code %d): %w", result.ExitCode, err)
+				if updateErr := o.variantManager.UpdateStatus(v.ID, variants.StatusFailed, variantErr); updateErr != nil {
+					log.Printf("Warning: failed to update variant %d status: %v", v.ID, updateErr)
+				}
+				o.updateVariantRegistryStatus(v.ID, registry.StatusFailed)
+				if variantLogManager != nil {
+					_ = variantLogManager.Fail(variantErr)
+				}
+				if variantLogger != nil {
+					variantLogger.LogShutdown("failed")
+				}
+				return variantErr
+			}
+			log.Printf("Variant %d: pre-command finished", v.ID)
+		}
+	}
+
+	// === Step 2: Pre-Prompt (AI) ===
+	var prePromptSessionID string
+	if o.config.PrePrompt != "" {
+		if o.config.DryRun {
+			log.Printf("[DRY RUN] Variant %d would execute pre-prompt", v.ID)
+		} else {
+			sessionID, err := o.runVariantPrePrompt(ctx, v, variantAgent, variantLogManager)
+			if err != nil {
+				variantErr := fmt.Errorf("pre-prompt failed: %w", err)
+				if updateErr := o.variantManager.UpdateStatus(v.ID, variants.StatusFailed, variantErr); updateErr != nil {
+					log.Printf("Warning: failed to update variant %d status: %v", v.ID, updateErr)
+				}
+				o.updateVariantRegistryStatus(v.ID, registry.StatusFailed)
+				if variantLogManager != nil {
+					_ = variantLogManager.Fail(variantErr)
+				}
+				if variantLogger != nil {
+					variantLogger.LogShutdown("failed")
+				}
+				return variantErr
+			}
+			prePromptSessionID = sessionID
+		}
+	}
+
+	// Track whether we've used the pre-prompt session for phase 1
+	prePromptSessionUsed := false
+
+	// === Step 3: Phase Loop ===
 	for {
 		// Check for cancellation
 		select {
@@ -1835,8 +1889,15 @@ func (o *Orbit) runVariant(ctx context.Context, v *variants.Variant) error {
 
 		phaseStartTime := time.Now()
 
+		// Determine if this phase should continue the pre-prompt session
+		var continueSessionID string
+		if phaseNum == 1 && prePromptSessionID != "" && !prePromptSessionUsed {
+			continueSessionID = prePromptSessionID
+			prePromptSessionUsed = true
+		}
+
 		// Run the phase with retry
-		phaseResult, err := o.runVariantPhaseWithRetry(ctx, v, variantAgent, variantPrompt)
+		phaseResult, err := o.runVariantPhaseWithRetry(ctx, v, variantAgent, variantPrompt, continueSessionID)
 		if err != nil {
 			// Save failed session for debugging
 			if variantLogManager != nil && phaseResult != nil {
@@ -1877,17 +1938,17 @@ func (o *Orbit) runVariant(ctx context.Context, v *variants.Variant) error {
 		log.Printf("Variant %d: finished phase %s (cost=$%.4f)", v.ID, lastLoggedPhase, phaseCost)
 	}
 
-	// Run post-completion command if configured
+	// === Step 4: Post-Prompt (AI) ===
 	if o.config.PostPrompt != "" {
-		log.Printf("Variant %d: running post-completion command...", v.ID)
+		log.Printf("Variant %d: running post-prompt...", v.ID)
 		postStartTime := time.Now()
 		postResult, err := o.runVariantPostCompletion(ctx, v, variantAgent)
 		if err != nil {
-			// Save failed post-completion session for debugging
+			// Save failed post-prompt session for debugging
 			if variantLogManager != nil && postResult != nil {
 				_ = variantLogManager.SavePostCompletionSession(postResult, postStartTime)
 			}
-			variantErr := fmt.Errorf("post-completion: %w", err)
+			variantErr := fmt.Errorf("post-prompt: %w", err)
 			if updateErr := o.variantManager.UpdateStatus(v.ID, variants.StatusFailed, variantErr); updateErr != nil {
 				log.Printf("Warning: failed to update variant %d status: %v", v.ID, updateErr)
 			}
@@ -1901,17 +1962,33 @@ func (o *Orbit) runVariant(ctx context.Context, v *variants.Variant) error {
 			}
 			return variantErr
 		}
-		// Save successful post-completion session
+		// Save successful post-prompt session
 		if variantLogManager != nil && postResult != nil {
 			if saveErr := variantLogManager.SavePostCompletionSession(postResult, postStartTime); saveErr != nil {
-				log.Printf("Warning: variant %d failed to save post-completion log: %v", v.ID, saveErr)
+				log.Printf("Warning: variant %d failed to save post-prompt log: %v", v.ID, saveErr)
 			}
 		}
 		if postResult != nil {
 			totalCost += getCostUSD(postResult)
 			totalTurns += postResult.NumTurns
 		}
-		log.Printf("Variant %d: post-completion finished", v.ID)
+		log.Printf("Variant %d: post-prompt finished", v.ID)
+	}
+
+	// === Step 5: Agent Post-Command (shell) ===
+	if variantAgentConfig.PostCommand != "" {
+		if o.config.DryRun {
+			log.Printf("[DRY RUN] Variant %d would execute post-command: %s", v.ID, variantAgentConfig.PostCommand)
+			log.Printf("[DRY RUN] Working directory: %s", v.WorktreePath)
+		} else {
+			result, err := o.executeVariantShellCommand(ctx, v, variantAgentConfig.PostCommand, "post-command", variantLogManager)
+			if err != nil {
+				// Post-command failure is warning, not fatal
+				log.Printf("Warning: variant %d post-command failed (exit code %d): %v", v.ID, result.ExitCode, err)
+			} else {
+				log.Printf("Variant %d: post-command finished", v.ID)
+			}
+		}
 	}
 
 	// Mark variant as completed
@@ -1969,7 +2046,8 @@ func (o *Orbit) buildVariantPrompt(v *variants.Variant) string {
 }
 
 // runVariantPhaseWithRetry executes a single phase with retry logic.
-func (o *Orbit) runVariantPhaseWithRetry(ctx context.Context, v *variants.Variant, agent agents.Agent, prompt string) (*agents.RunResult, error) {
+// If continueSessionID is non-empty, the first attempt will resume that session (for pre-prompt continuation).
+func (o *Orbit) runVariantPhaseWithRetry(ctx context.Context, v *variants.Variant, agent agents.Agent, prompt string, continueSessionID string) (*agents.RunResult, error) {
 	var lastErr error
 	var lastResult *agents.RunResult
 
@@ -1980,16 +2058,41 @@ func (o *Orbit) runVariantPhaseWithRetry(ctx context.Context, v *variants.Varian
 		default:
 		}
 
-		// Execute the agent with the variant's prompt and working directory.
-		// Each phase gets a fresh session ID intentionally - variants are isolated
-		// implementations that don't share session history. This ensures clean
-		// comparison between variants without cross-contamination from previous phases.
+		// Determine session ID and whether to resume
+		var sessionID string
+		var isResume bool
+		if continueSessionID != "" && attempt == 0 {
+			// First attempt for phase 1 with pre-prompt session - continue it
+			sessionID = continueSessionID
+			isResume = true
+			o.debug.Log("Variant %d: phase 1 continuing pre-prompt session %s", v.ID, sessionID)
+		} else {
+			// Fresh session for this phase or retry
+			sessionID = uuid.NewString()
+			isResume = false
+		}
+
 		opts := agents.RunOptions{
 			Prompt:    prompt,
-			SessionID: uuid.NewString(),
+			SessionID: sessionID,
 			WorkDir:   v.WorktreePath,
 		}
-		result, err := agent.Run(ctx, opts)
+
+		var result *agents.RunResult
+		var err error
+		if isResume {
+			result, err = agent.Resume(ctx, sessionID, opts)
+			// Handle resume failure - start fresh session
+			if err != nil && isSessionInvalidError(result) {
+				o.debug.Log("Variant %d: session resume failed, starting fresh session", v.ID)
+				log.Printf("Variant %d: session resume failed, starting fresh session", v.ID)
+				opts.SessionID = uuid.NewString()
+				result, err = agent.Run(ctx, opts)
+			}
+		} else {
+			result, err = agent.Run(ctx, opts)
+		}
+
 		if err == nil && result != nil && !result.IsError {
 			return result, nil
 		}
@@ -2327,4 +2430,227 @@ func (o *Orbit) getAgentConfig(agentName string) agents.AgentConfig {
 	return agents.AgentConfig{
 		AutoApprove: true,
 	}
+}
+
+// executeVariantShellCommand runs a shell command in a variant's worktree.
+// It executes the command using /bin/sh -c with the working directory set to the
+// variant's worktree, and sets ORBIT_PHASE_COUNT, ORBIT_AGENT, and ORBIT_VARIANT
+// environment variables.
+func (o *Orbit) executeVariantShellCommand(
+	ctx context.Context,
+	v *variants.Variant,
+	command, logName string,
+	logManager *logs.Manager,
+) (*ShellCommandResult, error) {
+	startTime := time.Now()
+	result := &ShellCommandResult{
+		Command:   command,
+		StartedAt: startTime,
+	}
+
+	// Create context with timeout, respecting the parent context
+	cmdCtx, cancel := context.WithTimeout(ctx, o.config.CommandTimeout)
+	defer cancel()
+
+	// Build command using /bin/sh -c
+	cmd := exec.CommandContext(cmdCtx, "/bin/sh", "-c", command)
+	cmd.Dir = v.WorktreePath // Use variant worktree, not main repo
+
+	// Get phase count from variant's rune client
+	// Build the variant tasks file path
+	tasksFile := o.config.TasksFile
+	if o.config.RepoRoot != "" {
+		absTasksFile := tasksFile
+		if !filepath.IsAbs(tasksFile) {
+			absTasksFile = filepath.Join(o.config.RepoRoot, tasksFile)
+		}
+		relPath, err := filepath.Rel(o.config.RepoRoot, absTasksFile)
+		if err == nil {
+			tasksFile = filepath.Join(v.WorktreePath, relPath)
+		}
+	}
+	phaseCount := 0
+	if summaries, err := rune.NewClient(tasksFile).GetPhaseSummaries(); err == nil {
+		phaseCount = len(summaries)
+	}
+
+	// Set up environment with ORBIT_PHASE_COUNT, ORBIT_AGENT, and ORBIT_VARIANT
+	cmd.Env = append(os.Environ(),
+		fmt.Sprintf("ORBIT_PHASE_COUNT=%d", phaseCount),
+		fmt.Sprintf("ORBIT_AGENT=%s", v.Agent),
+		fmt.Sprintf("ORBIT_VARIANT=%d", v.ID),
+	)
+
+	// Capture stdout and stderr
+	var stdout, stderr strings.Builder
+	cmd.Stdout = &stdout
+	cmd.Stderr = &stderr
+
+	// Execute the command
+	err := cmd.Run()
+	result.CompletedAt = time.Now()
+	result.Duration = result.CompletedAt.Sub(startTime)
+	result.Stdout = stdout.String()
+	result.Stderr = stderr.String()
+
+	// Get exit code
+	if exitErr, ok := err.(*exec.ExitError); ok {
+		result.ExitCode = exitErr.ExitCode()
+	} else if err != nil {
+		result.ExitCode = -1 // Command didn't start or context was canceled
+	}
+
+	// Save log file to variant's log directory
+	if logManager != nil {
+		o.saveVariantShellCommandLog(result, logName, logManager)
+		// Record in summary.json
+		if recordErr := logManager.RecordShellCommand(logName, result.Command, result.ExitCode,
+			result.StartedAt, result.CompletedAt, result.Duration); recordErr != nil {
+			o.debug.Log("Warning: variant %d failed to record shell command: %v", v.ID, recordErr)
+		}
+	}
+
+	// Check for context errors to provide better error messages
+	if cmdCtx.Err() == context.DeadlineExceeded {
+		return result, fmt.Errorf("command timed out after %v", o.config.CommandTimeout)
+	}
+	if cmdCtx.Err() == context.Canceled && ctx.Err() != nil {
+		return result, fmt.Errorf("command interrupted by shutdown")
+	}
+
+	if err != nil {
+		return result, err
+	}
+
+	return result, nil
+}
+
+// saveVariantShellCommandLog writes the command output to a log file in the variant's log directory.
+func (o *Orbit) saveVariantShellCommandLog(result *ShellCommandResult, logName string, logManager *logs.Manager) {
+	if logManager == nil {
+		return
+	}
+
+	filename := fmt.Sprintf("%s-run-%d.txt", logName, logManager.RunNumber())
+	path := filepath.Join(logManager.SessionDir(), filename)
+
+	content := fmt.Sprintf(`Orbit Shell Command Log
+========================================
+
+Command: %s
+Exit Code: %d
+Started: %s
+Completed: %s
+Duration: %s
+
+Stdout:
+----------------------------------------
+%s
+
+Stderr:
+----------------------------------------
+%s
+`,
+		result.Command,
+		result.ExitCode,
+		result.StartedAt.Format(time.RFC3339),
+		result.CompletedAt.Format(time.RFC3339),
+		result.Duration.String(),
+		result.Stdout,
+		result.Stderr,
+	)
+
+	if err := os.WriteFile(path, []byte(content), 0644); err != nil {
+		o.debug.Log("Warning: failed to save %s log to %s: %v", logName, path, err)
+	}
+}
+
+// runVariantPrePrompt executes pre-prompt for a variant and returns the session ID.
+// The session started by pre-prompt should be continued by phase 1.
+func (o *Orbit) runVariantPrePrompt(
+	ctx context.Context,
+	v *variants.Variant,
+	agent agents.Agent,
+	logManager *logs.Manager,
+) (string, error) {
+	log.Printf("Variant %d: running pre-prompt...", v.ID)
+
+	// Check for existing pre-prompt state (crash recovery)
+	if logManager != nil {
+		sessionID, status := logManager.GetPrePromptState()
+		if status == logs.PrePromptStatusCompleted {
+			log.Printf("Variant %d: pre-prompt already completed, using session: %s", v.ID, sessionID)
+			return sessionID, nil
+		}
+		if status == logs.PrePromptStatusStarted {
+			o.debug.Log("Variant %d: pre-prompt was interrupted, will resume session: %s", v.ID, sessionID)
+		}
+	}
+
+	// Start pre-prompt tracking
+	var sessionID string
+	var isResume bool
+	if logManager != nil {
+		var err error
+		sessionID, isResume, err = logManager.StartPrePrompt(o.config.ContinueSession)
+		if err != nil {
+			return "", fmt.Errorf("start pre-prompt: %w", err)
+		}
+		o.debug.Log("Variant %d: pre-prompt session %s (resume=%v)", v.ID, sessionID, isResume)
+	} else {
+		sessionID = uuid.NewString()
+		isResume = false
+	}
+
+	// Execute pre-prompt in variant's worktree
+	opts := agents.RunOptions{
+		Prompt:    o.config.PrePrompt,
+		WorkDir:   v.WorktreePath, // Variant worktree
+		SessionID: sessionID,
+	}
+
+	var result *agents.RunResult
+	var err error
+	if isResume {
+		result, err = agent.Resume(ctx, sessionID, opts)
+	} else {
+		result, err = agent.Run(ctx, opts)
+	}
+
+	// Handle resume failure - start fresh session
+	if err != nil && isResume && isSessionInvalidError(result) {
+		o.debug.Log("Variant %d: pre-prompt session resume failed, starting fresh session", v.ID)
+		log.Printf("Variant %d: pre-prompt session resume failed, starting fresh session", v.ID)
+		sessionID = uuid.NewString()
+		opts.SessionID = sessionID
+		result, err = agent.Run(ctx, opts)
+	}
+
+	if err != nil {
+		return "", err
+	}
+
+	// Check if agent reported an error in its output
+	if result != nil && result.IsError {
+		return "", fmt.Errorf("agent reported error")
+	}
+
+	// Mark complete
+	if logManager != nil {
+		finalSessionID := sessionID
+		if result != nil && result.SessionID != "" {
+			finalSessionID = result.SessionID
+		}
+		if err := logManager.CompletePrePrompt(finalSessionID); err != nil {
+			log.Printf("Warning: variant %d failed to complete pre-prompt: %v", v.ID, err)
+		}
+	}
+
+	// Return the session ID for phase 1 continuation
+	if result != nil && result.SessionID != "" {
+		sessionID = result.SessionID
+	}
+
+	log.Printf("Variant %d: pre-prompt completed", v.ID)
+	return sessionID, nil
 }

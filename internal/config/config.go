@@ -810,6 +810,8 @@ func GetResolvedAgentConfig(resolved ResolvedAgent) agents.AgentConfig {
 		CLIPath:     resolved.Config.CLIPath,
 		AutoApprove: resolved.Config.AutoApprove,
 		ExtraArgs:   resolved.Config.ExtraArgs,
+		PreCommand:  resolved.Config.PreCommand,
+		PostCommand: resolved.Config.PostCommand,
 	}
 
 	// Parse timeout duration

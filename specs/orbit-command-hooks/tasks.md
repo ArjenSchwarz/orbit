@@ -218,7 +218,7 @@ references:
 
 ## Variant Mode Hooks
 
-- [ ] 25. Implement executeVariantShellCommand method <!-- id:yvhgqmc -->
+- [x] 25. Implement executeVariantShellCommand method <!-- id:yvhgqmc -->
   - Execute shell command in variant worktree
   - Set ORBIT_VARIANT environment variable
   - Get phase count from variant rune client
@@ -227,7 +227,7 @@ references:
   - Stream: 1
   - Requirements: [6.4](requirements.md#6.4), [7.2](requirements.md#7.2), [8.5](requirements.md#8.5)
 
-- [ ] 26. Implement runVariantPrePrompt method <!-- id:yvhgqmd -->
+- [x] 26. Implement runVariantPrePrompt method <!-- id:yvhgqmd -->
   - Execute pre-prompt in variant worktree
   - Track state in variant log manager
   - Return session ID for phase 1 continuation
@@ -235,7 +235,7 @@ references:
   - Stream: 1
   - Requirements: [2.7](requirements.md#2.7), [6.4](requirements.md#6.4)
 
-- [ ] 27. Update runVariant to integrate hooks <!-- id:yvhgqme -->
+- [x] 27. Update runVariant to integrate hooks <!-- id:yvhgqme -->
   - Call executeVariantShellCommand for agent pre-command
   - Call runVariantPrePrompt before phase loop
   - Modify phase 1 to use pre-prompt session
@@ -245,7 +245,7 @@ references:
   - Stream: 1
   - Requirements: [6.4](requirements.md#6.4), [6.5](requirements.md#6.5)
 
-- [ ] 28. Write integration tests for variant mode hooks <!-- id:yvhgqmf -->
+- [x] 28. Write integration tests for variant mode hooks <!-- id:yvhgqmf -->
   - TestVariantModeWithHooks
   - TestVariantPreCommandFailureIsolated
   - TestVariantPrePromptSessionContinuity

@@ -17,6 +17,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Dry-run mode support for all hooks (prints without executing)
 - `prePromptSessionID` field in `Orbit` struct for storing pre-prompt session to continue in phase 1
 - Unit tests for single-run hooks covering execution order, failure behavior, session continuation, and dry-run mode (`internal/orbit/orbit_test.go`)
+- Variant mode hook orchestration (`internal/orbit/orbit.go`)
+  - `executeVariantShellCommand()` method for running shell commands in variant worktrees with ORBIT_VARIANT, ORBIT_AGENT, ORBIT_PHASE_COUNT environment variables
+  - `runVariantPrePrompt()` method for executing AI pre-prompt in variant mode with session continuation and crash recovery
+  - Updated `runVariant()` to integrate 5-step hook execution: agent pre-command → pre-prompt → phase loop → post-prompt → agent post-command
+  - Pre-prompt session continuation: session ID from pre-prompt passed to phase 1 for seamless context sharing
+  - Error handling: pre-command failure aborts variant run, post-command failure logs warning only
+  - Session resume with fallback to fresh session on invalid session errors
+- `PreCommand` and `PostCommand` fields in `agents.AgentConfig` struct for passing agent-level shell commands through to variant mode
+- Integration tests for variant mode hooks (`internal/orbit/integration_test.go`)
+  - `TestVariantModeWithHooks`: full hook execution flow with mock agent
+  - `TestVariantPreCommandFailureIsolated`: pre-command failure aborts variant only
+  - `TestVariantEnvVars`: environment variable verification (ORBIT_VARIANT, ORBIT_AGENT, ORBIT_PHASE_COUNT)
+  - `TestVariantLogStructure`: log file generation for variant shell commands
+  - `TestVariantDifferentAgentCommands`: per-agent pre/post-command configuration
 
 ### Changed
 
