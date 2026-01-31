@@ -5,6 +5,7 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"log"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -16,6 +17,13 @@ import (
 )
 
 const defaultPrompt = "Run /next-task --phase and when complete run /commit"
+
+// debugLog logs a message if ORBIT_DEBUG is enabled.
+func debugLog(format string, args ...any) {
+	if env := os.Getenv("ORBIT_DEBUG"); env == "true" || env == "1" {
+		log.Printf("[kiro-agent] "+format, args...)
+	}
+}
 
 func init() {
 	agents.Register("kiro", New)
@@ -214,30 +222,40 @@ func (a *Agent) extractSessionCredits(ctx context.Context, workDir string) float
 	// Resolve to absolute path
 	absPath, err := filepath.Abs(workDir)
 	if err != nil {
+		debugLog("extractSessionCredits: failed to resolve path %s: %v", workDir, err)
 		return 0
 	}
 
 	// Discover sessions for this directory
 	sessions, err := logs.DiscoverForDirectory(ctx, absPath)
-	if err != nil || len(sessions) == 0 {
+	if err != nil {
+		debugLog("extractSessionCredits: failed to discover sessions for %s: %v", absPath, err)
+		return 0
+	}
+	if len(sessions) == 0 {
+		debugLog("extractSessionCredits: no sessions found for %s", absPath)
 		return 0
 	}
 
 	// Get the most recent session (DiscoverForDirectory returns sorted by CreatedAt descending)
 	mostRecent := sessions[0]
+	debugLog("extractSessionCredits: found session %s", mostRecent.ConversationID)
 
 	// Fetch the session JSON
 	reader, err := logs.GetSession(ctx, mostRecent.ConversationID, absPath)
 	if err != nil {
+		debugLog("extractSessionCredits: failed to get session %s: %v", mostRecent.ConversationID, err)
 		return 0
 	}
 
 	// Parse and extract credits
 	credits, err := transcript.ParseKiroUsageInfo(reader)
 	if err != nil {
+		debugLog("extractSessionCredits: failed to parse usage info: %v", err)
 		return 0
 	}
 
+	debugLog("extractSessionCredits: extracted %.4f credits", credits)
 	return credits
 }
 

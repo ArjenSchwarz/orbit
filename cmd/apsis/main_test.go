@@ -2348,3 +2348,137 @@ func TestResolveFollowInput_KiroSessionNotSupported(t *testing.T) {
 		t.Errorf("expected 'session not found' error, got: %v", err)
 	}
 }
+
+// --- JSON Output Format Tests ---
+
+func TestConvertToJSON_JSONL(t *testing.T) {
+	// Test JSONL input produces JSON array output
+	input := `{"type":"user","timestamp":"2025-12-23T10:00:00Z","message":{"role":"user","content":"Hello"}}
+{"type":"assistant","timestamp":"2025-12-23T10:00:05Z","message":{"role":"assistant","content":[{"type":"text","text":"Hi there"}]}}`
+
+	var output bytes.Buffer
+	err := convertToJSON(strings.NewReader(input), &output, "")
+
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	result := output.String()
+	// Should be a JSON array
+	if !strings.HasPrefix(result, "[") {
+		t.Error("expected output to start with '[' (JSON array)")
+	}
+	// Pretty-printed JSON has quotes on their own (not escaped in Contains check)
+	if !strings.Contains(result, `"type": "user"`) {
+		t.Error("expected output to contain user entry")
+	}
+	if !strings.Contains(result, `"type": "assistant"`) {
+		t.Error("expected output to contain assistant entry")
+	}
+}
+
+func TestConvertToJSON_Kiro(t *testing.T) {
+	// Test Kiro JSON input is preserved as object
+	input := `{
+		"conversation_id": "test-123",
+		"history": [
+			{
+				"user": {"content": {"prompt": {"prompt": "Hello"}}},
+				"assistant": {"TextResponse": {"content": "Hi"}}
+			}
+		],
+		"user_turn_metadata": {
+			"continuation_id": "cont-1",
+			"requests": [],
+			"usage_info": [{"unit": "credit", "unit_plural": "credits", "value": 0.05}]
+		}
+	}`
+
+	var output bytes.Buffer
+	err := convertToJSON(strings.NewReader(input), &output, "kiro")
+
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	result := output.String()
+	// Should be a JSON object (Kiro format), not array
+	if !strings.HasPrefix(result, "{") {
+		t.Error("expected output to start with '{' (JSON object)")
+	}
+	if !strings.Contains(result, `"conversation_id"`) {
+		t.Error("expected output to contain conversation_id")
+	}
+	if !strings.Contains(result, `"usage_info"`) {
+		t.Error("expected output to contain usage_info")
+	}
+}
+
+func TestConvertToJSON_EmptyInput(t *testing.T) {
+	var output bytes.Buffer
+	err := convertToJSON(strings.NewReader(""), &output, "")
+
+	// Empty input should not error (returns nil), just prints warning
+	if err != nil {
+		t.Errorf("unexpected error for empty input: %v", err)
+	}
+}
+
+func TestConvertToJSON_InvalidLines(t *testing.T) {
+	// Test that invalid JSON lines are skipped with warning
+	input := `{"type":"user","message":"valid"}
+{invalid json line}
+{"type":"assistant","message":"also valid"}`
+
+	var output bytes.Buffer
+	err := convertToJSON(strings.NewReader(input), &output, "")
+
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	result := output.String()
+	// Should have 2 valid entries in array (invalid line skipped)
+	// Pretty-printed JSON has quotes on their own
+	if !strings.Contains(result, `"type": "user"`) {
+		t.Error("expected output to contain user entry")
+	}
+	if !strings.Contains(result, `"type": "assistant"`) {
+		t.Error("expected output to contain assistant entry")
+	}
+}
+
+func TestConvert_JSONFormat(t *testing.T) {
+	// Test that -f json routes to convertToJSON
+	input := `{"type":"user","timestamp":"2025-12-23T10:00:00Z","message":{"role":"user","content":"Hello"}}`
+
+	var output bytes.Buffer
+	err := convert(strings.NewReader(input), &output, "test-session", "json", "")
+
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	result := output.String()
+	// Should be JSON array output
+	if !strings.HasPrefix(result, "[") {
+		t.Error("expected JSON array output")
+	}
+}
+
+func TestValidateFollowMode_JSONFormatConflict(t *testing.T) {
+	// Test that JSON format is rejected in follow mode
+	cfg := &Config{
+		Follow: true,
+		Format: "json",
+		Input:  "test-session",
+	}
+
+	err := validateFollowMode(cfg)
+	if err == nil {
+		t.Fatal("expected error for JSON format in follow mode")
+	}
+	if !strings.Contains(err.Error(), "JSON output is not supported in follow mode") {
+		t.Errorf("expected JSON follow mode error, got: %v", err)
+	}
+}
