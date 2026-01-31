@@ -2,9 +2,24 @@ package transcript
 
 // KiroSession represents the top-level Kiro session JSON structure.
 type KiroSession struct {
-	ConversationID string             `json:"conversation_id"`
-	NextMessage    *KiroHistoryEntry  `json:"next_message"`
-	History        []KiroHistoryEntry `json:"history"`
+	ConversationID   string               `json:"conversation_id"`
+	NextMessage      *KiroHistoryEntry    `json:"next_message"`
+	History          []KiroHistoryEntry   `json:"history"`
+	UserTurnMetadata *KiroUserTurnMetadata `json:"user_turn_metadata,omitempty"`
+}
+
+// KiroUserTurnMetadata contains session-level metadata including usage info.
+type KiroUserTurnMetadata struct {
+	ContinuationID string           `json:"continuation_id"`
+	Requests       []any            `json:"requests"`
+	UsageInfo      []KiroUsageInfo  `json:"usage_info"`
+}
+
+// KiroUsageInfo represents usage/cost information for a session.
+type KiroUsageInfo struct {
+	Unit       string  `json:"unit"`        // e.g., "credit"
+	UnitPlural string  `json:"unit_plural"` // e.g., "credits"
+	Value      float64 `json:"value"`       // e.g., 0.09024116169154228
 }
 
 // KiroHistoryEntry represents a single exchange in the Kiro history.
@@ -70,10 +85,11 @@ type KiroImage struct {
 }
 
 // KiroAssistantMessage represents an assistant response in Kiro format.
-// It can be either ToolUse (with tool calls) or TextResponse (text only).
+// It can be ToolUse (with tool calls), TextResponse (text only), or Response (also text only).
 type KiroAssistantMessage struct {
 	ToolUse      *KiroToolUse      `json:"ToolUse,omitempty"`
 	TextResponse *KiroTextResponse `json:"TextResponse,omitempty"`
+	Response     *KiroTextResponse `json:"Response,omitempty"`
 }
 
 // KiroToolUse represents an assistant response that includes tool calls.

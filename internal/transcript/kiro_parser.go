@@ -124,7 +124,54 @@ func convertKiroAssistantMessage(assistantMsg *KiroAssistantMessage) []Entry {
 		})
 	}
 
+	// Response is another text-only variant (same structure as TextResponse)
+	if assistantMsg.Response != nil {
+		entries = append(entries, Entry{
+			Type: "assistant",
+			Message: &Message{
+				Role: "assistant",
+				Content: []ContentItem{
+					{
+						Type: "text",
+						Text: assistantMsg.Response.Content,
+					},
+				},
+			},
+		})
+	}
+
 	return entries
+}
+
+// ParseKiroUsageInfo extracts usage info from Kiro session JSON.
+// Returns total credits used across all usage_info entries.
+func ParseKiroUsageInfo(r io.Reader) (float64, error) {
+	data, err := io.ReadAll(r)
+	if err != nil {
+		return 0, fmt.Errorf("failed to read Kiro session: %w", err)
+	}
+
+	var session KiroSession
+	if err := json.Unmarshal(data, &session); err != nil {
+		return 0, fmt.Errorf("failed to parse Kiro session JSON: %w", err)
+	}
+
+	return extractKiroCredits(&session), nil
+}
+
+// extractKiroCredits sums up all credit usage from a Kiro session.
+func extractKiroCredits(session *KiroSession) float64 {
+	if session.UserTurnMetadata == nil {
+		return 0
+	}
+
+	var totalCredits float64
+	for _, usage := range session.UserTurnMetadata.UsageInfo {
+		if usage.Unit == "credit" {
+			totalCredits += usage.Value
+		}
+	}
+	return totalCredits
 }
 
 // convertKiroToolUse converts a Kiro ToolUse message to Entry format.

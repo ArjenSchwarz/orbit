@@ -44,11 +44,31 @@ type claudeRunner interface {
 }
 
 // getCostUSD extracts the cost in USD from a RunResult, returning 0 if cost is nil.
+// Falls back to credits if USD is not available (for agents like Kiro that use credits).
 func getCostUSD(result *agents.RunResult) float64 {
 	if result == nil || result.Cost == nil {
 		return 0
 	}
-	return result.Cost.CostUSD
+	if result.Cost.CostUSD > 0 {
+		return result.Cost.CostUSD
+	}
+	return result.Cost.Credits
+}
+
+// formatCost returns a human-readable cost string from a RunResult.
+// Returns USD format ("$0.12") for USD costs, credits format ("0.09 credits") for credit-based costs,
+// or empty string if no cost information is available.
+func formatCost(result *agents.RunResult) string {
+	if result == nil || result.Cost == nil {
+		return ""
+	}
+	if result.Cost.CostUSD > 0 {
+		return fmt.Sprintf("$%.2f", result.Cost.CostUSD)
+	}
+	if result.Cost.Credits > 0 {
+		return fmt.Sprintf("%.2f credits", result.Cost.Credits)
+	}
+	return ""
 }
 
 // Config holds the orchestrator configuration.
@@ -818,17 +838,24 @@ func (o *Orbit) runPhase(phase int) error {
 		"num_turns":  result.NumTurns,
 		"cost_usd":   getCostUSD(result),
 	}
+	if result.Cost != nil && result.Cost.Credits > 0 {
+		agentLogFields["credits"] = result.Cost.Credits
+	}
 	if o.logManager != nil {
 		agentLogFields["session_log_path"] = o.logManager.SessionDir()
 	}
 	o.debug.LogStructured("info", "Agent completed", agentLogFields)
 
-	o.debug.Log("Phase %d completed successfully: cost=$%.4f duration=%s turns=%d",
-		phase, getCostUSD(result), result.Duration, result.NumTurns)
+	costStr := formatCost(result)
+	if costStr == "" {
+		costStr = "$0.00"
+	}
+	o.debug.Log("Phase %d completed successfully: cost=%s duration=%s turns=%d",
+		phase, costStr, result.Duration, result.NumTurns)
 
 	if o.config.Verbose {
-		log.Printf("Phase %d: cost=$%.4f, duration=%s, turns=%d",
-			phase, getCostUSD(result), result.Duration, result.NumTurns)
+		log.Printf("Phase %d: cost=%s, duration=%s, turns=%d",
+			phase, costStr, result.Duration, result.NumTurns)
 	}
 
 	return nil
@@ -1133,12 +1160,16 @@ func (o *Orbit) runPostPrompt() error {
 		}
 	}
 
-	o.debug.Log("Post-completion completed successfully: cost=$%.4f duration=%s turns=%d",
-		getCostUSD(result), result.Duration, result.NumTurns)
+	postCostStr := formatCost(result)
+	if postCostStr == "" {
+		postCostStr = "$0.00"
+	}
+	o.debug.Log("Post-completion completed successfully: cost=%s duration=%s turns=%d",
+		postCostStr, result.Duration, result.NumTurns)
 
 	if o.config.Verbose {
-		log.Printf("Post-completion: cost=$%.4f, duration=%s, turns=%d",
-			getCostUSD(result), result.Duration, result.NumTurns)
+		log.Printf("Post-completion: cost=%s, duration=%s, turns=%d",
+			postCostStr, result.Duration, result.NumTurns)
 	}
 
 	return nil
@@ -1880,7 +1911,7 @@ func (o *Orbit) runVariant(ctx context.Context, v *variants.Variant) error {
 		// Log when entering a new phase (and log completion of previous phase)
 		if currentPhase != lastLoggedPhase {
 			if lastLoggedPhase != "" {
-				log.Printf("Variant %d: finished phase %s (cost=$%.4f)", v.ID, lastLoggedPhase, phaseCost)
+				log.Printf("Variant %d: finished phase %s (cost=%.2f)", v.ID, lastLoggedPhase, phaseCost)
 				phaseCost = 0 // Reset for new phase
 			}
 			log.Printf("Variant %d: starting phase %s (%d tasks)", v.ID, currentPhase, totalTasks)
@@ -1935,7 +1966,7 @@ func (o *Orbit) runVariant(ctx context.Context, v *variants.Variant) error {
 
 	// Log final phase completion
 	if lastLoggedPhase != "" && phaseCost > 0 {
-		log.Printf("Variant %d: finished phase %s (cost=$%.4f)", v.ID, lastLoggedPhase, phaseCost)
+		log.Printf("Variant %d: finished phase %s (cost=%.2f)", v.ID, lastLoggedPhase, phaseCost)
 	}
 
 	// === Step 4: Post-Prompt (AI) ===
@@ -2009,7 +2040,7 @@ func (o *Orbit) runVariant(ctx context.Context, v *variants.Variant) error {
 		}
 	}
 
-	log.Printf("Variant %d completed: cost=$%.4f, duration=%s, turns=%d",
+	log.Printf("Variant %d completed: cost=%.2f, duration=%s, turns=%d",
 		v.ID, totalCost, duration.Round(time.Second), totalTurns)
 
 	// Log shutdown to variant's own log

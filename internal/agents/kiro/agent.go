@@ -5,15 +5,25 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"log"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"time"
 
 	"github.com/arjenschwarz/orbit/internal/agents"
 	"github.com/arjenschwarz/orbit/internal/agents/kiro/logs"
+	"github.com/arjenschwarz/orbit/internal/transcript"
 )
 
 const defaultPrompt = "Run /next-task --phase and when complete run /commit"
+
+// debugLog logs a message if ORBIT_DEBUG is enabled.
+func debugLog(format string, args ...any) {
+	if env := os.Getenv("ORBIT_DEBUG"); env == "true" || env == "1" {
+		log.Printf("[kiro-agent] "+format, args...)
+	}
+}
 
 func init() {
 	agents.Register("kiro", New)
@@ -149,8 +159,16 @@ func (a *Agent) execute(ctx context.Context, opts agents.RunOptions, resume bool
 	args := a.buildArgs(opts, resume)
 
 	cmd := exec.CommandContext(ctx, a.cliPath, args...)
-	if opts.WorkDir != "" {
-		cmd.Dir = opts.WorkDir
+	workDir := opts.WorkDir
+	if workDir != "" {
+		cmd.Dir = workDir
+	} else {
+		// Get current working directory for session lookup
+		var err error
+		workDir, err = os.Getwd()
+		if err != nil {
+			workDir = ""
+		}
 	}
 
 	// Set environment variables
@@ -187,7 +205,58 @@ func (a *Agent) execute(ctx context.Context, opts agents.RunOptions, resume bool
 		result.Error = err
 	}
 
+	// Try to extract usage info from the session
+	if workDir != "" {
+		if credits := a.extractSessionCredits(ctx, workDir); credits > 0 {
+			result.Cost = &agents.CostMetrics{
+				Credits: credits,
+			}
+		}
+	}
+
 	return result, err
+}
+
+// extractSessionCredits fetches the most recent session for the directory and extracts credit usage.
+func (a *Agent) extractSessionCredits(ctx context.Context, workDir string) float64 {
+	// Resolve to absolute path
+	absPath, err := filepath.Abs(workDir)
+	if err != nil {
+		debugLog("extractSessionCredits: failed to resolve path %s: %v", workDir, err)
+		return 0
+	}
+
+	// Discover sessions for this directory
+	sessions, err := logs.DiscoverForDirectory(ctx, absPath)
+	if err != nil {
+		debugLog("extractSessionCredits: failed to discover sessions for %s: %v", absPath, err)
+		return 0
+	}
+	if len(sessions) == 0 {
+		debugLog("extractSessionCredits: no sessions found for %s", absPath)
+		return 0
+	}
+
+	// Get the most recent session (DiscoverForDirectory returns sorted by UpdatedAt descending)
+	mostRecent := sessions[0]
+	debugLog("extractSessionCredits: found session %s", mostRecent.ConversationID)
+
+	// Fetch the session JSON
+	reader, err := logs.GetSession(ctx, mostRecent.ConversationID, absPath)
+	if err != nil {
+		debugLog("extractSessionCredits: failed to get session %s: %v", mostRecent.ConversationID, err)
+		return 0
+	}
+
+	// Parse and extract credits
+	credits, err := transcript.ParseKiroUsageInfo(reader)
+	if err != nil {
+		debugLog("extractSessionCredits: failed to parse usage info: %v", err)
+		return 0
+	}
+
+	debugLog("extractSessionCredits: extracted %.4f credits", credits)
+	return credits
 }
 
 // appendEnv appends environment variables to the current environment.

@@ -987,6 +987,9 @@ apsis -o transcript.md session-id
 # Export as HTML
 apsis -f html -o transcript.html session-id
 
+# Export raw JSON (useful for inspecting session metadata)
+apsis -f json session-id
+
 # List available sessions for current project
 apsis --list
 
@@ -1001,7 +1004,7 @@ apsis --list -p /path/to/project
 | `-l, --list` | List available sessions for the project |
 | `-o, --output <file>` | Write output to file (default: stdout) |
 | `-p, --project <path>` | Project directory (default: current directory) |
-| `-f, --format <format>` | Output format: `md`, `markdown`, `html` (default: `md`) |
+| `-f, --format <format>` | Output format: `md`, `markdown`, `html`, `json` (default: `md`) |
 | `-F, --follow` | Follow mode: continuously monitor file for new entries (stdout only, markdown only) |
 | `-v, --version` | Show version |
 | `-h, --help` | Show help |
