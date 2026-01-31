@@ -63,9 +63,13 @@ type Config struct {
 	RunID           string // UUID for this orchestration run
 	Version         string // Orbit version for logging
 	WorkingDir      string
-	Command    string // Custom phase command
-	PostPrompt string // Post-completion AI prompt (renamed from PostCommand, empty = disabled)
-	DateSubdirs     bool   // If true, use timestamped subdirectories for logs
+	Command          string        // Custom phase command
+	PrePrompt        string        // AI prompt before phases start (empty = disabled)
+	PostPrompt       string        // Post-completion AI prompt (renamed from PostCommand, empty = disabled)
+	AgentPreCommand  string        // Shell command before first phase (from agent config)
+	AgentPostCommand string        // Shell command after last phase (from agent config)
+	CommandTimeout   time.Duration // Timeout for shell commands (default 5m)
+	DateSubdirs      bool          // If true, use timestamped subdirectories for logs
 	ContinueSession bool   // If true, continue existing Claude sessions when resuming
 
 	// Agent configuration

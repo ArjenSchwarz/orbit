@@ -9,6 +9,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- CLI flags `--pre-prompt` and `--no-pre-prompt` for pre-prompt configuration (`cmd/orbit/run.go`)
+- `PrePrompt`, `AgentPreCommand`, `AgentPostCommand`, `CommandTimeout` fields in `orbit.Config` struct
+- `PrePromptState` struct for tracking pre-prompt execution state with session ID, timestamps, and status
+- `ShellCommandState` struct for tracking shell command execution with exit code, timestamps, and duration
+- Pre-prompt tracking methods in log manager: `StartPrePrompt()`, `CompletePrePrompt()`, `GetPrePromptState()`
+- `RecordShellCommand()` method for recording pre-command and post-command execution in summary.json
+- `StartPrePrompt()` spinner method for displaying "Running pre-prompt" status
+- Shell command status display in run index (index.md and index.html) with command, exit code, and duration
+- Comprehensive unit tests for log manager state tracking and index generation
 - `PrePrompt` configuration field for AI prompts before phases start (`internal/config/config.go`)
 - `CommandTimeout` configuration field with 5-minute default for shell command execution
 - `PreCommand` and `PostCommand` fields in `AgentAliasConfig` for agent-level shell commands

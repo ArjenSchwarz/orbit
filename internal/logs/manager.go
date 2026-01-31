@@ -37,6 +37,30 @@ type PostCompletionState struct {
 	StartedAt time.Time `json:"started_at"`
 }
 
+// PrePromptState tracks pre-prompt execution for crash recovery.
+type PrePromptState struct {
+	SessionID   string     `json:"session_id"`
+	StartedAt   time.Time  `json:"started_at"`
+	CompletedAt *time.Time `json:"completed_at,omitempty"`
+	Status      string     `json:"status"` // "started", "completed"
+}
+
+// PrePromptStatus constants for tracking pre-prompt state.
+const (
+	PrePromptStatusNotStarted = ""          // nil PrePrompt in summary
+	PrePromptStatusStarted    = "started"   // Started but not completed
+	PrePromptStatusCompleted  = "completed" // Successfully completed
+)
+
+// ShellCommandState tracks shell command execution.
+type ShellCommandState struct {
+	Command     string    `json:"command"`
+	ExitCode    int       `json:"exit_code"`
+	StartedAt   time.Time `json:"started_at"`
+	CompletedAt time.Time `json:"completed_at"`
+	DurationMS  int64     `json:"duration_ms"`
+}
+
 // SessionEntry records metadata about a completed Claude session.
 type SessionEntry struct {
 	Phase      int       `json:"phase"`
@@ -68,6 +92,10 @@ type Summary struct {
 	PostCompletion *PostCompletionState `json:"post_completion,omitempty"`
 	RunNumber      int                  `json:"run_number"`
 	BranchName     string               `json:"branch_name,omitempty"`
+	// Fields for pre-prompt and shell command tracking
+	PrePrompt   *PrePromptState     `json:"pre_prompt,omitempty"`
+	PreCommand  *ShellCommandState  `json:"pre_command,omitempty"`
+	PostCommand *ShellCommandState  `json:"post_command,omitempty"`
 }
 
 // AgentInfo holds the resolved agent configuration for the current run.
@@ -262,6 +290,61 @@ func (m *Manager) CompletePhase() error {
 	return m.writeSummary()
 }
 
+// GetPrePromptState returns the pre-prompt session ID and status for resumption decisions.
+// Returns: sessionID, status (one of PrePromptStatus* constants)
+func (m *Manager) GetPrePromptState() (sessionID string, status string) {
+	if m.summary.PrePrompt == nil {
+		return "", PrePromptStatusNotStarted
+	}
+	return m.summary.PrePrompt.SessionID, m.summary.PrePrompt.Status
+}
+
+// StartPrePrompt begins pre-prompt execution tracking.
+// Returns the session ID, whether this is a resume, and any error.
+func (m *Manager) StartPrePrompt(continueSession bool) (string, bool, error) {
+	// Check for existing pre-prompt state
+	if m.summary.PrePrompt != nil {
+		if m.summary.PrePrompt.Status == PrePromptStatusStarted && continueSession {
+			// Resume existing session that was interrupted
+			return m.summary.PrePrompt.SessionID, true, nil
+		}
+		if m.summary.PrePrompt.Status == PrePromptStatusCompleted {
+			// Already completed - caller should have checked GetPrePromptState first
+			return m.summary.PrePrompt.SessionID, false, nil
+		}
+		// Status is "started" but not continuing - clear and start fresh
+		m.summary.PrePrompt = nil
+	}
+
+	// Generate new session ID
+	sessionID := uuid.NewString()
+
+	// Record pre-prompt start BEFORE invoking agent
+	m.summary.PrePrompt = &PrePromptState{
+		SessionID: sessionID,
+		StartedAt: time.Now(),
+		Status:    PrePromptStatusStarted,
+	}
+
+	if err := m.writeSummary(); err != nil {
+		return "", false, err
+	}
+
+	return sessionID, false, nil
+}
+
+// CompletePrePrompt marks pre-prompt as completed with the given session ID.
+func (m *Manager) CompletePrePrompt(sessionID string) error {
+	if m.summary.PrePrompt == nil {
+		return nil
+	}
+	now := time.Now()
+	m.summary.PrePrompt.CompletedAt = &now
+	m.summary.PrePrompt.Status = PrePromptStatusCompleted
+	m.summary.PrePrompt.SessionID = sessionID // Update in case agent returned different ID
+	return m.writeSummary()
+}
+
 // StartPostCompletion begins a post-completion command or resumes an existing one.
 // Returns the session ID, whether this is a resume, and any error.
 func (m *Manager) StartPostCompletion(continueSession bool) (string, bool, error) {
@@ -317,6 +400,30 @@ func (m *Manager) ReconcilePostCompletionSessionID(returnedID string) {
 		m.summary.PostCompletion.SessionID = returnedID
 		_ = m.writeSummary() // Best effort - don't fail the session
 	}
+}
+
+// RecordShellCommand records a shell command execution in summary.json.
+// The name parameter should be "pre-command" or "post-command".
+func (m *Manager) RecordShellCommand(name, command string, exitCode int, startedAt, completedAt time.Time, duration time.Duration) error {
+	state := &ShellCommandState{
+		Command:     command,
+		ExitCode:    exitCode,
+		StartedAt:   startedAt,
+		CompletedAt: completedAt,
+		DurationMS:  duration.Milliseconds(),
+	}
+
+	switch name {
+	case "pre-command":
+		m.summary.PreCommand = state
+	case "post-command":
+		m.summary.PostCommand = state
+	default:
+		// Unknown command name, ignore
+		return nil
+	}
+
+	return m.writeSummary()
 }
 
 // phaseFileName generates the filename for phase files.
@@ -796,6 +903,20 @@ func (m *Manager) generateMarkdownIndex() string {
 	}
 	sb.WriteString("\n")
 
+	// Pre-command status
+	if m.summary.PreCommand != nil {
+		statusIcon := "✅"
+		if m.summary.PreCommand.ExitCode != 0 {
+			statusIcon = "❌"
+		}
+		sb.WriteString("### Pre-Command\n\n")
+		sb.WriteString(fmt.Sprintf("- %s **Command:** `%s`\n", statusIcon, m.summary.PreCommand.Command))
+		sb.WriteString(fmt.Sprintf("- **Exit Code:** %d\n", m.summary.PreCommand.ExitCode))
+		sb.WriteString(fmt.Sprintf("- **Duration:** %s\n",
+			time.Duration(m.summary.PreCommand.DurationMS*int64(time.Millisecond)).Round(time.Second)))
+		sb.WriteString("\n")
+	}
+
 	// Phase transcripts
 	sb.WriteString("## Session Transcripts\n\n")
 
@@ -849,6 +970,20 @@ func (m *Manager) generateMarkdownIndex() string {
 			sb.WriteString("\n")
 			break
 		}
+	}
+
+	// Post-command status
+	if m.summary.PostCommand != nil {
+		statusIcon := "✅"
+		if m.summary.PostCommand.ExitCode != 0 {
+			statusIcon = "❌"
+		}
+		sb.WriteString("### Post-Command\n\n")
+		sb.WriteString(fmt.Sprintf("- %s **Command:** `%s`\n", statusIcon, m.summary.PostCommand.Command))
+		sb.WriteString(fmt.Sprintf("- **Exit Code:** %d\n", m.summary.PostCommand.ExitCode))
+		sb.WriteString(fmt.Sprintf("- **Duration:** %s\n",
+			time.Duration(m.summary.PostCommand.DurationMS*int64(time.Millisecond)).Round(time.Second)))
+		sb.WriteString("\n")
 	}
 
 	return sb.String()
@@ -911,6 +1046,28 @@ func (m *Manager) generateHTMLIndex() string {
 	}
 	sb.WriteString("            </dl>\n")
 	sb.WriteString("        </section>\n")
+
+	// Pre-command section
+	if m.summary.PreCommand != nil {
+		sb.WriteString("        <section class=\"shell-command\">\n")
+		sb.WriteString("            <h2>Pre-Command</h2>\n")
+		statusIcon := "✅"
+		cardClass := "command-card"
+		if m.summary.PreCommand.ExitCode != 0 {
+			statusIcon = "❌"
+			cardClass += " error"
+		}
+		sb.WriteString(fmt.Sprintf("            <div class=\"%s\">\n", cardClass))
+		sb.WriteString(fmt.Sprintf("                <div class=\"command-header\">%s <code>%s</code></div>\n",
+			statusIcon, html.EscapeString(m.summary.PreCommand.Command)))
+		sb.WriteString("                <div class=\"command-stats\">\n")
+		sb.WriteString(fmt.Sprintf("                    <span>Exit Code: %d</span>\n", m.summary.PreCommand.ExitCode))
+		sb.WriteString(fmt.Sprintf("                    <span>Duration: %s</span>\n",
+			time.Duration(m.summary.PreCommand.DurationMS*int64(time.Millisecond)).Round(time.Second)))
+		sb.WriteString("                </div>\n")
+		sb.WriteString("            </div>\n")
+		sb.WriteString("        </section>\n")
+	}
 
 	// Session transcripts section
 	sb.WriteString("        <section class=\"transcripts\">\n")
@@ -993,6 +1150,29 @@ func (m *Manager) generateHTMLIndex() string {
 	}
 
 	sb.WriteString("        </section>\n")
+
+	// Post-command section
+	if m.summary.PostCommand != nil {
+		sb.WriteString("        <section class=\"shell-command\">\n")
+		sb.WriteString("            <h2>Post-Command</h2>\n")
+		statusIcon := "✅"
+		cardClass := "command-card"
+		if m.summary.PostCommand.ExitCode != 0 {
+			statusIcon = "❌"
+			cardClass += " error"
+		}
+		sb.WriteString(fmt.Sprintf("            <div class=\"%s\">\n", cardClass))
+		sb.WriteString(fmt.Sprintf("                <div class=\"command-header\">%s <code>%s</code></div>\n",
+			statusIcon, html.EscapeString(m.summary.PostCommand.Command)))
+		sb.WriteString("                <div class=\"command-stats\">\n")
+		sb.WriteString(fmt.Sprintf("                    <span>Exit Code: %d</span>\n", m.summary.PostCommand.ExitCode))
+		sb.WriteString(fmt.Sprintf("                    <span>Duration: %s</span>\n",
+			time.Duration(m.summary.PostCommand.DurationMS*int64(time.Millisecond)).Round(time.Second)))
+		sb.WriteString("                </div>\n")
+		sb.WriteString("            </div>\n")
+		sb.WriteString("        </section>\n")
+	}
+
 	sb.WriteString("    </main>\n")
 	sb.WriteString("</body>\n")
 	sb.WriteString("</html>\n")
@@ -1148,6 +1328,41 @@ h3 {
 
 .session-links a:hover {
     text-decoration: underline;
+}
+
+.shell-command {
+    margin-bottom: 2rem;
+}
+
+.command-card {
+    background-color: var(--bg-card);
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    padding: 1rem;
+    margin-bottom: 0.75rem;
+}
+
+.command-card.error {
+    border-left: 4px solid var(--error-color);
+}
+
+.command-header {
+    font-weight: 600;
+    margin-bottom: 0.5rem;
+}
+
+.command-header code {
+    background-color: var(--bg-secondary);
+    padding: 0.2rem 0.5rem;
+    border-radius: 4px;
+    font-size: 0.9rem;
+}
+
+.command-stats {
+    display: flex;
+    gap: 1.5rem;
+    color: var(--text-secondary);
+    font-size: 0.9rem;
 }
 `
 

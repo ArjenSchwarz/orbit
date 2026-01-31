@@ -45,6 +45,8 @@ func runCommand(args []string) error {
 	dryRun := fs.Bool("dry-run", false, "Show what would be executed without running")
 	showVersion := fs.Bool("version", false, "Show version and exit")
 	commandFlag := fs.String("command", "", "Custom prompt for Claude phases")
+	prePromptFlag := fs.String("pre-prompt", "", "AI prompt before phases start")
+	noPrePrompt := fs.Bool("no-pre-prompt", false, "Disable pre-prompt")
 	postPromptFlag := fs.String("post-prompt", "", "AI prompt after all tasks complete")
 	noPostPrompt := fs.Bool("no-post-prompt", false, "Skip post-completion AI prompt")
 	dateSubdirs := fs.Bool("date-subdirs", false, "Use timestamped subdirectories for logs")
@@ -160,7 +162,11 @@ func runCommand(args []string) error {
 	}
 
 	// Apply CLI flag overrides
-	command, postPrompt := resolvePrompts(cfg, *commandFlag, *postPromptFlag, *noPostPrompt)
+	command, prePrompt, postPrompt := resolvePrompts(cfg, *commandFlag, *prePromptFlag, *noPrePrompt, *postPromptFlag, *noPostPrompt)
+
+	// Extract agent-level shell commands from the resolved agent config
+	agentPreCommand := resolved.Config.PreCommand
+	agentPostCommand := resolved.Config.PostCommand
 
 	// Resolve date-subdirs: CLI flag can enable (overrides config)
 	dateSubdirsValue := cfg.DateSubdirs
@@ -253,33 +259,37 @@ func runCommand(args []string) error {
 
 	// Create and run orchestrator
 	orbitCfg := orbit.Config{
-		TasksFile:       *tasksFile,
-		LogDir:          actualLogDir,
-		BranchName:      branchName,
-		SkipPermissions: *skipPermissions,
-		Verbose:         *verbose,
-		Debug:           debugValue,
-		CentralizedLog:  centralizedLogValue,
-		RunID:           runID,
-		Version:         version,
-		DryRun:          *dryRun,
-		WorkingDir:      workingDir,
-		Command:    command,
-		PostPrompt: postPrompt,
-		DateSubdirs:     dateSubdirsValue,
-		ContinueSession: continueSessionValue,
-		Agent:           aliasName,
-		AgentConfig:     agentCfg,
-		AgentConfigs:    cfg.GetAllAgentConfigs(),
-		VariantCount:    *variantCount,
-		Parallel:        parallelValue,
-		MaxParallel:     maxParallelValue,
-		BranchPrefix:    *branchPrefix,
-		Guidance:        guidance,
-		CompareCommand:  *compareCommand,
-		SpecDir:         specDir,
-		RepoRoot:        repoRoot,
-		VariantAgents:   variantAgents,
+		TasksFile:        *tasksFile,
+		LogDir:           actualLogDir,
+		BranchName:       branchName,
+		SkipPermissions:  *skipPermissions,
+		Verbose:          *verbose,
+		Debug:            debugValue,
+		CentralizedLog:   centralizedLogValue,
+		RunID:            runID,
+		Version:          version,
+		DryRun:           *dryRun,
+		WorkingDir:       workingDir,
+		Command:          command,
+		PrePrompt:        prePrompt,
+		PostPrompt:       postPrompt,
+		AgentPreCommand:  agentPreCommand,
+		AgentPostCommand: agentPostCommand,
+		CommandTimeout:   cfg.CommandTimeout,
+		DateSubdirs:      dateSubdirsValue,
+		ContinueSession:  continueSessionValue,
+		Agent:            aliasName,
+		AgentConfig:      agentCfg,
+		AgentConfigs:     cfg.GetAllAgentConfigs(),
+		VariantCount:     *variantCount,
+		Parallel:         parallelValue,
+		MaxParallel:      maxParallelValue,
+		BranchPrefix:     *branchPrefix,
+		Guidance:         guidance,
+		CompareCommand:   *compareCommand,
+		SpecDir:          specDir,
+		RepoRoot:         repoRoot,
+		VariantAgents:    variantAgents,
 	}
 
 	o, err := orbit.New(orbitCfg)
@@ -308,11 +318,24 @@ func getGitBranch() (string, error) {
 
 // resolvePrompts applies CLI flag overrides to config values.
 // Priority: CLI flags > config (which includes env vars > project > home > defaults).
-func resolvePrompts(cfg *config.Config, commandFlag, postPromptFlag string, noPostPrompt bool) (command, postPrompt string) {
+func resolvePrompts(cfg *config.Config, commandFlag, prePromptFlag string, noPrePrompt bool, postPromptFlag string, noPostPrompt bool) (command, prePrompt, postPrompt string) {
 	// Resolve effective command (priority: flag > config/env > default)
 	command = cfg.Command // Already has default from Viper
 	if commandFlag != "" {
 		command = commandFlag
+	}
+
+	// Resolve effective pre-prompt (priority: flag > config/env > default)
+	// Pre-prompt has no default, so empty means disabled unless explicitly set
+	prePrompt = cfg.PrePrompt
+	if cfg.IsPrePromptDisabled() {
+		prePrompt = "" // Config explicitly disabled
+	}
+	if prePromptFlag != "" {
+		prePrompt = prePromptFlag
+	}
+	if noPrePrompt {
+		prePrompt = "" // Flag disables
 	}
 
 	// Resolve effective post-prompt (priority: flag > config/env > default)
@@ -327,7 +350,7 @@ func resolvePrompts(cfg *config.Config, commandFlag, postPromptFlag string, noPo
 		postPrompt = "" // Flag disables
 	}
 
-	return command, postPrompt
+	return command, prePrompt, postPrompt
 }
 
 // resolveAgent determines which agent to use based on priority:

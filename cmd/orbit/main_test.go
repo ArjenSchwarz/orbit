@@ -234,9 +234,12 @@ func TestResolvePrompts(t *testing.T) {
 	tests := map[string]struct {
 		cfg            *config.Config
 		commandFlag    string
+		prePromptFlag  string
+		noPrePrompt    bool
 		postPromptFlag string
 		noPostPrompt   bool
 		wantCommand    string
+		wantPrePrompt  string
 		wantPostPrompt string
 	}{
 		"defaults from config": {
@@ -245,6 +248,7 @@ func TestResolvePrompts(t *testing.T) {
 				PostPrompt: config.DefaultPostPrompt,
 			},
 			wantCommand:    config.DefaultCommand,
+			wantPrePrompt:  "",
 			wantPostPrompt: config.DefaultPostPrompt,
 		},
 		"command flag overrides config": {
@@ -254,7 +258,36 @@ func TestResolvePrompts(t *testing.T) {
 			},
 			commandFlag:    "flag command",
 			wantCommand:    "flag command",
+			wantPrePrompt:  "",
 			wantPostPrompt: "config post prompt",
+		},
+		"pre-prompt flag overrides config": {
+			cfg: &config.Config{
+				Command:   "config command",
+				PrePrompt: "config pre prompt",
+			},
+			prePromptFlag: "flag pre prompt",
+			wantCommand:   "config command",
+			wantPrePrompt: "flag pre prompt",
+		},
+		"no-pre-prompt flag disables": {
+			cfg: &config.Config{
+				Command:   "config command",
+				PrePrompt: "config pre prompt",
+			},
+			noPrePrompt:   true,
+			wantCommand:   "config command",
+			wantPrePrompt: "",
+		},
+		"no-pre-prompt flag overrides pre-prompt flag": {
+			cfg: &config.Config{
+				Command:   "config command",
+				PrePrompt: "config pre prompt",
+			},
+			prePromptFlag: "flag pre prompt",
+			noPrePrompt:   true,
+			wantCommand:   "config command",
+			wantPrePrompt: "",
 		},
 		"post-prompt flag overrides config": {
 			cfg: &config.Config{
@@ -284,24 +317,30 @@ func TestResolvePrompts(t *testing.T) {
 			wantCommand:    "config command",
 			wantPostPrompt: "",
 		},
-		"both flags override config": {
+		"all flags override config": {
 			cfg: &config.Config{
 				Command:    "config command",
+				PrePrompt:  "config pre prompt",
 				PostPrompt: "config post prompt",
 			},
 			commandFlag:    "flag command",
+			prePromptFlag:  "flag pre prompt",
 			postPromptFlag: "flag post prompt",
 			wantCommand:    "flag command",
+			wantPrePrompt:  "flag pre prompt",
 			wantPostPrompt: "flag post prompt",
 		},
 	}
 
 	for name, tc := range tests {
 		t.Run(name, func(t *testing.T) {
-			gotCommand, gotPostPrompt := resolvePrompts(tc.cfg, tc.commandFlag, tc.postPromptFlag, tc.noPostPrompt)
+			gotCommand, gotPrePrompt, gotPostPrompt := resolvePrompts(tc.cfg, tc.commandFlag, tc.prePromptFlag, tc.noPrePrompt, tc.postPromptFlag, tc.noPostPrompt)
 
 			if gotCommand != tc.wantCommand {
 				t.Errorf("command: got %q, want %q", gotCommand, tc.wantCommand)
+			}
+			if gotPrePrompt != tc.wantPrePrompt {
+				t.Errorf("prePrompt: got %q, want %q", gotPrePrompt, tc.wantPrePrompt)
 			}
 			if gotPostPrompt != tc.wantPostPrompt {
 				t.Errorf("postPrompt: got %q, want %q", gotPostPrompt, tc.wantPostPrompt)

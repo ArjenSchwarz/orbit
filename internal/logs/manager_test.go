@@ -1584,3 +1584,562 @@ func TestSavePostCompletionSession_IncludesAgentInfo(t *testing.T) {
 		t.Errorf("got Model %q, want %q", entry.Model, "o3")
 	}
 }
+
+func TestGetPrePromptState_NotStarted(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	m, err := NewManagerWithOptions(tmpDir, "test-branch", "/tmp/test-project", ManagerOptions{UseSubdirs: false})
+	if err != nil {
+		t.Fatalf("NewManagerWithOptions failed: %v", err)
+	}
+
+	sessionID, status := m.GetPrePromptState()
+
+	if sessionID != "" {
+		t.Errorf("session ID should be empty for not-started pre-prompt, got %q", sessionID)
+	}
+	if status != PrePromptStatusNotStarted {
+		t.Errorf("got status %q, want %q", status, PrePromptStatusNotStarted)
+	}
+}
+
+func TestGetPrePromptState_Started(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	// Create existing summary with started pre-prompt
+	existingSummary := Summary{
+		StartedAt:  time.Now().Add(-time.Hour),
+		Status:     "running",
+		RunNumber:  1,
+		BranchName: "test-branch",
+		PrePrompt: &PrePromptState{
+			SessionID: "pre-prompt-session-123",
+			StartedAt: time.Now().Add(-10 * time.Minute),
+			Status:    PrePromptStatusStarted,
+		},
+	}
+	data, _ := json.MarshalIndent(existingSummary, "", "  ")
+	if err := os.WriteFile(filepath.Join(tmpDir, "summary.json"), data, 0644); err != nil {
+		t.Fatalf("failed to write summary: %v", err)
+	}
+
+	m, err := NewManagerWithOptions(tmpDir, "test-branch", "/tmp/test-project", ManagerOptions{UseSubdirs: false})
+	if err != nil {
+		t.Fatalf("NewManagerWithOptions failed: %v", err)
+	}
+
+	sessionID, status := m.GetPrePromptState()
+
+	if sessionID != "pre-prompt-session-123" {
+		t.Errorf("got session ID %q, want %q", sessionID, "pre-prompt-session-123")
+	}
+	if status != PrePromptStatusStarted {
+		t.Errorf("got status %q, want %q", status, PrePromptStatusStarted)
+	}
+}
+
+func TestGetPrePromptState_Completed(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	now := time.Now()
+	completedAt := now.Add(-5 * time.Minute)
+
+	// Create existing summary with completed pre-prompt
+	existingSummary := Summary{
+		StartedAt:  now.Add(-time.Hour),
+		Status:     "running",
+		RunNumber:  1,
+		BranchName: "test-branch",
+		PrePrompt: &PrePromptState{
+			SessionID:   "pre-prompt-session-456",
+			StartedAt:   now.Add(-10 * time.Minute),
+			CompletedAt: &completedAt,
+			Status:      PrePromptStatusCompleted,
+		},
+	}
+	data, _ := json.MarshalIndent(existingSummary, "", "  ")
+	if err := os.WriteFile(filepath.Join(tmpDir, "summary.json"), data, 0644); err != nil {
+		t.Fatalf("failed to write summary: %v", err)
+	}
+
+	m, err := NewManagerWithOptions(tmpDir, "test-branch", "/tmp/test-project", ManagerOptions{UseSubdirs: false})
+	if err != nil {
+		t.Fatalf("NewManagerWithOptions failed: %v", err)
+	}
+
+	sessionID, status := m.GetPrePromptState()
+
+	if sessionID != "pre-prompt-session-456" {
+		t.Errorf("got session ID %q, want %q", sessionID, "pre-prompt-session-456")
+	}
+	if status != PrePromptStatusCompleted {
+		t.Errorf("got status %q, want %q", status, PrePromptStatusCompleted)
+	}
+}
+
+func TestStartPrePrompt_NewSession(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	m, err := NewManagerWithOptions(tmpDir, "test-branch", "/tmp/test-project", ManagerOptions{UseSubdirs: false})
+	if err != nil {
+		t.Fatalf("NewManagerWithOptions failed: %v", err)
+	}
+
+	sessionID, isResume, err := m.StartPrePrompt(true)
+	if err != nil {
+		t.Fatalf("StartPrePrompt failed: %v", err)
+	}
+
+	if sessionID == "" {
+		t.Error("session ID should not be empty")
+	}
+	if isResume {
+		t.Error("should not be a resume for new pre-prompt session")
+	}
+
+	// Verify pre_prompt was written
+	summaryPath := filepath.Join(tmpDir, "summary.json")
+	data, _ := os.ReadFile(summaryPath)
+	var summary Summary
+	if err := json.Unmarshal(data, &summary); err != nil {
+		t.Fatalf("failed to parse summary: %v", err)
+	}
+
+	if summary.PrePrompt == nil {
+		t.Fatal("pre_prompt should be set")
+	}
+	if summary.PrePrompt.SessionID != sessionID {
+		t.Errorf("session ID mismatch: got %q, want %q", summary.PrePrompt.SessionID, sessionID)
+	}
+	if summary.PrePrompt.Status != PrePromptStatusStarted {
+		t.Errorf("got status %q, want %q", summary.PrePrompt.Status, PrePromptStatusStarted)
+	}
+}
+
+func TestStartPrePrompt_ResumeExisting(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	// Create existing summary with started pre-prompt
+	existingSummary := Summary{
+		StartedAt:  time.Now().Add(-time.Hour),
+		Status:     "running",
+		RunNumber:  1,
+		BranchName: "test-branch",
+		PrePrompt: &PrePromptState{
+			SessionID: "existing-pre-prompt-123",
+			StartedAt: time.Now().Add(-10 * time.Minute),
+			Status:    PrePromptStatusStarted,
+		},
+	}
+	data, _ := json.MarshalIndent(existingSummary, "", "  ")
+	if err := os.WriteFile(filepath.Join(tmpDir, "summary.json"), data, 0644); err != nil {
+		t.Fatalf("failed to write summary: %v", err)
+	}
+
+	m, err := NewManagerWithOptions(tmpDir, "test-branch", "/tmp/test-project", ManagerOptions{UseSubdirs: false})
+	if err != nil {
+		t.Fatalf("NewManagerWithOptions failed: %v", err)
+	}
+
+	sessionID, isResume, err := m.StartPrePrompt(true)
+	if err != nil {
+		t.Fatalf("StartPrePrompt failed: %v", err)
+	}
+
+	if sessionID != "existing-pre-prompt-123" {
+		t.Errorf("got session ID %q, want 'existing-pre-prompt-123'", sessionID)
+	}
+	if !isResume {
+		t.Error("should be a resume for existing pre-prompt session")
+	}
+}
+
+func TestStartPrePrompt_AlreadyCompleted(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	now := time.Now()
+	completedAt := now.Add(-5 * time.Minute)
+
+	// Create existing summary with completed pre-prompt
+	existingSummary := Summary{
+		StartedAt:  now.Add(-time.Hour),
+		Status:     "running",
+		RunNumber:  1,
+		BranchName: "test-branch",
+		PrePrompt: &PrePromptState{
+			SessionID:   "completed-pre-prompt-789",
+			StartedAt:   now.Add(-10 * time.Minute),
+			CompletedAt: &completedAt,
+			Status:      PrePromptStatusCompleted,
+		},
+	}
+	data, _ := json.MarshalIndent(existingSummary, "", "  ")
+	if err := os.WriteFile(filepath.Join(tmpDir, "summary.json"), data, 0644); err != nil {
+		t.Fatalf("failed to write summary: %v", err)
+	}
+
+	m, err := NewManagerWithOptions(tmpDir, "test-branch", "/tmp/test-project", ManagerOptions{UseSubdirs: false})
+	if err != nil {
+		t.Fatalf("NewManagerWithOptions failed: %v", err)
+	}
+
+	sessionID, isResume, err := m.StartPrePrompt(true)
+	if err != nil {
+		t.Fatalf("StartPrePrompt failed: %v", err)
+	}
+
+	// Should return existing session ID since it's already completed
+	if sessionID != "completed-pre-prompt-789" {
+		t.Errorf("got session ID %q, want 'completed-pre-prompt-789'", sessionID)
+	}
+	if isResume {
+		t.Error("should not be a resume since pre-prompt is already completed")
+	}
+}
+
+func TestStartPrePrompt_ContinueSessionFalse(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	// Create existing summary with started pre-prompt
+	existingSummary := Summary{
+		StartedAt:  time.Now().Add(-time.Hour),
+		Status:     "running",
+		RunNumber:  1,
+		BranchName: "test-branch",
+		PrePrompt: &PrePromptState{
+			SessionID: "existing-pre-prompt-123",
+			StartedAt: time.Now().Add(-10 * time.Minute),
+			Status:    PrePromptStatusStarted,
+		},
+	}
+	data, _ := json.MarshalIndent(existingSummary, "", "  ")
+	if err := os.WriteFile(filepath.Join(tmpDir, "summary.json"), data, 0644); err != nil {
+		t.Fatalf("failed to write summary: %v", err)
+	}
+
+	m, err := NewManagerWithOptions(tmpDir, "test-branch", "/tmp/test-project", ManagerOptions{UseSubdirs: false})
+	if err != nil {
+		t.Fatalf("NewManagerWithOptions failed: %v", err)
+	}
+
+	// continueSession = false should start a fresh session
+	sessionID, isResume, err := m.StartPrePrompt(false)
+	if err != nil {
+		t.Fatalf("StartPrePrompt failed: %v", err)
+	}
+
+	if sessionID == "existing-pre-prompt-123" {
+		t.Error("should have generated a new session ID when continueSession=false")
+	}
+	if isResume {
+		t.Error("should not be a resume when continueSession=false")
+	}
+}
+
+func TestCompletePrePrompt_MarksCompleted(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	m, err := NewManagerWithOptions(tmpDir, "test-branch", "/tmp/test-project", ManagerOptions{UseSubdirs: false})
+	if err != nil {
+		t.Fatalf("NewManagerWithOptions failed: %v", err)
+	}
+
+	// Start a pre-prompt
+	originalID, _, err := m.StartPrePrompt(true)
+	if err != nil {
+		t.Fatalf("StartPrePrompt failed: %v", err)
+	}
+
+	// Complete the pre-prompt
+	newSessionID := "agent-returned-session-id"
+	if err := m.CompletePrePrompt(newSessionID); err != nil {
+		t.Fatalf("CompletePrePrompt failed: %v", err)
+	}
+
+	// Verify pre-prompt is marked as completed
+	if m.summary.PrePrompt == nil {
+		t.Fatal("pre_prompt should still exist after CompletePrePrompt")
+	}
+	if m.summary.PrePrompt.Status != PrePromptStatusCompleted {
+		t.Errorf("got status %q, want %q", m.summary.PrePrompt.Status, PrePromptStatusCompleted)
+	}
+	if m.summary.PrePrompt.CompletedAt == nil {
+		t.Error("completed_at should be set")
+	}
+	// Session ID should be updated to the one returned by the agent
+	if m.summary.PrePrompt.SessionID != newSessionID {
+		t.Errorf("session ID should be updated to %q, got %q", newSessionID, m.summary.PrePrompt.SessionID)
+	}
+	_ = originalID // originalID was replaced
+
+	// Verify written to disk
+	summaryPath := filepath.Join(tmpDir, "summary.json")
+	data, _ := os.ReadFile(summaryPath)
+	var summary Summary
+	if err := json.Unmarshal(data, &summary); err != nil {
+		t.Fatalf("failed to parse summary: %v", err)
+	}
+
+	if summary.PrePrompt.Status != PrePromptStatusCompleted {
+		t.Errorf("disk status %q, want %q", summary.PrePrompt.Status, PrePromptStatusCompleted)
+	}
+	if summary.PrePrompt.SessionID != newSessionID {
+		t.Errorf("disk session ID %q, want %q", summary.PrePrompt.SessionID, newSessionID)
+	}
+}
+
+func TestCompletePrePrompt_NoPrePromptStarted(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	m, err := NewManagerWithOptions(tmpDir, "test-branch", "/tmp/test-project", ManagerOptions{UseSubdirs: false})
+	if err != nil {
+		t.Fatalf("NewManagerWithOptions failed: %v", err)
+	}
+
+	// Try to complete without starting - should be a no-op
+	err = m.CompletePrePrompt("some-session")
+	if err != nil {
+		t.Fatalf("CompletePrePrompt should not error when no pre-prompt started: %v", err)
+	}
+}
+
+func TestRecordShellCommand_PreCommand(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	m, err := NewManagerWithOptions(tmpDir, "test-branch", "/tmp/test-project", ManagerOptions{UseSubdirs: false})
+	if err != nil {
+		t.Fatalf("NewManagerWithOptions failed: %v", err)
+	}
+
+	startedAt := time.Now().Add(-15 * time.Second)
+	completedAt := time.Now()
+	duration := 15 * time.Second
+
+	err = m.RecordShellCommand("pre-command", "make lint", 0, startedAt, completedAt, duration)
+	if err != nil {
+		t.Fatalf("RecordShellCommand failed: %v", err)
+	}
+
+	// Verify pre_command was set in memory
+	if m.summary.PreCommand == nil {
+		t.Fatal("pre_command should be set")
+	}
+	if m.summary.PreCommand.Command != "make lint" {
+		t.Errorf("got command %q, want %q", m.summary.PreCommand.Command, "make lint")
+	}
+	if m.summary.PreCommand.ExitCode != 0 {
+		t.Errorf("got exit code %d, want 0", m.summary.PreCommand.ExitCode)
+	}
+	if m.summary.PreCommand.DurationMS != 15000 {
+		t.Errorf("got duration_ms %d, want 15000", m.summary.PreCommand.DurationMS)
+	}
+
+	// Verify written to disk
+	summaryPath := filepath.Join(tmpDir, "summary.json")
+	data, _ := os.ReadFile(summaryPath)
+	var summary Summary
+	if err := json.Unmarshal(data, &summary); err != nil {
+		t.Fatalf("failed to parse summary: %v", err)
+	}
+
+	if summary.PreCommand == nil {
+		t.Fatal("disk pre_command should be set")
+	}
+	if summary.PreCommand.Command != "make lint" {
+		t.Errorf("disk command %q, want %q", summary.PreCommand.Command, "make lint")
+	}
+}
+
+func TestRecordShellCommand_PostCommand(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	m, err := NewManagerWithOptions(tmpDir, "test-branch", "/tmp/test-project", ManagerOptions{UseSubdirs: false})
+	if err != nil {
+		t.Fatalf("NewManagerWithOptions failed: %v", err)
+	}
+
+	startedAt := time.Now().Add(-30 * time.Second)
+	completedAt := time.Now()
+	duration := 30 * time.Second
+
+	err = m.RecordShellCommand("post-command", "make format", 1, startedAt, completedAt, duration)
+	if err != nil {
+		t.Fatalf("RecordShellCommand failed: %v", err)
+	}
+
+	// Verify post_command was set in memory
+	if m.summary.PostCommand == nil {
+		t.Fatal("post_command should be set")
+	}
+	if m.summary.PostCommand.Command != "make format" {
+		t.Errorf("got command %q, want %q", m.summary.PostCommand.Command, "make format")
+	}
+	if m.summary.PostCommand.ExitCode != 1 {
+		t.Errorf("got exit code %d, want 1", m.summary.PostCommand.ExitCode)
+	}
+	if m.summary.PostCommand.DurationMS != 30000 {
+		t.Errorf("got duration_ms %d, want 30000", m.summary.PostCommand.DurationMS)
+	}
+
+	// Verify written to disk
+	summaryPath := filepath.Join(tmpDir, "summary.json")
+	data, _ := os.ReadFile(summaryPath)
+	var summary Summary
+	if err := json.Unmarshal(data, &summary); err != nil {
+		t.Fatalf("failed to parse summary: %v", err)
+	}
+
+	if summary.PostCommand == nil {
+		t.Fatal("disk post_command should be set")
+	}
+	if summary.PostCommand.ExitCode != 1 {
+		t.Errorf("disk exit code %d, want 1", summary.PostCommand.ExitCode)
+	}
+}
+
+func TestRecordShellCommand_UnknownName(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	m, err := NewManagerWithOptions(tmpDir, "test-branch", "/tmp/test-project", ManagerOptions{UseSubdirs: false})
+	if err != nil {
+		t.Fatalf("NewManagerWithOptions failed: %v", err)
+	}
+
+	startedAt := time.Now()
+	completedAt := time.Now()
+	duration := time.Second
+
+	// Unknown command name should be ignored (no error, no state change)
+	err = m.RecordShellCommand("unknown-command", "some cmd", 0, startedAt, completedAt, duration)
+	if err != nil {
+		t.Fatalf("RecordShellCommand should not error for unknown name: %v", err)
+	}
+
+	// Verify no state was set
+	if m.summary.PreCommand != nil {
+		t.Error("pre_command should not be set for unknown name")
+	}
+	if m.summary.PostCommand != nil {
+		t.Error("post_command should not be set for unknown name")
+	}
+}
+
+func TestGenerateMarkdownIndex_WithPreCommand(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	m, err := NewManager(tmpDir, "test-branch", "/tmp/test-project")
+	if err != nil {
+		t.Fatalf("NewManager failed: %v", err)
+	}
+
+	// Set pre-command state
+	m.summary.PreCommand = &ShellCommandState{
+		Command:     "make lint",
+		ExitCode:    0,
+		StartedAt:   time.Now().Add(-30 * time.Second),
+		CompletedAt: time.Now(),
+		DurationMS:  30000,
+	}
+
+	markdown := m.generateMarkdownIndex()
+
+	if !containsString(markdown, "### Pre-Command") {
+		t.Error("markdown should contain pre-command section")
+	}
+	if !containsString(markdown, "`make lint`") {
+		t.Error("markdown should contain the command")
+	}
+	if !containsString(markdown, "Exit Code:** 0") {
+		t.Error("markdown should contain exit code")
+	}
+}
+
+func TestGenerateMarkdownIndex_WithPostCommand(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	m, err := NewManager(tmpDir, "test-branch", "/tmp/test-project")
+	if err != nil {
+		t.Fatalf("NewManager failed: %v", err)
+	}
+
+	// Set post-command state
+	m.summary.PostCommand = &ShellCommandState{
+		Command:     "make format",
+		ExitCode:    1,
+		StartedAt:   time.Now().Add(-15 * time.Second),
+		CompletedAt: time.Now(),
+		DurationMS:  15000,
+	}
+
+	markdown := m.generateMarkdownIndex()
+
+	if !containsString(markdown, "### Post-Command") {
+		t.Error("markdown should contain post-command section")
+	}
+	if !containsString(markdown, "`make format`") {
+		t.Error("markdown should contain the command")
+	}
+	if !containsString(markdown, "Exit Code:** 1") {
+		t.Error("markdown should contain exit code")
+	}
+}
+
+func TestGenerateHTMLIndex_WithPreCommand(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	m, err := NewManager(tmpDir, "test-branch", "/tmp/test-project")
+	if err != nil {
+		t.Fatalf("NewManager failed: %v", err)
+	}
+
+	// Set pre-command state
+	m.summary.PreCommand = &ShellCommandState{
+		Command:     "make lint",
+		ExitCode:    0,
+		StartedAt:   time.Now().Add(-30 * time.Second),
+		CompletedAt: time.Now(),
+		DurationMS:  30000,
+	}
+
+	html := m.generateHTMLIndex()
+
+	if !containsString(html, "Pre-Command") {
+		t.Error("HTML should contain pre-command section")
+	}
+	if !containsString(html, "make lint") {
+		t.Error("HTML should contain the command")
+	}
+	if !containsString(html, "Exit Code: 0") {
+		t.Error("HTML should contain exit code")
+	}
+}
+
+func TestGenerateHTMLIndex_WithPostCommand(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	m, err := NewManager(tmpDir, "test-branch", "/tmp/test-project")
+	if err != nil {
+		t.Fatalf("NewManager failed: %v", err)
+	}
+
+	// Set post-command state with error
+	m.summary.PostCommand = &ShellCommandState{
+		Command:     "make test",
+		ExitCode:    1,
+		StartedAt:   time.Now().Add(-60 * time.Second),
+		CompletedAt: time.Now(),
+		DurationMS:  60000,
+	}
+
+	html := m.generateHTMLIndex()
+
+	if !containsString(html, "Post-Command") {
+		t.Error("HTML should contain post-command section")
+	}
+	if !containsString(html, "make test") {
+		t.Error("HTML should contain the command")
+	}
+	if !containsString(html, "command-card error") {
+		t.Error("HTML should mark failed command with error class")
+	}
+}

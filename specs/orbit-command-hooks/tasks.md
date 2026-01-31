@@ -40,7 +40,7 @@ references:
 
 ## Deprecation Detection
 
-- [ ] 5. Implement CheckDeprecation function <!-- id:yvhgqls -->
+- [x] 5. Implement CheckDeprecation function <!-- id:yvhgqls -->
   - Create config.CheckDeprecation(workingDir) function
   - Check for ORBIT_POST_COMMAND environment variable
   - Check for top-level post-command key in .orbit.yaml files
@@ -49,13 +49,13 @@ references:
   - Stream: 1
   - Requirements: [5.1](requirements.md#5.1), [5.2](requirements.md#5.2), [5.5](requirements.md#5.5), [5.6](requirements.md#5.6)
 
-- [ ] 6. Add CLI flag deprecation check in run.go <!-- id:yvhgqlt -->
+- [x] 6. Add CLI flag deprecation check in run.go <!-- id:yvhgqlt -->
   - Check for --post-command flag before flag parsing
   - Exit with clear error message if deprecated flag found
   - Stream: 1
   - Requirements: [5.3](requirements.md#5.3), [5.4](requirements.md#5.4)
 
-- [ ] 7. Write unit tests for deprecation detection <!-- id:yvhgqlu -->
+- [x] 7. Write unit tests for deprecation detection <!-- id:yvhgqlu -->
   - TestCheckDeprecation_TopLevelPostCommand
   - TestCheckDeprecation_EnvVar
   - TestCheckDeprecation_AllowsAgentLevelPostCommand
@@ -65,51 +65,57 @@ references:
 
 ## CLI Layer
 
-- [ ] 8. Update CLI flags in run.go <!-- id:yvhgqlv -->
+- [x] 8. Update CLI flags in run.go <!-- id:yvhgqlv -->
   - Add --pre-prompt and --no-pre-prompt flags
   - Rename --post-command to --post-prompt and add --no-post-prompt
   - Integrate deprecation check before flag parsing
   - Blocked-by: yvhgqls (Implement CheckDeprecation function), yvhgqlt (Add CLI flag deprecation check in run.go)
   - Stream: 1
+  - Owner: agent-stream-1
   - Requirements: [1.2](requirements.md#1.2), [1.4](requirements.md#1.4), [2.2](requirements.md#2.2), [2.4](requirements.md#2.4)
 
-- [ ] 9. Update Orbit Config struct and pass new fields <!-- id:yvhgqlw -->
+- [x] 9. Update Orbit Config struct and pass new fields <!-- id:yvhgqlw -->
   - Add PrePrompt, PostPrompt (rename PostCommand), AgentPreCommand, AgentPostCommand, CommandTimeout to orbit.Config
   - Pass fields from CLI to orbit.New()
   - Blocked-by: yvhgqlq (Implement config loading for new fields), yvhgqlv (Update CLI flags in run.go)
   - Stream: 1
+  - Owner: agent-stream-1
   - Requirements: [2.1](requirements.md#2.1), [3.1](requirements.md#3.1), [4.1](requirements.md#4.1), [7.6](requirements.md#7.6)
 
 ## Log Manager Updates
 
-- [ ] 10. Add PrePromptState and ShellCommandState to Summary <!-- id:yvhgqlx -->
+- [x] 10. Add PrePromptState and ShellCommandState to Summary <!-- id:yvhgqlx -->
   - Add PrePromptState struct with SessionID, StartedAt, CompletedAt, Status fields
   - Add ShellCommandState struct with Command, ExitCode, StartedAt, CompletedAt, DurationMS
   - Add PrePrompt, PreCommand, PostCommand fields to Summary struct
   - Stream: 2
+  - Owner: agent-stream-2
   - Requirements: [2.11](requirements.md#2.11), [8.1](requirements.md#8.1)
 
-- [ ] 11. Implement pre-prompt tracking methods <!-- id:yvhgqly -->
+- [x] 11. Implement pre-prompt tracking methods <!-- id:yvhgqly -->
   - Implement StartPrePrompt(continueSession) method
   - Implement CompletePrePrompt(sessionID) method
   - Implement GetPrePromptState() returning sessionID and status
   - Blocked-by: yvhgqlx (Add PrePromptState and ShellCommandState to Summary)
   - Stream: 2
+  - Owner: agent-stream-2
   - Requirements: [2.11](requirements.md#2.11), [2.12](requirements.md#2.12)
 
-- [ ] 12. Implement RecordShellCommand method <!-- id:yvhgqlz -->
+- [x] 12. Implement RecordShellCommand method <!-- id:yvhgqlz -->
   - Record pre-command and post-command execution in summary.json
   - Track command, exit_code, started_at, completed_at, duration_ms
   - Blocked-by: yvhgqlx (Add PrePromptState and ShellCommandState to Summary)
   - Stream: 2
+  - Owner: agent-stream-2
   - Requirements: [8.1](requirements.md#8.1)
 
-- [ ] 13. Write unit tests for log manager updates <!-- id:yvhgqm0 -->
+- [x] 13. Write unit tests for log manager updates <!-- id:yvhgqm0 -->
   - TestStartPrePrompt, TestCompletePrePrompt, TestGetPrePromptState
   - TestRecordShellCommand
   - TestPreCommandLogFile, TestPostCommandLogFile, TestLogFileFormat
   - Blocked-by: yvhgqly (Implement pre-prompt tracking methods), yvhgqlz (Implement RecordShellCommand method)
   - Stream: 2
+  - Owner: agent-stream-2
   - Requirements: [2.11](requirements.md#2.11), [2.12](requirements.md#2.12), [8.1](requirements.md#8.1), [8.2](requirements.md#8.2), [8.3](requirements.md#8.3), [8.4](requirements.md#8.4)
 
 ## Shell Command Execution
@@ -193,10 +199,11 @@ references:
   - Stream: 1
   - Requirements: [1.5](requirements.md#1.5), [1.6](requirements.md#1.6)
 
-- [ ] 23. Add StartPrePrompt spinner method <!-- id:yvhgqma -->
+- [x] 23. Add StartPrePrompt spinner method <!-- id:yvhgqma -->
   - Add StartPrePrompt method to internal/display/spinner.go
   - Display Running pre-prompt message
   - Stream: 2
+  - Owner: agent-stream-2
   - Requirements: [2.5](requirements.md#2.5)
 
 - [ ] 24. Write unit tests for single-run hooks <!-- id:yvhgqmb -->
@@ -252,11 +259,12 @@ references:
 
 ## Integration and Documentation
 
-- [ ] 29. Update index generation for shell command status <!-- id:yvhgqmg -->
+- [x] 29. Update index generation for shell command status <!-- id:yvhgqmg -->
   - Include pre-command and post-command status in run index
   - Update index.md and index.html generation
   - Blocked-by: yvhgqlz (Implement RecordShellCommand method)
   - Stream: 2
+  - Owner: agent-stream-2
   - Requirements: [8.6](requirements.md#8.6)
 
 - [ ] 30. Write integration tests for full run with hooks <!-- id:yvhgqmh -->
