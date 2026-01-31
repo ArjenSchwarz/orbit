@@ -151,7 +151,7 @@ references:
 
 ## Single-Run Mode Hooks
 
-- [ ] 17. Implement runAgentPreCommand method <!-- id:yvhgqm4 -->
+- [x] 17. Implement runAgentPreCommand method <!-- id:yvhgqm4 -->
   - Execute agent pre-command if configured
   - Abort run on non-zero exit code
   - Handle dry-run mode by printing command without executing
@@ -160,7 +160,7 @@ references:
   - Stream: 1
   - Requirements: [3.2](requirements.md#3.2), [3.3](requirements.md#3.3), [3.5](requirements.md#3.5), [7.12](requirements.md#7.12)
 
-- [ ] 18. Implement runPrePrompt method <!-- id:yvhgqm5 -->
+- [x] 18. Implement runPrePrompt method <!-- id:yvhgqm5 -->
   - Execute global pre-prompt if configured
   - Start new agent session and store session_id
   - Check for completed pre-prompt state on resume
@@ -169,14 +169,14 @@ references:
   - Stream: 1
   - Requirements: [2.5](requirements.md#2.5), [2.6](requirements.md#2.6), [2.7](requirements.md#2.7), [2.9](requirements.md#2.9), [2.12](requirements.md#2.12), [2.14](requirements.md#2.14)
 
-- [ ] 19. Modify runPhase to use pre-prompt session for phase 1 <!-- id:yvhgqm6 -->
+- [x] 19. Modify runPhase to use pre-prompt session for phase 1 <!-- id:yvhgqm6 -->
   - Pass prePromptSessionID to StartPhase for phase 1
   - Handle SessionInvalid error by starting fresh session
   - Blocked-by: yvhgqm5 (Implement runPrePrompt method)
   - Stream: 1
   - Requirements: [2.7](requirements.md#2.7), [2.10](requirements.md#2.10)
 
-- [ ] 20. Implement runAgentPostCommand method <!-- id:yvhgqm7 -->
+- [x] 20. Implement runAgentPostCommand method <!-- id:yvhgqm7 -->
   - Execute agent post-command if configured
   - Log warning on failure but complete run
   - Handle dry-run mode by printing command without executing
@@ -184,7 +184,7 @@ references:
   - Stream: 1
   - Requirements: [4.2](requirements.md#4.2), [4.3](requirements.md#4.3), [4.5](requirements.md#4.5), [7.12](requirements.md#7.12)
 
-- [ ] 21. Update runSingle to call hooks in order <!-- id:yvhgqm8 -->
+- [x] 21. Update runSingle to call hooks in order <!-- id:yvhgqm8 -->
   - Call runAgentPreCommand before runPrePrompt
   - Call runPrePrompt before displayPhaseOverview
   - Call runAgentPostCommand in complete() after post-prompt
@@ -192,7 +192,7 @@ references:
   - Stream: 1
   - Requirements: [6.1](requirements.md#6.1), [6.2](requirements.md#6.2)
 
-- [ ] 22. Rename PostCommand to PostPrompt in complete method <!-- id:yvhgqm9 -->
+- [x] 22. Rename PostCommand to PostPrompt in complete method <!-- id:yvhgqm9 -->
   - Rename config.PostCommand references to config.PostPrompt
   - Update log messages from post-command to post-prompt
   - Blocked-by: yvhgqm8 (Update runSingle to call hooks in order)
@@ -206,7 +206,7 @@ references:
   - Owner: agent-stream-2
   - Requirements: [2.5](requirements.md#2.5)
 
-- [ ] 24. Write unit tests for single-run hooks <!-- id:yvhgqmb -->
+- [x] 24. Write unit tests for single-run hooks <!-- id:yvhgqmb -->
   - TestExecutionOrder, TestExecutionOrder_SkipsUnconfigured
   - TestPrePromptSessionPassedToPhase1, TestPrePromptResume
   - TestPrePromptFailureAbortsRun, TestPrePromptInvalidSessionFallback

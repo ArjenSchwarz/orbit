@@ -232,8 +232,26 @@ func (m *Manager) loadExistingSummary() error {
 }
 
 // StartPhase begins a new phase or resumes an existing one.
+// If overrideSessionID is provided (non-empty) and phase is 1, that session ID is used
+// and isResume is set to true (to continue the pre-prompt session).
 // Returns the session ID, whether this is a resume, and any error.
-func (m *Manager) StartPhase(phase int, continueSession bool) (string, bool, error) {
+func (m *Manager) StartPhase(phase int, continueSession bool, overrideSessionID ...string) (string, bool, error) {
+	// Check for override session ID (from pre-prompt) for phase 1
+	if len(overrideSessionID) > 0 && overrideSessionID[0] != "" && phase == 1 {
+		sessionID := overrideSessionID[0]
+		// Record that we're using the pre-prompt session
+		m.summary.CurrentPhase = &PhaseState{
+			Phase:     phase,
+			SessionID: sessionID,
+			StartedAt: time.Now(),
+		}
+		if err := m.writeSummary(); err != nil {
+			return "", false, err
+		}
+		// Return the override session ID with isResume=true since we're continuing pre-prompt session
+		return sessionID, true, nil
+	}
+
 	// Check for existing in-progress phase
 	if m.summary.CurrentPhase != nil && m.summary.CurrentPhase.Phase == phase {
 		if continueSession {

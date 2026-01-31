@@ -9,6 +9,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Single-run mode hook orchestration (`internal/orbit/orbit.go`)
+  - `runAgentPreCommand()` method for executing shell commands before agent phases with abort-on-failure
+  - `runAgentPostCommand()` method for executing shell commands after agent phases with warn-on-failure
+  - `runPrePrompt()` method for executing AI pre-prompt with session continuation and crash recovery
+  - Pre-prompt session ID passed to phase 1 via modified `StartPhase()` method
+  - Dry-run mode support for all hooks (prints without executing)
+- `prePromptSessionID` field in `Orbit` struct for storing pre-prompt session to continue in phase 1
+- Unit tests for single-run hooks covering execution order, failure behavior, session continuation, and dry-run mode (`internal/orbit/orbit_test.go`)
+
+### Changed
+
+- Modified `StartPhase()` to accept optional override session ID parameter for pre-prompt session continuation
+- Updated `runSingle()` to call hooks in order: agent pre-command → pre-prompt → phase loop
+- Updated `complete()` to call agent post-command after post-prompt execution
 - CLI flags `--pre-prompt` and `--no-pre-prompt` for pre-prompt configuration (`cmd/orbit/run.go`)
 - `PrePrompt`, `AgentPreCommand`, `AgentPostCommand`, `CommandTimeout` fields in `orbit.Config` struct
 - `PrePromptState` struct for tracking pre-prompt execution state with session ID, timestamps, and status

@@ -11,9 +11,11 @@ import (
 
 	"github.com/arjenschwarz/orbit/internal/agents"
 	configPkg "github.com/arjenschwarz/orbit/internal/config"
+	"github.com/arjenschwarz/orbit/internal/debug"
 	orberrors "github.com/arjenschwarz/orbit/internal/errors"
 	"github.com/arjenschwarz/orbit/internal/logs"
 	"github.com/arjenschwarz/orbit/internal/registry"
+	"github.com/arjenschwarz/orbit/internal/rune"
 )
 
 // mockClaudeClient implements claudeRunner for testing.
@@ -1229,5 +1231,520 @@ func TestIntegration_VariantRunWithDifferentModels(t *testing.T) {
 		if resolved.Type != "claude-code" {
 			t.Errorf("cycling variant %d: expected Type %q, got %q", i+1, "claude-code", resolved.Type)
 		}
+	}
+}
+
+// --- Single-Run Hooks Tests (Phase 5) ---
+
+func TestRunAgentPreCommand_Success(t *testing.T) {
+	tempDir := t.TempDir()
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	mockAg := &mockAgent{name: "test-agent"}
+	dbg, _ := debug.NewLogger(debug.LoggerConfig{})
+	defer dbg.Close()
+
+	o := &Orbit{
+		config: Config{
+			AgentPreCommand: "echo pre-command-executed",
+			WorkingDir:      tempDir,
+			CommandTimeout:  30 * time.Second,
+		},
+		agent:       mockAg,
+		runeClient:  rune.NewClient(filepath.Join(tempDir, "tasks.md")),
+		shutdownCtx: ctx,
+		debug:       dbg,
+	}
+
+	err := o.runAgentPreCommand()
+	if err != nil {
+		t.Errorf("runAgentPreCommand() returned error: %v", err)
+	}
+}
+
+func TestRunAgentPreCommand_SkipsWhenEmpty(t *testing.T) {
+	tempDir := t.TempDir()
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	mockAg := &mockAgent{name: "test-agent"}
+	dbg, _ := debug.NewLogger(debug.LoggerConfig{})
+	defer dbg.Close()
+
+	o := &Orbit{
+		config: Config{
+			AgentPreCommand: "", // Empty - should skip
+			WorkingDir:      tempDir,
+			CommandTimeout:  30 * time.Second,
+		},
+		agent:       mockAg,
+		runeClient:  rune.NewClient(filepath.Join(tempDir, "tasks.md")),
+		shutdownCtx: ctx,
+		debug:       dbg,
+	}
+
+	err := o.runAgentPreCommand()
+	if err != nil {
+		t.Errorf("runAgentPreCommand() should not return error when command is empty: %v", err)
+	}
+}
+
+func TestRunAgentPreCommand_FailureAbortsRun(t *testing.T) {
+	tempDir := t.TempDir()
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	mockAg := &mockAgent{name: "test-agent"}
+	dbg, _ := debug.NewLogger(debug.LoggerConfig{})
+	defer dbg.Close()
+
+	o := &Orbit{
+		config: Config{
+			AgentPreCommand: "exit 1", // Command that fails
+			WorkingDir:      tempDir,
+			CommandTimeout:  30 * time.Second,
+		},
+		agent:       mockAg,
+		runeClient:  rune.NewClient(filepath.Join(tempDir, "tasks.md")),
+		shutdownCtx: ctx,
+		debug:       dbg,
+	}
+
+	err := o.runAgentPreCommand()
+	if err == nil {
+		t.Error("runAgentPreCommand() should return error when command fails")
+	}
+	if !strings.Contains(err.Error(), "pre-command failed") {
+		t.Errorf("expected 'pre-command failed' in error message, got: %v", err)
+	}
+}
+
+func TestRunAgentPostCommand_Success(t *testing.T) {
+	tempDir := t.TempDir()
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	mockAg := &mockAgent{name: "test-agent"}
+	dbg, _ := debug.NewLogger(debug.LoggerConfig{})
+	defer dbg.Close()
+
+	o := &Orbit{
+		config: Config{
+			AgentPostCommand: "echo post-command-executed",
+			WorkingDir:       tempDir,
+			CommandTimeout:   30 * time.Second,
+		},
+		agent:       mockAg,
+		runeClient:  rune.NewClient(filepath.Join(tempDir, "tasks.md")),
+		shutdownCtx: ctx,
+		debug:       dbg,
+	}
+
+	err := o.runAgentPostCommand()
+	if err != nil {
+		t.Errorf("runAgentPostCommand() returned error: %v", err)
+	}
+}
+
+func TestRunAgentPostCommand_FailureWarns(t *testing.T) {
+	tempDir := t.TempDir()
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	mockAg := &mockAgent{name: "test-agent"}
+	dbg, _ := debug.NewLogger(debug.LoggerConfig{})
+	defer dbg.Close()
+
+	o := &Orbit{
+		config: Config{
+			AgentPostCommand: "exit 1", // Command that fails
+			WorkingDir:       tempDir,
+			CommandTimeout:   30 * time.Second,
+		},
+		agent:       mockAg,
+		runeClient:  rune.NewClient(filepath.Join(tempDir, "tasks.md")),
+		shutdownCtx: ctx,
+		debug:       dbg,
+	}
+
+	// Post-command failure should NOT return an error (warns only)
+	err := o.runAgentPostCommand()
+	if err != nil {
+		t.Errorf("runAgentPostCommand() should not return error on failure (warning only): %v", err)
+	}
+}
+
+func TestRunAgentPostCommand_SkipsWhenEmpty(t *testing.T) {
+	tempDir := t.TempDir()
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	mockAg := &mockAgent{name: "test-agent"}
+	dbg, _ := debug.NewLogger(debug.LoggerConfig{})
+	defer dbg.Close()
+
+	o := &Orbit{
+		config: Config{
+			AgentPostCommand: "", // Empty - should skip
+			WorkingDir:       tempDir,
+			CommandTimeout:   30 * time.Second,
+		},
+		agent:       mockAg,
+		runeClient:  rune.NewClient(filepath.Join(tempDir, "tasks.md")),
+		shutdownCtx: ctx,
+		debug:       dbg,
+	}
+
+	err := o.runAgentPostCommand()
+	if err != nil {
+		t.Errorf("runAgentPostCommand() should not return error when command is empty: %v", err)
+	}
+}
+
+func TestRunPrePrompt_Success(t *testing.T) {
+	tempDir := t.TempDir()
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	mockAg := &mockAgent{
+		name: "test-agent",
+		runFunc: func(ctx context.Context, opts agents.RunOptions) (*agents.RunResult, error) {
+			return &agents.RunResult{
+				SessionID: "pre-prompt-session-123",
+				Output:    "Pre-prompt executed successfully",
+				IsError:   false,
+			}, nil
+		},
+	}
+	dbg, _ := debug.NewLogger(debug.LoggerConfig{})
+	defer dbg.Close()
+
+	o := &Orbit{
+		config: Config{
+			PrePrompt:      "Review the codebase before starting",
+			WorkingDir:     tempDir,
+			CommandTimeout: 30 * time.Second,
+		},
+		agent:       mockAg,
+		shutdownCtx: ctx,
+		debug:       dbg,
+	}
+
+	err := o.runPrePrompt()
+	if err != nil {
+		t.Errorf("runPrePrompt() returned error: %v", err)
+	}
+
+	// Verify session ID was stored for phase 1
+	if o.prePromptSessionID != "pre-prompt-session-123" {
+		t.Errorf("prePromptSessionID = %q, want %q", o.prePromptSessionID, "pre-prompt-session-123")
+	}
+}
+
+func TestRunPrePrompt_SkipsWhenEmpty(t *testing.T) {
+	tempDir := t.TempDir()
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	mockAg := &mockAgent{
+		name: "test-agent",
+		runFunc: func(ctx context.Context, opts agents.RunOptions) (*agents.RunResult, error) {
+			t.Error("Agent should not be called when pre-prompt is empty")
+			return nil, errors.New("should not be called")
+		},
+	}
+	dbg, _ := debug.NewLogger(debug.LoggerConfig{})
+	defer dbg.Close()
+
+	o := &Orbit{
+		config: Config{
+			PrePrompt:      "", // Empty - should skip
+			WorkingDir:     tempDir,
+			CommandTimeout: 30 * time.Second,
+		},
+		agent:       mockAg,
+		shutdownCtx: ctx,
+		debug:       dbg,
+	}
+
+	err := o.runPrePrompt()
+	if err != nil {
+		t.Errorf("runPrePrompt() should not return error when prompt is empty: %v", err)
+	}
+}
+
+func TestRunPrePrompt_FailureAbortsRun(t *testing.T) {
+	tempDir := t.TempDir()
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	mockAg := &mockAgent{
+		name: "test-agent",
+		runFunc: func(ctx context.Context, opts agents.RunOptions) (*agents.RunResult, error) {
+			return &agents.RunResult{
+				Stderr:  "Agent failed",
+				IsError: true,
+			}, errors.New("agent execution failed")
+		},
+	}
+	dbg, _ := debug.NewLogger(debug.LoggerConfig{})
+	defer dbg.Close()
+
+	o := &Orbit{
+		config: Config{
+			PrePrompt:      "Review the codebase",
+			WorkingDir:     tempDir,
+			CommandTimeout: 30 * time.Second,
+		},
+		agent:       mockAg,
+		shutdownCtx: ctx,
+		debug:       dbg,
+	}
+
+	err := o.runPrePrompt()
+	if err == nil {
+		t.Error("runPrePrompt() should return error when agent fails")
+	}
+	if !strings.Contains(err.Error(), "pre-prompt failed") {
+		t.Errorf("expected 'pre-prompt failed' in error message, got: %v", err)
+	}
+}
+
+func TestRunPrePrompt_ResumesCompletedSession(t *testing.T) {
+	tempDir := t.TempDir()
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	// Create log manager with completed pre-prompt state
+	logManager, err := logs.NewManagerWithOptions(tempDir, "test-branch", tempDir, logs.ManagerOptions{UseSubdirs: false})
+	if err != nil {
+		t.Fatalf("Failed to create log manager: %v", err)
+	}
+
+	// Start and complete pre-prompt to simulate previous run
+	_, _, err = logManager.StartPrePrompt(false)
+	if err != nil {
+		t.Fatalf("StartPrePrompt() returned error: %v", err)
+	}
+	if err := logManager.CompletePrePrompt("completed-session-id"); err != nil {
+		t.Fatalf("CompletePrePrompt() returned error: %v", err)
+	}
+
+	mockAg := &mockAgent{
+		name: "test-agent",
+		runFunc: func(ctx context.Context, opts agents.RunOptions) (*agents.RunResult, error) {
+			t.Error("Agent should not be called when pre-prompt is already completed")
+			return nil, errors.New("should not be called")
+		},
+	}
+	dbg, _ := debug.NewLogger(debug.LoggerConfig{})
+	defer dbg.Close()
+
+	o := &Orbit{
+		config: Config{
+			PrePrompt:      "Review the codebase",
+			WorkingDir:     tempDir,
+			CommandTimeout: 30 * time.Second,
+		},
+		agent:       mockAg,
+		logManager:  logManager,
+		shutdownCtx: ctx,
+		debug:       dbg,
+	}
+
+	err = o.runPrePrompt()
+	if err != nil {
+		t.Errorf("runPrePrompt() returned error: %v", err)
+	}
+
+	// Should use the stored session ID
+	if o.prePromptSessionID != "completed-session-id" {
+		t.Errorf("prePromptSessionID = %q, want %q", o.prePromptSessionID, "completed-session-id")
+	}
+}
+
+func TestRunPhase_UsesPrePromptSession(t *testing.T) {
+	tempDir := t.TempDir()
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	// Track whether Resume was called with the pre-prompt session
+	var resumedSessionID string
+	var calledResume bool
+
+	mockClient := &mockClaudeClient{
+		runPhaseFunc: func(sessionID string, resume bool) (*agents.RunResult, error) {
+			resumedSessionID = sessionID
+			calledResume = resume
+			return &agents.RunResult{
+				SessionID: sessionID,
+				Output:    "Success",
+				IsError:   false,
+			}, nil
+		},
+	}
+
+	dbg, _ := debug.NewLogger(debug.LoggerConfig{})
+	defer dbg.Close()
+
+	o := &Orbit{
+		config: Config{
+			WorkingDir: tempDir,
+		},
+		claudeClient:        mockClient,
+		prePromptSessionID:  "pre-prompt-session-123", // Simulates pre-prompt having completed
+		shutdownCtx:         ctx,
+		debug:               dbg,
+	}
+
+	err := o.runPhase(1) // Phase 1 should use pre-prompt session
+	if err != nil {
+		t.Fatalf("runPhase() returned error: %v", err)
+	}
+
+	// Phase 1 should resume the pre-prompt session
+	if !calledResume {
+		t.Error("Phase 1 should call with resume=true when pre-prompt session exists")
+	}
+	if resumedSessionID != "pre-prompt-session-123" {
+		t.Errorf("Phase 1 should use pre-prompt session ID. Got %q, want %q", resumedSessionID, "pre-prompt-session-123")
+	}
+}
+
+func TestRunPhase_DoesNotUsePrePromptSessionForPhase2(t *testing.T) {
+	tempDir := t.TempDir()
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	var resumedSessionID string
+	var calledResume bool
+
+	mockClient := &mockClaudeClient{
+		runPhaseFunc: func(sessionID string, resume bool) (*agents.RunResult, error) {
+			resumedSessionID = sessionID
+			calledResume = resume
+			return &agents.RunResult{
+				SessionID: sessionID,
+				Output:    "Success",
+				IsError:   false,
+			}, nil
+		},
+	}
+
+	dbg, _ := debug.NewLogger(debug.LoggerConfig{})
+	defer dbg.Close()
+
+	o := &Orbit{
+		config: Config{
+			WorkingDir: tempDir,
+		},
+		claudeClient:        mockClient,
+		prePromptSessionID:  "pre-prompt-session-123",
+		shutdownCtx:         ctx,
+		debug:               dbg,
+	}
+
+	err := o.runPhase(2) // Phase 2 should NOT use pre-prompt session
+	if err != nil {
+		t.Fatalf("runPhase() returned error: %v", err)
+	}
+
+	// Phase 2 should not use pre-prompt session
+	if calledResume {
+		t.Error("Phase 2 should NOT use resume when pre-prompt session exists (only phase 1 uses it)")
+	}
+	if resumedSessionID == "pre-prompt-session-123" {
+		t.Error("Phase 2 should NOT use pre-prompt session ID")
+	}
+}
+
+func TestDryRun_PrintsHooksWithoutExecuting(t *testing.T) {
+	tempDir := t.TempDir()
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	agentCalled := false
+	mockAg := &mockAgent{
+		name: "test-agent",
+		runFunc: func(ctx context.Context, opts agents.RunOptions) (*agents.RunResult, error) {
+			agentCalled = true
+			return nil, errors.New("should not be called")
+		},
+	}
+	dbg, _ := debug.NewLogger(debug.LoggerConfig{})
+	defer dbg.Close()
+
+	o := &Orbit{
+		config: Config{
+			DryRun:           true,
+			AgentPreCommand:  "make lint",
+			AgentPostCommand: "make format",
+			PrePrompt:        "Review the codebase",
+			WorkingDir:       tempDir,
+			CommandTimeout:   30 * time.Second,
+		},
+		agent:       mockAg,
+		runeClient:  rune.NewClient(filepath.Join(tempDir, "tasks.md")),
+		shutdownCtx: ctx,
+		debug:       dbg,
+	}
+
+	// Pre-command in dry-run should not execute
+	err := o.runAgentPreCommand()
+	if err != nil {
+		t.Errorf("runAgentPreCommand() in dry-run should not return error: %v", err)
+	}
+
+	// Post-command in dry-run should not execute
+	err = o.runAgentPostCommand()
+	if err != nil {
+		t.Errorf("runAgentPostCommand() in dry-run should not return error: %v", err)
+	}
+
+	// Pre-prompt in dry-run should not execute
+	err = o.runPrePrompt()
+	if err != nil {
+		t.Errorf("runPrePrompt() in dry-run should not return error: %v", err)
+	}
+
+	if agentCalled {
+		t.Error("Agent should NOT be called in dry-run mode")
+	}
+}
+
+func TestExecutionOrder_SkipsUnconfigured(t *testing.T) {
+	tempDir := t.TempDir()
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	mockAg := &mockAgent{name: "test-agent"}
+	dbg, _ := debug.NewLogger(debug.LoggerConfig{})
+	defer dbg.Close()
+
+	// Empty config - all hooks should be skipped
+	o := &Orbit{
+		config: Config{
+			AgentPreCommand:  "", // Empty - skip
+			AgentPostCommand: "", // Empty - skip
+			PrePrompt:        "", // Empty - skip
+			WorkingDir:       tempDir,
+			CommandTimeout:   30 * time.Second,
+		},
+		agent:       mockAg,
+		runeClient:  rune.NewClient(filepath.Join(tempDir, "tasks.md")),
+		shutdownCtx: ctx,
+		debug:       dbg,
+	}
+
+	// All hooks should succeed (no-ops)
+	if err := o.runAgentPreCommand(); err != nil {
+		t.Errorf("runAgentPreCommand() with empty config returned error: %v", err)
+	}
+	if err := o.runPrePrompt(); err != nil {
+		t.Errorf("runPrePrompt() with empty config returned error: %v", err)
+	}
+	if err := o.runAgentPostCommand(); err != nil {
+		t.Errorf("runAgentPostCommand() with empty config returned error: %v", err)
 	}
 }
