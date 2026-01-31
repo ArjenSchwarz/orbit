@@ -14,6 +14,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `PreCommand` and `PostCommand` fields in `AgentAliasConfig` for agent-level shell commands
 - Environment variable support: `ORBIT_PRE_PROMPT`, `ORBIT_POST_PROMPT`, `ORBIT_COMMAND_TIMEOUT`
 - Explicit setting tracking for prompts to distinguish "not set" from "set to empty"
+- Deprecation detection for `post-command` configuration via `config.CheckDeprecation()`
+  - Detects deprecated `ORBIT_POST_COMMAND` environment variable
+  - Detects deprecated top-level `post-command` key in `.orbit.yaml` files
+  - Distinguishes deprecated top-level `post-command` from valid agent-level `agents.<name>.post-command`
+  - Provides clear error messages with migration instructions
+- CLI deprecation check for `--post-command` flag with migration guidance
 - Unit tests for all new configuration fields and behaviors
 
 ### Changed

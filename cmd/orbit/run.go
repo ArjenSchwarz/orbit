@@ -24,6 +24,16 @@ import (
 // runCommand executes the orbit run subcommand.
 // It orchestrates Claude Code sessions to implement spec phases sequentially.
 func runCommand(args []string) error {
+	// Stage 1: Check for deprecated --post-command flag before flag parsing.
+	// This allows us to provide a clear error message instead of "unknown flag".
+	for _, arg := range args {
+		if arg == "--post-command" || strings.HasPrefix(arg, "--post-command=") {
+			return fmt.Errorf("flag --post-command is deprecated\n\n"+
+				"  Rename to: --post-prompt\n\n"+
+				"Update your command and retry")
+		}
+	}
+
 	fs := flag.NewFlagSet("run", flag.ExitOnError)
 
 	tasksFile := fs.String("tasks-file", "", "Path to rune tasks file (auto-detects from branch if not specified)")
@@ -82,6 +92,12 @@ func runCommand(args []string) error {
 	workingDir, err := os.Getwd()
 	if err != nil {
 		return fmt.Errorf("failed to get working directory: %w", err)
+	}
+
+	// Stage 2: Check for deprecated configuration (env vars and config files).
+	// This must happen before loading configuration to fail fast.
+	if err := config.CheckDeprecation(workingDir); err != nil {
+		return err
 	}
 
 	// Get branch name

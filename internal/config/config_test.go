@@ -2187,3 +2187,177 @@ func TestLoad_EmptyCommandTreatedAsNoOp(t *testing.T) {
 		t.Errorf("expected PostCommand to be empty, got %q", alias.PostCommand)
 	}
 }
+
+// Tests for CheckDeprecation function
+
+func TestCheckDeprecation_TopLevelPostCommand(t *testing.T) {
+	tmpDir := t.TempDir()
+	homeDir := t.TempDir()
+	t.Setenv("HOME", homeDir)
+
+	// Write config with deprecated top-level post-command
+	projectConfig := `post-command: "deprecated AI prompt"
+agents:
+  claude-code:
+    type: claude-code
+`
+	if err := os.WriteFile(filepath.Join(tmpDir, ".orbit.yaml"), []byte(projectConfig), 0644); err != nil {
+		t.Fatalf("failed to write project config: %v", err)
+	}
+
+	err := CheckDeprecation(tmpDir)
+	if err == nil {
+		t.Fatal("expected error for deprecated top-level post-command")
+	}
+	if !strings.Contains(err.Error(), "deprecated") {
+		t.Errorf("expected error to mention 'deprecated', got: %v", err)
+	}
+	if !strings.Contains(err.Error(), "post-command") {
+		t.Errorf("expected error to mention 'post-command', got: %v", err)
+	}
+	if !strings.Contains(err.Error(), "post-prompt") {
+		t.Errorf("expected error to mention 'post-prompt' as replacement, got: %v", err)
+	}
+}
+
+func TestCheckDeprecation_TopLevelPostCommand_HomeConfig(t *testing.T) {
+	tmpDir := t.TempDir()
+	homeDir := t.TempDir()
+	t.Setenv("HOME", homeDir)
+
+	// Write deprecated config in home directory
+	homeConfig := `post-command: "deprecated in home"
+`
+	if err := os.WriteFile(filepath.Join(homeDir, ".orbit.yaml"), []byte(homeConfig), 0644); err != nil {
+		t.Fatalf("failed to write home config: %v", err)
+	}
+
+	err := CheckDeprecation(tmpDir)
+	if err == nil {
+		t.Fatal("expected error for deprecated top-level post-command in home config")
+	}
+	if !strings.Contains(err.Error(), homeDir) {
+		t.Errorf("expected error to mention home config path, got: %v", err)
+	}
+}
+
+func TestCheckDeprecation_EnvVar(t *testing.T) {
+	tmpDir := t.TempDir()
+	homeDir := t.TempDir()
+	t.Setenv("HOME", homeDir)
+
+	// Set deprecated environment variable
+	t.Setenv("ORBIT_POST_COMMAND", "deprecated env value")
+
+	err := CheckDeprecation(tmpDir)
+	if err == nil {
+		t.Fatal("expected error for deprecated ORBIT_POST_COMMAND env var")
+	}
+	if !strings.Contains(err.Error(), "ORBIT_POST_COMMAND") {
+		t.Errorf("expected error to mention 'ORBIT_POST_COMMAND', got: %v", err)
+	}
+	if !strings.Contains(err.Error(), "ORBIT_POST_PROMPT") {
+		t.Errorf("expected error to mention 'ORBIT_POST_PROMPT' as replacement, got: %v", err)
+	}
+}
+
+func TestCheckDeprecation_AllowsAgentLevelPostCommand(t *testing.T) {
+	tmpDir := t.TempDir()
+	homeDir := t.TempDir()
+	t.Setenv("HOME", homeDir)
+
+	// Write config with agent-level post-command (this is valid, not deprecated)
+	projectConfig := `agents:
+  claude-code:
+    type: claude-code
+    post-command: "make format && make lint"
+`
+	if err := os.WriteFile(filepath.Join(tmpDir, ".orbit.yaml"), []byte(projectConfig), 0644); err != nil {
+		t.Fatalf("failed to write project config: %v", err)
+	}
+
+	err := CheckDeprecation(tmpDir)
+	if err != nil {
+		t.Errorf("unexpected error for agent-level post-command: %v", err)
+	}
+}
+
+func TestCheckDeprecation_NoDeprecatedConfig(t *testing.T) {
+	tmpDir := t.TempDir()
+	homeDir := t.TempDir()
+	t.Setenv("HOME", homeDir)
+
+	// Write valid config without deprecated keys
+	projectConfig := `post-prompt: "valid AI prompt"
+agents:
+  claude-code:
+    type: claude-code
+    post-command: "valid shell command"
+`
+	if err := os.WriteFile(filepath.Join(tmpDir, ".orbit.yaml"), []byte(projectConfig), 0644); err != nil {
+		t.Fatalf("failed to write project config: %v", err)
+	}
+
+	err := CheckDeprecation(tmpDir)
+	if err != nil {
+		t.Errorf("unexpected error for valid config: %v", err)
+	}
+}
+
+func TestCheckDeprecation_NoConfigFiles(t *testing.T) {
+	tmpDir := t.TempDir()
+	homeDir := t.TempDir()
+	t.Setenv("HOME", homeDir)
+
+	// No config files exist
+	err := CheckDeprecation(tmpDir)
+	if err != nil {
+		t.Errorf("unexpected error when no config files exist: %v", err)
+	}
+}
+
+func TestCheckDeprecation_BothEnvAndConfig(t *testing.T) {
+	tmpDir := t.TempDir()
+	homeDir := t.TempDir()
+	t.Setenv("HOME", homeDir)
+
+	// Set deprecated environment variable
+	t.Setenv("ORBIT_POST_COMMAND", "deprecated env value")
+
+	// Write config with deprecated top-level post-command
+	projectConfig := `post-command: "deprecated config value"
+`
+	if err := os.WriteFile(filepath.Join(tmpDir, ".orbit.yaml"), []byte(projectConfig), 0644); err != nil {
+		t.Fatalf("failed to write project config: %v", err)
+	}
+
+	err := CheckDeprecation(tmpDir)
+	if err == nil {
+		t.Fatal("expected error for multiple deprecated configurations")
+	}
+	// Should report both deprecations
+	if !strings.Contains(err.Error(), "ORBIT_POST_COMMAND") {
+		t.Errorf("expected error to mention env var, got: %v", err)
+	}
+	if !strings.Contains(err.Error(), tmpDir) {
+		t.Errorf("expected error to mention config file path, got: %v", err)
+	}
+}
+
+func TestCheckDeprecation_InvalidYAML(t *testing.T) {
+	tmpDir := t.TempDir()
+	homeDir := t.TempDir()
+	t.Setenv("HOME", homeDir)
+
+	// Write invalid YAML
+	invalidConfig := `post-command: [invalid yaml`
+	if err := os.WriteFile(filepath.Join(tmpDir, ".orbit.yaml"), []byte(invalidConfig), 0644); err != nil {
+		t.Fatalf("failed to write project config: %v", err)
+	}
+
+	// Invalid YAML should not cause an error - it will be caught by config loading
+	err := CheckDeprecation(tmpDir)
+	if err != nil {
+		t.Errorf("expected no error for invalid YAML (caught later), got: %v", err)
+	}
+}

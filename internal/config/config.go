@@ -12,6 +12,7 @@ import (
 
 	"github.com/arjenschwarz/orbit/internal/agents"
 	"github.com/spf13/viper"
+	"gopkg.in/yaml.v3"
 )
 
 // aliasNamePattern matches valid alias names: lowercase alphanumeric with hyphens,
@@ -736,6 +737,69 @@ agents:
 // The default config contains a single claude-code agent with type and auto-approve: true.
 func GenerateDefaultConfig() []byte {
 	return []byte(defaultConfigYAML)
+}
+
+// CheckDeprecation returns an error if deprecated configuration is found.
+// It checks for:
+// - ORBIT_POST_COMMAND environment variable
+// - Top-level post-command key in .orbit.yaml files (home and project)
+//
+// This function distinguishes between deprecated top-level post-command (error)
+// and valid agent-level post-command (allowed under agents.<name>.post-command).
+//
+// This should be called before Load() to fail fast on deprecated configuration.
+func CheckDeprecation(workingDir string) error {
+	var errors []string
+
+	// Check environment variable
+	if _, exists := os.LookupEnv("ORBIT_POST_COMMAND"); exists {
+		errors = append(errors,
+			"Environment variable ORBIT_POST_COMMAND is deprecated.\n"+
+				"  Rename to: ORBIT_POST_PROMPT")
+	}
+
+	// Check home config for deprecated top-level post-command
+	if homeDir, err := os.UserHomeDir(); err == nil {
+		homeConfigPath := filepath.Join(homeDir, ".orbit.yaml")
+		if hasDeprecatedTopLevelKey(homeConfigPath, "post-command") {
+			errors = append(errors,
+				fmt.Sprintf("Config file %s uses deprecated 'post-command' key.\n"+
+					"  Rename to: 'post-prompt'", homeConfigPath))
+		}
+	}
+
+	// Check project config for deprecated top-level post-command
+	projectConfigPath := filepath.Join(workingDir, ".orbit.yaml")
+	if hasDeprecatedTopLevelKey(projectConfigPath, "post-command") {
+		errors = append(errors,
+			fmt.Sprintf("Config file %s uses deprecated 'post-command' key.\n"+
+				"  Rename to: 'post-prompt'", projectConfigPath))
+	}
+
+	if len(errors) > 0 {
+		return fmt.Errorf("deprecated configuration detected:\n\n%s\n\n"+
+			"Update your configuration and retry", strings.Join(errors, "\n\n"))
+	}
+	return nil
+}
+
+// hasDeprecatedTopLevelKey checks if a YAML file has a deprecated key at the top level.
+// This distinguishes top-level post-command (deprecated) from agents.<name>.post-command (valid).
+func hasDeprecatedTopLevelKey(path, key string) bool {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return false // File doesn't exist or can't be read
+	}
+
+	// Parse YAML to check for top-level key
+	var config map[string]interface{}
+	if err := yaml.Unmarshal(data, &config); err != nil {
+		return false // Invalid YAML, will be caught by config loading
+	}
+
+	// Check if the key exists at the top level
+	_, exists := config[key]
+	return exists
 }
 
 // GetResolvedAgentConfig converts a ResolvedAgent to agents.AgentConfig.
