@@ -144,7 +144,7 @@ func consolidateCommand(args []string) error {
 		VariantID:    *variantID,
 		Agent:        agent,
 		AllowDirty:   *allowDirty, // [Req 2.7]
-		PostCommand:  appConfig.PostCommand,
+		PostPrompt:   appConfig.PostPrompt,
 		CustomPrompt: *customPrompt, // [Req 2.8]
 	}
 
@@ -208,10 +208,10 @@ func consolidateCommand(args []string) error {
 		fmt.Println("Tests:  FAILED")
 	}
 
-	if result.PostCommandPassed {
-		fmt.Println("Post-command: PASSED")
+	if result.PostPromptPassed {
+		fmt.Println("Post-prompt: PASSED")
 	} else if len(result.Errors) > 0 {
-		fmt.Println("Post-command: FAILED")
+		fmt.Println("Post-prompt: FAILED")
 	}
 
 	if len(result.Errors) > 0 {

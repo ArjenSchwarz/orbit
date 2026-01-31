@@ -23,6 +23,7 @@ type Spinner struct {
 	phase            int
 	isWaiting        bool
 	isPostCompletion bool
+	isPrePrompt      bool
 	waitEndTime      time.Time
 	done             chan struct{}
 	mu               sync.Mutex
@@ -79,6 +80,7 @@ func (s *Spinner) Start(phase int) {
 	s.started = true
 	s.isWaiting = false
 	s.isPostCompletion = false
+	s.isPrePrompt = false
 	s.stopOnce = sync.Once{}
 	s.done = make(chan struct{})
 
@@ -112,6 +114,38 @@ func (s *Spinner) StartPostCompletion() {
 	s.started = true
 	s.isWaiting = false
 	s.isPostCompletion = true
+	s.isPrePrompt = false
+	s.stopOnce = sync.Once{}
+	s.done = make(chan struct{})
+
+	s.updateSuffix()
+	s.spinner.Start()
+
+	// See Start() for why we capture the done channel.
+	done := s.done
+	go s.updateLoop(done)
+}
+
+// StartPrePrompt begins spinner for pre-prompt execution.
+// See Start() for goroutine safety notes.
+func (s *Spinner) StartPrePrompt() {
+	if s == nil {
+		return
+	}
+
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	if s.started {
+		return
+	}
+
+	s.phase = 0
+	s.startTime = time.Now()
+	s.started = true
+	s.isWaiting = false
+	s.isPostCompletion = false
+	s.isPrePrompt = true
 	s.stopOnce = sync.Once{}
 	s.done = make(chan struct{})
 
@@ -226,7 +260,9 @@ func (s *Spinner) updateLoop(done <-chan struct{}) {
 // Must be called with mutex held.
 func (s *Spinner) updateSuffix() {
 	var prefix string
-	if s.isPostCompletion {
+	if s.isPrePrompt {
+		prefix = " Running pre-prompt"
+	} else if s.isPostCompletion {
 		prefix = " Post-completion"
 	} else {
 		prefix = fmt.Sprintf(" Phase %d", s.phase)

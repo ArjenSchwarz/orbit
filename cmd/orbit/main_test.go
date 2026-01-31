@@ -230,81 +230,120 @@ func TestReorderArgs(t *testing.T) {
 	}
 }
 
-func TestResolveCommands(t *testing.T) {
+func TestResolvePrompts(t *testing.T) {
 	tests := map[string]struct {
-		cfg             *config.Config
-		commandFlag     string
-		postCommandFlag string
-		noPostCommand   bool
-		wantCommand     string
-		wantPostCommand string
+		cfg            *config.Config
+		commandFlag    string
+		prePromptFlag  string
+		noPrePrompt    bool
+		postPromptFlag string
+		noPostPrompt   bool
+		wantCommand    string
+		wantPrePrompt  string
+		wantPostPrompt string
 	}{
 		"defaults from config": {
 			cfg: &config.Config{
-				Command:     config.DefaultCommand,
-				PostCommand: config.DefaultPostCommand,
+				Command:    config.DefaultCommand,
+				PostPrompt: config.DefaultPostPrompt,
 			},
-			wantCommand:     config.DefaultCommand,
-			wantPostCommand: config.DefaultPostCommand,
+			wantCommand:    config.DefaultCommand,
+			wantPrePrompt:  "",
+			wantPostPrompt: config.DefaultPostPrompt,
 		},
 		"command flag overrides config": {
 			cfg: &config.Config{
-				Command:     "config command",
-				PostCommand: "config post command",
+				Command:    "config command",
+				PostPrompt: "config post prompt",
 			},
-			commandFlag:     "flag command",
-			wantCommand:     "flag command",
-			wantPostCommand: "config post command",
+			commandFlag:    "flag command",
+			wantCommand:    "flag command",
+			wantPrePrompt:  "",
+			wantPostPrompt: "config post prompt",
 		},
-		"post-command flag overrides config": {
+		"pre-prompt flag overrides config": {
 			cfg: &config.Config{
-				Command:     "config command",
-				PostCommand: "config post command",
+				Command:   "config command",
+				PrePrompt: "config pre prompt",
 			},
-			postCommandFlag: "flag post command",
-			wantCommand:     "config command",
-			wantPostCommand: "flag post command",
+			prePromptFlag: "flag pre prompt",
+			wantCommand:   "config command",
+			wantPrePrompt: "flag pre prompt",
 		},
-		"no-post-command flag disables": {
+		"no-pre-prompt flag disables": {
 			cfg: &config.Config{
-				Command:     "config command",
-				PostCommand: "config post command",
+				Command:   "config command",
+				PrePrompt: "config pre prompt",
 			},
-			noPostCommand:   true,
-			wantCommand:     "config command",
-			wantPostCommand: "",
+			noPrePrompt:   true,
+			wantCommand:   "config command",
+			wantPrePrompt: "",
 		},
-		"no-post-command flag overrides post-command flag": {
+		"no-pre-prompt flag overrides pre-prompt flag": {
 			cfg: &config.Config{
-				Command:     "config command",
-				PostCommand: "config post command",
+				Command:   "config command",
+				PrePrompt: "config pre prompt",
 			},
-			postCommandFlag: "flag post command",
-			noPostCommand:   true,
-			wantCommand:     "config command",
-			wantPostCommand: "",
+			prePromptFlag: "flag pre prompt",
+			noPrePrompt:   true,
+			wantCommand:   "config command",
+			wantPrePrompt: "",
 		},
-		"both flags override config": {
+		"post-prompt flag overrides config": {
 			cfg: &config.Config{
-				Command:     "config command",
-				PostCommand: "config post command",
+				Command:    "config command",
+				PostPrompt: "config post prompt",
 			},
-			commandFlag:     "flag command",
-			postCommandFlag: "flag post command",
-			wantCommand:     "flag command",
-			wantPostCommand: "flag post command",
+			postPromptFlag: "flag post prompt",
+			wantCommand:    "config command",
+			wantPostPrompt: "flag post prompt",
+		},
+		"no-post-prompt flag disables": {
+			cfg: &config.Config{
+				Command:    "config command",
+				PostPrompt: "config post prompt",
+			},
+			noPostPrompt:   true,
+			wantCommand:    "config command",
+			wantPostPrompt: "",
+		},
+		"no-post-prompt flag overrides post-prompt flag": {
+			cfg: &config.Config{
+				Command:    "config command",
+				PostPrompt: "config post prompt",
+			},
+			postPromptFlag: "flag post prompt",
+			noPostPrompt:   true,
+			wantCommand:    "config command",
+			wantPostPrompt: "",
+		},
+		"all flags override config": {
+			cfg: &config.Config{
+				Command:    "config command",
+				PrePrompt:  "config pre prompt",
+				PostPrompt: "config post prompt",
+			},
+			commandFlag:    "flag command",
+			prePromptFlag:  "flag pre prompt",
+			postPromptFlag: "flag post prompt",
+			wantCommand:    "flag command",
+			wantPrePrompt:  "flag pre prompt",
+			wantPostPrompt: "flag post prompt",
 		},
 	}
 
 	for name, tc := range tests {
 		t.Run(name, func(t *testing.T) {
-			gotCommand, gotPostCommand := resolveCommands(tc.cfg, tc.commandFlag, tc.postCommandFlag, tc.noPostCommand)
+			gotCommand, gotPrePrompt, gotPostPrompt := resolvePrompts(tc.cfg, tc.commandFlag, tc.prePromptFlag, tc.noPrePrompt, tc.postPromptFlag, tc.noPostPrompt)
 
 			if gotCommand != tc.wantCommand {
 				t.Errorf("command: got %q, want %q", gotCommand, tc.wantCommand)
 			}
-			if gotPostCommand != tc.wantPostCommand {
-				t.Errorf("postCommand: got %q, want %q", gotPostCommand, tc.wantPostCommand)
+			if gotPrePrompt != tc.wantPrePrompt {
+				t.Errorf("prePrompt: got %q, want %q", gotPrePrompt, tc.wantPrePrompt)
+			}
+			if gotPostPrompt != tc.wantPostPrompt {
+				t.Errorf("postPrompt: got %q, want %q", gotPostPrompt, tc.wantPostPrompt)
 			}
 		})
 	}

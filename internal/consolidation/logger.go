@@ -33,8 +33,8 @@ type LogEntry struct {
 	ImprovementsAttempted int       `json:"improvements_attempted"`
 	ImprovementsApplied   int       `json:"improvements_applied"`
 	ImprovementsSkipped   int       `json:"improvements_skipped"`
-	TestsPassed           bool      `json:"tests_passed"`
-	PostCommandPassed     bool      `json:"post_command_passed"`
+	TestsPassed      bool `json:"tests_passed"`
+	PostPromptPassed bool `json:"post_prompt_passed"`
 	Errors                []string  `json:"errors,omitempty"`
 }
 

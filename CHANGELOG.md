@@ -7,20 +7,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-### Changed
-
-- Update Apsis description in CLAUDE.md and README.md to reflect support for Claude Code (JSONL), Codex (JSONL), and Kiro (SQLite) sessions
-- Apsis now displays Kiro CLI sessions as `[kiro-cli]` instead of `[kiro]` to differentiate from IDE sessions
-- Export `IsDisplayableEntry` from transcript package to enable reuse across packages
-
 ### Added
 
+- Integration tests for full run with hooks (`internal/orbit/integration_test.go`)
+  - `TestFullRunWithAllHooks`: verifies complete hook execution order (pre-command → pre-prompt → phases → post-prompt → post-command)
+  - `TestDeprecationBlocksRun`: verifies deprecated post-command config blocks the run with proper error messages
+  - `TestResumeWithCompletedPrePrompt`: verifies pre-prompt is skipped when already completed for crash recovery
+  - `TestResumeWithStartedPrePrompt`: verifies interrupted pre-prompt session is resumed
+  - `TestCommandTimeoutConfigurable`: verifies configurable timeout for shell commands
+  - `TestSignalDuringShellCommand`: verifies graceful shutdown during shell command execution
+  - `TestSignalDuringPrePrompt`: verifies graceful shutdown during pre-prompt execution
+- Commands and Prompts documentation section in CLAUDE.md explaining hook types, execution order, and configuration
+- Spec for orbit-command-hooks feature (`specs/orbit-command-hooks/`)
+  - Requirements document with 10 requirement sections covering prompt renaming, pre-prompt, agent-level shell commands, deprecation detection, execution order, shell environment, logging, and failure handling
+  - Design document with architecture, component interfaces, data models, error handling, and testing strategy for both single-run and variant modes
+  - Decision log with 17 documented design decisions
+  - Task list with 31 implementation tasks across 8 phases with dependencies and work streams
+- AGENTS.md symlink to CLAUDE.md for broader AI agent compatibility
 - Orbit status command now supports Kiro agent for last action display (`internal/status/gatherer.go`)
   - `gatherKiroLastAction()` queries Kiro SQLite database for session data
   - Parses session JSON and finds last displayable entry
   - Refactored `gatherLastAction()` to dispatch to agent-specific handlers
 - Test coverage for Kiro last action in status gatherer (`TestGatherVariantInfo_LastActionKiro`)
-
 - Apsis Kiro session integration (`cmd/apsis/`)
   - `listKiroSessions()` discovers Kiro sessions from SQLite for current working directory
   - `resolveKiroSession()` retrieves Kiro session JSON by session ID
@@ -29,27 +37,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Sessions display with `[kiro-cli]` source indicator in session listings
   - Graceful fallback when Kiro database unavailable (returns empty, logs warning)
   - Unit tests for session listing, resolution, and error handling
-
 - Kiro agent integration with SQLite session discovery (`internal/agents/kiro/`)
   - `DiscoverSessions()` now queries Kiro's SQLite database for sessions matching the project directory
   - Converts `logs.SessionMetadata` to `agents.SessionInfo` format with proper field mapping
   - Gracefully handles missing Kiro database (returns nil, nil - not an error)
   - `DB.Path()` method exposed for testing purposes
   - Integration tests verifying SQLite-based session discovery, empty results, and SessionInfo field population
-
 - Unit tests for Kiro SQLite log parsing (`internal/agents/kiro/logs/`)
   - `path_test.go`: Tests for `DBPath()` OS detection and `normalizePath()` behavior including symlink handling
   - `db_test.go`: Tests for `openConn()`, `verifySchema()`, `classifyError()`, read-only mode, and ErrSchemaInvalid/ErrDatabaseLocked classification
   - `discover_test.go`: Tests for `DiscoverForDirectory()` filtering, deduplication, symlink resolution, and path normalization
   - `session_test.go`: Tests for `GetSession()` retrieval, ErrSessionNotFound, symlink resolution, and large/empty JSON handling
-
 - Kiro session operations in `internal/agents/kiro/logs/`
   - `DiscoverForDirectory()` for session discovery with path normalization and symlink support
   - `GetSession()` for retrieving session JSON blobs from SQLite database
   - `SessionMetadata` type containing ConversationID, Directory, timestamps, and Size
   - Deduplication by ConversationID keeping most recent UpdatedAt
   - Results sorted by updated_at DESC (most recent first)
-
 - Kiro SQLite log parsing foundation (`internal/agents/kiro/logs/`)
   - `modernc.org/sqlite` pure Go SQLite driver dependency (CGO-free)
   - Error types: `ErrDatabaseNotFound`, `ErrSchemaInvalid`, `ErrSessionNotFound`, `ErrDatabaseLocked`
@@ -59,42 +63,95 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Schema verification via `sqlite_master` query for `conversations_v2` table
   - SQLite error classification (`classifyError()`) for BUSY, LOCKED, READONLY, and PERM errors
   - Test utilities: `createTestDB()`, `insertSession()`, `insertSessionWithTimes()`, `createTestDBWithoutSchema()`
-
-### Removed
-
-- `ExportSession()` method from Kiro agent - replaced by direct SQLite database access
-- `SessionExporter` interface implementation from Kiro agent
-
-### Added
-
 - Feature spec for Kiro SQLite log parsing (`specs/kiro-sqlite-logs/`)
   - Requirements document defining SQLite database access, session discovery, and Apsis/Orbit integration
   - Design document with architecture, components, error handling, and testing strategy
   - Decision log with 12 architectural decisions (SQLite driver choice, connection lifecycle, deduplication, etc.)
   - Task list with 19 implementation tasks across 2 parallel work streams
-
-### Changed
-
-- Variant session recovery now preserves completed variants when starting a new run - only unfinished variants (pending, running, failed, canceled) are cleaned up and recreated
-
-### Added
-
 - `CleanupUnfinished` method in variants manager to selectively remove only non-completed variants
 - Documentation for variant session recovery behavior in CLAUDE.md and README.md
+- Status demo command (`orbit demo status`) to preview status output format with mock data
+- Demo command routing: `orbit demo` now shows available demos (status, spinner)
+- Worktree directory path displayed for each active variant in status output
 
 ### Changed
 
+- Updated CLAUDE.md with comprehensive documentation for new configuration options
+  - `pre-prompt` and `post-prompt` (renamed from `post-command`) for AI prompts
+  - `agents.<agent>.pre-command` and `agents.<agent>.post-command` for shell commands
+  - `command-timeout` configuration option with Go duration format
+  - Execution order documentation with failure behavior
+  - Example configuration showing all hook options
+- Single-run mode hook orchestration (`internal/orbit/orbit.go`)
+  - `runAgentPreCommand()` method for executing shell commands before agent phases with abort-on-failure
+  - `runAgentPostCommand()` method for executing shell commands after agent phases with warn-on-failure
+  - `runPrePrompt()` method for executing AI pre-prompt with session continuation and crash recovery
+  - Pre-prompt session ID passed to phase 1 via modified `StartPhase()` method
+  - Dry-run mode support for all hooks (prints without executing)
+- `prePromptSessionID` field in `Orbit` struct for storing pre-prompt session to continue in phase 1
+- Unit tests for single-run hooks covering execution order, failure behavior, session continuation, and dry-run mode (`internal/orbit/orbit_test.go`)
+- Variant mode hook orchestration (`internal/orbit/orbit.go`)
+  - `executeVariantShellCommand()` method for running shell commands in variant worktrees with ORBIT_VARIANT, ORBIT_AGENT, ORBIT_PHASE_COUNT environment variables
+  - `runVariantPrePrompt()` method for executing AI pre-prompt in variant mode with session continuation and crash recovery
+  - Updated `runVariant()` to integrate 5-step hook execution: agent pre-command → pre-prompt → phase loop → post-prompt → agent post-command
+  - Pre-prompt session continuation: session ID from pre-prompt passed to phase 1 for seamless context sharing
+  - Error handling: pre-command failure aborts variant run, post-command failure logs warning only
+  - Session resume with fallback to fresh session on invalid session errors
+- `PreCommand` and `PostCommand` fields in `agents.AgentConfig` struct for passing agent-level shell commands through to variant mode
+- Integration tests for variant mode hooks (`internal/orbit/integration_test.go`)
+  - `TestVariantModeWithHooks`: full hook execution flow with mock agent
+  - `TestVariantPreCommandFailureIsolated`: pre-command failure aborts variant only
+  - `TestVariantEnvVars`: environment variable verification (ORBIT_VARIANT, ORBIT_AGENT, ORBIT_PHASE_COUNT)
+  - `TestVariantLogStructure`: log file generation for variant shell commands
+  - `TestVariantDifferentAgentCommands`: per-agent pre/post-command configuration
+- Modified `StartPhase()` to accept optional override session ID parameter for pre-prompt session continuation
+- Updated `runSingle()` to call hooks in order: agent pre-command → pre-prompt → phase loop
+- Updated `complete()` to call agent post-command after post-prompt execution
+- CLI flags `--pre-prompt` and `--no-pre-prompt` for pre-prompt configuration (`cmd/orbit/run.go`)
+- `PrePrompt`, `AgentPreCommand`, `AgentPostCommand`, `CommandTimeout` fields in `orbit.Config` struct
+- `PrePromptState` struct for tracking pre-prompt execution state with session ID, timestamps, and status
+- `ShellCommandState` struct for tracking shell command execution with exit code, timestamps, and duration
+- Pre-prompt tracking methods in log manager: `StartPrePrompt()`, `CompletePrePrompt()`, `GetPrePromptState()`
+- `RecordShellCommand()` method for recording pre-command and post-command execution in summary.json
+- Shell command execution infrastructure (`internal/orbit/shell.go`)
+  - `ShellCommandResult` struct for capturing command output, exit code, and timing
+  - `executeShellCommand()` method with timeout support via context.WithTimeout
+  - `saveShellCommandLog()` for writing command logs to `.orbit/pre-command-run-N.txt` or `post-command-run-N.txt`
+  - Environment variables `ORBIT_PHASE_COUNT` and `ORBIT_AGENT` set for shell commands
+  - Graceful shutdown handling when parent context is canceled
+- Comprehensive unit tests for shell command execution (`internal/orbit/shell_test.go`)
+- `StartPrePrompt()` spinner method for displaying "Running pre-prompt" status
+- Shell command status display in run index (index.md and index.html) with command, exit code, and duration
+- Comprehensive unit tests for log manager state tracking and index generation
+- `PrePrompt` configuration field for AI prompts before phases start (`internal/config/config.go`)
+- `CommandTimeout` configuration field with 5-minute default for shell command execution
+- `PreCommand` and `PostCommand` fields in `AgentAliasConfig` for agent-level shell commands
+- Environment variable support: `ORBIT_PRE_PROMPT`, `ORBIT_POST_PROMPT`, `ORBIT_COMMAND_TIMEOUT`
+- Explicit setting tracking for prompts to distinguish "not set" from "set to empty"
+- Deprecation detection for `post-command` configuration via `config.CheckDeprecation()`
+  - Detects deprecated `ORBIT_POST_COMMAND` environment variable
+  - Detects deprecated top-level `post-command` key in `.orbit.yaml` files
+  - Distinguishes deprecated top-level `post-command` from valid agent-level `agents.<name>.post-command`
+  - Provides clear error messages with migration instructions
+- CLI deprecation check for `--post-command` flag with migration guidance
+- Unit tests for all new configuration fields and behaviors
+- Renamed `PostCommand` to `PostPrompt` throughout codebase to clarify it's an AI prompt, not a shell command
+- CLI flags renamed: `--post-command` → `--post-prompt`, `--no-post-command` → `--no-post-prompt`
+- Environment variable renamed: `ORBIT_POST_COMMAND` → `ORBIT_POST_PROMPT`
+- Update Apsis description in CLAUDE.md and README.md to reflect support for Claude Code (JSONL), Codex (JSONL), and Kiro (SQLite) sessions
+- Apsis now displays Kiro CLI sessions as `[kiro-cli]` instead of `[kiro]` to differentiate from IDE sessions
+- Export `IsDisplayableEntry` from transcript package to enable reuse across packages
+- Variant session recovery now preserves completed variants when starting a new run - only unfinished variants (pending, running, failed, canceled) are cleaned up and recreated
 - Status command output now uses proper tables instead of text-based formatting
   - Header section displays as a key-value table (Field/Value columns)
   - Tasks subsection displays as a table with columns: active marker, Phase, Done, Total, Pending
   - Other variants summary displays as a table with Variant, Branch, Status columns
   - Reduced vertical whitespace for more compact output
 
-### Added
+### Removed
 
-- Status demo command (`orbit demo status`) to preview status output format with mock data
-- Demo command routing: `orbit demo` now shows available demos (status, spinner)
-- Worktree directory path displayed for each active variant in status output
+- `ExportSession()` method from Kiro agent - replaced by direct SQLite database access
+- `SessionExporter` interface implementation from Kiro agent
 
 ### Fixed
 

@@ -24,6 +24,16 @@ import (
 // runCommand executes the orbit run subcommand.
 // It orchestrates Claude Code sessions to implement spec phases sequentially.
 func runCommand(args []string) error {
+	// Stage 1: Check for deprecated --post-command flag before flag parsing.
+	// This allows us to provide a clear error message instead of "unknown flag".
+	for _, arg := range args {
+		if arg == "--post-command" || strings.HasPrefix(arg, "--post-command=") {
+			return fmt.Errorf("flag --post-command is deprecated\n\n"+
+				"  Rename to: --post-prompt\n\n"+
+				"Update your command and retry")
+		}
+	}
+
 	fs := flag.NewFlagSet("run", flag.ExitOnError)
 
 	tasksFile := fs.String("tasks-file", "", "Path to rune tasks file (auto-detects from branch if not specified)")
@@ -35,8 +45,10 @@ func runCommand(args []string) error {
 	dryRun := fs.Bool("dry-run", false, "Show what would be executed without running")
 	showVersion := fs.Bool("version", false, "Show version and exit")
 	commandFlag := fs.String("command", "", "Custom prompt for Claude phases")
-	postCommandFlag := fs.String("post-command", "", "Command after all tasks complete")
-	noPostCommand := fs.Bool("no-post-command", false, "Skip post-completion command")
+	prePromptFlag := fs.String("pre-prompt", "", "AI prompt before phases start")
+	noPrePrompt := fs.Bool("no-pre-prompt", false, "Disable pre-prompt")
+	postPromptFlag := fs.String("post-prompt", "", "AI prompt after all tasks complete")
+	noPostPrompt := fs.Bool("no-post-prompt", false, "Skip post-completion AI prompt")
 	dateSubdirs := fs.Bool("date-subdirs", false, "Use timestamped subdirectories for logs")
 	noContinueSession := fs.Bool("no-continue-session", false, "Start fresh sessions instead of resuming")
 
@@ -82,6 +94,12 @@ func runCommand(args []string) error {
 	workingDir, err := os.Getwd()
 	if err != nil {
 		return fmt.Errorf("failed to get working directory: %w", err)
+	}
+
+	// Stage 2: Check for deprecated configuration (env vars and config files).
+	// This must happen before loading configuration to fail fast.
+	if err := config.CheckDeprecation(workingDir); err != nil {
+		return err
 	}
 
 	// Get branch name
@@ -144,7 +162,11 @@ func runCommand(args []string) error {
 	}
 
 	// Apply CLI flag overrides
-	command, postCommand := resolveCommands(cfg, *commandFlag, *postCommandFlag, *noPostCommand)
+	command, prePrompt, postPrompt := resolvePrompts(cfg, *commandFlag, *prePromptFlag, *noPrePrompt, *postPromptFlag, *noPostPrompt)
+
+	// Extract agent-level shell commands from the resolved agent config
+	agentPreCommand := resolved.Config.PreCommand
+	agentPostCommand := resolved.Config.PostCommand
 
 	// Resolve date-subdirs: CLI flag can enable (overrides config)
 	dateSubdirsValue := cfg.DateSubdirs
@@ -237,33 +259,37 @@ func runCommand(args []string) error {
 
 	// Create and run orchestrator
 	orbitCfg := orbit.Config{
-		TasksFile:       *tasksFile,
-		LogDir:          actualLogDir,
-		BranchName:      branchName,
-		SkipPermissions: *skipPermissions,
-		Verbose:         *verbose,
-		Debug:           debugValue,
-		CentralizedLog:  centralizedLogValue,
-		RunID:           runID,
-		Version:         version,
-		DryRun:          *dryRun,
-		WorkingDir:      workingDir,
-		Command:         command,
-		PostCommand:     postCommand,
-		DateSubdirs:     dateSubdirsValue,
-		ContinueSession: continueSessionValue,
-		Agent:           aliasName,
-		AgentConfig:     agentCfg,
-		AgentConfigs:    cfg.GetAllAgentConfigs(),
-		VariantCount:    *variantCount,
-		Parallel:        parallelValue,
-		MaxParallel:     maxParallelValue,
-		BranchPrefix:    *branchPrefix,
-		Guidance:        guidance,
-		CompareCommand:  *compareCommand,
-		SpecDir:         specDir,
-		RepoRoot:        repoRoot,
-		VariantAgents:   variantAgents,
+		TasksFile:        *tasksFile,
+		LogDir:           actualLogDir,
+		BranchName:       branchName,
+		SkipPermissions:  *skipPermissions,
+		Verbose:          *verbose,
+		Debug:            debugValue,
+		CentralizedLog:   centralizedLogValue,
+		RunID:            runID,
+		Version:          version,
+		DryRun:           *dryRun,
+		WorkingDir:       workingDir,
+		Command:          command,
+		PrePrompt:        prePrompt,
+		PostPrompt:       postPrompt,
+		AgentPreCommand:  agentPreCommand,
+		AgentPostCommand: agentPostCommand,
+		CommandTimeout:   cfg.CommandTimeout,
+		DateSubdirs:      dateSubdirsValue,
+		ContinueSession:  continueSessionValue,
+		Agent:            aliasName,
+		AgentConfig:      agentCfg,
+		AgentConfigs:     cfg.GetAllAgentConfigs(),
+		VariantCount:     *variantCount,
+		Parallel:         parallelValue,
+		MaxParallel:      maxParallelValue,
+		BranchPrefix:     *branchPrefix,
+		Guidance:         guidance,
+		CompareCommand:   *compareCommand,
+		SpecDir:          specDir,
+		RepoRoot:         repoRoot,
+		VariantAgents:    variantAgents,
 	}
 
 	o, err := orbit.New(orbitCfg)
@@ -290,28 +316,41 @@ func getGitBranch() (string, error) {
 	return strings.TrimSpace(string(output)), nil
 }
 
-// resolveCommands applies CLI flag overrides to config values.
+// resolvePrompts applies CLI flag overrides to config values.
 // Priority: CLI flags > config (which includes env vars > project > home > defaults).
-func resolveCommands(cfg *config.Config, commandFlag, postCommandFlag string, noPostCommand bool) (command, postCommand string) {
+func resolvePrompts(cfg *config.Config, commandFlag, prePromptFlag string, noPrePrompt bool, postPromptFlag string, noPostPrompt bool) (command, prePrompt, postPrompt string) {
 	// Resolve effective command (priority: flag > config/env > default)
 	command = cfg.Command // Already has default from Viper
 	if commandFlag != "" {
 		command = commandFlag
 	}
 
-	// Resolve effective post-command (priority: flag > config/env > default)
-	postCommand = cfg.PostCommand
-	if cfg.IsPostCommandDisabled() {
-		postCommand = "" // Config explicitly disabled
+	// Resolve effective pre-prompt (priority: flag > config/env > default)
+	// Pre-prompt has no default, so empty means disabled unless explicitly set
+	prePrompt = cfg.PrePrompt
+	if cfg.IsPrePromptDisabled() {
+		prePrompt = "" // Config explicitly disabled
 	}
-	if postCommandFlag != "" {
-		postCommand = postCommandFlag
+	if prePromptFlag != "" {
+		prePrompt = prePromptFlag
 	}
-	if noPostCommand {
-		postCommand = "" // Flag disables
+	if noPrePrompt {
+		prePrompt = "" // Flag disables
 	}
 
-	return command, postCommand
+	// Resolve effective post-prompt (priority: flag > config/env > default)
+	postPrompt = cfg.PostPrompt
+	if cfg.IsPostPromptDisabled() {
+		postPrompt = "" // Config explicitly disabled
+	}
+	if postPromptFlag != "" {
+		postPrompt = postPromptFlag
+	}
+	if noPostPrompt {
+		postPrompt = "" // Flag disables
+	}
+
+	return command, prePrompt, postPrompt
 }
 
 // resolveAgent determines which agent to use based on priority:

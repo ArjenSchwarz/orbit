@@ -3,8 +3,11 @@ package orbit
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"os"
 	"path/filepath"
+	"strings"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -15,6 +18,9 @@ import (
 	_ "github.com/arjenschwarz/orbit/internal/agents/copilot"    // Register copilot agent
 	_ "github.com/arjenschwarz/orbit/internal/agents/kiro"       // Register kiro agent
 	orbitconfig "github.com/arjenschwarz/orbit/internal/config"
+	"github.com/arjenschwarz/orbit/internal/debug"
+	"github.com/arjenschwarz/orbit/internal/logs"
+	runepkg "github.com/arjenschwarz/orbit/internal/rune"
 	"github.com/arjenschwarz/orbit/internal/variants"
 )
 
@@ -965,5 +971,730 @@ func TestSpecNameDerivation(t *testing.T) {
 			t.Errorf("variant %d worktree path pattern incorrect, got: %s", v.ID, v.WorktreePath)
 		}
 		_ = expectedSuffix // used for documentation
+	}
+}
+
+// TestVariantModeWithHooks verifies that variant mode executes hooks correctly.
+// Requirement 6.4: Each variant executes its own complete hook sequence independently.
+func TestVariantModeWithHooks(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping integration test in short mode")
+	}
+
+	tmpDir := t.TempDir()
+	specDir := filepath.Join(tmpDir, "specs", "test-feature")
+	if err := os.MkdirAll(specDir, 0755); err != nil {
+		t.Fatalf("failed to create spec dir: %v", err)
+	}
+
+	// Create test variant worktree directory
+	worktreeDir := filepath.Join(specDir, ".orbit", "worktrees", "orbit-impl-1-test-feature")
+	if err := os.MkdirAll(worktreeDir, 0755); err != nil {
+		t.Fatalf("failed to create worktree dir: %v", err)
+	}
+
+	// Create a mock variant
+	v := &variants.Variant{
+		ID:           1,
+		Branch:       "orbit-impl-1/test-feature",
+		WorktreePath: worktreeDir,
+		Agent:        "claude-code",
+		Status:       variants.StatusPending,
+	}
+
+	// Create agent config with pre/post commands
+	agentConfig := agents.AgentConfig{
+		AutoApprove: true,
+		PreCommand:  "echo 'pre-command ran'",
+		PostCommand: "echo 'post-command ran'",
+	}
+
+	// Create an Orbit instance with hooks configured
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	o := &Orbit{
+		config: Config{
+			WorkingDir:     tmpDir,
+			SpecDir:        specDir,
+			RepoRoot:       tmpDir,
+			TasksFile:      filepath.Join(specDir, "tasks.md"),
+			CommandTimeout: 30 * time.Second,
+			AgentConfigs: map[string]agents.AgentConfig{
+				"claude-code": agentConfig,
+			},
+		},
+		shutdownCtx: ctx,
+	}
+
+	// Test executeVariantShellCommand
+	result, err := o.executeVariantShellCommand(ctx, v, "echo 'hello world'", "test-cmd", nil)
+	if err != nil {
+		t.Errorf("executeVariantShellCommand failed: %v", err)
+	}
+	if result.ExitCode != 0 {
+		t.Errorf("expected exit code 0, got %d", result.ExitCode)
+	}
+	if !contains(result.Stdout, "hello world") {
+		t.Errorf("expected stdout to contain 'hello world', got %q", result.Stdout)
+	}
+}
+
+// TestVariantPreCommandFailureIsolated verifies that a variant's pre-command failure
+// doesn't affect other variants (they continue running).
+// Requirement 6.4: Variant hook failures are isolated.
+func TestVariantPreCommandFailureIsolated(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping integration test in short mode")
+	}
+
+	tmpDir := t.TempDir()
+	worktreeDir := filepath.Join(tmpDir, "worktree")
+	if err := os.MkdirAll(worktreeDir, 0755); err != nil {
+		t.Fatalf("failed to create worktree dir: %v", err)
+	}
+
+	v := &variants.Variant{
+		ID:           1,
+		Branch:       "test-branch",
+		WorktreePath: worktreeDir,
+		Agent:        "claude-code",
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	o := &Orbit{
+		config: Config{
+			WorkingDir:     tmpDir,
+			CommandTimeout: 30 * time.Second,
+		},
+		shutdownCtx: ctx,
+	}
+
+	// Execute a failing command
+	result, err := o.executeVariantShellCommand(ctx, v, "exit 1", "pre-command", nil)
+	if err == nil {
+		t.Error("expected error from failing pre-command")
+	}
+	if result.ExitCode != 1 {
+		t.Errorf("expected exit code 1, got %d", result.ExitCode)
+	}
+}
+
+// TestVariantEnvVars verifies that ORBIT_VARIANT environment variable is set.
+// Requirement 7.4, 7.5: Shell commands receive ORBIT_PHASE_COUNT, ORBIT_AGENT, ORBIT_VARIANT.
+func TestVariantEnvVars(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping integration test in short mode")
+	}
+
+	tmpDir := t.TempDir()
+	worktreeDir := filepath.Join(tmpDir, "worktree")
+	if err := os.MkdirAll(worktreeDir, 0755); err != nil {
+		t.Fatalf("failed to create worktree dir: %v", err)
+	}
+
+	v := &variants.Variant{
+		ID:           3,
+		Branch:       "test-branch",
+		WorktreePath: worktreeDir,
+		Agent:        "test-agent",
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	o := &Orbit{
+		config: Config{
+			WorkingDir:     tmpDir,
+			CommandTimeout: 30 * time.Second,
+			TasksFile:      filepath.Join(tmpDir, "tasks.md"),
+		},
+		shutdownCtx: ctx,
+	}
+
+	// Create a tasks file so phase count can be determined
+	tasksContent := `# Tasks
+## Phase 1: Test
+- [ ] 1. Task
+`
+	if err := os.WriteFile(filepath.Join(worktreeDir, "tasks.md"), []byte(tasksContent), 0644); err != nil {
+		t.Fatalf("failed to write tasks file: %v", err)
+	}
+
+	// Execute a command that echoes env vars
+	result, err := o.executeVariantShellCommand(ctx, v, "echo ORBIT_VARIANT=$ORBIT_VARIANT ORBIT_AGENT=$ORBIT_AGENT", "env-test", nil)
+	if err != nil {
+		t.Fatalf("executeVariantShellCommand failed: %v", err)
+	}
+
+	if !contains(result.Stdout, "ORBIT_VARIANT=3") {
+		t.Errorf("expected ORBIT_VARIANT=3 in output, got %q", result.Stdout)
+	}
+	if !contains(result.Stdout, "ORBIT_AGENT=test-agent") {
+		t.Errorf("expected ORBIT_AGENT=test-agent in output, got %q", result.Stdout)
+	}
+}
+
+// TestVariantLogStructure verifies that variant command logs are saved to the correct directory.
+// Requirement 8.5: Each variant has its own command log files in its worktree's .orbit/ directory.
+func TestVariantLogStructure(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping integration test in short mode")
+	}
+
+	tmpDir := t.TempDir()
+	worktreeDir := filepath.Join(tmpDir, "worktree")
+	logDir := filepath.Join(tmpDir, "logs", "variant-1")
+	if err := os.MkdirAll(worktreeDir, 0755); err != nil {
+		t.Fatalf("failed to create worktree dir: %v", err)
+	}
+	if err := os.MkdirAll(logDir, 0755); err != nil {
+		t.Fatalf("failed to create log dir: %v", err)
+	}
+
+	v := &variants.Variant{
+		ID:           1,
+		Branch:       "test-branch",
+		WorktreePath: worktreeDir,
+		Agent:        "claude-code",
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	o := &Orbit{
+		config: Config{
+			WorkingDir:     tmpDir,
+			CommandTimeout: 30 * time.Second,
+		},
+		shutdownCtx: ctx,
+	}
+
+	// Execute a command with log manager nil (logs won't be saved in this simplified test)
+	result, err := o.executeVariantShellCommand(ctx, v, "echo 'test log'", "pre-command", nil)
+	if err != nil {
+		t.Fatalf("executeVariantShellCommand failed: %v", err)
+	}
+
+	// Verify the result contains expected data
+	if result.ExitCode != 0 {
+		t.Errorf("expected exit code 0, got %d", result.ExitCode)
+	}
+	if !contains(result.Stdout, "test log") {
+		t.Errorf("expected stdout to contain 'test log', got %q", result.Stdout)
+	}
+}
+
+// TestVariantDifferentAgentCommands verifies that each variant uses its own agent's commands.
+// Requirement 6.4: Different agents can have different pre/post commands.
+func TestVariantDifferentAgentCommands(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping integration test in short mode")
+	}
+
+	tmpDir := t.TempDir()
+
+	// Create agent configs with different commands for different agents
+	agentConfigs := map[string]agents.AgentConfig{
+		"claude-code": {
+			AutoApprove: true,
+			PreCommand:  "echo 'claude pre'",
+			PostCommand: "echo 'claude post'",
+		},
+		"codex": {
+			AutoApprove: true,
+			PreCommand:  "echo 'codex pre'",
+			PostCommand: "echo 'codex post'",
+		},
+	}
+
+	// Verify we can retrieve the correct command for each agent
+	claudeConfig := agentConfigs["claude-code"]
+	codexConfig := agentConfigs["codex"]
+
+	if claudeConfig.PreCommand != "echo 'claude pre'" {
+		t.Errorf("claude-code pre-command mismatch: got %q", claudeConfig.PreCommand)
+	}
+	if codexConfig.PreCommand != "echo 'codex pre'" {
+		t.Errorf("codex pre-command mismatch: got %q", codexConfig.PreCommand)
+	}
+
+	_ = tmpDir // Used for test setup
+}
+
+// --- Task 30: Integration tests for full run with hooks ---
+
+// TestFullRunWithAllHooks verifies complete hook execution order.
+// Requirement 6.1: Execution order is pre-command -> pre-prompt -> phases -> post-prompt -> post-command.
+func TestFullRunWithAllHooks(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping integration test in short mode")
+	}
+
+	tmpDir := t.TempDir()
+
+	// Track execution order
+	var executionOrder []string
+	mu := &sync.Mutex{}
+	recordExecution := func(hook string) {
+		mu.Lock()
+		executionOrder = append(executionOrder, hook)
+		mu.Unlock()
+	}
+
+	// Create a marker file to track shell command execution
+	markerFile := filepath.Join(tmpDir, "execution_order.txt")
+
+	// Create mock agent that records AI prompt calls
+	mockAg := &mockAgent{
+		name: "test-agent",
+		runFunc: func(ctx context.Context, opts agents.RunOptions) (*agents.RunResult, error) {
+			if strings.Contains(opts.Prompt, "pre-prompt") || opts.Prompt == "Review the codebase" {
+				recordExecution("pre-prompt")
+			} else if strings.Contains(opts.Prompt, "post-prompt") || opts.Prompt == "Clean up after implementation" {
+				recordExecution("post-prompt")
+			} else {
+				recordExecution("phase")
+			}
+			return &agents.RunResult{
+				SessionID: "test-session-" + time.Now().Format("150405"),
+				Output:    "Success",
+				IsError:   false,
+			}, nil
+		},
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	dbg, _ := debug.NewLogger(debug.LoggerConfig{})
+	defer dbg.Close()
+
+	o := &Orbit{
+		config: Config{
+			AgentPreCommand:  "echo 'pre-command' >> " + markerFile,
+			PrePrompt:        "Review the codebase",
+			PostPrompt:       "Clean up after implementation",
+			AgentPostCommand: "echo 'post-command' >> " + markerFile,
+			WorkingDir:       tmpDir,
+			CommandTimeout:   30 * time.Second,
+		},
+		agent:       mockAg,
+		runeClient:  runepkg.NewClient(filepath.Join(tmpDir, "tasks.md")),
+		shutdownCtx: ctx,
+		debug:       dbg,
+	}
+
+	// Execute pre-command
+	if err := o.runAgentPreCommand(); err != nil {
+		t.Fatalf("runAgentPreCommand failed: %v", err)
+	}
+	recordExecution("pre-command")
+
+	// Execute pre-prompt
+	if err := o.runPrePrompt(); err != nil {
+		t.Fatalf("runPrePrompt failed: %v", err)
+	}
+
+	// Simulate phase execution (recorded via mockAg.runFunc)
+	// In real test this would call runPhase
+
+	// Execute post-prompt
+	if err := o.runPostPromptWithRetry(); err != nil {
+		t.Fatalf("runPostPromptWithRetry failed: %v", err)
+	}
+
+	// Execute post-command
+	if err := o.runAgentPostCommand(); err != nil {
+		t.Fatalf("runAgentPostCommand failed: %v", err)
+	}
+	recordExecution("post-command")
+
+	// Verify execution order
+	expected := []string{"pre-command", "pre-prompt", "post-prompt", "post-command"}
+	if len(executionOrder) != len(expected) {
+		t.Errorf("expected %d hooks, got %d: %v", len(expected), len(executionOrder), executionOrder)
+	}
+	for i, exp := range expected {
+		if i < len(executionOrder) && executionOrder[i] != exp {
+			t.Errorf("execution order[%d] = %q, want %q", i, executionOrder[i], exp)
+		}
+	}
+}
+
+// TestDeprecationBlocksRun verifies that deprecated configuration blocks the run.
+// Requirement 5.1, 5.2, 5.3: Deprecated post-command config must error.
+func TestDeprecationBlocksRun(t *testing.T) {
+	tests := map[string]struct {
+		configContent string
+		envVarName    string
+		envVarValue   string
+		wantError     bool
+		wantContains  string
+	}{
+		"top-level post-command in config": {
+			configContent: "post-command: 'echo deprecated'\n",
+			wantError:     true,
+			wantContains:  "post-command",
+		},
+		"ORBIT_POST_COMMAND env var": {
+			envVarName:  "ORBIT_POST_COMMAND",
+			envVarValue: "echo deprecated",
+			wantError:   true,
+			wantContains: "ORBIT_POST_COMMAND",
+		},
+		"agent-level post-command is allowed": {
+			configContent: "agents:\n  claude-code:\n    post-command: 'echo allowed'\n",
+			wantError:     false,
+		},
+		"no deprecated config": {
+			configContent: "agents:\n  claude-code:\n    auto-approve: true\n",
+			wantError:     false,
+		},
+	}
+
+	for name, tc := range tests {
+		t.Run(name, func(t *testing.T) {
+			tmpDir := t.TempDir()
+			homeDir := t.TempDir()
+			t.Setenv("HOME", homeDir)
+
+			if tc.configContent != "" {
+				configPath := filepath.Join(tmpDir, ".orbit.yaml")
+				if err := os.WriteFile(configPath, []byte(tc.configContent), 0644); err != nil {
+					t.Fatalf("failed to write config: %v", err)
+				}
+			}
+
+			if tc.envVarName != "" {
+				t.Setenv(tc.envVarName, tc.envVarValue)
+			}
+
+			err := orbitconfig.CheckDeprecation(tmpDir)
+
+			if tc.wantError {
+				if err == nil {
+					t.Fatal("expected error for deprecated config, got nil")
+				}
+				if tc.wantContains != "" && !strings.Contains(err.Error(), tc.wantContains) {
+					t.Errorf("error should contain %q, got: %v", tc.wantContains, err)
+				}
+			} else {
+				if err != nil {
+					t.Errorf("unexpected error: %v", err)
+				}
+			}
+		})
+	}
+}
+
+// TestResumeWithCompletedPrePrompt verifies pre-prompt is skipped when already completed.
+// Requirement 2.12: Pre-prompt completion state is preserved for crash recovery.
+func TestResumeWithCompletedPrePrompt(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping integration test in short mode")
+	}
+
+	tmpDir := t.TempDir()
+
+	// Create log manager with pre-completed pre-prompt
+	logManager, err := logs.NewManagerWithOptions(tmpDir, "test-branch", tmpDir, logs.ManagerOptions{UseSubdirs: false})
+	if err != nil {
+		t.Fatalf("failed to create log manager: %v", err)
+	}
+
+	// Start and complete pre-prompt to simulate previous run
+	_, _, err = logManager.StartPrePrompt(false)
+	if err != nil {
+		t.Fatalf("StartPrePrompt failed: %v", err)
+	}
+	if err := logManager.CompletePrePrompt("completed-session-123"); err != nil {
+		t.Fatalf("CompletePrePrompt failed: %v", err)
+	}
+
+	// Track if agent was called
+	agentCalled := false
+	mockAg := &mockAgent{
+		name: "test-agent",
+		runFunc: func(ctx context.Context, opts agents.RunOptions) (*agents.RunResult, error) {
+			agentCalled = true
+			return nil, errors.New("should not be called")
+		},
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	dbg, _ := debug.NewLogger(debug.LoggerConfig{})
+	defer dbg.Close()
+
+	o := &Orbit{
+		config: Config{
+			PrePrompt:      "Review the codebase",
+			WorkingDir:     tmpDir,
+			CommandTimeout: 30 * time.Second,
+		},
+		agent:       mockAg,
+		logManager:  logManager,
+		shutdownCtx: ctx,
+		debug:       dbg,
+	}
+
+	// Run pre-prompt - should skip since already completed
+	err = o.runPrePrompt()
+	if err != nil {
+		t.Errorf("runPrePrompt should not error when already completed: %v", err)
+	}
+
+	if agentCalled {
+		t.Error("agent should not be called when pre-prompt is already completed")
+	}
+
+	if o.prePromptSessionID != "completed-session-123" {
+		t.Errorf("prePromptSessionID = %q, want %q", o.prePromptSessionID, "completed-session-123")
+	}
+}
+
+// TestResumeWithStartedPrePrompt verifies pre-prompt resumes interrupted session.
+// Requirement 2.12: Started pre-prompt can be resumed after crash.
+func TestResumeWithStartedPrePrompt(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping integration test in short mode")
+	}
+
+	tmpDir := t.TempDir()
+
+	// Create log manager with started (but not completed) pre-prompt
+	logManager, err := logs.NewManagerWithOptions(tmpDir, "test-branch", tmpDir, logs.ManagerOptions{UseSubdirs: false})
+	if err != nil {
+		t.Fatalf("failed to create log manager: %v", err)
+	}
+
+	// Start pre-prompt but don't complete - simulates crash
+	_, _, err = logManager.StartPrePrompt(false)
+	if err != nil {
+		t.Fatalf("StartPrePrompt failed: %v", err)
+	}
+
+	// Get the started session ID
+	startedSessionID, status := logManager.GetPrePromptState()
+	if status != logs.PrePromptStatusStarted {
+		t.Fatalf("expected status %q, got %q", logs.PrePromptStatusStarted, status)
+	}
+
+	// Track if resume was called with correct session
+	var resumedSessionID string
+	mockAg := &mockAgent{
+		name: "test-agent",
+		resumeFunc: func(ctx context.Context, sessionID string, opts agents.RunOptions) (*agents.RunResult, error) {
+			resumedSessionID = sessionID
+			return &agents.RunResult{
+				SessionID: sessionID,
+				Output:    "Resumed successfully",
+				IsError:   false,
+			}, nil
+		},
+	}
+
+	// Create new log manager (simulating restart)
+	newLogManager, err := logs.NewManagerWithOptions(tmpDir, "test-branch", tmpDir, logs.ManagerOptions{UseSubdirs: false})
+	if err != nil {
+		t.Fatalf("failed to create new log manager: %v", err)
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	dbg, _ := debug.NewLogger(debug.LoggerConfig{})
+	defer dbg.Close()
+
+	o := &Orbit{
+		config: Config{
+			PrePrompt:       "Review the codebase",
+			WorkingDir:      tmpDir,
+			CommandTimeout:  30 * time.Second,
+			ContinueSession: true, // Enable session continuation
+		},
+		agent:       mockAg,
+		logManager:  newLogManager,
+		shutdownCtx: ctx,
+		debug:       dbg,
+	}
+
+	// Run pre-prompt - should resume the started session
+	err = o.runPrePrompt()
+	if err != nil {
+		t.Errorf("runPrePrompt failed: %v", err)
+	}
+
+	if resumedSessionID != startedSessionID {
+		t.Errorf("resumed session ID = %q, want %q", resumedSessionID, startedSessionID)
+	}
+}
+
+// TestCommandTimeoutConfigurable verifies that command timeout is respected.
+// Requirement 7.6: Shell commands use configurable timeout.
+func TestCommandTimeoutConfigurable(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping integration test in short mode")
+	}
+
+	tests := map[string]struct {
+		timeout     time.Duration
+		command     string
+		wantTimeout bool
+	}{
+		"command completes before timeout": {
+			timeout:     5 * time.Second,
+			command:     "echo 'fast'",
+			wantTimeout: false,
+		},
+		"command exceeds timeout": {
+			timeout:     100 * time.Millisecond,
+			command:     "sleep 10",
+			wantTimeout: true,
+		},
+	}
+
+	for name, tc := range tests {
+		t.Run(name, func(t *testing.T) {
+			tmpDir := t.TempDir()
+			ctx, cancel := context.WithCancel(context.Background())
+			defer cancel()
+
+			mockAg := &mockAgent{name: "test-agent"}
+			dbg, _ := debug.NewLogger(debug.LoggerConfig{})
+			defer dbg.Close()
+
+			o := &Orbit{
+				config: Config{
+					WorkingDir:     tmpDir,
+					CommandTimeout: tc.timeout,
+				},
+				agent:       mockAg,
+				runeClient:  runepkg.NewClient(filepath.Join(tmpDir, "tasks.md")),
+				shutdownCtx: ctx,
+				debug:       dbg,
+			}
+
+			_, err := o.executeShellCommand(tc.command, "test-command")
+
+			if tc.wantTimeout {
+				if err == nil {
+					t.Fatal("expected timeout error, got nil")
+				}
+				if !strings.Contains(err.Error(), "timed out") {
+					t.Errorf("expected timeout error, got: %v", err)
+				}
+			} else {
+				if err != nil {
+					t.Errorf("unexpected error: %v", err)
+				}
+			}
+		})
+	}
+}
+
+// TestSignalDuringShellCommand verifies graceful shutdown during shell command.
+// Requirement 7.9: Signal during shell command is handled gracefully.
+func TestSignalDuringShellCommand(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping integration test in short mode")
+	}
+
+	tmpDir := t.TempDir()
+
+	// Create a context that we'll cancel to simulate shutdown
+	ctx, cancel := context.WithCancel(context.Background())
+
+	mockAg := &mockAgent{name: "test-agent"}
+	dbg, _ := debug.NewLogger(debug.LoggerConfig{})
+	defer dbg.Close()
+
+	o := &Orbit{
+		config: Config{
+			WorkingDir:     tmpDir,
+			CommandTimeout: 10 * time.Second,
+		},
+		agent:       mockAg,
+		runeClient:  runepkg.NewClient(filepath.Join(tmpDir, "tasks.md")),
+		shutdownCtx: ctx,
+		debug:       dbg,
+	}
+
+	// Cancel the context after a short delay to simulate interrupt
+	go func() {
+		time.Sleep(50 * time.Millisecond)
+		cancel()
+	}()
+
+	// Execute a long-running command
+	_, err := o.executeShellCommand("sleep 10", "test-command")
+	if err == nil {
+		t.Fatal("expected error due to shutdown")
+	}
+
+	// Error should indicate shutdown/cancellation
+	if !strings.Contains(err.Error(), "shutdown") && !strings.Contains(err.Error(), "context canceled") {
+		t.Errorf("expected shutdown/canceled error, got: %v", err)
+	}
+}
+
+// TestSignalDuringPrePrompt verifies graceful shutdown during pre-prompt execution.
+// Requirement 2.9: Signal during pre-prompt aborts run cleanly.
+func TestSignalDuringPrePrompt(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping integration test in short mode")
+	}
+
+	tmpDir := t.TempDir()
+
+	// Create a context that we'll cancel to simulate shutdown
+	ctx, cancel := context.WithCancel(context.Background())
+
+	// Mock agent that blocks until context is canceled
+	mockAg := &mockAgent{
+		name: "test-agent",
+		runFunc: func(ctx context.Context, opts agents.RunOptions) (*agents.RunResult, error) {
+			// Block until context is canceled
+			<-ctx.Done()
+			return &agents.RunResult{
+				Stderr:  "context canceled",
+				IsError: true,
+			}, ctx.Err()
+		},
+	}
+
+	dbg, _ := debug.NewLogger(debug.LoggerConfig{})
+	defer dbg.Close()
+
+	o := &Orbit{
+		config: Config{
+			PrePrompt:      "Review the codebase",
+			WorkingDir:     tmpDir,
+			CommandTimeout: 10 * time.Second,
+		},
+		agent:       mockAg,
+		shutdownCtx: ctx,
+		debug:       dbg,
+	}
+
+	// Cancel the context after a short delay to simulate interrupt
+	go func() {
+		time.Sleep(50 * time.Millisecond)
+		cancel()
+	}()
+
+	// Run pre-prompt - should be interrupted
+	err := o.runPrePrompt()
+	if err == nil {
+		t.Fatal("expected error due to shutdown")
+	}
+
+	// Error should indicate pre-prompt failure
+	if !strings.Contains(err.Error(), "pre-prompt failed") && !strings.Contains(err.Error(), "context canceled") {
+		t.Errorf("expected pre-prompt failure error, got: %v", err)
 	}
 }

@@ -24,7 +24,7 @@ func TestLoad_ProjectOnly(t *testing.T) {
 
 	// Write project config
 	projectConfig := `command: "custom project command"
-post-command: "custom post command"
+post-prompt: "custom post command"
 `
 	if err := os.WriteFile(filepath.Join(tmpDir, ".orbit.yaml"), []byte(projectConfig), 0644); err != nil {
 		t.Fatalf("failed to write project config: %v", err)
@@ -35,11 +35,11 @@ post-command: "custom post command"
 	if cfg.Command != "custom project command" {
 		t.Errorf("expected Command %q, got %q", "custom project command", cfg.Command)
 	}
-	if cfg.PostCommand != "custom post command" {
-		t.Errorf("expected PostCommand %q, got %q", "custom post command", cfg.PostCommand)
+	if cfg.PostPrompt != "custom post command" {
+		t.Errorf("expected PostCommand %q, got %q", "custom post command", cfg.PostPrompt)
 	}
-	if cfg.IsPostCommandDisabled() {
-		t.Error("expected IsPostCommandDisabled() to return false")
+	if cfg.IsPostPromptDisabled() {
+		t.Error("expected IsPostPromptDisabled() to return false")
 	}
 }
 
@@ -53,7 +53,7 @@ func TestLoad_HomeOnly(t *testing.T) {
 
 	// Write home config
 	homeConfig := `command: "home command"
-post-command: "home post command"
+post-prompt: "home post command"
 `
 	if err := os.WriteFile(filepath.Join(homeDir, ".orbit.yaml"), []byte(homeConfig), 0644); err != nil {
 		t.Fatalf("failed to write home config: %v", err)
@@ -64,8 +64,8 @@ post-command: "home post command"
 	if cfg.Command != "home command" {
 		t.Errorf("expected Command %q, got %q", "home command", cfg.Command)
 	}
-	if cfg.PostCommand != "home post command" {
-		t.Errorf("expected PostCommand %q, got %q", "home post command", cfg.PostCommand)
+	if cfg.PostPrompt != "home post command" {
+		t.Errorf("expected PostCommand %q, got %q", "home post command", cfg.PostPrompt)
 	}
 }
 
@@ -79,7 +79,7 @@ func TestLoad_MergesBoth(t *testing.T) {
 
 	// Write home config with both values
 	homeConfig := `command: "home command"
-post-command: "home post command"
+post-prompt: "home post command"
 `
 	if err := os.WriteFile(filepath.Join(homeDir, ".orbit.yaml"), []byte(homeConfig), 0644); err != nil {
 		t.Fatalf("failed to write home config: %v", err)
@@ -98,9 +98,9 @@ post-command: "home post command"
 	if cfg.Command != "project command" {
 		t.Errorf("expected Command %q, got %q", "project command", cfg.Command)
 	}
-	// Home post-command should be preserved since project didn't set it
-	if cfg.PostCommand != "home post command" {
-		t.Errorf("expected PostCommand %q, got %q", "home post command", cfg.PostCommand)
+	// Home post-prompt should be preserved since project didn't set it
+	if cfg.PostPrompt != "home post command" {
+		t.Errorf("expected PostCommand %q, got %q", "home post command", cfg.PostPrompt)
 	}
 }
 
@@ -117,11 +117,11 @@ func TestLoad_NoFiles(t *testing.T) {
 	if cfg.Command != DefaultCommand {
 		t.Errorf("expected default Command %q, got %q", DefaultCommand, cfg.Command)
 	}
-	if cfg.PostCommand != DefaultPostCommand {
-		t.Errorf("expected default PostCommand %q, got %q", DefaultPostCommand, cfg.PostCommand)
+	if cfg.PostPrompt != DefaultPostPrompt {
+		t.Errorf("expected default PostCommand %q, got %q", DefaultPostPrompt, cfg.PostPrompt)
 	}
-	if cfg.IsPostCommandDisabled() {
-		t.Error("expected IsPostCommandDisabled() to return false with defaults")
+	if cfg.IsPostPromptDisabled() {
+		t.Error("expected IsPostPromptDisabled() to return false with defaults")
 	}
 }
 
@@ -134,7 +134,7 @@ func TestLoad_InvalidYAML(t *testing.T) {
 	t.Setenv("HOME", homeDir)
 
 	invalidConfig := `command: [this is not valid yaml
-post-command: {broken
+post-prompt: {broken
 `
 	if err := os.WriteFile(filepath.Join(tmpDir, ".orbit.yaml"), []byte(invalidConfig), 0644); err != nil {
 		t.Fatalf("failed to write invalid config: %v", err)
@@ -147,8 +147,8 @@ post-command: {broken
 	if cfg.Command != DefaultCommand {
 		t.Errorf("expected default Command after invalid YAML, got %q", cfg.Command)
 	}
-	if cfg.PostCommand != DefaultPostCommand {
-		t.Errorf("expected default PostCommand after invalid YAML, got %q", cfg.PostCommand)
+	if cfg.PostPrompt != DefaultPostPrompt {
+		t.Errorf("expected default PostCommand after invalid YAML, got %q", cfg.PostPrompt)
 	}
 }
 
@@ -156,9 +156,9 @@ func TestLoad_EmptyPostCommand(t *testing.T) {
 	// Create temp directory
 	tmpDir := t.TempDir()
 
-	// Write config with explicitly empty post-command
+	// Write config with explicitly empty post-prompt
 	projectConfig := `command: "custom command"
-post-command: ""
+post-prompt: ""
 `
 	if err := os.WriteFile(filepath.Join(tmpDir, ".orbit.yaml"), []byte(projectConfig), 0644); err != nil {
 		t.Fatalf("failed to write project config: %v", err)
@@ -169,11 +169,11 @@ post-command: ""
 	if cfg.Command != "custom command" {
 		t.Errorf("expected Command %q, got %q", "custom command", cfg.Command)
 	}
-	if cfg.PostCommand != "" {
-		t.Errorf("expected empty PostCommand, got %q", cfg.PostCommand)
+	if cfg.PostPrompt != "" {
+		t.Errorf("expected empty PostCommand, got %q", cfg.PostPrompt)
 	}
-	if !cfg.IsPostCommandDisabled() {
-		t.Error("expected IsPostCommandDisabled() to return true when post-command is explicitly empty")
+	if !cfg.IsPostPromptDisabled() {
+		t.Error("expected IsPostPromptDisabled() to return true when post-prompt is explicitly empty")
 	}
 }
 
@@ -182,7 +182,7 @@ func TestLoad_EnvVarOverride(t *testing.T) {
 	tmpDir := t.TempDir()
 
 	projectConfig := `command: "config command"
-post-command: "config post command"
+post-prompt: "config post command"
 `
 	if err := os.WriteFile(filepath.Join(tmpDir, ".orbit.yaml"), []byte(projectConfig), 0644); err != nil {
 		t.Fatalf("failed to write project config: %v", err)
@@ -198,8 +198,8 @@ post-command: "config post command"
 		t.Errorf("expected Command %q from env var, got %q", "env command", cfg.Command)
 	}
 	// Post-command should still come from config since not overridden
-	if cfg.PostCommand != "config post command" {
-		t.Errorf("expected PostCommand %q, got %q", "config post command", cfg.PostCommand)
+	if cfg.PostPrompt != "config post command" {
+		t.Errorf("expected PostCommand %q, got %q", "config post command", cfg.PostPrompt)
 	}
 }
 
@@ -208,12 +208,12 @@ func TestLoad_EnvVarPostCommand(t *testing.T) {
 	tmpDir := t.TempDir()
 
 	// Set environment variable (t.Setenv restores original after test)
-	t.Setenv("ORBIT_POST_COMMAND", "env post command")
+	t.Setenv("ORBIT_POST_PROMPT", "env post command")
 
 	cfg := Load(tmpDir)
 
-	if cfg.PostCommand != "env post command" {
-		t.Errorf("expected PostCommand %q from env var, got %q", "env post command", cfg.PostCommand)
+	if cfg.PostPrompt != "env post command" {
+		t.Errorf("expected PostCommand %q from env var, got %q", "env post command", cfg.PostPrompt)
 	}
 }
 
@@ -223,16 +223,16 @@ func TestLoad_EnvVarEmptyPostCommand(t *testing.T) {
 
 	// Set environment variable to empty string (explicitly disable)
 	// t.Setenv restores original after test
-	t.Setenv("ORBIT_POST_COMMAND", "")
+	t.Setenv("ORBIT_POST_PROMPT", "")
 
 	cfg := Load(tmpDir)
 
-	// Empty env var should disable post-command
-	if cfg.PostCommand != "" {
-		t.Errorf("expected empty PostCommand from env var, got %q", cfg.PostCommand)
+	// Empty env var should disable post-prompt
+	if cfg.PostPrompt != "" {
+		t.Errorf("expected empty PostCommand from env var, got %q", cfg.PostPrompt)
 	}
-	if !cfg.IsPostCommandDisabled() {
-		t.Error("expected IsPostCommandDisabled() to return true when env var is explicitly empty")
+	if !cfg.IsPostPromptDisabled() {
+		t.Error("expected IsPostPromptDisabled() to return true when env var is explicitly empty")
 	}
 }
 
@@ -244,9 +244,9 @@ func TestLoad_HomeEmptyPostCommand(t *testing.T) {
 	// Set HOME to temp directory (t.Setenv restores original after test)
 	t.Setenv("HOME", homeDir)
 
-	// Write home config with explicitly empty post-command
+	// Write home config with explicitly empty post-prompt
 	homeConfig := `command: "home command"
-post-command: ""
+post-prompt: ""
 `
 	if err := os.WriteFile(filepath.Join(homeDir, ".orbit.yaml"), []byte(homeConfig), 0644); err != nil {
 		t.Fatalf("failed to write home config: %v", err)
@@ -257,12 +257,12 @@ post-command: ""
 	if cfg.Command != "home command" {
 		t.Errorf("expected Command %q, got %q", "home command", cfg.Command)
 	}
-	// Home config explicitly disabled post-command
-	if cfg.PostCommand != "" {
-		t.Errorf("expected empty PostCommand, got %q", cfg.PostCommand)
+	// Home config explicitly disabled post-prompt
+	if cfg.PostPrompt != "" {
+		t.Errorf("expected empty PostCommand, got %q", cfg.PostPrompt)
 	}
-	if !cfg.IsPostCommandDisabled() {
-		t.Error("expected IsPostCommandDisabled() to return true when home config sets empty post-command")
+	if !cfg.IsPostPromptDisabled() {
+		t.Error("expected IsPostPromptDisabled() to return true when home config sets empty post-prompt")
 	}
 }
 
@@ -274,14 +274,14 @@ func TestLoad_HomeEmptyPostCommand_ProjectOmits(t *testing.T) {
 	// Set HOME to temp directory (t.Setenv restores original after test)
 	t.Setenv("HOME", homeDir)
 
-	// Write home config with explicitly empty post-command
-	homeConfig := `post-command: ""
+	// Write home config with explicitly empty post-prompt
+	homeConfig := `post-prompt: ""
 `
 	if err := os.WriteFile(filepath.Join(homeDir, ".orbit.yaml"), []byte(homeConfig), 0644); err != nil {
 		t.Fatalf("failed to write home config: %v", err)
 	}
 
-	// Project config omits post-command
+	// Project config omits post-prompt
 	projectConfig := `command: "project command"
 `
 	if err := os.WriteFile(filepath.Join(tmpDir, ".orbit.yaml"), []byte(projectConfig), 0644); err != nil {
@@ -293,12 +293,12 @@ func TestLoad_HomeEmptyPostCommand_ProjectOmits(t *testing.T) {
 	if cfg.Command != "project command" {
 		t.Errorf("expected Command %q, got %q", "project command", cfg.Command)
 	}
-	// Home config explicitly disabled post-command, project didn't override
-	if cfg.PostCommand != "" {
-		t.Errorf("expected empty PostCommand (disabled by home config), got %q", cfg.PostCommand)
+	// Home config explicitly disabled post-prompt, project didn't override
+	if cfg.PostPrompt != "" {
+		t.Errorf("expected empty PostCommand (disabled by home config), got %q", cfg.PostPrompt)
 	}
-	if !cfg.IsPostCommandDisabled() {
-		t.Error("expected IsPostCommandDisabled() to return true when home config disabled and project omits")
+	if !cfg.IsPostPromptDisabled() {
+		t.Error("expected IsPostPromptDisabled() to return true when home config disabled and project omits")
 	}
 }
 
@@ -316,7 +316,7 @@ func TestLoad_FullPriorityChain(t *testing.T) {
 
 	// Write home config (lowest priority among files)
 	homeConfig := `command: "home command"
-post-command: "home post command"
+post-prompt: "home post command"
 `
 	if err := os.WriteFile(filepath.Join(homeDir, ".orbit.yaml"), []byte(homeConfig), 0644); err != nil {
 		t.Fatalf("failed to write home config: %v", err)
@@ -324,7 +324,7 @@ post-command: "home post command"
 
 	// Write project config (higher priority than home)
 	projectConfig := `command: "project command"
-post-command: "project post command"
+post-prompt: "project post command"
 `
 	if err := os.WriteFile(filepath.Join(tmpDir, ".orbit.yaml"), []byte(projectConfig), 0644); err != nil {
 		t.Fatalf("failed to write project config: %v", err)
@@ -332,7 +332,7 @@ post-command: "project post command"
 
 	// Set environment variables (highest priority)
 	t.Setenv("ORBIT_COMMAND", "env command")
-	t.Setenv("ORBIT_POST_COMMAND", "env post command")
+	t.Setenv("ORBIT_POST_PROMPT", "env post command")
 
 	cfg := Load(tmpDir)
 
@@ -340,14 +340,14 @@ post-command: "project post command"
 	if cfg.Command != "env command" {
 		t.Errorf("expected Command %q (from env), got %q", "env command", cfg.Command)
 	}
-	if cfg.PostCommand != "env post command" {
-		t.Errorf("expected PostCommand %q (from env), got %q", "env post command", cfg.PostCommand)
+	if cfg.PostPrompt != "env post command" {
+		t.Errorf("expected PostCommand %q (from env), got %q", "env post command", cfg.PostPrompt)
 	}
 }
 
 func TestLoad_PartialPriorityChain(t *testing.T) {
 	// Test that each level properly falls through to the next when not set.
-	// Sets: env command only, project post-command only, home has both as fallback.
+	// Sets: env command only, project post-prompt only, home has both as fallback.
 
 	tmpDir := t.TempDir()
 	homeDir := t.TempDir()
@@ -356,14 +356,14 @@ func TestLoad_PartialPriorityChain(t *testing.T) {
 
 	// Home config provides fallback values
 	homeConfig := `command: "home command"
-post-command: "home post command"
+post-prompt: "home post command"
 `
 	if err := os.WriteFile(filepath.Join(homeDir, ".orbit.yaml"), []byte(homeConfig), 0644); err != nil {
 		t.Fatalf("failed to write home config: %v", err)
 	}
 
-	// Project config only sets post-command
-	projectConfig := `post-command: "project post command"
+	// Project config only sets post-prompt
+	projectConfig := `post-prompt: "project post command"
 `
 	if err := os.WriteFile(filepath.Join(tmpDir, ".orbit.yaml"), []byte(projectConfig), 0644); err != nil {
 		t.Fatalf("failed to write project config: %v", err)
@@ -379,8 +379,8 @@ post-command: "home post command"
 		t.Errorf("expected Command %q (from env), got %q", "env command", cfg.Command)
 	}
 	// PostCommand: project config wins (no env var set)
-	if cfg.PostCommand != "project post command" {
-		t.Errorf("expected PostCommand %q (from project), got %q", "project post command", cfg.PostCommand)
+	if cfg.PostPrompt != "project post command" {
+		t.Errorf("expected PostCommand %q (from project), got %q", "project post command", cfg.PostPrompt)
 	}
 }
 
@@ -394,14 +394,14 @@ func TestLoad_EnvOverridesAllConfigs(t *testing.T) {
 
 	// Both configs set values
 	homeConfig := `command: "home command"
-post-command: "home post command"
+post-prompt: "home post command"
 `
 	if err := os.WriteFile(filepath.Join(homeDir, ".orbit.yaml"), []byte(homeConfig), 0644); err != nil {
 		t.Fatalf("failed to write home config: %v", err)
 	}
 
 	projectConfig := `command: "project command"
-post-command: "project post command"
+post-prompt: "project post command"
 `
 	if err := os.WriteFile(filepath.Join(tmpDir, ".orbit.yaml"), []byte(projectConfig), 0644); err != nil {
 		t.Fatalf("failed to write project config: %v", err)
@@ -409,15 +409,15 @@ post-command: "project post command"
 
 	// Env vars override everything
 	t.Setenv("ORBIT_COMMAND", "env wins")
-	t.Setenv("ORBIT_POST_COMMAND", "env also wins")
+	t.Setenv("ORBIT_POST_PROMPT", "env also wins")
 
 	cfg := Load(tmpDir)
 
 	if cfg.Command != "env wins" {
 		t.Errorf("expected env var to override all configs, got Command %q", cfg.Command)
 	}
-	if cfg.PostCommand != "env also wins" {
-		t.Errorf("expected env var to override all configs, got PostCommand %q", cfg.PostCommand)
+	if cfg.PostPrompt != "env also wins" {
+		t.Errorf("expected env var to override all configs, got PostCommand %q", cfg.PostPrompt)
 	}
 }
 
@@ -428,7 +428,7 @@ func TestLoad_EmptyEnvOverridesNonEmptyConfig(t *testing.T) {
 	tmpDir := t.TempDir()
 
 	projectConfig := `command: "project command"
-post-command: "project post command"
+post-prompt: "project post command"
 `
 	if err := os.WriteFile(filepath.Join(tmpDir, ".orbit.yaml"), []byte(projectConfig), 0644); err != nil {
 		t.Fatalf("failed to write project config: %v", err)
@@ -436,7 +436,7 @@ post-command: "project post command"
 
 	// Set env vars to empty strings
 	t.Setenv("ORBIT_COMMAND", "")
-	t.Setenv("ORBIT_POST_COMMAND", "")
+	t.Setenv("ORBIT_POST_PROMPT", "")
 
 	cfg := Load(tmpDir)
 
@@ -444,55 +444,55 @@ post-command: "project post command"
 	if cfg.Command != "" {
 		t.Errorf("expected empty Command from env var, got %q", cfg.Command)
 	}
-	if cfg.PostCommand != "" {
-		t.Errorf("expected empty PostCommand from env var, got %q", cfg.PostCommand)
+	if cfg.PostPrompt != "" {
+		t.Errorf("expected empty PostCommand from env var, got %q", cfg.PostPrompt)
 	}
-	if !cfg.IsPostCommandDisabled() {
-		t.Error("expected IsPostCommandDisabled() to return true when env var is empty")
+	if !cfg.IsPostPromptDisabled() {
+		t.Error("expected IsPostPromptDisabled() to return true when env var is empty")
 	}
 }
 
-func TestIsPostCommandDisabled(t *testing.T) {
+func TestIsPostPromptDisabled(t *testing.T) {
 	tests := []struct {
-		name                string
-		postCommand         string
-		postCommandExplicit bool
-		want                bool
+		name               string
+		postPrompt         string
+		postPromptExplicit bool
+		want               bool
 	}{
 		{
-			name:                "not set uses default",
-			postCommand:         DefaultPostCommand,
-			postCommandExplicit: false,
-			want:                false,
+			name:               "not set uses default",
+			postPrompt:         DefaultPostPrompt,
+			postPromptExplicit: false,
+			want:               false,
 		},
 		{
-			name:                "explicitly set to value",
-			postCommand:         "some command",
-			postCommandExplicit: true,
-			want:                false,
+			name:               "explicitly set to value",
+			postPrompt:         "some prompt",
+			postPromptExplicit: true,
+			want:               false,
 		},
 		{
-			name:                "explicitly set to empty",
-			postCommand:         "",
-			postCommandExplicit: true,
-			want:                true,
+			name:               "explicitly set to empty",
+			postPrompt:         "",
+			postPromptExplicit: true,
+			want:               true,
 		},
 		{
-			name:                "empty but not explicit (default empty)",
-			postCommand:         "",
-			postCommandExplicit: false,
-			want:                false,
+			name:               "empty but not explicit (default empty)",
+			postPrompt:         "",
+			postPromptExplicit: false,
+			want:               false,
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			cfg := &Config{
-				PostCommand:         tt.postCommand,
-				postCommandExplicit: tt.postCommandExplicit,
+				PostPrompt:         tt.postPrompt,
+				postPromptExplicit: tt.postPromptExplicit,
 			}
-			if got := cfg.IsPostCommandDisabled(); got != tt.want {
-				t.Errorf("IsPostCommandDisabled() = %v, want %v", got, tt.want)
+			if got := cfg.IsPostPromptDisabled(); got != tt.want {
+				t.Errorf("IsPostPromptDisabled() = %v, want %v", got, tt.want)
 			}
 		})
 	}
@@ -1869,5 +1869,495 @@ func TestLoad_CentralizedLog_ProjectOverridesHome(t *testing.T) {
 
 	if cfg.CentralizedLog {
 		t.Error("expected project config to override home config")
+	}
+}
+
+// Tests for PrePrompt configuration
+
+func TestLoad_PrePromptDefault(t *testing.T) {
+	tmpDir := t.TempDir()
+	homeDir := t.TempDir()
+	t.Setenv("HOME", homeDir)
+
+	cfg := Load(tmpDir)
+
+	// Pre-prompt should default to empty (no pre-prompt)
+	if cfg.PrePrompt != "" {
+		t.Errorf("expected PrePrompt to default to empty, got %q", cfg.PrePrompt)
+	}
+}
+
+func TestLoad_PrePromptFromConfig(t *testing.T) {
+	tmpDir := t.TempDir()
+	homeDir := t.TempDir()
+	t.Setenv("HOME", homeDir)
+
+	projectConfig := `pre-prompt: "Review the codebase before implementation."
+`
+	if err := os.WriteFile(filepath.Join(tmpDir, ".orbit.yaml"), []byte(projectConfig), 0644); err != nil {
+		t.Fatalf("failed to write project config: %v", err)
+	}
+
+	cfg := Load(tmpDir)
+
+	if cfg.PrePrompt != "Review the codebase before implementation." {
+		t.Errorf("expected PrePrompt from config, got %q", cfg.PrePrompt)
+	}
+}
+
+func TestLoad_PrePromptEnvOverride(t *testing.T) {
+	tmpDir := t.TempDir()
+	homeDir := t.TempDir()
+	t.Setenv("HOME", homeDir)
+
+	projectConfig := `pre-prompt: "config prompt"
+`
+	if err := os.WriteFile(filepath.Join(tmpDir, ".orbit.yaml"), []byte(projectConfig), 0644); err != nil {
+		t.Fatalf("failed to write project config: %v", err)
+	}
+
+	t.Setenv("ORBIT_PRE_PROMPT", "env prompt")
+
+	cfg := Load(tmpDir)
+
+	if cfg.PrePrompt != "env prompt" {
+		t.Errorf("expected PrePrompt from env var, got %q", cfg.PrePrompt)
+	}
+}
+
+func TestLoad_PrePromptEmptyEnvDisables(t *testing.T) {
+	tmpDir := t.TempDir()
+	homeDir := t.TempDir()
+	t.Setenv("HOME", homeDir)
+
+	projectConfig := `pre-prompt: "should be overridden"
+`
+	if err := os.WriteFile(filepath.Join(tmpDir, ".orbit.yaml"), []byte(projectConfig), 0644); err != nil {
+		t.Fatalf("failed to write project config: %v", err)
+	}
+
+	t.Setenv("ORBIT_PRE_PROMPT", "")
+
+	cfg := Load(tmpDir)
+
+	if cfg.PrePrompt != "" {
+		t.Errorf("expected empty PrePrompt from env var, got %q", cfg.PrePrompt)
+	}
+	if !cfg.IsPrePromptDisabled() {
+		t.Error("expected IsPrePromptDisabled() to return true")
+	}
+}
+
+func TestIsPrePromptDisabled(t *testing.T) {
+	tests := []struct {
+		name              string
+		prePrompt         string
+		prePromptExplicit bool
+		want              bool
+	}{
+		{
+			name:              "not set (empty default)",
+			prePrompt:         "",
+			prePromptExplicit: false,
+			want:              false, // Not disabled, just not configured
+		},
+		{
+			name:              "explicitly set to value",
+			prePrompt:         "some prompt",
+			prePromptExplicit: true,
+			want:              false,
+		},
+		{
+			name:              "explicitly set to empty",
+			prePrompt:         "",
+			prePromptExplicit: true,
+			want:              true, // Explicitly disabled
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cfg := &Config{
+				PrePrompt:         tt.prePrompt,
+				prePromptExplicit: tt.prePromptExplicit,
+			}
+			if got := cfg.IsPrePromptDisabled(); got != tt.want {
+				t.Errorf("IsPrePromptDisabled() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
+// Tests for CommandTimeout configuration
+
+func TestLoad_CommandTimeoutDefault(t *testing.T) {
+	tmpDir := t.TempDir()
+	homeDir := t.TempDir()
+	t.Setenv("HOME", homeDir)
+
+	cfg := Load(tmpDir)
+
+	if cfg.CommandTimeout != DefaultCommandTimeout {
+		t.Errorf("expected CommandTimeout %v, got %v", DefaultCommandTimeout, cfg.CommandTimeout)
+	}
+}
+
+func TestLoad_CommandTimeoutFromConfig(t *testing.T) {
+	tmpDir := t.TempDir()
+	homeDir := t.TempDir()
+	t.Setenv("HOME", homeDir)
+
+	projectConfig := `command-timeout: "15m"
+`
+	if err := os.WriteFile(filepath.Join(tmpDir, ".orbit.yaml"), []byte(projectConfig), 0644); err != nil {
+		t.Fatalf("failed to write project config: %v", err)
+	}
+
+	cfg := Load(tmpDir)
+
+	expected := 15 * time.Minute
+	if cfg.CommandTimeout != expected {
+		t.Errorf("expected CommandTimeout %v, got %v", expected, cfg.CommandTimeout)
+	}
+}
+
+func TestLoad_CommandTimeoutEnvOverride(t *testing.T) {
+	tmpDir := t.TempDir()
+	homeDir := t.TempDir()
+	t.Setenv("HOME", homeDir)
+
+	projectConfig := `command-timeout: "10m"
+`
+	if err := os.WriteFile(filepath.Join(tmpDir, ".orbit.yaml"), []byte(projectConfig), 0644); err != nil {
+		t.Fatalf("failed to write project config: %v", err)
+	}
+
+	t.Setenv("ORBIT_COMMAND_TIMEOUT", "30m")
+
+	cfg := Load(tmpDir)
+
+	expected := 30 * time.Minute
+	if cfg.CommandTimeout != expected {
+		t.Errorf("expected CommandTimeout %v from env var, got %v", expected, cfg.CommandTimeout)
+	}
+}
+
+func TestLoad_CommandTimeoutInvalidFallsBackToDefault(t *testing.T) {
+	tmpDir := t.TempDir()
+	homeDir := t.TempDir()
+	t.Setenv("HOME", homeDir)
+
+	projectConfig := `command-timeout: "invalid"
+`
+	if err := os.WriteFile(filepath.Join(tmpDir, ".orbit.yaml"), []byte(projectConfig), 0644); err != nil {
+		t.Fatalf("failed to write project config: %v", err)
+	}
+
+	cfg := Load(tmpDir)
+
+	if cfg.CommandTimeout != DefaultCommandTimeout {
+		t.Errorf("expected default CommandTimeout for invalid value, got %v", cfg.CommandTimeout)
+	}
+}
+
+// Tests for agent-level pre-command and post-command
+
+func TestLoad_AgentPreCommand(t *testing.T) {
+	tmpDir := t.TempDir()
+	homeDir := t.TempDir()
+	t.Setenv("HOME", homeDir)
+
+	projectConfig := `agents:
+  claude-code:
+    type: claude-code
+    pre-command: "make lint && make test-short"
+`
+	if err := os.WriteFile(filepath.Join(tmpDir, ".orbit.yaml"), []byte(projectConfig), 0644); err != nil {
+		t.Fatalf("failed to write project config: %v", err)
+	}
+
+	cfg := Load(tmpDir)
+
+	alias, ok := cfg.AgentAliases["claude-code"]
+	if !ok {
+		t.Fatal("expected claude-code in AgentAliases")
+	}
+	if alias.PreCommand != "make lint && make test-short" {
+		t.Errorf("expected PreCommand %q, got %q", "make lint && make test-short", alias.PreCommand)
+	}
+}
+
+func TestLoad_AgentPostCommand(t *testing.T) {
+	tmpDir := t.TempDir()
+	homeDir := t.TempDir()
+	t.Setenv("HOME", homeDir)
+
+	projectConfig := `agents:
+  claude-code:
+    type: claude-code
+    post-command: "make format && make lint"
+`
+	if err := os.WriteFile(filepath.Join(tmpDir, ".orbit.yaml"), []byte(projectConfig), 0644); err != nil {
+		t.Fatalf("failed to write project config: %v", err)
+	}
+
+	cfg := Load(tmpDir)
+
+	alias, ok := cfg.AgentAliases["claude-code"]
+	if !ok {
+		t.Fatal("expected claude-code in AgentAliases")
+	}
+	if alias.PostCommand != "make format && make lint" {
+		t.Errorf("expected PostCommand %q, got %q", "make format && make lint", alias.PostCommand)
+	}
+}
+
+func TestLoad_AgentPrePostCommands(t *testing.T) {
+	tmpDir := t.TempDir()
+	homeDir := t.TempDir()
+	t.Setenv("HOME", homeDir)
+
+	projectConfig := `agents:
+  claude-code:
+    type: claude-code
+    pre-command: "npm install"
+    post-command: "npm run format"
+  codex:
+    type: codex
+    pre-command: "pip install -r requirements.txt"
+`
+	if err := os.WriteFile(filepath.Join(tmpDir, ".orbit.yaml"), []byte(projectConfig), 0644); err != nil {
+		t.Fatalf("failed to write project config: %v", err)
+	}
+
+	cfg := Load(tmpDir)
+
+	// Check claude-code
+	claude, ok := cfg.AgentAliases["claude-code"]
+	if !ok {
+		t.Fatal("expected claude-code in AgentAliases")
+	}
+	if claude.PreCommand != "npm install" {
+		t.Errorf("expected claude-code PreCommand %q, got %q", "npm install", claude.PreCommand)
+	}
+	if claude.PostCommand != "npm run format" {
+		t.Errorf("expected claude-code PostCommand %q, got %q", "npm run format", claude.PostCommand)
+	}
+
+	// Check codex
+	codex, ok := cfg.AgentAliases["codex"]
+	if !ok {
+		t.Fatal("expected codex in AgentAliases")
+	}
+	if codex.PreCommand != "pip install -r requirements.txt" {
+		t.Errorf("expected codex PreCommand %q, got %q", "pip install -r requirements.txt", codex.PreCommand)
+	}
+	// codex has no post-command
+	if codex.PostCommand != "" {
+		t.Errorf("expected codex PostCommand to be empty, got %q", codex.PostCommand)
+	}
+}
+
+func TestLoad_EmptyCommandTreatedAsNoOp(t *testing.T) {
+	tmpDir := t.TempDir()
+	homeDir := t.TempDir()
+	t.Setenv("HOME", homeDir)
+
+	projectConfig := `agents:
+  claude-code:
+    type: claude-code
+    pre-command: ""
+    post-command: ""
+`
+	if err := os.WriteFile(filepath.Join(tmpDir, ".orbit.yaml"), []byte(projectConfig), 0644); err != nil {
+		t.Fatalf("failed to write project config: %v", err)
+	}
+
+	cfg := Load(tmpDir)
+
+	alias, ok := cfg.AgentAliases["claude-code"]
+	if !ok {
+		t.Fatal("expected claude-code in AgentAliases")
+	}
+	// Empty strings should be treated as not configured (no-op)
+	if alias.PreCommand != "" {
+		t.Errorf("expected PreCommand to be empty, got %q", alias.PreCommand)
+	}
+	if alias.PostCommand != "" {
+		t.Errorf("expected PostCommand to be empty, got %q", alias.PostCommand)
+	}
+}
+
+// Tests for CheckDeprecation function
+
+func TestCheckDeprecation_TopLevelPostCommand(t *testing.T) {
+	tmpDir := t.TempDir()
+	homeDir := t.TempDir()
+	t.Setenv("HOME", homeDir)
+
+	// Write config with deprecated top-level post-command
+	projectConfig := `post-command: "deprecated AI prompt"
+agents:
+  claude-code:
+    type: claude-code
+`
+	if err := os.WriteFile(filepath.Join(tmpDir, ".orbit.yaml"), []byte(projectConfig), 0644); err != nil {
+		t.Fatalf("failed to write project config: %v", err)
+	}
+
+	err := CheckDeprecation(tmpDir)
+	if err == nil {
+		t.Fatal("expected error for deprecated top-level post-command")
+	}
+	if !strings.Contains(err.Error(), "deprecated") {
+		t.Errorf("expected error to mention 'deprecated', got: %v", err)
+	}
+	if !strings.Contains(err.Error(), "post-command") {
+		t.Errorf("expected error to mention 'post-command', got: %v", err)
+	}
+	if !strings.Contains(err.Error(), "post-prompt") {
+		t.Errorf("expected error to mention 'post-prompt' as replacement, got: %v", err)
+	}
+}
+
+func TestCheckDeprecation_TopLevelPostCommand_HomeConfig(t *testing.T) {
+	tmpDir := t.TempDir()
+	homeDir := t.TempDir()
+	t.Setenv("HOME", homeDir)
+
+	// Write deprecated config in home directory
+	homeConfig := `post-command: "deprecated in home"
+`
+	if err := os.WriteFile(filepath.Join(homeDir, ".orbit.yaml"), []byte(homeConfig), 0644); err != nil {
+		t.Fatalf("failed to write home config: %v", err)
+	}
+
+	err := CheckDeprecation(tmpDir)
+	if err == nil {
+		t.Fatal("expected error for deprecated top-level post-command in home config")
+	}
+	if !strings.Contains(err.Error(), homeDir) {
+		t.Errorf("expected error to mention home config path, got: %v", err)
+	}
+}
+
+func TestCheckDeprecation_EnvVar(t *testing.T) {
+	tmpDir := t.TempDir()
+	homeDir := t.TempDir()
+	t.Setenv("HOME", homeDir)
+
+	// Set deprecated environment variable
+	t.Setenv("ORBIT_POST_COMMAND", "deprecated env value")
+
+	err := CheckDeprecation(tmpDir)
+	if err == nil {
+		t.Fatal("expected error for deprecated ORBIT_POST_COMMAND env var")
+	}
+	if !strings.Contains(err.Error(), "ORBIT_POST_COMMAND") {
+		t.Errorf("expected error to mention 'ORBIT_POST_COMMAND', got: %v", err)
+	}
+	if !strings.Contains(err.Error(), "ORBIT_POST_PROMPT") {
+		t.Errorf("expected error to mention 'ORBIT_POST_PROMPT' as replacement, got: %v", err)
+	}
+}
+
+func TestCheckDeprecation_AllowsAgentLevelPostCommand(t *testing.T) {
+	tmpDir := t.TempDir()
+	homeDir := t.TempDir()
+	t.Setenv("HOME", homeDir)
+
+	// Write config with agent-level post-command (this is valid, not deprecated)
+	projectConfig := `agents:
+  claude-code:
+    type: claude-code
+    post-command: "make format && make lint"
+`
+	if err := os.WriteFile(filepath.Join(tmpDir, ".orbit.yaml"), []byte(projectConfig), 0644); err != nil {
+		t.Fatalf("failed to write project config: %v", err)
+	}
+
+	err := CheckDeprecation(tmpDir)
+	if err != nil {
+		t.Errorf("unexpected error for agent-level post-command: %v", err)
+	}
+}
+
+func TestCheckDeprecation_NoDeprecatedConfig(t *testing.T) {
+	tmpDir := t.TempDir()
+	homeDir := t.TempDir()
+	t.Setenv("HOME", homeDir)
+
+	// Write valid config without deprecated keys
+	projectConfig := `post-prompt: "valid AI prompt"
+agents:
+  claude-code:
+    type: claude-code
+    post-command: "valid shell command"
+`
+	if err := os.WriteFile(filepath.Join(tmpDir, ".orbit.yaml"), []byte(projectConfig), 0644); err != nil {
+		t.Fatalf("failed to write project config: %v", err)
+	}
+
+	err := CheckDeprecation(tmpDir)
+	if err != nil {
+		t.Errorf("unexpected error for valid config: %v", err)
+	}
+}
+
+func TestCheckDeprecation_NoConfigFiles(t *testing.T) {
+	tmpDir := t.TempDir()
+	homeDir := t.TempDir()
+	t.Setenv("HOME", homeDir)
+
+	// No config files exist
+	err := CheckDeprecation(tmpDir)
+	if err != nil {
+		t.Errorf("unexpected error when no config files exist: %v", err)
+	}
+}
+
+func TestCheckDeprecation_BothEnvAndConfig(t *testing.T) {
+	tmpDir := t.TempDir()
+	homeDir := t.TempDir()
+	t.Setenv("HOME", homeDir)
+
+	// Set deprecated environment variable
+	t.Setenv("ORBIT_POST_COMMAND", "deprecated env value")
+
+	// Write config with deprecated top-level post-command
+	projectConfig := `post-command: "deprecated config value"
+`
+	if err := os.WriteFile(filepath.Join(tmpDir, ".orbit.yaml"), []byte(projectConfig), 0644); err != nil {
+		t.Fatalf("failed to write project config: %v", err)
+	}
+
+	err := CheckDeprecation(tmpDir)
+	if err == nil {
+		t.Fatal("expected error for multiple deprecated configurations")
+	}
+	// Should report both deprecations
+	if !strings.Contains(err.Error(), "ORBIT_POST_COMMAND") {
+		t.Errorf("expected error to mention env var, got: %v", err)
+	}
+	if !strings.Contains(err.Error(), tmpDir) {
+		t.Errorf("expected error to mention config file path, got: %v", err)
+	}
+}
+
+func TestCheckDeprecation_InvalidYAML(t *testing.T) {
+	tmpDir := t.TempDir()
+	homeDir := t.TempDir()
+	t.Setenv("HOME", homeDir)
+
+	// Write invalid YAML
+	invalidConfig := `post-command: [invalid yaml`
+	if err := os.WriteFile(filepath.Join(tmpDir, ".orbit.yaml"), []byte(invalidConfig), 0644); err != nil {
+		t.Fatalf("failed to write project config: %v", err)
+	}
+
+	// Invalid YAML should not cause an error - it will be caught by config loading
+	err := CheckDeprecation(tmpDir)
+	if err != nil {
+		t.Errorf("expected no error for invalid YAML (caught later), got: %v", err)
 	}
 }

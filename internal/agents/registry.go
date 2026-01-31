@@ -21,6 +21,8 @@ type AgentConfig struct {
 	ExtraArgs   []string          // Additional CLI arguments
 	Timeout     time.Duration     // Execution timeout
 	Options     map[string]string // Agent-specific options
+	PreCommand  string            // Shell command to run before first phase
+	PostCommand string            // Shell command to run after last phase
 }
 
 // Register adds an agent factory to the registry.
