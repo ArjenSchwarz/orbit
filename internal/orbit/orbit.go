@@ -56,7 +56,7 @@ func getCostUSD(result *agents.RunResult) float64 {
 }
 
 // formatCost returns a human-readable cost string from a RunResult.
-// Returns USD format ("$0.1234") for USD costs, credits format ("0.09 credits") for credit-based costs,
+// Returns USD format ("$0.12") for USD costs, credits format ("0.09 credits") for credit-based costs,
 // or empty string if no cost information is available.
 func formatCost(result *agents.RunResult) string {
 	if result == nil || result.Cost == nil {
@@ -70,7 +70,6 @@ func formatCost(result *agents.RunResult) string {
 	}
 	return ""
 }
-
 
 // Config holds the orchestrator configuration.
 type Config struct {

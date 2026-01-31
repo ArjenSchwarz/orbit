@@ -237,7 +237,7 @@ func (a *Agent) extractSessionCredits(ctx context.Context, workDir string) float
 		return 0
 	}
 
-	// Get the most recent session (DiscoverForDirectory returns sorted by CreatedAt descending)
+	// Get the most recent session (DiscoverForDirectory returns sorted by UpdatedAt descending)
 	mostRecent := sessions[0]
 	debugLog("extractSessionCredits: found session %s", mostRecent.ConversationID)
 
