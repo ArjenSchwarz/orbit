@@ -9,6 +9,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Spec for kiro-transcript-improvements feature (`specs/kiro-transcript-improvements/`)
+  - Smolspec with requirements for displaying session cost and parsing Json tool result variant
+  - Task list with 8 tasks across 4 phases (Core Infrastructure, Kiro Parser Enhancements, Renderer Updates, Integration)
 - Kiro credit usage tracking in Orbit (`internal/agents/kiro/agent.go`)
   - `extractSessionCredits()` fetches the most recent Kiro session from SQLite after execution
   - Parses `user_turn_metadata.usage_info` to extract credit usage
