@@ -64,6 +64,11 @@ func runCommand(args []string) error {
 	compareCommand := fs.String("compare-command", "", "Custom comparison command")
 	variantAgentsFlag := fs.String("variant-agents", "", "Comma-separated agent list for variants (cycles if fewer agents than variants)")
 
+	// Auto-consolidation flags
+	autoConsolidate := fs.Bool("auto-consolidate", false, "Run consolidation on recommended variant after comparison")
+	noAutoConsolidate := fs.Bool("no-auto-consolidate", false, "Disable auto-consolidation when enabled via config")
+	allowDirty := fs.Bool("allow-dirty", false, "Allow consolidation even if worktree has uncommitted changes")
+
 	fs.Usage = func() {
 		fmt.Fprintf(os.Stderr, "Usage: orbit run [options]\n\n")
 		fmt.Fprintf(os.Stderr, "Orchestrate Claude Code sessions to implement spec phases sequentially.\n")
@@ -211,6 +216,15 @@ func runCommand(args []string) error {
 		maxParallelValue = *maxParallel
 	}
 
+	// Resolve auto-consolidate: --auto-consolidate enables, --no-auto-consolidate disables
+	autoConsolidateValue := cfg.AutoConsolidate
+	if *autoConsolidate {
+		autoConsolidateValue = true
+	}
+	if *noAutoConsolidate {
+		autoConsolidateValue = false
+	}
+
 	// Parse guidance file if provided
 	var guidance []string
 	if *guidanceFile != "" {
@@ -237,6 +251,11 @@ func runCommand(args []string) error {
 	}
 	if *maxParallel < 1 {
 		return fmt.Errorf("--max-parallel must be at least 1")
+	}
+
+	// Validate auto-consolidate requires variants
+	if *autoConsolidate && *variantCount == 0 {
+		return fmt.Errorf("--auto-consolidate requires --variants to be specified")
 	}
 
 	// Derive SpecDir and RepoRoot for variant mode
@@ -287,9 +306,12 @@ func runCommand(args []string) error {
 		BranchPrefix:     *branchPrefix,
 		Guidance:         guidance,
 		CompareCommand:   *compareCommand,
-		SpecDir:          specDir,
-		RepoRoot:         repoRoot,
-		VariantAgents:    variantAgents,
+		SpecDir:                specDir,
+		RepoRoot:               repoRoot,
+		VariantAgents:          variantAgents,
+		AutoConsolidate:        autoConsolidateValue,
+		AllowDirty:             *allowDirty,
+		PostConsolidateCommand: cfg.PostConsolidateCommand,
 	}
 
 	o, err := orbit.New(orbitCfg)

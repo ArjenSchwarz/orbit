@@ -7,12 +7,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-### Changed
-
-- Updated Apsis description in README and CLAUDE.md to include GitHub Copilot session support
-- Updated `resolveInput()` function comments to reflect Copilot in session lookup order
-
 ### Added
+
+- Auto-consolidate documentation in CLAUDE.md with CLI flags, config options, and environment variables
+- Auto-consolidate configuration support for `orbit run --variants`
+  - `--auto-consolidate` flag to run consolidation on recommended variant after comparison
+  - `--no-auto-consolidate` flag to disable when enabled via config
+  - `--allow-dirty` flag to allow consolidation with uncommitted changes
+  - `auto-consolidate` and `post-consolidate-command` settings in `.orbit.yaml`
+  - Environment variable overrides: `ORBIT_AUTO_CONSOLIDATE`, `ORBIT_POST_CONSOLIDATE_COMMAND`
+  - Validation: `--auto-consolidate` requires `--variants` to be specified
+- Auto-consolidate execution after variant comparison (`internal/orbit/orbit.go`)
+  - `runAutoConsolidate()` method runs consolidation on the recommended variant
+  - Skips gracefully when preconditions not met (no recommendation, dirty worktree, no improvements)
+  - `runPostConsolidateCommand()` executes shell command in variant worktree after consolidation
+  - Auto-consolidation failures are non-fatal; variant run continues to report generation
+- Spec for auto-consolidate feature (`specs/auto-consolidate/`)
+  - Smolspec with requirements for `--auto-consolidate` flag on `orbit run --variants`
+  - Automatically consolidates improvements into recommended variant after comparison
+  - Supports `--allow-dirty` flag pass-through and `post-consolidate-command` hook
+  - Task list with 9 tasks across 3 phases (Configuration, Implementation, Verification)
 
 - Copilot session discovery for Apsis (`cmd/apsis/main.go`)
   - `listCopilotSessions()` function to discover sessions in `~/.copilot/session-state/`
@@ -139,8 +153,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Demo command routing: `orbit demo` now shows available demos (status, spinner)
 - Worktree directory path displayed for each active variant in status output
 
+### Fixed
+
+- Added spec-required log message when auto-consolidation is skipped due to fewer than 2 successful variants
+
 ### Changed
 
+- Updated Apsis description in README and CLAUDE.md to include GitHub Copilot session support
+- Updated `resolveInput()` function comments to reflect Copilot in session lookup order
 - Cost display formatting updated to 2 decimal places (`internal/orbit/orbit.go`)
   - USD costs display as `$0.12` instead of `$0.1234`
   - Credits display as `0.09 credits` instead of `0.0902 credits`

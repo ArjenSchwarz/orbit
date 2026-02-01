@@ -100,8 +100,8 @@ When `--tasks-file` is not specified, Orbit detects it from the git branch:
 ## Configuration (Orbit)
 
 Configuration priority (highest to lowest):
-1. CLI flags (`--agent`, `--command`, `--pre-prompt`, `--post-prompt`, etc.)
-2. Environment variables (`ORBIT_AGENT`, `ORBIT_COMMAND`, `ORBIT_PRE_PROMPT`, `ORBIT_POST_PROMPT`, `ORBIT_DATE_SUBDIRS`, `ORBIT_CONTINUE_SESSION`)
+1. CLI flags (`--agent`, `--command`, `--pre-prompt`, `--post-prompt`, `--auto-consolidate`, etc.)
+2. Environment variables (`ORBIT_AGENT`, `ORBIT_COMMAND`, `ORBIT_PRE_PROMPT`, `ORBIT_POST_PROMPT`, `ORBIT_DATE_SUBDIRS`, `ORBIT_CONTINUE_SESSION`, `ORBIT_AUTO_CONSOLIDATE`, `ORBIT_POST_CONSOLIDATE_COMMAND`)
 3. Project config (`.orbit.yaml` in working directory)
 4. Home config (`~/.orbit.yaml`)
 5. Built-in defaults
@@ -339,6 +339,26 @@ Variant workflow (in order):
 4. `orbit consolidate <spec> --variant N` - (optional) merge improvements from other variants
 5. `orbit finalize <spec> --variant N` - adopt variant N and clean up others
 6. `orbit cleanup <spec>` - removes all variant worktrees and branches (alternative to finalize)
+
+### Auto-Consolidation
+
+Orbit can automatically run consolidation on the recommended variant after comparison:
+- `--auto-consolidate` flag enables automatic consolidation after comparison
+- `--no-auto-consolidate` disables when enabled via config
+- `--allow-dirty` allows consolidation even if worktree has uncommitted changes
+- `auto-consolidate: true` in `.orbit.yaml` enables by default
+- `post-consolidate-command` in `.orbit.yaml` specifies a shell command to run after consolidation
+
+Environment variables:
+- `ORBIT_AUTO_CONSOLIDATE=true` enables auto-consolidation
+- `ORBIT_POST_CONSOLIDATE_COMMAND="make test"` sets the post-consolidate command
+
+Auto-consolidation:
+- Requires `--variants` to be specified (validation error otherwise)
+- Skips gracefully when fewer than 2 variants succeed
+- Skips if worktree has uncommitted changes (unless `--allow-dirty`)
+- Runs `post-consolidate-command` after consolidation (even if no improvements found)
+- Failures are non-fatal; variant run continues to report generation
 
 ### Variant Session Recovery
 
