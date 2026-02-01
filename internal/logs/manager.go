@@ -784,9 +784,20 @@ func (m *Manager) generatePostCompletionMarkdownTranscript(srcPath, dstPath, ses
 
 // formatPostCompletionTranscript creates a human-readable post-completion transcript.
 func formatPostCompletionTranscript(result *agents.RunResult, start, end time.Time) string {
-	var costUSD float64
+	costStr := "-"
 	if result.Cost != nil {
-		costUSD = result.Cost.CostUSD
+		unit := result.Cost.CostUnit
+		var value float64
+		switch unit {
+		case cost.UnitCredits:
+			value = result.Cost.Credits
+		case cost.UnitPremiumRequests:
+			value = result.Cost.PremiumRequests
+		default:
+			value = result.Cost.CostUSD
+			unit = cost.UnitUSD
+		}
+		costStr = cost.FormatWithPrecision(value, unit, 4)
 	}
 	return fmt.Sprintf(`Orbit Post-Completion Session Log
 ========================================
@@ -795,7 +806,7 @@ Session ID: %s
 Started:    %s
 Ended:      %s
 Duration:   %s
-Cost:       $%.4f
+Cost:       %s
 Turns:      %d
 Error:      %v
 
@@ -811,7 +822,7 @@ Stderr:
 		start.Format(time.RFC3339),
 		end.Format(time.RFC3339),
 		result.Duration.String(),
-		costUSD,
+		costStr,
 		result.NumTurns,
 		result.IsError,
 		result.Output,
@@ -852,9 +863,20 @@ func (m *Manager) writeSummary() error {
 
 // formatTranscript creates a human-readable session transcript.
 func formatTranscript(phase int, result *agents.RunResult, start, end time.Time) string {
-	var costUSD float64
+	costStr := "-"
 	if result.Cost != nil {
-		costUSD = result.Cost.CostUSD
+		unit := result.Cost.CostUnit
+		var value float64
+		switch unit {
+		case cost.UnitCredits:
+			value = result.Cost.Credits
+		case cost.UnitPremiumRequests:
+			value = result.Cost.PremiumRequests
+		default:
+			value = result.Cost.CostUSD
+			unit = cost.UnitUSD
+		}
+		costStr = cost.FormatWithPrecision(value, unit, 4)
 	}
 	return fmt.Sprintf(`Orbit Session Log - Phase %d
 ========================================
@@ -863,7 +885,7 @@ Session ID: %s
 Started:    %s
 Ended:      %s
 Duration:   %s
-Cost:       $%.4f
+Cost:       %s
 Turns:      %d
 Error:      %v
 
@@ -880,7 +902,7 @@ Stderr:
 		start.Format(time.RFC3339),
 		end.Format(time.RFC3339),
 		result.Duration.String(),
-		costUSD,
+		costStr,
 		result.NumTurns,
 		result.IsError,
 		result.Output,

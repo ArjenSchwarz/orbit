@@ -43,6 +43,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Report templates updated to use `cost.Format()` for unit-aware cost display
   - `formatCost()` now takes cost unit as parameter
   - HTML and Markdown reports display costs in their native units
+- Session transcript formatting updated to use unit-aware cost display
+  - `formatTranscript()` and `formatPostCompletionTranscript()` now use `cost.FormatWithPrecision()`
+  - Kiro credits display as "N.NNNN credits", Copilot as "N.NNNN premium requests"
 - `VariantMetrics` structs updated with `CostUnit` field in both report and variants packages
 - Compare command populates `CostUnit` from variant metadata or infers from agent type
 
