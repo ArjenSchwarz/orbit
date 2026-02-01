@@ -1,0 +1,29 @@
+---
+references:
+    - specs/auto-consolidate/smolspec.md
+---
+# Auto-Consolidate Feature
+
+## Configuration
+
+- [ ] 1. Config struct supports auto-consolidate and post-consolidate-command settings
+
+- [ ] 2. CLI accepts --auto-consolidate, --no-auto-consolidate, and --allow-dirty flags with proper validation
+
+- [ ] 3. Orbit config receives auto-consolidate settings from CLI and config file
+
+## Implementation
+
+- [ ] 4. Auto-consolidation runs on recommended variant after successful comparison
+
+- [ ] 5. Auto-consolidation skips gracefully when preconditions not met (single variant, dirty worktree, no improvements)
+
+- [ ] 6. Post-consolidate-command executes in variant worktree after consolidation completes
+
+- [ ] 7. Auto-consolidation failures are non-fatal and variant run continues to report generation
+
+## Verification
+
+- [ ] 8. Unit tests verify flag parsing, validation, and config resolution
+
+- [ ] 9. Integration test confirms end-to-end variant run with auto-consolidate produces expected outcome

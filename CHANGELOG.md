@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Spec for auto-consolidate feature (`specs/auto-consolidate/`)
+  - Smolspec with requirements for `--auto-consolidate` flag on `orbit run --variants`
+  - Automatically consolidates improvements into recommended variant after comparison
+  - Supports `--allow-dirty` flag pass-through and `post-consolidate-command` hook
+  - Task list with 9 tasks across 3 phases (Configuration, Implementation, Verification)
+
 ### Changed
 
 - Updated Apsis description in README and CLAUDE.md to include GitHub Copilot session support
