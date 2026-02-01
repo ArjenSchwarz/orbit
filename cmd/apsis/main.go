@@ -244,7 +244,7 @@ func isInputFromPipe() bool {
 }
 
 // resolveInput determines the input source and returns a reader and session ID.
-// It checks Claude location first, then Codex, then Kiro.
+// It checks Claude location first, then Codex, then Copilot, then Kiro.
 func resolveInput(arg string, projectPath string) (io.ReadCloser, string, error) {
 	// If no argument, read from stdin
 	if arg == "" {
@@ -265,7 +265,7 @@ func resolveInput(arg string, projectPath string) (io.ReadCloser, string, error)
 		return f, sessionID, nil
 	}
 
-	// Treat as session ID - check Claude location first, then Codex, then Kiro
+	// Treat as session ID - check Claude location first, then Codex, then Copilot, then Kiro
 	homeDir, err := os.UserHomeDir()
 	if err != nil {
 		return nil, "", fmt.Errorf("failed to get home directory: %w", err)

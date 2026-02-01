@@ -9,7 +9,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
-- Updated Apsis description in README to include GitHub Copilot session support
+- Updated Apsis description in README and CLAUDE.md to include GitHub Copilot session support
+- Updated `resolveInput()` function comments to reflect Copilot in session lookup order
 
 ### Added
 
