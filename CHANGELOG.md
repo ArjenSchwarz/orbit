@@ -9,6 +9,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Spec for copilot-usage-tracking feature (`specs/copilot-usage-tracking/`)
+  - Requirements document with 6 requirement groups covering cost extraction, storage, display, and architecture
+  - Design document with component architecture, data models, and testing strategy
+  - Decision log with 10 architectural decisions (agent interface, cost abstraction, unit handling, etc.)
+  - Task list with 22 tasks across 5 phases (Foundation, Agent Layer, Storage Layer, Display Layer, Validation)
+
 - Auto-consolidate documentation in CLAUDE.md with CLI flags, config options, and environment variables
 - Auto-consolidate configuration support for `orbit run --variants`
   - `--auto-consolidate` flag to run consolidation on recommended variant after comparison
