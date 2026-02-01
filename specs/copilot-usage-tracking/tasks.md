@@ -45,7 +45,7 @@ references:
 
 ## Agent Layer
 
-- [ ] 5. Update CostMetrics struct in agents package <!-- id:xv47eye -->
+- [x] 5. Update CostMetrics struct in agents package <!-- id:xv47eye -->
   - Add CachedTokens int field
   - Change PremiumRequests from int to float64
   - Add APIDuration *time.Duration
@@ -57,7 +57,7 @@ references:
   - Stream: 2
   - Requirements: [1.7](requirements.md#1.7), [2.1](requirements.md#2.1), [3.3](requirements.md#3.3)
 
-- [ ] 6. Create Copilot usage parser <!-- id:xv47eyf -->
+- [x] 6. Create Copilot usage parser <!-- id:xv47eyf -->
   - Create internal/agents/copilot/usage.go
   - Define UsageInfo struct
   - Implement ParseUsage(stdout, stderr) function
@@ -68,7 +68,7 @@ references:
   - Stream: 2
   - Requirements: [1.1](requirements.md#1.1), [1.2](requirements.md#1.2), [1.3](requirements.md#1.3), [1.4](requirements.md#1.4), [1.5](requirements.md#1.5), [1.6](requirements.md#1.6), [1.7](requirements.md#1.7), [1.8](requirements.md#1.8), [1.9](requirements.md#1.9), [1.10](requirements.md#1.10), [1.12](requirements.md#1.12)
 
-- [ ] 7. Add Copilot usage parser tests <!-- id:xv47eyg -->
+- [x] 7. Add Copilot usage parser tests <!-- id:xv47eyg -->
   - Test complete output parsing
   - Test minutes-and-seconds format (1m 36.11s)
   - Test million token suffix (1.3m)
@@ -84,7 +84,7 @@ references:
   - Stream: 2
   - Requirements: [1.1](requirements.md#1.1), [1.2](requirements.md#1.2), [1.3](requirements.md#1.3), [1.4](requirements.md#1.4), [1.5](requirements.md#1.5), [1.6](requirements.md#1.6), [1.7](requirements.md#1.7), [1.8](requirements.md#1.8), [1.9](requirements.md#1.9), [1.10](requirements.md#1.10)
 
-- [ ] 8. Add property-based tests for Copilot parser <!-- id:xv47eyh -->
+- [x] 8. Add property-based tests for Copilot parser <!-- id:xv47eyh -->
   - Use rapid for property-based testing
   - Generate valid premium request values and verify parsing
   - Generate varying whitespace and verify tolerance
@@ -93,7 +93,7 @@ references:
   - Stream: 2
   - Requirements: [1.2](requirements.md#1.2), [1.3](requirements.md#1.3), [1.4](requirements.md#1.4)
 
-- [ ] 9. Integrate usage parser into Copilot agent <!-- id:xv47eyi -->
+- [x] 9. Integrate usage parser into Copilot agent <!-- id:xv47eyi -->
   - Modify execute() in internal/agents/copilot/agent.go
   - Call ParseUsage after CLI execution
   - Set result.Cost with extracted metrics
@@ -103,7 +103,7 @@ references:
   - Stream: 2
   - Requirements: [1.11](requirements.md#1.11)
 
-- [ ] 10. Update Kiro agent to set CostUnit <!-- id:xv47eyj -->
+- [x] 10. Update Kiro agent to set CostUnit <!-- id:xv47eyj -->
   - Modify extractSessionCredits result handling in agent.go
   - Add CostUnit: credits to CostMetrics
   - Blocked-by: xv47eye (Update CostMetrics struct in agents package)

@@ -203,5 +203,22 @@ func (a *Agent) execute(ctx context.Context, opts agents.RunOptions, resume bool
 		result.Error = err
 	}
 
+	// Extract usage metrics from CLI output
+	if usage := ParseUsage(stdout.String(), stderr.String()); usage != nil {
+		result.Cost = &agents.CostMetrics{
+			PremiumRequests: usage.PremiumRequests,
+			InputTokens:     usage.InputTokens,
+			OutputTokens:    usage.OutputTokens,
+			CachedTokens:    usage.CachedTokens,
+			APIDuration:     usage.APIDuration,
+			SessionDuration: usage.SessionDuration,
+			LinesAdded:      usage.LinesAdded,
+			LinesRemoved:    usage.LinesRemoved,
+			CostUnit:        agents.CostUnitPremiumRequests,
+		}
+		debugLog("Extracted Copilot usage: %.2f premium requests, %d tokens in, %d tokens out",
+			usage.PremiumRequests, usage.InputTokens, usage.OutputTokens)
+	}
+
 	return result, err
 }

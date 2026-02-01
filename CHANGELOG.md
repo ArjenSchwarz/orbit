@@ -9,6 +9,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Copilot usage parser (`internal/agents/copilot/usage.go`) for extracting usage metrics from CLI output
+  - Parses premium requests, API time, session time, code changes, and token counts
+  - Supports k/m suffix for token values (e.g., 146.4k → 146400, 1.3m → 1300000)
+  - Supports minutes-seconds duration format (e.g., "1m 36.11s")
+  - Aggregates tokens from multiple model breakdown lines
+  - Integration with Copilot agent to populate `RunResult.Cost` after execution
+- New `CostMetrics` fields for enhanced cost tracking (`internal/agents/agent.go`)
+  - `CachedTokens` for Copilot cached tokens
+  - `APIDuration` and `SessionDuration` pointer fields for optional time metrics
+  - `LinesAdded` and `LinesRemoved` pointer fields for code change metrics
+  - `CostUnit` field ("USD", "credits", "premium_requests") to distinguish cost types
+- Cost unit constants (`CostUnitUSD`, `CostUnitCredits`, `CostUnitPremiumRequests`) in agents package
+- Unit tests and property-based tests for Copilot usage parser using rapid
+
+### Changed
+
+- `CostMetrics.PremiumRequests` field type changed from `int` to `float64` to support Copilot's fractional values
+- Kiro agent now sets `CostUnit: credits` when extracting session credits
+
 - Cost formatting package for multi-unit cost display (`internal/cost/`)
   - Unit constants: `UnitUSD`, `UnitCredits`, `UnitPremiumRequests`
   - `Format()` function formats costs according to unit type ($N.NN, N.NN credits, N.NN premium requests)

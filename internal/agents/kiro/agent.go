@@ -209,7 +209,8 @@ func (a *Agent) execute(ctx context.Context, opts agents.RunOptions, resume bool
 	if workDir != "" {
 		if credits := a.extractSessionCredits(ctx, workDir); credits > 0 {
 			result.Cost = &agents.CostMetrics{
-				Credits: credits,
+				Credits:  credits,
+				CostUnit: agents.CostUnitCredits,
 			}
 		}
 	}
