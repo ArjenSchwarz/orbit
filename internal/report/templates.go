@@ -45,9 +45,10 @@ func init() {
 
 // templateFuncs provides helper functions for templates.
 var templateFuncs = template.FuncMap{
-	"formatCost": formatCost,
-	"add":        add,
-	"sub":        sub,
+	"formatCost":       formatCost,
+	"formatCostTotals": formatCostTotals,
+	"add":              add,
+	"sub":              sub,
 }
 
 // formatCost formats a cost value according to its unit type.
@@ -57,6 +58,15 @@ func formatCost(value float64, unit string) string {
 		unit = cost.UnitUSD
 	}
 	return cost.Format(value, unit)
+}
+
+// formatCostTotals formats cost totals using the centralized cost.FormatTotals function.
+// Returns "-" if totals is nil or empty.
+func formatCostTotals(totals *cost.Totals) string {
+	if totals == nil {
+		return "-"
+	}
+	return cost.FormatTotals(*totals)
 }
 
 // add returns a + b.

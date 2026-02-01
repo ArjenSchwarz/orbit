@@ -2058,7 +2058,20 @@ func (o *Orbit) runVariant(ctx context.Context, v *variants.Variant) error {
 	if err := o.variantManager.UpdateStatus(v.ID, variants.StatusCompleted, nil); err != nil {
 		log.Printf("Warning: failed to update variant %d status: %v", v.ID, err)
 	}
-	if err := o.variantManager.UpdateMetrics(v.ID, totalCost, duration, totalTurns); err != nil {
+
+	// Infer cost unit and build totals from agent type
+	costUnit := cost.InferUnitFromAgent(agentType)
+	var costTotals cost.Totals
+	switch costUnit {
+	case cost.UnitCredits:
+		costTotals.Credits = totalCost
+	case cost.UnitPremiumRequests:
+		costTotals.PremiumRequests = totalCost
+	default:
+		costTotals.USD = totalCost
+	}
+
+	if err := o.variantManager.UpdateMetrics(v.ID, totalCost, costUnit, costTotals, duration, totalTurns); err != nil {
 		log.Printf("Warning: failed to update variant %d metrics: %v", v.ID, err)
 	}
 	o.updateVariantRegistryStatus(v.ID, registry.StatusCompleted)
@@ -2475,6 +2488,23 @@ func (o *Orbit) generateReport() error {
 	// Build report data
 	reportVariants := make([]report.VariantReportData, 0, len(variantList))
 	for _, v := range variantList {
+		// Build cost totals from variant data
+		var costTotals cost.Totals
+		if v.CostTotals.USD > 0 || v.CostTotals.Credits > 0 || v.CostTotals.PremiumRequests > 0 {
+			costTotals = v.CostTotals
+		} else {
+			// Construct totals from single cost value
+			switch v.CostUnit {
+			case cost.UnitCredits:
+				costTotals.Credits = v.Cost
+			case cost.UnitPremiumRequests:
+				costTotals.PremiumRequests = v.Cost
+			default:
+				// Default to USD if unknown or explicitly USD
+				costTotals.USD = v.Cost
+			}
+		}
+
 		reportVariants = append(reportVariants, report.VariantReportData{
 			ID:     v.ID,
 			Branch: v.Branch,
@@ -2483,9 +2513,11 @@ func (o *Orbit) generateReport() error {
 			Diff:   variantDiffs[v.ID],
 			Agent:  v.Agent,
 			Metrics: report.VariantMetrics{
-				Cost:     v.Cost,
-				Duration: v.Duration.Round(time.Second).String(),
-				NumTurns: v.NumTurns,
+				Cost:         &costTotals,
+				Duration:     v.Duration.Round(time.Second).String(),
+				NumTurns:     v.NumTurns,
+				LinesAdded:   v.LinesAdded,
+				LinesRemoved: v.LinesRemoved,
 			},
 		})
 	}
@@ -2526,6 +2558,23 @@ func (o *Orbit) generatePartialReport() error {
 	// Build report data with failure info
 	reportVariants := make([]report.VariantReportData, 0, len(variantList))
 	for _, v := range variantList {
+		// Build cost totals from variant data
+		var costTotals cost.Totals
+		if v.CostTotals.USD > 0 || v.CostTotals.Credits > 0 || v.CostTotals.PremiumRequests > 0 {
+			costTotals = v.CostTotals
+		} else {
+			// Construct totals from single cost value
+			switch v.CostUnit {
+			case cost.UnitCredits:
+				costTotals.Credits = v.Cost
+			case cost.UnitPremiumRequests:
+				costTotals.PremiumRequests = v.Cost
+			default:
+				// Default to USD if unknown or explicitly USD
+				costTotals.USD = v.Cost
+			}
+		}
+
 		reportVariants = append(reportVariants, report.VariantReportData{
 			ID:     v.ID,
 			Branch: v.Branch,
@@ -2533,9 +2582,11 @@ func (o *Orbit) generatePartialReport() error {
 			Error:  v.Error,
 			Agent:  v.Agent,
 			Metrics: report.VariantMetrics{
-				Cost:     v.Cost,
-				Duration: v.Duration.Round(time.Second).String(),
-				NumTurns: v.NumTurns,
+				Cost:         &costTotals,
+				Duration:     v.Duration.Round(time.Second).String(),
+				NumTurns:     v.NumTurns,
+				LinesAdded:   v.LinesAdded,
+				LinesRemoved: v.LinesRemoved,
 			},
 		})
 	}

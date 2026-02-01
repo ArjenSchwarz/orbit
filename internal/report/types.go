@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/arjenschwarz/orbit/internal/comparison"
+	"github.com/arjenschwarz/orbit/internal/cost"
 )
 
 // ReportData holds all data for report generation.
@@ -34,8 +35,9 @@ type VariantReportData struct {
 
 // VariantMetrics holds execution metrics for report display.
 type VariantMetrics struct {
-	Cost     float64
-	CostUnit string // Cost unit type: "USD", "credits", or "premium_requests"
-	Duration string // Pre-formatted duration string
-	NumTurns int
+	Cost         *cost.Totals
+	Duration     string // Pre-formatted duration string
+	NumTurns     int
+	LinesAdded   *int
+	LinesRemoved *int
 }

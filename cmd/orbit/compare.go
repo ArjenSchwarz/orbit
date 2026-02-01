@@ -174,10 +174,21 @@ func compareCommand(args []string) error {
 			}
 		}
 
-		// Determine cost unit: use explicit unit if set, otherwise infer from agent type
-		costUnit := v.CostUnit
-		if costUnit == "" {
-			costUnit = cost.InferUnitFromAgent(v.AgentType)
+		// Build cost totals from variant data
+		var costTotals cost.Totals
+		if v.CostTotals.USD > 0 || v.CostTotals.Credits > 0 || v.CostTotals.PremiumRequests > 0 {
+			costTotals = v.CostTotals
+		} else {
+			// Construct totals from single cost value
+			switch v.CostUnit {
+			case cost.UnitCredits:
+				costTotals.Credits = v.Cost
+			case cost.UnitPremiumRequests:
+				costTotals.PremiumRequests = v.Cost
+			default:
+				// Default to USD if unknown or explicitly USD
+				costTotals.USD = v.Cost
+			}
 		}
 
 		reportData.Variants = append(reportData.Variants, report.VariantReportData{
@@ -188,10 +199,11 @@ func compareCommand(args []string) error {
 			Diff:   diff,
 			Agent:  v.Agent,
 			Metrics: report.VariantMetrics{
-				Cost:     v.Cost,
-				CostUnit: costUnit,
-				Duration: formatDuration(v.Duration),
-				NumTurns: v.NumTurns,
+				Cost:         &costTotals,
+				Duration:     formatDuration(v.Duration),
+				NumTurns:     v.NumTurns,
+				LinesAdded:   v.LinesAdded,
+				LinesRemoved: v.LinesRemoved,
 			},
 		})
 	}

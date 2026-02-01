@@ -28,8 +28,7 @@ func TestGenerate_CreatesIndexHTML(t *testing.T) {
 				Status: "completed",
 				Diff:   "+func hello() {}",
 				Metrics: VariantMetrics{
-					Cost:     0.0523,
-					CostUnit: cost.UnitUSD,
+					Cost:     &cost.Totals{USD: 0.0523},
 					Duration: "3m0s",
 					NumTurns: 42,
 				},
@@ -40,8 +39,7 @@ func TestGenerate_CreatesIndexHTML(t *testing.T) {
 				Status: "completed",
 				Diff:   "+func world() {}",
 				Metrics: VariantMetrics{
-					Cost:     0.0312,
-					CostUnit: cost.UnitUSD,
+					Cost:     &cost.Totals{USD: 0.0312},
 					Duration: "2m15s",
 					NumTurns: 35,
 				},
@@ -387,8 +385,7 @@ func TestGenerate_CreatesMarkdownReport(t *testing.T) {
 				Diff:   "+func hello() {}",
 				Agent:  "claude-code",
 				Metrics: VariantMetrics{
-					Cost:     0.0523,
-					CostUnit: cost.UnitUSD,
+					Cost:     &cost.Totals{USD: 0.0523},
 					Duration: "3m0s",
 					NumTurns: 42,
 				},
@@ -400,8 +397,7 @@ func TestGenerate_CreatesMarkdownReport(t *testing.T) {
 				Diff:   "+func world() {}",
 				Agent:  "codex",
 				Metrics: VariantMetrics{
-					Cost:     0.0312,
-					CostUnit: cost.UnitUSD,
+					Cost:     &cost.Totals{USD: 0.0312},
 					Duration: "2m15s",
 					NumTurns: 35,
 				},

@@ -71,7 +71,7 @@
                         <td><code>{{.Branch}}</code></td>
                         <td>{{if .Agent}}{{.Agent}}{{else}}-{{end}}</td>
                         <td><span class="status status-{{.Status}}">{{.Status}}</span></td>
-                        <td>{{formatCost .Metrics.Cost .Metrics.CostUnit}}</td>
+                        <td>{{formatCostTotals .Metrics.Cost}}</td>
                         <td>{{.Metrics.Duration}}</td>
                         <td>{{.Metrics.NumTurns}}</td>
                     </tr>

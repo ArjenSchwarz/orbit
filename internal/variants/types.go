@@ -3,6 +3,8 @@ package variants
 
 import (
 	"time"
+
+	"github.com/arjenschwarz/orbit/internal/cost"
 )
 
 // VariantStatus represents the execution state of a variant.
@@ -29,10 +31,13 @@ type Variant struct {
 	Model        string        `json:"model,omitempty"`      // Model used for this variant
 
 	// Metrics populated after completion
-	Cost     float64       `json:"cost,omitempty"`
-	CostUnit string        `json:"cost_unit,omitempty"` // Cost unit type: "USD", "credits", or "premium_requests"
-	Duration time.Duration `json:"duration,omitempty"`
-	NumTurns int           `json:"num_turns,omitempty"`
+	Cost         float64       `json:"cost,omitempty"`
+	CostUnit     string        `json:"cost_unit,omitempty"` // Cost unit type: "USD", "credits", or "premium_requests"
+	CostTotals   cost.Totals   `json:"cost_totals,omitempty"`
+	Duration     time.Duration `json:"duration,omitempty"`
+	NumTurns     int           `json:"num_turns,omitempty"`
+	LinesAdded   *int          `json:"lines_added,omitempty"`
+	LinesRemoved *int          `json:"lines_removed,omitempty"`
 }
 
 // VariantsMetadata is the root structure for variants.json.

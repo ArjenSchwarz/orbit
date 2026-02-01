@@ -12,6 +12,7 @@ import (
 	"time"
 	"unicode"
 
+	"github.com/arjenschwarz/orbit/internal/cost"
 	"github.com/google/uuid"
 )
 
@@ -324,7 +325,7 @@ func (m *Manager) UpdateStatus(id int, status VariantStatus, err error) error {
 }
 
 // UpdateMetrics updates a variant's metrics after completion.
-func (m *Manager) UpdateMetrics(id int, cost float64, duration time.Duration, turns int) error {
+func (m *Manager) UpdateMetrics(id int, costValue float64, costUnit string, costTotals cost.Totals, duration time.Duration, turns int) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
@@ -333,7 +334,9 @@ func (m *Manager) UpdateMetrics(id int, cost float64, duration time.Duration, tu
 		return fmt.Errorf("variant %d not found", id)
 	}
 
-	v.Cost = cost
+	v.Cost = costValue
+	v.CostUnit = costUnit
+	v.CostTotals = costTotals
 	v.Duration = duration
 	v.NumTurns = turns
 
