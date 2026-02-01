@@ -20,6 +20,7 @@ import (
 	_ "github.com/arjenschwarz/orbit/internal/agents/claudecode" // Register claudecode agent
 	"github.com/arjenschwarz/orbit/internal/claude"
 	"github.com/arjenschwarz/orbit/internal/comparison"
+	"github.com/arjenschwarz/orbit/internal/consolidation"
 	"github.com/arjenschwarz/orbit/internal/debug"
 	"github.com/arjenschwarz/orbit/internal/display"
 	orberrors "github.com/arjenschwarz/orbit/internal/errors"
@@ -1574,6 +1575,14 @@ func (o *Orbit) runWithVariants(ctx context.Context) error {
 		// Still try to generate a report without comparison
 	}
 
+	// Run auto-consolidation if enabled and comparison succeeded
+	if o.config.AutoConsolidate && o.comparisonResult != nil {
+		if err := o.runAutoConsolidate(ctx); err != nil {
+			log.Printf("Auto-consolidation failed: %v", err)
+			// Non-fatal, continue to report generation
+		}
+	}
+
 	return o.generateReport()
 }
 
@@ -2285,6 +2294,140 @@ func (o *Orbit) runComparison(ctx context.Context) error {
 	// Store comparison result for report generation
 	o.comparisonResult = result
 
+	return nil
+}
+
+// runAutoConsolidate runs consolidation on the recommended variant after comparison.
+// It applies improvements from non-chosen variants to the recommended variant.
+// Failures are non-fatal and logged as warnings.
+func (o *Orbit) runAutoConsolidate(ctx context.Context) error {
+	if o.comparisonResult == nil || o.comparisonResult.Recommendation == 0 {
+		log.Println("Skipping auto-consolidation: no recommendation from comparison")
+		return nil
+	}
+
+	variantID := o.comparisonResult.Recommendation
+	log.Printf("Running auto-consolidation on recommended variant %d...", variantID)
+
+	// Get the variant to check its worktree state
+	variant := o.variantManager.GetVariant(variantID)
+	if variant == nil {
+		return fmt.Errorf("recommended variant %d not found", variantID)
+	}
+
+	// Check for uncommitted changes unless --allow-dirty is set
+	if !o.config.AllowDirty {
+		cmd := exec.CommandContext(ctx, "git", "status", "--porcelain")
+		cmd.Dir = variant.WorktreePath
+		out, err := cmd.Output()
+		if err != nil {
+			return fmt.Errorf("failed to check git status: %w", err)
+		}
+		if len(strings.TrimSpace(string(out))) > 0 {
+			log.Println("Skipping auto-consolidation: worktree has uncommitted changes (use --allow-dirty to override)")
+			return nil
+		}
+	}
+
+	// Create the agent using default agent config (not variant-specific)
+	agent, err := agents.Get(o.config.Agent, o.config.AgentConfig)
+	if err != nil {
+		return fmt.Errorf("failed to create agent for consolidation: %w", err)
+	}
+
+	// Create consolidator configuration
+	consolidatorCfg := consolidation.Config{
+		SpecName:   o.config.BranchName,
+		SpecDir:    o.config.SpecDir,
+		VariantID:  variantID,
+		Agent:      agent,
+		AllowDirty: o.config.AllowDirty,
+	}
+
+	consolidator, err := consolidation.NewConsolidator(consolidatorCfg, o.variantManager)
+	if err != nil {
+		return fmt.Errorf("failed to create consolidator: %w", err)
+	}
+
+	// Run consolidation
+	result, err := consolidator.Run(ctx)
+	if err != nil {
+		if err == consolidation.ErrNoImprovements {
+			log.Println("Auto-consolidation: no cross-variant improvements found")
+			// Run post-consolidate-command even when there are no improvements
+			if cmdErr := o.runPostConsolidateCommand(ctx, variant.WorktreePath); cmdErr != nil {
+				log.Printf("Warning: post-consolidate-command failed: %v", cmdErr)
+			}
+			return nil
+		}
+		return fmt.Errorf("consolidation failed: %w", err)
+	}
+
+	// Log success
+	if result.CommitSHA != "" {
+		log.Printf("Auto-consolidation commit: %s", result.CommitSHA)
+	}
+	if !result.TestsPassed {
+		log.Println("Warning: auto-consolidation tests failed")
+	}
+
+	// Run post-consolidate-command after successful consolidation
+	if cmdErr := o.runPostConsolidateCommand(ctx, variant.WorktreePath); cmdErr != nil {
+		log.Printf("Warning: post-consolidate-command failed: %v", cmdErr)
+	}
+
+	return nil
+}
+
+// runPostConsolidateCommand executes the post-consolidate-command in the given worktree.
+func (o *Orbit) runPostConsolidateCommand(ctx context.Context, worktreePath string) error {
+	if o.config.PostConsolidateCommand == "" {
+		return nil
+	}
+
+	if o.config.DryRun {
+		log.Printf("[DRY RUN] Would execute post-consolidate-command: %s", o.config.PostConsolidateCommand)
+		log.Printf("[DRY RUN] Working directory: %s", worktreePath)
+		return nil
+	}
+
+	log.Printf("Running post-consolidate-command: %s", o.config.PostConsolidateCommand)
+
+	// Create context with timeout
+	cmdCtx, cancel := context.WithTimeout(ctx, o.config.CommandTimeout)
+	defer cancel()
+
+	// Execute using /bin/sh -c
+	cmd := exec.CommandContext(cmdCtx, "/bin/sh", "-c", o.config.PostConsolidateCommand)
+	cmd.Dir = worktreePath
+
+	// Set up environment
+	cmd.Env = append(os.Environ(),
+		fmt.Sprintf("ORBIT_AGENT=%s", o.agent.Name()),
+	)
+
+	// Capture output
+	var stdout, stderr strings.Builder
+	cmd.Stdout = &stdout
+	cmd.Stderr = &stderr
+
+	err := cmd.Run()
+	if err != nil {
+		// Log output on failure
+		if stdout.Len() > 0 {
+			log.Printf("post-consolidate-command stdout:\n%s", stdout.String())
+		}
+		if stderr.Len() > 0 {
+			log.Printf("post-consolidate-command stderr:\n%s", stderr.String())
+		}
+
+		if cmdCtx.Err() == context.DeadlineExceeded {
+			return fmt.Errorf("command timed out after %v", o.config.CommandTimeout)
+		}
+		return err
+	}
+
+	log.Println("Post-consolidate-command completed successfully")
 	return nil
 }
 

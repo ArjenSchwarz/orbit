@@ -14,13 +14,13 @@ references:
 
 ## Implementation
 
-- [ ] 4. Auto-consolidation runs on recommended variant after successful comparison
+- [x] 4. Auto-consolidation runs on recommended variant after successful comparison
 
-- [ ] 5. Auto-consolidation skips gracefully when preconditions not met (single variant, dirty worktree, no improvements)
+- [x] 5. Auto-consolidation skips gracefully when preconditions not met (single variant, dirty worktree, no improvements)
 
-- [ ] 6. Post-consolidate-command executes in variant worktree after consolidation completes
+- [x] 6. Post-consolidate-command executes in variant worktree after consolidation completes
 
-- [ ] 7. Auto-consolidation failures are non-fatal and variant run continues to report generation
+- [x] 7. Auto-consolidation failures are non-fatal and variant run continues to report generation
 
 ## Verification
 
