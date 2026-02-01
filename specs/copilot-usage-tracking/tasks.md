@@ -8,7 +8,7 @@ references:
 
 ## Foundation
 
-- [ ] 1. Create cost package with unit constants and Format function <!-- id:xv47eya -->
+- [x] 1. Create cost package with unit constants and Format function <!-- id:xv47eya -->
   - Create internal/cost/format.go with UnitUSD, UnitCredits, UnitPremiumRequests constants
   - Implement Format(value, unit) function per req 2.6-2.8
   - Implement FormatWithPrecision for detailed reports
@@ -16,7 +16,7 @@ references:
   - Stream: 1
   - Requirements: [2.1](requirements.md#2.1), [2.2](requirements.md#2.2), [2.5](requirements.md#2.5), [2.6](requirements.md#2.6), [2.7](requirements.md#2.7), [2.8](requirements.md#2.8), [4.5](requirements.md#4.5), [4.6](requirements.md#4.6), [4.7](requirements.md#4.7)
 
-- [ ] 2. Add cost package tests <!-- id:xv47eyb -->
+- [x] 2. Add cost package tests <!-- id:xv47eyb -->
   - Test Format() for USD, credits, premium_requests
   - Test zero and negative values return dash
   - Test unknown unit fallback
@@ -26,7 +26,7 @@ references:
   - Stream: 1
   - Requirements: [2.5](requirements.md#2.5), [2.6](requirements.md#2.6), [2.7](requirements.md#2.7), [2.8](requirements.md#2.8), [4.5](requirements.md#4.5)
 
-- [ ] 3. Add FormatTotals and InferUnitFromAgent to cost package <!-- id:xv47eyc -->
+- [x] 3. Add FormatTotals and InferUnitFromAgent to cost package <!-- id:xv47eyc -->
   - Implement Totals struct
   - Implement FormatTotals per req 5.1-5.6
   - Implement InferUnitFromAgent per req 2.4
@@ -34,7 +34,7 @@ references:
   - Stream: 1
   - Requirements: [2.4](requirements.md#2.4), [5.1](requirements.md#5.1), [5.2](requirements.md#5.2), [5.3](requirements.md#5.3), [5.4](requirements.md#5.4), [5.6](requirements.md#5.6)
 
-- [ ] 4. Add FormatTotals and InferUnitFromAgent tests <!-- id:xv47eyd -->
+- [x] 4. Add FormatTotals and InferUnitFromAgent tests <!-- id:xv47eyd -->
   - Test FormatTotals with all units, single unit, mixed units
   - Test order: USD, credits, premium_requests
   - Test omission of zero values

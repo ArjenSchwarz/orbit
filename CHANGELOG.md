@@ -9,6 +9,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Cost formatting package for multi-unit cost display (`internal/cost/`)
+  - Unit constants: `UnitUSD`, `UnitCredits`, `UnitPremiumRequests`
+  - `Format()` function formats costs according to unit type ($N.NN, N.NN credits, N.NN premium requests)
+  - `FormatWithPrecision()` for detailed reports with custom decimal places
+  - `FormatCodeChanges()` for +N/-M lines display
+  - `Totals` struct for aggregated costs by unit type
+  - `FormatTotals()` displays aggregated costs in order: USD, credits, premium requests
+  - `InferUnitFromAgent()` for backward compatibility with legacy summary.json files
+
 - Spec for copilot-usage-tracking feature (`specs/copilot-usage-tracking/`)
   - Requirements document with 6 requirement groups covering cost extraction, storage, display, and architecture
   - Design document with component architecture, data models, and testing strategy
