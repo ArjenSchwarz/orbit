@@ -121,6 +121,10 @@ type Config struct {
 	CompareCommand string // Custom comparison command (empty = use Claude)
 	GlobalGuidance string // Global guidance applied to all variants
 
+	// Auto-consolidation configuration
+	AutoConsolidate        bool   // If true, run consolidation after comparison
+	PostConsolidateCommand string // Shell command to run after consolidation completes
+
 	// prePromptExplicit tracks whether pre-prompt was explicitly set in config.
 	// This allows distinguishing "not set" (no pre-prompt) from "set to empty" (disabled).
 	prePromptExplicit bool
@@ -164,6 +168,9 @@ func Load(workingDir string) *Config {
 	v.SetDefault("guidance-file", "")
 	v.SetDefault("compare-command", "")
 	v.SetDefault("global-guidance", "")
+	// Auto-consolidation defaults
+	v.SetDefault("auto-consolidate", false)
+	v.SetDefault("post-consolidate-command", "")
 
 	// Config file name (without extension)
 	v.SetConfigName(".orbit")
@@ -263,6 +270,9 @@ func Load(workingDir string) *Config {
 	guidanceFile := v.GetString("guidance-file")
 	compareCommand := v.GetString("compare-command")
 	globalGuidance := v.GetString("global-guidance")
+	// Auto-consolidation configuration
+	autoConsolidate := v.GetBool("auto-consolidate")
+	postConsolidateCommand := v.GetString("post-consolidate-command")
 
 	// Apply environment variable overrides (highest priority)
 	// Using os.LookupEnv to detect both set values and explicitly empty values
@@ -348,6 +358,15 @@ func Load(workingDir string) *Config {
 		globalGuidance = envGlobalGuidance
 		envUsed = true
 	}
+	// Auto-consolidation environment variable overrides
+	if envAutoConsolidate, exists := os.LookupEnv("ORBIT_AUTO_CONSOLIDATE"); exists {
+		autoConsolidate = envAutoConsolidate == "true" || envAutoConsolidate == "1"
+		envUsed = true
+	}
+	if envPostConsolidateCmd, exists := os.LookupEnv("ORBIT_POST_CONSOLIDATE_COMMAND"); exists {
+		postConsolidateCommand = envPostConsolidateCmd
+		envUsed = true
+	}
 	// Agent environment variable override
 	if envAgent, exists := os.LookupEnv("ORBIT_AGENT"); exists {
 		agent = envAgent
@@ -360,31 +379,33 @@ func Load(workingDir string) *Config {
 	}
 
 	return &Config{
-		Command:            command,
-		PrePrompt:          prePrompt,
-		PostPrompt:         postPrompt,
-		CommandTimeout:     commandTimeout,
-		DateSubdirs:        dateSubdirs,
-		ContinueSession:    continueSession,
-		ServePort:          servePort,
-		ServeBind:          serveBind,
-		Debug:              debug,
-		CentralizedLog:     centralizedLog,
-		Agent:              agent,
-		Agents:             agentsMap,
-		AgentAliases:       agentAliasesMap,
-		ConfigFileFound:    configFileFound,
-		ConfigParseError:   configParseErrors,
-		ConfigSources:      configSources,
-		VariantCount:       variantCount,
-		Parallel:           parallel,
-		MaxParallel:        maxParallel,
-		BranchPrefix:       branchPrefix,
-		GuidanceFile:       guidanceFile,
-		CompareCommand:     compareCommand,
-		GlobalGuidance:     globalGuidance,
-		prePromptExplicit:  prePromptExplicit,
-		postPromptExplicit: postPromptExplicit,
+		Command:                command,
+		PrePrompt:              prePrompt,
+		PostPrompt:             postPrompt,
+		CommandTimeout:         commandTimeout,
+		DateSubdirs:            dateSubdirs,
+		ContinueSession:        continueSession,
+		ServePort:              servePort,
+		ServeBind:              serveBind,
+		Debug:                  debug,
+		CentralizedLog:         centralizedLog,
+		Agent:                  agent,
+		Agents:                 agentsMap,
+		AgentAliases:           agentAliasesMap,
+		ConfigFileFound:        configFileFound,
+		ConfigParseError:       configParseErrors,
+		ConfigSources:          configSources,
+		VariantCount:           variantCount,
+		Parallel:               parallel,
+		MaxParallel:            maxParallel,
+		BranchPrefix:           branchPrefix,
+		GuidanceFile:           guidanceFile,
+		CompareCommand:         compareCommand,
+		GlobalGuidance:         globalGuidance,
+		AutoConsolidate:        autoConsolidate,
+		PostConsolidateCommand: postConsolidateCommand,
+		prePromptExplicit:      prePromptExplicit,
+		postPromptExplicit:     postPromptExplicit,
 	}
 }
 

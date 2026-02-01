@@ -9,6 +9,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Auto-consolidate configuration support for `orbit run --variants`
+  - `--auto-consolidate` flag to run consolidation on recommended variant after comparison
+  - `--no-auto-consolidate` flag to disable when enabled via config
+  - `--allow-dirty` flag to allow consolidation with uncommitted changes
+  - `auto-consolidate` and `post-consolidate-command` settings in `.orbit.yaml`
+  - Environment variable overrides: `ORBIT_AUTO_CONSOLIDATE`, `ORBIT_POST_CONSOLIDATE_COMMAND`
+  - Validation: `--auto-consolidate` requires `--variants` to be specified
 - Spec for auto-consolidate feature (`specs/auto-consolidate/`)
   - Smolspec with requirements for `--auto-consolidate` flag on `orbit run --variants`
   - Automatically consolidates improvements into recommended variant after comparison

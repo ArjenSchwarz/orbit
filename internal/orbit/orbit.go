@@ -109,6 +109,11 @@ type Config struct {
 	SpecDir        string   // Spec directory for variant worktrees
 	RepoRoot       string   // Repository root directory
 	VariantAgents  []string // Per-variant agents (cycles if fewer than variants) [Req 10.1]
+
+	// Auto-consolidation configuration
+	AutoConsolidate        bool   // If true, run consolidation after comparison
+	AllowDirty             bool   // If true, allow consolidation even with uncommitted changes
+	PostConsolidateCommand string // Shell command to run after consolidation completes
 }
 
 // Orbit orchestrates Claude Code sessions to implement spec phases.

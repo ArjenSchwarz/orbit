@@ -6,11 +6,11 @@ references:
 
 ## Configuration
 
-- [ ] 1. Config struct supports auto-consolidate and post-consolidate-command settings
+- [x] 1. Config struct supports auto-consolidate and post-consolidate-command settings
 
-- [ ] 2. CLI accepts --auto-consolidate, --no-auto-consolidate, and --allow-dirty flags with proper validation
+- [x] 2. CLI accepts --auto-consolidate, --no-auto-consolidate, and --allow-dirty flags with proper validation
 
-- [ ] 3. Orbit config receives auto-consolidate settings from CLI and config file
+- [x] 3. Orbit config receives auto-consolidate settings from CLI and config file
 
 ## Implementation
 
