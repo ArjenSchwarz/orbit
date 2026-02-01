@@ -85,13 +85,13 @@ func TestAutoConsolidate_FlagResolution(t *testing.T) {
 			want:              false,
 		},
 		{
-			name:              "--auto-consolidate takes precedence over --no-auto-consolidate",
-			configValue:       false,
-			autoConsolidateFlag: true,
+			name:                  "--no-auto-consolidate takes precedence when both flags set",
+			configValue:           false,
+			autoConsolidateFlag:   true,
 			noAutoConsolidateFlag: true,
 			// When both flags are set, --auto-consolidate runs first, then --no-auto-consolidate
-			// So the final value is false
-			want:              false,
+			// So the final value is false (--no-auto-consolidate wins)
+			want: false,
 		},
 	}
 

@@ -28,17 +28,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Supports `--allow-dirty` flag pass-through and `post-consolidate-command` hook
   - Task list with 9 tasks across 3 phases (Configuration, Implementation, Verification)
 
-### Fixed
-
-- Added spec-required log message when auto-consolidation is skipped due to fewer than 2 successful variants
-
-### Changed
-
-- Updated Apsis description in README and CLAUDE.md to include GitHub Copilot session support
-- Updated `resolveInput()` function comments to reflect Copilot in session lookup order
-
-### Added
-
 - Copilot session discovery for Apsis (`cmd/apsis/main.go`)
   - `listCopilotSessions()` function to discover sessions in `~/.copilot/session-state/`
   - `findCopilotSession()` function for UUID-based session lookup with case-insensitive matching
@@ -164,8 +153,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Demo command routing: `orbit demo` now shows available demos (status, spinner)
 - Worktree directory path displayed for each active variant in status output
 
+### Fixed
+
+- Added spec-required log message when auto-consolidation is skipped due to fewer than 2 successful variants
+
 ### Changed
 
+- Updated Apsis description in README and CLAUDE.md to include GitHub Copilot session support
+- Updated `resolveInput()` function comments to reflect Copilot in session lookup order
 - Cost display formatting updated to 2 decimal places (`internal/orbit/orbit.go`)
   - USD costs display as `$0.12` instead of `$0.1234`
   - Credits display as `0.09 credits` instead of `0.0902 credits`
