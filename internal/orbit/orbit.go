@@ -4,6 +4,7 @@ package orbit
 import (
 	"bufio"
 	"context"
+	"errors"
 	"fmt"
 	"log"
 	"os"
@@ -2355,7 +2356,7 @@ func (o *Orbit) runAutoConsolidate(ctx context.Context) error {
 	// Run consolidation
 	result, err := consolidator.Run(ctx)
 	if err != nil {
-		if err == consolidation.ErrNoImprovements {
+		if errors.Is(err, consolidation.ErrNoImprovements) {
 			log.Println("Auto-consolidation: no cross-variant improvements found")
 			// Run post-consolidate-command even when there are no improvements
 			if cmdErr := o.runPostConsolidateCommand(ctx, variant.WorktreePath); cmdErr != nil {

@@ -90,6 +90,9 @@ orbit --no-post-command
 | `--branch-prefix` | `orbit-impl` | Branch naming prefix for variants |
 | `--guidance-file` | - | YAML file with per-variant guidance |
 | `--compare-command` | - | Custom comparison command |
+| `--auto-consolidate` | `false` | Automatically consolidate recommended variant after comparison |
+| `--no-auto-consolidate` | - | Disable auto-consolidation when enabled via config |
+| `--allow-dirty` | `false` | Allow consolidation on worktrees with uncommitted changes |
 
 ### Default Commands
 
@@ -463,6 +466,9 @@ orbit run --variants 2 --variant-agents claude-sonnet,claude-opus
 # Use per-variant guidance
 orbit run --variants 2 --guidance-file guidance.yaml
 
+# Automatically consolidate improvements into recommended variant after comparison
+orbit run --variants 3 --auto-consolidate
+
 # Combine options
 orbit run --variants 3 --variant-agents claude-code,codex --parallel --guidance-file guidance.yaml
 ```
@@ -679,7 +685,21 @@ flowchart TD
 
 ### Step 4: Consolidate Improvements (Optional)
 
-Before finalizing, you can merge good ideas from other variants into your chosen one. This must be done before finalize, as finalize removes all variant worktrees.
+Before finalizing, you can merge good ideas from other variants into your chosen one. This can be done automatically during the variant run with `--auto-consolidate`, or manually afterward. Consolidation must be done before finalize, as finalize removes all variant worktrees.
+
+**Automatic consolidation:**
+
+```bash
+# Automatically consolidate recommended variant after comparison completes
+orbit run --variants 3 --auto-consolidate
+
+# With post-consolidate command (e.g., run tests)
+# Configure in .orbit.yaml:
+# auto-consolidate: true
+# post-consolidate-command: "make test"
+```
+
+**Manual consolidation:**
 
 ```bash
 # Apply improvements from other variants to chosen variant 1
