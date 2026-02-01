@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Auto-consolidate documentation in CLAUDE.md with CLI flags, config options, and environment variables
 - Auto-consolidate configuration support for `orbit run --variants`
   - `--auto-consolidate` flag to run consolidation on recommended variant after comparison
   - `--no-auto-consolidate` flag to disable when enabled via config
@@ -26,6 +27,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Automatically consolidates improvements into recommended variant after comparison
   - Supports `--allow-dirty` flag pass-through and `post-consolidate-command` hook
   - Task list with 9 tasks across 3 phases (Configuration, Implementation, Verification)
+
+### Fixed
+
+- Added spec-required log message when auto-consolidation is skipped due to fewer than 2 successful variants
 
 ### Changed
 

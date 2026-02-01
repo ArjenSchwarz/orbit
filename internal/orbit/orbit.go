@@ -1566,6 +1566,9 @@ func (o *Orbit) runWithVariants(ctx context.Context) error {
 
 	if successCount == 1 {
 		log.Println("Only one variant succeeded; skipping comparison")
+		if o.config.AutoConsolidate {
+			log.Println("Skipping auto-consolidation: comparison requires 2+ successful variants")
+		}
 		return o.generateReport()
 	}
 
