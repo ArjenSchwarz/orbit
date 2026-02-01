@@ -24,6 +24,6 @@ references:
 
 ## Verification
 
-- [ ] 8. Unit tests verify flag parsing, validation, and config resolution
+- [x] 8. Unit tests verify flag parsing, validation, and config resolution
 
-- [ ] 9. Integration test confirms end-to-end variant run with auto-consolidate produces expected outcome
+- [x] 9. Integration test confirms end-to-end variant run with auto-consolidate produces expected outcome

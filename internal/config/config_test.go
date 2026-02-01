@@ -2361,3 +2361,181 @@ func TestCheckDeprecation_InvalidYAML(t *testing.T) {
 		t.Errorf("expected no error for invalid YAML (caught later), got: %v", err)
 	}
 }
+
+// Tests for AutoConsolidate configuration
+
+func TestLoad_AutoConsolidate_DefaultFalse(t *testing.T) {
+	tmpDir := t.TempDir()
+	homeDir := t.TempDir()
+	t.Setenv("HOME", homeDir)
+
+	cfg := Load(tmpDir)
+
+	if cfg.AutoConsolidate {
+		t.Error("expected AutoConsolidate to default to false")
+	}
+}
+
+func TestLoad_AutoConsolidate_FromConfig(t *testing.T) {
+	tmpDir := t.TempDir()
+	homeDir := t.TempDir()
+	t.Setenv("HOME", homeDir)
+
+	projectConfig := `auto-consolidate: true
+`
+	if err := os.WriteFile(filepath.Join(tmpDir, ".orbit.yaml"), []byte(projectConfig), 0644); err != nil {
+		t.Fatalf("failed to write project config: %v", err)
+	}
+
+	cfg := Load(tmpDir)
+
+	if !cfg.AutoConsolidate {
+		t.Error("expected AutoConsolidate to be true when set in config")
+	}
+}
+
+func TestLoad_AutoConsolidate_EnvVarTrue(t *testing.T) {
+	tmpDir := t.TempDir()
+	homeDir := t.TempDir()
+	t.Setenv("HOME", homeDir)
+	t.Setenv("ORBIT_AUTO_CONSOLIDATE", "true")
+
+	cfg := Load(tmpDir)
+
+	if !cfg.AutoConsolidate {
+		t.Error("expected AutoConsolidate to be true when ORBIT_AUTO_CONSOLIDATE=true")
+	}
+}
+
+func TestLoad_AutoConsolidate_EnvVarOne(t *testing.T) {
+	tmpDir := t.TempDir()
+	homeDir := t.TempDir()
+	t.Setenv("HOME", homeDir)
+	t.Setenv("ORBIT_AUTO_CONSOLIDATE", "1")
+
+	cfg := Load(tmpDir)
+
+	if !cfg.AutoConsolidate {
+		t.Error("expected AutoConsolidate to be true when ORBIT_AUTO_CONSOLIDATE=1")
+	}
+}
+
+func TestLoad_AutoConsolidate_EnvVarFalse(t *testing.T) {
+	tmpDir := t.TempDir()
+	homeDir := t.TempDir()
+	t.Setenv("HOME", homeDir)
+
+	projectConfig := `auto-consolidate: true
+`
+	if err := os.WriteFile(filepath.Join(tmpDir, ".orbit.yaml"), []byte(projectConfig), 0644); err != nil {
+		t.Fatalf("failed to write project config: %v", err)
+	}
+
+	t.Setenv("ORBIT_AUTO_CONSOLIDATE", "false")
+
+	cfg := Load(tmpDir)
+
+	if cfg.AutoConsolidate {
+		t.Error("expected AutoConsolidate to be false when ORBIT_AUTO_CONSOLIDATE=false")
+	}
+}
+
+func TestLoad_AutoConsolidate_EnvOverridesConfig(t *testing.T) {
+	tmpDir := t.TempDir()
+	homeDir := t.TempDir()
+	t.Setenv("HOME", homeDir)
+
+	// Config sets false
+	projectConfig := `auto-consolidate: false
+`
+	if err := os.WriteFile(filepath.Join(tmpDir, ".orbit.yaml"), []byte(projectConfig), 0644); err != nil {
+		t.Fatalf("failed to write project config: %v", err)
+	}
+
+	// Env var enables
+	t.Setenv("ORBIT_AUTO_CONSOLIDATE", "true")
+
+	cfg := Load(tmpDir)
+
+	if !cfg.AutoConsolidate {
+		t.Error("expected env var to override config file")
+	}
+}
+
+// Tests for PostConsolidateCommand configuration
+
+func TestLoad_PostConsolidateCommand_DefaultEmpty(t *testing.T) {
+	tmpDir := t.TempDir()
+	homeDir := t.TempDir()
+	t.Setenv("HOME", homeDir)
+
+	cfg := Load(tmpDir)
+
+	if cfg.PostConsolidateCommand != "" {
+		t.Errorf("expected PostConsolidateCommand to default to empty, got %q", cfg.PostConsolidateCommand)
+	}
+}
+
+func TestLoad_PostConsolidateCommand_FromConfig(t *testing.T) {
+	tmpDir := t.TempDir()
+	homeDir := t.TempDir()
+	t.Setenv("HOME", homeDir)
+
+	projectConfig := `post-consolidate-command: "make test && make lint"
+`
+	if err := os.WriteFile(filepath.Join(tmpDir, ".orbit.yaml"), []byte(projectConfig), 0644); err != nil {
+		t.Fatalf("failed to write project config: %v", err)
+	}
+
+	cfg := Load(tmpDir)
+
+	if cfg.PostConsolidateCommand != "make test && make lint" {
+		t.Errorf("expected PostConsolidateCommand %q, got %q", "make test && make lint", cfg.PostConsolidateCommand)
+	}
+}
+
+func TestLoad_PostConsolidateCommand_EnvOverride(t *testing.T) {
+	tmpDir := t.TempDir()
+	homeDir := t.TempDir()
+	t.Setenv("HOME", homeDir)
+
+	projectConfig := `post-consolidate-command: "config command"
+`
+	if err := os.WriteFile(filepath.Join(tmpDir, ".orbit.yaml"), []byte(projectConfig), 0644); err != nil {
+		t.Fatalf("failed to write project config: %v", err)
+	}
+
+	t.Setenv("ORBIT_POST_CONSOLIDATE_COMMAND", "env command")
+
+	cfg := Load(tmpDir)
+
+	if cfg.PostConsolidateCommand != "env command" {
+		t.Errorf("expected PostConsolidateCommand from env %q, got %q", "env command", cfg.PostConsolidateCommand)
+	}
+}
+
+func TestLoad_AutoConsolidate_ProjectOverridesHome(t *testing.T) {
+	tmpDir := t.TempDir()
+	homeDir := t.TempDir()
+	t.Setenv("HOME", homeDir)
+
+	// Home config enables auto-consolidate
+	homeConfig := `auto-consolidate: true
+`
+	if err := os.WriteFile(filepath.Join(homeDir, ".orbit.yaml"), []byte(homeConfig), 0644); err != nil {
+		t.Fatalf("failed to write home config: %v", err)
+	}
+
+	// Project config disables it
+	projectConfig := `auto-consolidate: false
+`
+	if err := os.WriteFile(filepath.Join(tmpDir, ".orbit.yaml"), []byte(projectConfig), 0644); err != nil {
+		t.Fatalf("failed to write project config: %v", err)
+	}
+
+	cfg := Load(tmpDir)
+
+	if cfg.AutoConsolidate {
+		t.Error("expected project config to override home config")
+	}
+}
