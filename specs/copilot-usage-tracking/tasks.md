@@ -200,7 +200,7 @@ references:
 
 ## Validation
 
-- [ ] 21. Run full test suite and fix any issues <!-- id:xv47eyu -->
+- [x] 21. Run full test suite and fix any issues <!-- id:xv47eyu -->
   - Run make test
   - Fix any compilation errors
   - Fix any failing tests
@@ -208,7 +208,7 @@ references:
   - Blocked-by: xv47eyh (Add property-based tests for Copilot parser), xv47eyj (Update Kiro agent to set CostUnit), xv47eyp (Update existing manager tests for new fields), xv47eyq (Update terminal display to use cost package), xv47eyr (Update web interface cost display), xv47eyt (Update report generator tests)
   - Stream: 1
 
-- [ ] 22. Manual verification with sample outputs <!-- id:xv47eyv -->
+- [x] 22. Manual verification with sample outputs <!-- id:xv47eyv -->
   - Test with mock Copilot output containing all metrics
   - Test with partial output
   - Verify backward compat with existing summary.json files
