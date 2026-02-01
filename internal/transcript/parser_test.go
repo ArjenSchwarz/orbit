@@ -1865,6 +1865,54 @@ func TestDetectFormat_CopilotToolExecutionComplete(t *testing.T) {
 	}
 }
 
+func TestDetectFormat_CopilotSessionModelChange(t *testing.T) {
+	// Copilot session.model_change type
+	input := `{"type":"session.model_change","data":{"model":"claude-3-5-sonnet"},"id":"test","timestamp":"2026-01-17T12:14:32.620Z"}`
+	format, _, err := DetectFormat(strings.NewReader(input))
+	if err != nil {
+		t.Fatalf("DetectFormat returned error: %v", err)
+	}
+	if format != FormatCopilot {
+		t.Errorf("expected FormatCopilot, got %v", format)
+	}
+}
+
+func TestDetectFormat_CopilotSkillInvoked(t *testing.T) {
+	// Copilot skill.invoked type
+	input := `{"type":"skill.invoked","data":{"skill":"test"},"id":"test","timestamp":"2026-01-17T12:14:32.620Z"}`
+	format, _, err := DetectFormat(strings.NewReader(input))
+	if err != nil {
+		t.Fatalf("DetectFormat returned error: %v", err)
+	}
+	if format != FormatCopilot {
+		t.Errorf("expected FormatCopilot, got %v", format)
+	}
+}
+
+func TestDetectFormat_CopilotAbort(t *testing.T) {
+	// Copilot abort type
+	input := `{"type":"abort","data":{"reason":"user"},"id":"test","timestamp":"2026-01-17T12:14:32.620Z"}`
+	format, _, err := DetectFormat(strings.NewReader(input))
+	if err != nil {
+		t.Fatalf("DetectFormat returned error: %v", err)
+	}
+	if format != FormatCopilot {
+		t.Errorf("expected FormatCopilot, got %v", format)
+	}
+}
+
+func TestDetectFormat_CopilotFunction(t *testing.T) {
+	// Copilot function type (legacy event type)
+	input := `{"type":"function","data":{"name":"test"},"id":"test","timestamp":"2026-01-17T12:14:32.620Z"}`
+	format, _, err := DetectFormat(strings.NewReader(input))
+	if err != nil {
+		t.Fatalf("DetectFormat returned error: %v", err)
+	}
+	if format != FormatCopilot {
+		t.Errorf("expected FormatCopilot, got %v", format)
+	}
+}
+
 func TestDetectFormat_CopilotJSONLFile(t *testing.T) {
 	// Test with actual Copilot sample file
 	f, err := os.Open(filepath.Join("testdata", "copilot", "session.jsonl"))
@@ -1968,5 +2016,50 @@ func TestParse_CopilotJSONL(t *testing.T) {
 
 	if len(result.Entries) == 0 {
 		t.Error("expected at least one entry")
+	}
+}
+
+func TestParseCopilot_WithReasoning(t *testing.T) {
+	// Test parsing assistant message with reasoning text
+	input := `{"type":"session.start","data":{"sessionId":"test"},"id":"1","timestamp":"2026-01-17T12:00:00Z"}
+{"type":"user.message","data":{"content":"hi"},"id":"2","timestamp":"2026-01-17T12:00:01Z"}
+{"type":"assistant.turn_start","data":{"turnId":"1"},"id":"3","timestamp":"2026-01-17T12:00:02Z"}
+{"type":"assistant.message","data":{"messageId":"msg1","content":"hello","reasoningText":"I should say hello"},"id":"4","timestamp":"2026-01-17T12:00:03Z"}
+{"type":"assistant.turn_end","data":{"turnId":"1"},"id":"5","timestamp":"2026-01-17T12:00:04Z"}`
+
+	result, err := ParseCopilot(strings.NewReader(input))
+	if err != nil {
+		t.Fatalf("ParseCopilot returned error: %v", err)
+	}
+
+	// Should have user entry and assistant entry
+	if len(result.Entries) != 2 {
+		t.Fatalf("expected 2 entries, got %d", len(result.Entries))
+	}
+
+	assistantEntry := result.Entries[1]
+	if assistantEntry.Type != "assistant" {
+		t.Errorf("expected assistant entry, got %s", assistantEntry.Type)
+	}
+
+	// Assistant content should have 2 items: thinking and text
+	if len(assistantEntry.Message.Content) != 2 {
+		t.Fatalf("expected 2 content items, got %d", len(assistantEntry.Message.Content))
+	}
+
+	// First item should be thinking
+	if assistantEntry.Message.Content[0].Type != "thinking" {
+		t.Errorf("expected thinking type, got %s", assistantEntry.Message.Content[0].Type)
+	}
+	if assistantEntry.Message.Content[0].Thinking != "I should say hello" {
+		t.Errorf("expected thinking text 'I should say hello', got %q", assistantEntry.Message.Content[0].Thinking)
+	}
+
+	// Second item should be text
+	if assistantEntry.Message.Content[1].Type != "text" {
+		t.Errorf("expected text type, got %s", assistantEntry.Message.Content[1].Type)
+	}
+	if assistantEntry.Message.Content[1].Text != "hello" {
+		t.Errorf("expected text 'hello', got %q", assistantEntry.Message.Content[1].Text)
 	}
 }

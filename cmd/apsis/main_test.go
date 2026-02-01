@@ -2482,3 +2482,376 @@ func TestValidateFollowMode_JSONFormatConflict(t *testing.T) {
 		t.Errorf("expected JSON follow mode error, got: %v", err)
 	}
 }
+
+func TestParseCopilotWorkspace_Valid(t *testing.T) {
+	tmpDir := t.TempDir()
+	workspaceFile := filepath.Join(tmpDir, "workspace.yaml")
+
+	content := `id: b310b03c-e860-461a-840c-aafb44b812f8
+cwd: /Users/test/projects/myproject
+git_root: /Users/test/projects/myproject
+created_at: 2026-01-31T21:23:32.449Z
+summary: test session
+`
+	if err := os.WriteFile(workspaceFile, []byte(content), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	ws, err := parseCopilotWorkspace(workspaceFile)
+	if err != nil {
+		t.Fatalf("parseCopilotWorkspace failed: %v", err)
+	}
+	if ws == nil {
+		t.Fatal("expected workspace to be parsed")
+	}
+	if ws.ID != "b310b03c-e860-461a-840c-aafb44b812f8" {
+		t.Errorf("expected ID 'b310b03c-e860-461a-840c-aafb44b812f8', got '%s'", ws.ID)
+	}
+	if ws.Cwd != "/Users/test/projects/myproject" {
+		t.Errorf("expected Cwd '/Users/test/projects/myproject', got '%s'", ws.Cwd)
+	}
+	if ws.GitRoot != "/Users/test/projects/myproject" {
+		t.Errorf("expected GitRoot '/Users/test/projects/myproject', got '%s'", ws.GitRoot)
+	}
+	if ws.CreatedAt == nil {
+		t.Error("expected CreatedAt to be parsed")
+	}
+}
+
+func TestParseCopilotWorkspace_NotExists(t *testing.T) {
+	ws, err := parseCopilotWorkspace("/nonexistent/workspace.yaml")
+	if err != nil {
+		t.Fatalf("expected nil error for nonexistent file, got: %v", err)
+	}
+	if ws != nil {
+		t.Error("expected nil workspace for nonexistent file")
+	}
+}
+
+func TestParseCopilotWorkspace_Malformed(t *testing.T) {
+	tmpDir := t.TempDir()
+	workspaceFile := filepath.Join(tmpDir, "workspace.yaml")
+
+	content := `not: valid: yaml: content:: here`
+	if err := os.WriteFile(workspaceFile, []byte(content), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	ws, err := parseCopilotWorkspace(workspaceFile)
+	if err != nil {
+		t.Fatalf("expected nil error for malformed file, got: %v", err)
+	}
+	if ws != nil {
+		t.Error("expected nil workspace for malformed file")
+	}
+}
+
+func TestFindCopilotSession_UUIDMatching(t *testing.T) {
+	// Create a temporary directory structure mimicking ~/.copilot/session-state/
+	tmpDir := t.TempDir()
+	sessionUUID := "b310b03c-e860-461a-840c-aafb44b812f8"
+	sessionDir := filepath.Join(tmpDir, ".copilot", "session-state", sessionUUID)
+	if err := os.MkdirAll(sessionDir, 0755); err != nil {
+		t.Fatal(err)
+	}
+
+	// Create events.jsonl file
+	eventsFile := filepath.Join(sessionDir, "events.jsonl")
+	content := `{"type":"session.start","id":"1"}`
+	if err := os.WriteFile(eventsFile, []byte(content), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	// Test finding session by UUID
+	foundPath, err := findCopilotSession(tmpDir, sessionUUID)
+	if err != nil {
+		t.Fatalf("findCopilotSession failed: %v", err)
+	}
+	if foundPath == "" {
+		t.Fatal("expected to find session but got empty path")
+	}
+	if filepath.Base(foundPath) != "events.jsonl" {
+		t.Errorf("expected filename 'events.jsonl', got %q", filepath.Base(foundPath))
+	}
+}
+
+func TestFindCopilotSession_CaseInsensitiveUUID(t *testing.T) {
+	tmpDir := t.TempDir()
+	sessionUUID := "b310b03c-e860-461a-840c-aafb44b812f8"
+	sessionDir := filepath.Join(tmpDir, ".copilot", "session-state", sessionUUID)
+	if err := os.MkdirAll(sessionDir, 0755); err != nil {
+		t.Fatal(err)
+	}
+
+	eventsFile := filepath.Join(sessionDir, "events.jsonl")
+	if err := os.WriteFile(eventsFile, []byte("{}"), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	// Search with uppercase UUID (should still match)
+	foundPath, err := findCopilotSession(tmpDir, strings.ToUpper(sessionUUID))
+	if err != nil {
+		t.Fatalf("findCopilotSession failed: %v", err)
+	}
+	if foundPath == "" {
+		t.Fatal("expected to find session with case-insensitive match")
+	}
+}
+
+func TestFindCopilotSession_NonExistentDirectory(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	sessionUUID := "b310b03c-e860-461a-840c-aafb44b812f8"
+	foundPath, err := findCopilotSession(tmpDir, sessionUUID)
+	if err != nil {
+		t.Fatalf("expected no error for nonexistent directory, got: %v", err)
+	}
+	if foundPath != "" {
+		t.Errorf("expected empty path for nonexistent directory, got: %s", foundPath)
+	}
+}
+
+func TestFindCopilotSession_InvalidUUID(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	// Test with non-UUID string
+	foundPath, err := findCopilotSession(tmpDir, "not-a-uuid")
+	if err != nil {
+		t.Fatalf("expected no error for invalid UUID, got: %v", err)
+	}
+	if foundPath != "" {
+		t.Errorf("expected empty path for invalid UUID, got: %s", foundPath)
+	}
+}
+
+func TestFindCopilotSession_MissingEventsFile(t *testing.T) {
+	tmpDir := t.TempDir()
+	sessionUUID := "b310b03c-e860-461a-840c-aafb44b812f8"
+	sessionDir := filepath.Join(tmpDir, ".copilot", "session-state", sessionUUID)
+	if err := os.MkdirAll(sessionDir, 0755); err != nil {
+		t.Fatal(err)
+	}
+
+	// Don't create events.jsonl
+
+	foundPath, err := findCopilotSession(tmpDir, sessionUUID)
+	if err != nil {
+		t.Fatalf("findCopilotSession failed: %v", err)
+	}
+	if foundPath != "" {
+		t.Error("expected empty path when events.jsonl is missing")
+	}
+}
+
+func TestListCopilotSessions_Basic(t *testing.T) {
+	tmpDir := t.TempDir()
+	sessionUUID := "b310b03c-e860-461a-840c-aafb44b812f8"
+	sessionDir := filepath.Join(tmpDir, ".copilot", "session-state", sessionUUID)
+	if err := os.MkdirAll(sessionDir, 0755); err != nil {
+		t.Fatal(err)
+	}
+
+	// Create workspace.yaml
+	workspaceContent := `id: b310b03c-e860-461a-840c-aafb44b812f8
+cwd: /test/project
+git_root: /test/project
+created_at: 2026-01-31T21:23:32.449Z
+`
+	if err := os.WriteFile(filepath.Join(sessionDir, "workspace.yaml"), []byte(workspaceContent), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	// Create events.jsonl
+	if err := os.WriteFile(filepath.Join(sessionDir, "events.jsonl"), []byte(`{"type":"session.start"}`), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	// Override home directory for testing
+	origHome := os.Getenv("HOME")
+	if err := os.Setenv("HOME", tmpDir); err != nil {
+		t.Fatalf("failed to set HOME: %v", err)
+	}
+	defer func() { _ = os.Setenv("HOME", origHome) }()
+
+	sessions, err := listCopilotSessions("/test/project")
+	if err != nil {
+		t.Fatalf("listCopilotSessions failed: %v", err)
+	}
+
+	if len(sessions) != 1 {
+		t.Fatalf("expected 1 session, got %d", len(sessions))
+	}
+
+	if sessions[0].ID != sessionUUID {
+		t.Errorf("expected ID %s, got %s", sessionUUID, sessions[0].ID)
+	}
+	if sessions[0].Source != "copilot" {
+		t.Errorf("expected source 'copilot', got %s", sessions[0].Source)
+	}
+}
+
+func TestListCopilotSessions_FiltersByProjectPath(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	// Create two sessions with different project paths
+	session1UUID := "11111111-1111-1111-1111-111111111111"
+	session2UUID := "22222222-2222-2222-2222-222222222222"
+
+	for _, uuid := range []string{session1UUID, session2UUID} {
+		sessionDir := filepath.Join(tmpDir, ".copilot", "session-state", uuid)
+		if err := os.MkdirAll(sessionDir, 0755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(sessionDir, "events.jsonl"), []byte(`{"type":"session.start"}`), 0644); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	// Session 1: matches target project
+	workspace1 := `id: 11111111-1111-1111-1111-111111111111
+git_root: /target/project
+created_at: 2026-01-31T21:23:32.449Z
+`
+	if err := os.WriteFile(filepath.Join(tmpDir, ".copilot", "session-state", session1UUID, "workspace.yaml"), []byte(workspace1), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	// Session 2: different project
+	workspace2 := `id: 22222222-2222-2222-2222-222222222222
+git_root: /other/project
+created_at: 2026-01-31T21:23:32.449Z
+`
+	if err := os.WriteFile(filepath.Join(tmpDir, ".copilot", "session-state", session2UUID, "workspace.yaml"), []byte(workspace2), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	origHome := os.Getenv("HOME")
+	if err := os.Setenv("HOME", tmpDir); err != nil {
+		t.Fatalf("failed to set HOME: %v", err)
+	}
+	defer func() { _ = os.Setenv("HOME", origHome) }()
+
+	sessions, err := listCopilotSessions("/target/project")
+	if err != nil {
+		t.Fatalf("listCopilotSessions failed: %v", err)
+	}
+
+	if len(sessions) != 1 {
+		t.Fatalf("expected 1 session after filtering, got %d", len(sessions))
+	}
+	if sessions[0].ID != session1UUID {
+		t.Errorf("expected session %s, got %s", session1UUID, sessions[0].ID)
+	}
+}
+
+func TestListCopilotSessions_FallbackToCwd(t *testing.T) {
+	tmpDir := t.TempDir()
+	sessionUUID := "b310b03c-e860-461a-840c-aafb44b812f8"
+	sessionDir := filepath.Join(tmpDir, ".copilot", "session-state", sessionUUID)
+	if err := os.MkdirAll(sessionDir, 0755); err != nil {
+		t.Fatal(err)
+	}
+
+	// Create workspace.yaml without git_root (should fall back to cwd)
+	workspaceContent := `id: b310b03c-e860-461a-840c-aafb44b812f8
+cwd: /test/project
+created_at: 2026-01-31T21:23:32.449Z
+`
+	if err := os.WriteFile(filepath.Join(sessionDir, "workspace.yaml"), []byte(workspaceContent), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := os.WriteFile(filepath.Join(sessionDir, "events.jsonl"), []byte(`{"type":"session.start"}`), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	origHome := os.Getenv("HOME")
+	if err := os.Setenv("HOME", tmpDir); err != nil {
+		t.Fatalf("failed to set HOME: %v", err)
+	}
+	defer func() { _ = os.Setenv("HOME", origHome) }()
+
+	sessions, err := listCopilotSessions("/test/project")
+	if err != nil {
+		t.Fatalf("listCopilotSessions failed: %v", err)
+	}
+
+	if len(sessions) != 1 {
+		t.Fatalf("expected 1 session (matched by cwd), got %d", len(sessions))
+	}
+}
+
+func TestListCopilotSessions_SkipsEmptySessions(t *testing.T) {
+	tmpDir := t.TempDir()
+	sessionUUID := "b310b03c-e860-461a-840c-aafb44b812f8"
+	sessionDir := filepath.Join(tmpDir, ".copilot", "session-state", sessionUUID)
+	if err := os.MkdirAll(sessionDir, 0755); err != nil {
+		t.Fatal(err)
+	}
+
+	workspaceContent := `id: b310b03c-e860-461a-840c-aafb44b812f8
+git_root: /test/project
+created_at: 2026-01-31T21:23:32.449Z
+`
+	if err := os.WriteFile(filepath.Join(sessionDir, "workspace.yaml"), []byte(workspaceContent), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	// Create empty events.jsonl
+	if err := os.WriteFile(filepath.Join(sessionDir, "events.jsonl"), []byte(""), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	origHome := os.Getenv("HOME")
+	if err := os.Setenv("HOME", tmpDir); err != nil {
+		t.Fatalf("failed to set HOME: %v", err)
+	}
+	defer func() { _ = os.Setenv("HOME", origHome) }()
+
+	sessions, err := listCopilotSessions("/test/project")
+	if err != nil {
+		t.Fatalf("listCopilotSessions failed: %v", err)
+	}
+
+	if len(sessions) != 0 {
+		t.Fatalf("expected 0 sessions (empty events.jsonl), got %d", len(sessions))
+	}
+}
+
+func TestListCopilotSessions_NonExistentDirectory(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	origHome := os.Getenv("HOME")
+	if err := os.Setenv("HOME", tmpDir); err != nil {
+		t.Fatalf("failed to set HOME: %v", err)
+	}
+	defer func() { _ = os.Setenv("HOME", origHome) }()
+
+	sessions, err := listCopilotSessions("/test/project")
+	if err != nil {
+		t.Fatalf("expected no error for nonexistent directory, got: %v", err)
+	}
+	if sessions != nil {
+		t.Errorf("expected nil sessions for nonexistent directory, got: %v", sessions)
+	}
+}
+
+func TestSortSessionsByTimestamp_CopilotAfterClaude(t *testing.T) {
+	sameTime := time.Date(2026, 1, 31, 12, 0, 0, 0, time.UTC)
+
+	sessions := []SessionInfo{
+		{ID: "copilot-1", Source: "copilot", CreatedAt: sameTime},
+		{ID: "claude-1", Source: "claude", CreatedAt: sameTime},
+		{ID: "codex-1", Source: "codex", CreatedAt: sameTime},
+		{ID: "kiro-1", Source: "kiro-cli", CreatedAt: sameTime},
+	}
+
+	sortSessionsByTimestamp(sessions)
+
+	expectedOrder := []string{"claude", "copilot", "codex", "kiro-cli"}
+	for i, expected := range expectedOrder {
+		if sessions[i].Source != expected {
+			t.Errorf("position %d: expected source %s, got %s", i, expected, sessions[i].Source)
+		}
+	}
+}

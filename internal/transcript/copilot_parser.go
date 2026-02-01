@@ -97,6 +97,14 @@ func convertCopilotToEntries(events []CopilotEvent) []Entry {
 			currentTurnContent = nil
 
 		case "assistant.message":
+			// Add thinking content first (if present)
+			if event.Data.ReasoningText != "" {
+				currentTurnContent = append(currentTurnContent, ContentItem{
+					Type:     "thinking",
+					Thinking: event.Data.ReasoningText,
+				})
+			}
+
 			// Add text content if present
 			if event.Data.Content != "" {
 				currentTurnContent = append(currentTurnContent, ContentItem{

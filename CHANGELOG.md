@@ -7,8 +7,33 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- Updated Apsis description in README and CLAUDE.md to include GitHub Copilot session support
+- Updated `resolveInput()` function comments to reflect Copilot in session lookup order
+
 ### Added
 
+- Copilot session discovery for Apsis (`cmd/apsis/main.go`)
+  - `listCopilotSessions()` function to discover sessions in `~/.copilot/session-state/`
+  - `findCopilotSession()` function for UUID-based session lookup with case-insensitive matching
+  - `parseCopilotWorkspace()` function to parse `workspace.yaml` metadata (id, cwd, git_root, created_at)
+  - `CopilotWorkspace` struct for workspace.yaml parsing with graceful handling of missing/malformed files
+  - `apsis -l` now includes `[copilot]` sessions filtered by project directory (git_root or cwd)
+  - `apsis <uuid>` resolves Copilot session UUIDs to events.jsonl files
+  - Updated sort order: Claude > Copilot > Codex > Kiro (when timestamps tie)
+  - Follow mode (`-F`) now supports Copilot sessions
+- Extended thinking support for Copilot transcripts (`internal/transcript/copilot_types.go`, `internal/transcript/copilot_parser.go`)
+  - `ReasoningText` field in `CopilotData` struct for parsing extended thinking content
+  - Thinking content emitted as ContentItem before text content in assistant messages
+  - Renders in collapsible details blocks using existing thinking block format
+- Additional Copilot event types for format detection (`internal/transcript/parser.go`)
+  - `session.model_change`, `skill.invoked`, and `abort` added to `copilotTypes` map
+  - Enables parsing sessions with these event types without warnings
+- Spec for apsis-copilot-support feature (`specs/apsis-copilot-support/`)
+  - Smolspec with requirements for full Copilot CLI session support in Apsis
+  - Covers session discovery, UUID lookup, extended thinking display, and missing event types
+  - Task list with 7 tasks across 2 phases (Parser Improvements, Session Discovery)
 - `KiroJsonOutput` type to parse structured command output from Kiro tool results (`internal/transcript/kiro_types.go`)
   - Handles `exit_status`, `stdout`, and `stderr` fields from Json variant
 - Json variant parsing in Kiro tool results alongside Text variant (`internal/transcript/kiro_parser.go`)

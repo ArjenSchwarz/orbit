@@ -957,7 +957,7 @@ The web interface shows all registered runs, their status, and provides links to
 
 # Apsis
 
-Apsis is a CLI tool for converting AI coding agent session transcripts to readable Markdown or HTML. It supports sessions from Claude Code (JSONL), OpenAI Codex (JSONL), and AWS Kiro (SQLite).
+Apsis is a CLI tool for converting AI coding agent session transcripts to readable Markdown or HTML. It supports sessions from Claude Code (JSONL), OpenAI Codex (JSONL), GitHub Copilot (JSONL), and AWS Kiro (SQLite).
 
 ## Installation
 

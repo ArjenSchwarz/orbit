@@ -33,6 +33,7 @@ var codexTypes = map[string]bool{
 var copilotTypes = map[string]bool{
 	"session.start":           true,
 	"session.info":            true,
+	"session.model_change":    true,
 	"user.message":            true,
 	"assistant.turn_start":    true,
 	"assistant.message":       true,
@@ -40,6 +41,9 @@ var copilotTypes = map[string]bool{
 	"assistant.turn_end":      true,
 	"tool.execution_start":    true,
 	"tool.execution_complete": true,
+	"skill.invoked":           true,
+	"abort":                   true,
+	"function":                true, // Legacy event type
 }
 
 // infrastructureTypes are entry types that should be skipped during format detection.
