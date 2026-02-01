@@ -2,9 +2,9 @@ package report
 
 import (
 	_ "embed"
-	"fmt"
 	"html/template"
-	"strings"
+
+	"github.com/arjenschwarz/orbit/internal/cost"
 )
 
 //go:embed templates/index.html
@@ -50,25 +50,13 @@ var templateFuncs = template.FuncMap{
 	"sub":        sub,
 }
 
-// formatCost formats a cost value as a currency string.
-func formatCost(cost float64) string {
-	if cost == 0 {
-		return "-"
+// formatCost formats a cost value according to its unit type.
+// Uses the centralized cost.Format function for consistent formatting.
+func formatCost(value float64, unit string) string {
+	if unit == "" {
+		unit = cost.UnitUSD
 	}
-	return "$" + trimTrailingZeros(fmt.Sprintf("%.4f", cost))
-}
-
-// trimTrailingZeros removes unnecessary trailing zeros after decimal point.
-func trimTrailingZeros(s string) string {
-	if !strings.Contains(s, ".") {
-		return s
-	}
-	s = strings.TrimRight(s, "0")
-	s = strings.TrimRight(s, ".")
-	if s == "" || s == "-" {
-		return "0"
-	}
-	return s
+	return cost.Format(value, unit)
 }
 
 // add returns a + b.

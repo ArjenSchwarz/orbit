@@ -20,6 +20,7 @@ import (
 	"github.com/arjenschwarz/orbit/internal/agents"
 	_ "github.com/arjenschwarz/orbit/internal/agents/claudecode" // Register claudecode agent
 	"github.com/arjenschwarz/orbit/internal/claude"
+	"github.com/arjenschwarz/orbit/internal/cost"
 	"github.com/arjenschwarz/orbit/internal/comparison"
 	"github.com/arjenschwarz/orbit/internal/consolidation"
 	"github.com/arjenschwarz/orbit/internal/debug"
@@ -58,19 +59,36 @@ func getCostUSD(result *agents.RunResult) float64 {
 }
 
 // formatCost returns a human-readable cost string from a RunResult.
-// Returns USD format ("$0.12") for USD costs, credits format ("0.09 credits") for credit-based costs,
-// or empty string if no cost information is available.
+// Uses the cost package to format costs according to their unit type.
+// Returns "-" if no cost information is available.
 func formatCost(result *agents.RunResult) string {
 	if result == nil || result.Cost == nil {
-		return ""
+		return "-"
 	}
-	if result.Cost.CostUSD > 0 {
-		return fmt.Sprintf("$%.2f", result.Cost.CostUSD)
+
+	unit := result.Cost.CostUnit
+	var value float64
+
+	switch unit {
+	case cost.UnitCredits:
+		value = result.Cost.Credits
+	case cost.UnitPremiumRequests:
+		value = result.Cost.PremiumRequests
+	default:
+		value = result.Cost.CostUSD
+		unit = cost.UnitUSD
 	}
-	if result.Cost.Credits > 0 {
-		return fmt.Sprintf("%.2f credits", result.Cost.Credits)
+
+	return cost.Format(value, unit)
+}
+
+// getSessionDuration returns the session duration for display.
+// Uses agent-reported SessionDuration if available, otherwise falls back to measured Duration.
+func getSessionDuration(result *agents.RunResult) time.Duration {
+	if result.Cost != nil && result.Cost.SessionDuration != nil {
+		return *result.Cost.SessionDuration
 	}
-	return ""
+	return result.Duration
 }
 
 // Config holds the orchestrator configuration.
@@ -854,15 +872,12 @@ func (o *Orbit) runPhase(phase int) error {
 	o.debug.LogStructured("info", "Agent completed", agentLogFields)
 
 	costStr := formatCost(result)
-	if costStr == "" {
-		costStr = "$0.00"
-	}
 	o.debug.Log("Phase %d completed successfully: cost=%s duration=%s turns=%d",
-		phase, costStr, result.Duration, result.NumTurns)
+		phase, costStr, getSessionDuration(result), result.NumTurns)
 
 	if o.config.Verbose {
 		log.Printf("Phase %d: cost=%s, duration=%s, turns=%d",
-			phase, costStr, result.Duration, result.NumTurns)
+			phase, costStr, getSessionDuration(result), result.NumTurns)
 	}
 
 	return nil
@@ -1168,15 +1183,12 @@ func (o *Orbit) runPostPrompt() error {
 	}
 
 	postCostStr := formatCost(result)
-	if postCostStr == "" {
-		postCostStr = "$0.00"
-	}
 	o.debug.Log("Post-completion completed successfully: cost=%s duration=%s turns=%d",
-		postCostStr, result.Duration, result.NumTurns)
+		postCostStr, getSessionDuration(result), result.NumTurns)
 
 	if o.config.Verbose {
 		log.Printf("Post-completion: cost=%s, duration=%s, turns=%d",
-			postCostStr, result.Duration, result.NumTurns)
+			postCostStr, getSessionDuration(result), result.NumTurns)
 	}
 
 	return nil

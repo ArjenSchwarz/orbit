@@ -59,7 +59,7 @@ func (g *Generator) generateMarkdownReport(data *ReportData) error {
 				"Branch":   fmt.Sprintf("`%s`", v.Branch),
 				"Agent":    agent,
 				"Status":   v.Status,
-				"Cost":     formatCost(v.Metrics.Cost),
+				"Cost":     formatCost(v.Metrics.Cost, v.Metrics.CostUnit),
 				"Duration": v.Metrics.Duration,
 				"Turns":    v.Metrics.NumTurns,
 			})

@@ -54,10 +54,8 @@
         <dt>Phases Completed</dt>
         <dd>{{.Summary.PhasesCompleted}}</dd>
 
-        {{if .Summary.TotalCostUSD}}
         <dt>Total Cost</dt>
-        <dd>${{printf "%.4f" .Summary.TotalCostUSD}}</dd>
-        {{end}}
+        <dd>{{formatCostTotals .Summary.CostTotals}}</dd>
 
         {{if .Summary.Error}}
         <dt>Error</dt>

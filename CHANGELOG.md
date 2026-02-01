@@ -33,6 +33,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - `CostMetrics.PremiumRequests` field type changed from `int` to `float64` to support Copilot's fractional values
 - Kiro agent now sets `CostUnit: credits` when extracting session credits
+- Terminal display updated to use `cost.Format()` for consistent cost formatting across all agents
+  - `formatCost()` in orbit.go now uses the centralized cost package
+  - `getSessionDuration()` helper added to use agent-reported session time when available
+  - Cost display shows "-" for unavailable costs instead of misleading "$0.00"
+- Web interface cost display updated with `formatCostTotals` template helper
+  - `run_detail.html` now uses `GetCostTotals()` method for aggregated cost display
+  - Template functions added to handlers.go for cost formatting
+- Report templates updated to use `cost.Format()` for unit-aware cost display
+  - `formatCost()` now takes cost unit as parameter
+  - HTML and Markdown reports display costs in their native units
+- `VariantMetrics` structs updated with `CostUnit` field in both report and variants packages
+- Compare command populates `CostUnit` from variant metadata or infers from agent type
 
 - Cost formatting package for multi-unit cost display (`internal/cost/`)
   - Unit constants: `UnitUSD`, `UnitCredits`, `UnitPremiumRequests`

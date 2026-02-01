@@ -12,6 +12,7 @@ import (
 	"github.com/arjenschwarz/orbit/internal/claude"
 	"github.com/arjenschwarz/orbit/internal/comparison"
 	"github.com/arjenschwarz/orbit/internal/config"
+	"github.com/arjenschwarz/orbit/internal/cost"
 	"github.com/arjenschwarz/orbit/internal/report"
 	"github.com/arjenschwarz/orbit/internal/variants"
 )
@@ -173,14 +174,22 @@ func compareCommand(args []string) error {
 			}
 		}
 
+		// Determine cost unit: use explicit unit if set, otherwise infer from agent type
+		costUnit := v.CostUnit
+		if costUnit == "" {
+			costUnit = cost.InferUnitFromAgent(v.AgentType)
+		}
+
 		reportData.Variants = append(reportData.Variants, report.VariantReportData{
 			ID:     v.ID,
 			Branch: v.Branch,
 			Status: string(v.Status),
 			Error:  v.Error,
 			Diff:   diff,
+			Agent:  v.Agent,
 			Metrics: report.VariantMetrics{
 				Cost:     v.Cost,
+				CostUnit: costUnit,
 				Duration: formatDuration(v.Duration),
 				NumTurns: v.NumTurns,
 			},

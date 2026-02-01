@@ -167,7 +167,7 @@ references:
 
 ## Display Layer
 
-- [ ] 17. Update terminal display to use cost package <!-- id:xv47eyq -->
+- [x] 17. Update terminal display to use cost package <!-- id:xv47eyq -->
   - Modify formatCost in internal/orbit/orbit.go
   - Use cost.Format with appropriate unit
   - Add getSessionDuration helper for fallback logic
@@ -175,7 +175,7 @@ references:
   - Stream: 1
   - Requirements: [3.4](requirements.md#3.4), [4.1](requirements.md#4.1)
 
-- [ ] 18. Update web interface cost display <!-- id:xv47eyr -->
+- [x] 18. Update web interface cost display <!-- id:xv47eyr -->
   - Add formatCostTotals template helper in handlers.go
   - Update run_detail.html to use GetCostTotals
   - Show individual session costs with proper units
@@ -183,7 +183,7 @@ references:
   - Stream: 1
   - Requirements: [4.2](requirements.md#4.2)
 
-- [ ] 19. Update report templates to use cost.Format <!-- id:xv47eys -->
+- [x] 19. Update report templates to use cost.Format <!-- id:xv47eys -->
   - Modify internal/report/templates.go to use cost.Format
   - Replace or update formatCost function
   - Handle code changes display if shown in reports
@@ -191,7 +191,7 @@ references:
   - Stream: 1
   - Requirements: [4.3](requirements.md#4.3), [4.4](requirements.md#4.4)
 
-- [ ] 20. Update report generator tests <!-- id:xv47eyt -->
+- [x] 20. Update report generator tests <!-- id:xv47eyt -->
   - Update or remove TestFormatCost if it tests old function
   - Add tests for new cost formatting in reports
   - Blocked-by: xv47eys (Update report templates to use cost.Format)

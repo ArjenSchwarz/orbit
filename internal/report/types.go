@@ -35,6 +35,7 @@ type VariantReportData struct {
 // VariantMetrics holds execution metrics for report display.
 type VariantMetrics struct {
 	Cost     float64
+	CostUnit string // Cost unit type: "USD", "credits", or "premium_requests"
 	Duration string // Pre-formatted duration string
 	NumTurns int
 }
