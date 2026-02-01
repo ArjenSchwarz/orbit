@@ -28,6 +28,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - `CostUnit` field ("USD", "credits", "premium_requests") to distinguish cost types
 - Cost unit constants (`CostUnitUSD`, `CostUnitCredits`, `CostUnitPremiumRequests`) in agents package
 - Unit tests and property-based tests for Copilot usage parser using rapid
+- `internal/cost/` package added to CLAUDE.md architecture documentation
 
 ### Changed
 
