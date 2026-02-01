@@ -55,7 +55,7 @@ func TestManager_SaveSession(t *testing.T) {
 
 	result := &agents.RunResult{
 		SessionID: "test-session-123",
-		Cost:      &agents.CostMetrics{CostUSD: 0.15},
+		Cost:      &agents.CostMetrics{CostUSD: 0.15, CostUnit: "USD"},
 		Duration:  45 * time.Second,
 		NumTurns:  5,
 		Output:    "Test output",
@@ -195,7 +195,7 @@ func TestSanitizeName(t *testing.T) {
 func TestFormatTranscript(t *testing.T) {
 	result := &agents.RunResult{
 		SessionID: "abc123",
-		Cost:      &agents.CostMetrics{CostUSD: 0.25},
+		Cost:      &agents.CostMetrics{CostUSD: 0.25, CostUnit: "USD"},
 		Duration:  30 * time.Second,
 		NumTurns:  3,
 		Output:    "Test output content",
@@ -249,7 +249,7 @@ func TestManager_SavePostCompletionSession(t *testing.T) {
 
 	result := &agents.RunResult{
 		SessionID: "post-completion-session-456",
-		Cost:      &agents.CostMetrics{CostUSD: 0.25},
+		Cost:      &agents.CostMetrics{CostUSD: 0.25, CostUnit: "USD"},
 		Duration:  60 * time.Second,
 		NumTurns:  8,
 		Output:    "Review complete. All tests pass.",
@@ -324,7 +324,7 @@ func TestManager_SavePostCompletionSession(t *testing.T) {
 func TestFormatPostCompletionTranscript(t *testing.T) {
 	result := &agents.RunResult{
 		SessionID: "post-123",
-		Cost:      &agents.CostMetrics{CostUSD: 0.30},
+		Cost:      &agents.CostMetrics{CostUSD: 0.30, CostUnit: "USD"},
 		Duration:  45 * time.Second,
 		NumTurns:  5,
 		Output:    "Verification complete",
@@ -1229,7 +1229,7 @@ func TestWriteRunIndex_CreatesFiles(t *testing.T) {
 	// Add some sessions
 	result := &agents.RunResult{
 		SessionID: "test-session-123",
-		Cost:      &agents.CostMetrics{CostUSD: 0.15},
+		Cost:      &agents.CostMetrics{CostUSD: 0.15, CostUnit: "USD"},
 		Duration:  45 * time.Second,
 		NumTurns:  5,
 		Output:    "Test output",
@@ -1487,7 +1487,7 @@ func TestSaveSession_IncludesAgentInfo(t *testing.T) {
 
 	result := &agents.RunResult{
 		SessionID: "test-session-123",
-		Cost:      &agents.CostMetrics{CostUSD: 0.15},
+		Cost:      &agents.CostMetrics{CostUSD: 0.15, CostUnit: "USD"},
 		Duration:  45 * time.Second,
 		NumTurns:  5,
 		Output:    "Test output",
@@ -1555,7 +1555,7 @@ func TestSavePostCompletionSession_IncludesAgentInfo(t *testing.T) {
 
 	result := &agents.RunResult{
 		SessionID: "post-completion-456",
-		Cost:      &agents.CostMetrics{CostUSD: 0.25},
+		Cost:      &agents.CostMetrics{CostUSD: 0.25, CostUnit: "USD"},
 		Duration:  60 * time.Second,
 		NumTurns:  8,
 		Output:    "Review complete",
@@ -2141,5 +2141,103 @@ func TestGenerateHTMLIndex_WithPostCommand(t *testing.T) {
 	}
 	if !containsString(html, "command-card error") {
 		t.Error("HTML should mark failed command with error class")
+	}
+}
+
+// --- Backward Compatibility Tests for SessionEntry.GetCost ---
+
+func TestSessionEntry_GetCost_NewFormat(t *testing.T) {
+	entry := SessionEntry{
+		CostValue: 0.45,
+		CostUnit:  "credits",
+	}
+
+	value, unit := entry.GetCost()
+
+	if value != 0.45 {
+		t.Errorf("got value %v, want 0.45", value)
+	}
+	if unit != "credits" {
+		t.Errorf("got unit %q, want %q", unit, "credits")
+	}
+}
+
+func TestSessionEntry_GetCost_LegacyKiro(t *testing.T) {
+	entry := SessionEntry{
+		CostUSD:   0.45,
+		AgentType: "kiro",
+	}
+
+	value, unit := entry.GetCost()
+
+	if value != 0.45 {
+		t.Errorf("got value %v, want 0.45", value)
+	}
+	if unit != "credits" {
+		t.Errorf("got unit %q, want %q", unit, "credits")
+	}
+}
+
+func TestSessionEntry_GetCost_LegacyCopilot(t *testing.T) {
+	entry := SessionEntry{
+		CostUSD:   0.33,
+		AgentType: "copilot",
+	}
+
+	value, unit := entry.GetCost()
+
+	if value != 0.33 {
+		t.Errorf("got value %v, want 0.33", value)
+	}
+	if unit != "premium_requests" {
+		t.Errorf("got unit %q, want %q", unit, "premium_requests")
+	}
+}
+
+func TestSessionEntry_GetCost_LegacyClaude(t *testing.T) {
+	entry := SessionEntry{
+		CostUSD:   1.23,
+		AgentType: "claude-code",
+	}
+
+	value, unit := entry.GetCost()
+
+	if value != 1.23 {
+		t.Errorf("got value %v, want 1.23", value)
+	}
+	if unit != "USD" {
+		t.Errorf("got unit %q, want %q", unit, "USD")
+	}
+}
+
+func TestSessionEntry_GetCost_LegacyNoAgentType(t *testing.T) {
+	entry := SessionEntry{
+		CostUSD: 1.00,
+	}
+
+	value, unit := entry.GetCost()
+
+	if value != 1.00 {
+		t.Errorf("got value %v, want 1.00", value)
+	}
+	if unit != "USD" {
+		t.Errorf("got unit %q, want %q (default)", unit, "USD")
+	}
+}
+
+func TestSessionEntry_GetCost_ZeroCostNewFormat(t *testing.T) {
+	// Zero cost with explicit unit should use the unit, not fall back
+	entry := SessionEntry{
+		CostValue: 0,
+		CostUnit:  "premium_requests",
+	}
+
+	value, unit := entry.GetCost()
+
+	if value != 0 {
+		t.Errorf("got value %v, want 0", value)
+	}
+	if unit != "premium_requests" {
+		t.Errorf("got unit %q, want %q", unit, "premium_requests")
 	}
 }

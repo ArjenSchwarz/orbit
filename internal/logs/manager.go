@@ -15,6 +15,7 @@ import (
 
 	"github.com/arjenschwarz/orbit/internal/agents"
 	"github.com/arjenschwarz/orbit/internal/agents/claudecode"
+	"github.com/arjenschwarz/orbit/internal/cost"
 	"github.com/arjenschwarz/orbit/internal/transcript"
 	"github.com/google/uuid"
 )
@@ -66,7 +67,9 @@ type SessionEntry struct {
 	Phase      int       `json:"phase"`
 	SessionID  string    `json:"session_id"`
 	DurationMS int64     `json:"duration_ms"`
-	CostUSD    float64   `json:"cost_usd"`
+	CostUSD    float64   `json:"cost_usd"`              // Kept for backward compat
+	CostValue  float64   `json:"cost_value,omitempty"`  // NEW: actual cost value
+	CostUnit   string    `json:"cost_unit,omitempty"`   // NEW: unit type ("USD", "credits", "premium_requests")
 	NumTurns   int       `json:"num_turns"`
 	StartedAt  time.Time `json:"started_at"`
 	EndedAt    time.Time `json:"ended_at"`
@@ -77,13 +80,45 @@ type SessionEntry struct {
 	Model      string    `json:"model,omitempty"`       // Model used for this session
 }
 
+// GetCost returns the cost value and unit, handling backward compatibility.
+//
+// Decision logic:
+//  1. If CostUnit is set (non-empty), this is a new-format entry → use CostValue + CostUnit
+//  2. If CostUnit is empty but AgentType is set, this is legacy → use CostUSD + infer unit
+//  3. If both are empty, this is legacy with unknown agent → use CostUSD + "USD"
+//
+// This ensures zero-cost new-format entries (CostValue=0, CostUnit="premium_requests")
+// are handled correctly and don't fall through to legacy inference.
+func (e *SessionEntry) GetCost() (float64, string) {
+	// New format: CostUnit is explicitly set
+	if e.CostUnit != "" {
+		return e.CostValue, e.CostUnit
+	}
+
+	// Legacy format: infer unit from agent type
+	unit := cost.InferUnitFromAgent(e.AgentType)
+	if e.AgentType == "" {
+		// Both CostUnit and AgentType are empty - default to USD with warning
+		debugLog("SessionEntry has no cost_unit or agent_type, defaulting to USD")
+	}
+	return e.CostUSD, unit
+}
+
+// debugLog logs a message if ORBIT_DEBUG is enabled.
+func debugLog(format string, args ...any) {
+	if env := os.Getenv("ORBIT_DEBUG"); env == "true" || env == "1" {
+		log.Printf("[logs] "+format, args...)
+	}
+}
+
 // Summary contains the overall orchestration run summary.
 type Summary struct {
 	StartedAt       time.Time      `json:"started_at"`
 	CompletedAt     *time.Time     `json:"completed_at,omitempty"`
 	Status          string         `json:"status"`
 	PhasesCompleted int            `json:"phases_completed"`
-	TotalCostUSD    float64        `json:"total_cost_usd"`
+	TotalCostUSD    float64        `json:"total_cost_usd"`            // Kept for backward compat
+	CostTotals      *cost.Totals   `json:"cost_totals,omitempty"`     // NEW: aggregated costs by unit
 	TotalDurationMS int64          `json:"total_duration_ms"`
 	Sessions        []SessionEntry `json:"sessions"`
 	Error           string         `json:"error,omitempty"`
@@ -96,6 +131,30 @@ type Summary struct {
 	PrePrompt   *PrePromptState     `json:"pre_prompt,omitempty"`
 	PreCommand  *ShellCommandState  `json:"pre_command,omitempty"`
 	PostCommand *ShellCommandState  `json:"post_command,omitempty"`
+}
+
+// GetCostTotals returns aggregated costs, computing from sessions if needed.
+// If CostTotals is already set, returns it directly.
+// Otherwise, computes totals from session entries for backward compatibility.
+func (s *Summary) GetCostTotals() cost.Totals {
+	if s.CostTotals != nil {
+		return *s.CostTotals
+	}
+
+	// Compute from sessions (backward compat)
+	var totals cost.Totals
+	for _, session := range s.Sessions {
+		value, unit := session.GetCost()
+		switch unit {
+		case cost.UnitUSD:
+			totals.USD += value
+		case cost.UnitCredits:
+			totals.Credits += value
+		case cost.UnitPremiumRequests:
+			totals.PremiumRequests += value
+		}
+	}
+	return totals
 }
 
 // AgentInfo holds the resolved agent configuration for the current run.
@@ -466,17 +525,31 @@ func (m *Manager) postCompletionFileName() string {
 func (m *Manager) SaveSession(phase int, result *agents.RunResult, startTime time.Time) error {
 	endTime := time.Now()
 
-	// Extract cost from CostMetrics
-	var costUSD float64
+	// Extract cost value and unit from CostMetrics
+	var costValue float64
+	var costUnit string
+
 	if result.Cost != nil {
-		costUSD = result.Cost.CostUSD
+		costUnit = result.Cost.CostUnit
+		switch costUnit {
+		case cost.UnitCredits:
+			costValue = result.Cost.Credits
+		case cost.UnitPremiumRequests:
+			costValue = result.Cost.PremiumRequests
+		default:
+			// Default to USD for backward compatibility
+			costValue = result.Cost.CostUSD
+			costUnit = cost.UnitUSD
+		}
 	}
 
 	entry := SessionEntry{
 		Phase:      phase,
 		SessionID:  result.SessionID,
 		DurationMS: result.Duration.Milliseconds(),
-		CostUSD:    costUSD,
+		CostUSD:    costValue, // Write to both for backward compat
+		CostValue:  costValue,
+		CostUnit:   costUnit,
 		NumTurns:   result.NumTurns,
 		StartedAt:  startTime,
 		EndedAt:    endTime,
@@ -489,7 +562,23 @@ func (m *Manager) SaveSession(phase int, result *agents.RunResult, startTime tim
 
 	m.summary.Sessions = append(m.summary.Sessions, entry)
 	m.summary.PhasesCompleted = phase
-	m.summary.TotalCostUSD += costUSD
+
+	// Update CostTotals aggregation by unit
+	if m.summary.CostTotals == nil {
+		m.summary.CostTotals = &cost.Totals{}
+	}
+	switch costUnit {
+	case cost.UnitUSD:
+		m.summary.CostTotals.USD += costValue
+	case cost.UnitCredits:
+		m.summary.CostTotals.Credits += costValue
+	case cost.UnitPremiumRequests:
+		m.summary.CostTotals.PremiumRequests += costValue
+	}
+
+	// Backward compatibility: TotalCostUSD receives ALL cost values regardless of unit.
+	// This ensures old Orbit versions see a non-zero total for runs using Kiro/Copilot.
+	m.summary.TotalCostUSD += costValue
 	m.summary.TotalDurationMS += result.Duration.Milliseconds()
 
 	// Write session JSON (result only)
@@ -539,10 +628,22 @@ func (m *Manager) SavePostCompletionSession(result *agents.RunResult, startTime 
 	endTime := time.Now()
 	baseName := m.postCompletionFileName()
 
-	// Extract cost from CostMetrics
-	var costUSD float64
+	// Extract cost value and unit from CostMetrics
+	var costValue float64
+	var costUnit string
+
 	if result.Cost != nil {
-		costUSD = result.Cost.CostUSD
+		costUnit = result.Cost.CostUnit
+		switch costUnit {
+		case cost.UnitCredits:
+			costValue = result.Cost.Credits
+		case cost.UnitPremiumRequests:
+			costValue = result.Cost.PremiumRequests
+		default:
+			// Default to USD for backward compatibility
+			costValue = result.Cost.CostUSD
+			costUnit = cost.UnitUSD
+		}
 	}
 
 	// Add session entry to summary (Phase 0 indicates post-completion)
@@ -550,7 +651,9 @@ func (m *Manager) SavePostCompletionSession(result *agents.RunResult, startTime 
 		Phase:      0, // Post-completion marker
 		SessionID:  result.SessionID,
 		DurationMS: result.Duration.Milliseconds(),
-		CostUSD:    costUSD,
+		CostUSD:    costValue, // Write to both for backward compat
+		CostValue:  costValue,
+		CostUnit:   costUnit,
 		NumTurns:   result.NumTurns,
 		StartedAt:  startTime,
 		EndedAt:    endTime,
@@ -561,7 +664,22 @@ func (m *Manager) SavePostCompletionSession(result *agents.RunResult, startTime 
 		Model:      m.agentInfo.Model,
 	}
 	m.summary.Sessions = append(m.summary.Sessions, entry)
-	m.summary.TotalCostUSD += costUSD
+
+	// Update CostTotals aggregation by unit
+	if m.summary.CostTotals == nil {
+		m.summary.CostTotals = &cost.Totals{}
+	}
+	switch costUnit {
+	case cost.UnitUSD:
+		m.summary.CostTotals.USD += costValue
+	case cost.UnitCredits:
+		m.summary.CostTotals.Credits += costValue
+	case cost.UnitPremiumRequests:
+		m.summary.CostTotals.PremiumRequests += costValue
+	}
+
+	// Backward compatibility: TotalCostUSD receives ALL cost values regardless of unit.
+	m.summary.TotalCostUSD += costValue
 	m.summary.TotalDurationMS += result.Duration.Milliseconds()
 
 	// Save JSON

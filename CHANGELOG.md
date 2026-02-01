@@ -15,6 +15,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Supports minutes-seconds duration format (e.g., "1m 36.11s")
   - Aggregates tokens from multiple model breakdown lines
   - Integration with Copilot agent to populate `RunResult.Cost` after execution
+- Storage layer support for multi-unit cost tracking (`internal/logs/manager.go`)
+  - `CostValue` and `CostUnit` fields in `SessionEntry` for explicit cost typing
+  - `GetCost()` method with backward compatibility (infers unit from AgentType for legacy entries)
+  - `CostTotals` field in `Summary` struct for aggregated costs by unit
+  - `GetCostTotals()` method computes totals from sessions when not pre-computed
+  - `SaveSession()` and `SavePostCompletionSession()` handle cost unit extraction and aggregation
 - New `CostMetrics` fields for enhanced cost tracking (`internal/agents/agent.go`)
   - `CachedTokens` for Copilot cached tokens
   - `APIDuration` and `SessionDuration` pointer fields for optional time metrics

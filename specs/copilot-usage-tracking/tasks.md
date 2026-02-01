@@ -112,7 +112,7 @@ references:
 
 ## Storage Layer
 
-- [ ] 11. Update SessionEntry struct in logs package <!-- id:xv47eyk -->
+- [x] 11. Update SessionEntry struct in logs package <!-- id:xv47eyk -->
   - Add CostValue float64 field with json tag
   - Add CostUnit string field with json tag
   - Keep CostUSD for backward compatibility
@@ -121,7 +121,7 @@ references:
   - Stream: 3
   - Requirements: [2.3](requirements.md#2.3), [6.4](requirements.md#6.4)
 
-- [ ] 12. Add GetCost method to SessionEntry <!-- id:xv47eyl -->
+- [x] 12. Add GetCost method to SessionEntry <!-- id:xv47eyl -->
   - Implement GetCost() (float64, string) method
   - Use CostUnit as primary discriminator
   - Fall back to InferUnitFromAgent for legacy entries
@@ -130,7 +130,7 @@ references:
   - Stream: 3
   - Requirements: [2.4](requirements.md#2.4), [6.2](requirements.md#6.2)
 
-- [ ] 13. Update Summary struct with CostTotals <!-- id:xv47eym -->
+- [x] 13. Update Summary struct with CostTotals <!-- id:xv47eym -->
   - Add CostTotals *cost.Totals field
   - Keep TotalCostUSD for backward compatibility
   - Add GetCostTotals() method that computes from sessions if needed
@@ -138,7 +138,7 @@ references:
   - Stream: 3
   - Requirements: [5.1](requirements.md#5.1), [6.1](requirements.md#6.1)
 
-- [ ] 14. Update SaveSession to handle cost units <!-- id:xv47eyn -->
+- [x] 14. Update SaveSession to handle cost units <!-- id:xv47eyn -->
   - Determine costValue and costUnit from CostMetrics
   - Write to both CostUSD and CostValue for backward compat
   - Update CostTotals aggregation by unit
@@ -147,7 +147,7 @@ references:
   - Stream: 3
   - Requirements: [2.3](requirements.md#2.3), [6.1](requirements.md#6.1), [6.3](requirements.md#6.3)
 
-- [ ] 15. Add backward compatibility tests for SessionEntry <!-- id:xv47eyo -->
+- [x] 15. Add backward compatibility tests for SessionEntry <!-- id:xv47eyo -->
   - Test GetCost with new format entries
   - Test GetCost with legacy kiro entries
   - Test GetCost with legacy copilot entries
@@ -157,7 +157,7 @@ references:
   - Stream: 3
   - Requirements: [6.1](requirements.md#6.1), [6.2](requirements.md#6.2), [6.3](requirements.md#6.3)
 
-- [ ] 16. Update existing manager tests for new fields <!-- id:xv47eyp -->
+- [x] 16. Update existing manager tests for new fields <!-- id:xv47eyp -->
   - Update TestManager_SaveSession fixtures with CostUnit
   - Update TestManager_SavePostCompletionSession fixtures
   - Update TestSaveSession_IncludesAgentInfo expected fields
