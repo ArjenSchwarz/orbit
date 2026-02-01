@@ -43,6 +43,7 @@ var copilotTypes = map[string]bool{
 	"tool.execution_complete": true,
 	"skill.invoked":           true,
 	"abort":                   true,
+	"function":                true, // Legacy event type
 }
 
 // infrastructureTypes are entry types that should be skipped during format detection.
