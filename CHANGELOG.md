@@ -7,7 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- Variant status display showing "Waiting for activity..." despite active agent sessions
+  - Added `StartPhase()` call before running each variant phase to populate `CurrentPhase` in summary.json
+  - Added `CompletePhase()` call after successful phase completion to clear tracking state
+  - Status gatherer can now find live transcript paths during variant execution
+- Auto-consolidate race condition where consolidation ran before report was written
+  - Reordered operations in `runWithVariants()` to call `generateReport()` before `runAutoConsolidate()`
+  - Consolidation now correctly reads the comparison report from disk
+
 ### Added
+
+- Testing guidelines in CLAUDE.md requiring tests to have actual assertions and provide real value
 
 - Copilot usage parser (`internal/agents/copilot/usage.go`) for extracting usage metrics from CLI output
   - Parses premium requests, API time, session time, code changes, and token counts

@@ -28,6 +28,15 @@ make clean          # Remove build artifacts
 go test ./internal/orbit -run TestName
 ```
 
+## Testing Guidelines
+
+When adding tests, ensure they provide actual value:
+
+- **Do NOT create documentation-only tests** - Tests that only contain `t.Log()` statements documenting expected behavior are not real tests. If a test doesn't have assertions that can fail, it shouldn't exist.
+- **Tests must verify behavior** - Every test should have assertions (`t.Error`, `t.Errorf`, `t.Fatal`, etc.) that verify actual behavior matches expected behavior.
+- **Prefer testing real functionality** - Use mocks to isolate dependencies, but test actual code paths. Tests that just verify struct field initialization or duplicate validation logic from production code add little value.
+- **If proper testing isn't feasible, skip the test** - It's better to have no test than a fake test that gives false confidence. Document the gap and create a spec to address it properly.
+
 ## Architecture
 
 The codebase follows a clean internal package structure:
