@@ -9,6 +9,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Test fixtures and rapid generators for integration testing (`internal/testutil/`)
+  - `TestAgentResolver` implementing `orbit.AgentResolver` for dependency injection
+  - `CreateTasksFile(t, phases)` creating minimal tasks.md in temp directory
+  - `CreateConfig(t, opts)` creating .orbit.yaml with specified options
+  - `CreateTestOrbit(t, ...opts)` wiring TestAgent, Clock, and RuneClient
+  - `WithAgent`, `WithAgents`, `WithOrbitClock`, `WithTasksFile`, `WithPrePrompt`, `WithPostPrompt` options
+  - `CreateRuneClient(t, tasksFile)` for creating rune clients
+  - `SuccessScenario(t, phases)` convenience helper for all-success scenarios
+  - `RunResultGen()` rapid generator with SessionID/ExitCode invariants
+  - `CostMetricsGen()` rapid generator with non-negative CostUSD invariant
+  - `ErrorClassGen()` rapid generator for valid error classifications
+  - `RandomScenarioGen(length)` rapid generator for mixed success/error scenarios
+  - Property tests: `TestProperty_OrchestrationHandlesAnyErrorSequence`, `TestProperty_RetryCountBounded`
+  - Unit tests for all fixtures and generator invariants
+
 - Integration test framework core components (`internal/testutil/`)
   - `TestAgent` implementing full `agents.Agent` interface for mock testing
   - `TestAgentConfig` for configuring agent identity (Name, CLICommand, Version, etc.)

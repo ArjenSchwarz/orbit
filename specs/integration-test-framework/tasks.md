@@ -167,7 +167,7 @@ references:
 
 ## Fixtures and Generators
 
-- [ ] 16. Implement test fixtures <!-- id:h55dblm -->
+- [x] 16. Implement test fixtures <!-- id:h55dblm -->
   - Implement TestAgentResolver struct with agents map
   - Implement CreateTasksFile(t, phases) using t.TempDir()
   - Implement CreateConfig(t, opts) with ConfigOptions struct
@@ -180,7 +180,7 @@ references:
   - Stream: 2
   - Requirements: [4.1](requirements.md#4.1), [4.2](requirements.md#4.2), [4.3](requirements.md#4.3), [4.4](requirements.md#4.4), [4.5](requirements.md#4.5), [4.6](requirements.md#4.6), [4.7](requirements.md#4.7), [4.8](requirements.md#4.8), [4.9](requirements.md#4.9), [4.10](requirements.md#4.10), [5.3](requirements.md#5.3), [5.4](requirements.md#5.4), [5.5](requirements.md#5.5), [5.6](requirements.md#5.6)
 
-- [ ] 17. Write fixtures unit tests <!-- id:h55dbln -->
+- [x] 17. Write fixtures unit tests <!-- id:h55dbln -->
   - Test CreateTasksFile creates valid tasks.md
   - Test CreateConfig creates valid .orbit.yaml
   - Test CreateTestOrbit injects agent correctly
@@ -188,7 +188,7 @@ references:
   - Blocked-by: h55dblm (Implement test fixtures)
   - Stream: 2
 
-- [ ] 18. Implement rapid generators <!-- id:h55dblo -->
+- [x] 18. Implement rapid generators <!-- id:h55dblo -->
   - Implement RunResultGen() with invariants: SessionID non-empty when !IsError, ExitCode 0 for success
   - Implement CostMetricsGen() with invariant: CostUSD non-negative
   - Implement ErrorClassGen() sampling valid error classes
@@ -197,7 +197,7 @@ references:
   - Stream: 2
   - Requirements: [7.1](requirements.md#7.1), [7.2](requirements.md#7.2), [7.3](requirements.md#7.3), [7.4](requirements.md#7.4), [7.5](requirements.md#7.5)
 
-- [ ] 19. Write generator invariant tests and property tests <!-- id:h55dblp -->
+- [x] 19. Write generator invariant tests and property tests <!-- id:h55dblp -->
   - Test RunResultGen produces valid values
   - Test CostMetricsGen produces non-negative costs
   - Implement TestProperty_OrchestrationHandlesAnyErrorSequence
