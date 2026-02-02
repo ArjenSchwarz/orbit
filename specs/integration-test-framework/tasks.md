@@ -27,7 +27,7 @@ references:
 
 ## Core Framework
 
-- [ ] 3. Define core types and interfaces <!-- id:h55dbl9 -->
+- [x] 3. Define core types and interfaces <!-- id:h55dbl9 -->
   - Create internal/testutil/ package
   - Define Clock interface (matches Orbit's interface)
   - Define AgentCall struct with Index, Method, Options, SessionID, Timestamp, HasDeadline, Deadline fields
@@ -36,7 +36,7 @@ references:
   - Stream: 2
   - Requirements: [3.2](requirements.md#3.2), [2.12](requirements.md#2.12)
 
-- [ ] 4. Implement Recorder with thread-safe call tracking <!-- id:h55dbla -->
+- [x] 4. Implement Recorder with thread-safe call tracking <!-- id:h55dbla -->
   - Implement Recorder struct with mutex and calls slice
   - Implement record() with mutex lock
   - Implement CallCount() returning count
@@ -47,7 +47,7 @@ references:
   - Stream: 2
   - Requirements: [3.1](requirements.md#3.1), [3.3](requirements.md#3.3), [3.4](requirements.md#3.4), [3.5](requirements.md#3.5), [3.6](requirements.md#3.6), [3.9](requirements.md#3.9)
 
-- [ ] 5. Implement Recorder assertion methods <!-- id:h55dblb -->
+- [x] 5. Implement Recorder assertion methods <!-- id:h55dblb -->
   - Implement AssertCallCount(t, expected) with descriptive failure message
   - Implement AssertCallOrder(t, ...patterns) with regex matching and failure details
   - Implement formatCalls() helper for error messages
@@ -55,7 +55,7 @@ references:
   - Stream: 2
   - Requirements: [3.7](requirements.md#3.7), [3.8](requirements.md#3.8), [3.10](requirements.md#3.10)
 
-- [ ] 6. Write Recorder unit tests <!-- id:h55dblc -->
+- [x] 6. Write Recorder unit tests <!-- id:h55dblc -->
   - Test concurrent access with multiple goroutines
   - Test Calls() returns copy (modify returned slice, verify original unchanged)
   - Test AssertCallCount failure messages
@@ -65,7 +65,7 @@ references:
   - Stream: 2
   - Requirements: [11.2](requirements.md#11.2), [11.4](requirements.md#11.4)
 
-- [ ] 7. Implement ScenarioBuilder fluent API <!-- id:h55dbld -->
+- [x] 7. Implement ScenarioBuilder fluent API <!-- id:h55dbld -->
   - Implement NewScenario() returning *ScenarioBuilder
   - Implement Success(sessionID, cost) adding success response
   - Implement RetryableError(message) adding retryable error
@@ -76,7 +76,7 @@ references:
   - Stream: 2
   - Requirements: [2.1](requirements.md#2.1), [2.2](requirements.md#2.2), [2.3](requirements.md#2.3), [2.4](requirements.md#2.4), [2.5](requirements.md#2.5), [2.6](requirements.md#2.6)
 
-- [ ] 8. Implement ScenarioBuilder modifiers <!-- id:h55dble -->
+- [x] 8. Implement ScenarioBuilder modifiers <!-- id:h55dble -->
   - Implement WithDelay(d) setting delay on last response
   - Implement WithOutput(output, stderr) setting output fields
   - Implement WithCost(metrics) setting cost metrics
@@ -87,7 +87,7 @@ references:
   - Stream: 2
   - Requirements: [2.7](requirements.md#2.7), [2.8](requirements.md#2.8), [2.9](requirements.md#2.9), [2.10](requirements.md#2.10), [2.12](requirements.md#2.12)
 
-- [ ] 9. Write ScenarioBuilder unit tests <!-- id:h55dblf -->
+- [x] 9. Write ScenarioBuilder unit tests <!-- id:h55dblf -->
   - Test immutability after Build()
   - Test method chaining returns same builder
   - Test all response methods create correct CallResponse
@@ -98,7 +98,7 @@ references:
   - Stream: 2
   - Requirements: [11.1](requirements.md#11.1)
 
-- [ ] 10. Implement FakeClock <!-- id:h55dblg -->
+- [x] 10. Implement FakeClock <!-- id:h55dblg -->
   - Implement FakeClock struct with mutex, current time, sleeps slice
   - Implement NewFakeClock(start) constructor
   - Implement Now() returning controlled time
@@ -110,7 +110,7 @@ references:
   - Stream: 2
   - Requirements: [6.1](requirements.md#6.1), [6.2](requirements.md#6.2), [6.3](requirements.md#6.3), [6.4](requirements.md#6.4)
 
-- [ ] 11. Write FakeClock unit tests <!-- id:h55dblh -->
+- [x] 11. Write FakeClock unit tests <!-- id:h55dblh -->
   - Test Advance moves time correctly
   - Test Sleep records duration without blocking
   - Test concurrent access safety

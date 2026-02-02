@@ -9,6 +9,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Integration test framework core components (`internal/testutil/`)
+  - `Recorder` with thread-safe call tracking and assertion methods (`AssertCallCount`, `AssertCallOrder`)
+  - `ScenarioBuilder` fluent API for defining agent response sequences (`Success`, `RetryableError`, `FatalError`, `SessionInvalid`, `RateLimitWait`)
+  - `ScenarioBuilder` modifiers (`WithDelay`, `WithOutput`, `WithCost`, `Repeat`, `Custom`)
+  - `FakeClock` for deterministic timing tests with `Now()`, `Advance()`, `Sleep()`, and `AssertSleeps()`
+  - Core types: `AgentCall`, `CallResponse`, `Scenario`, `Clock` interface
+  - Full test suite with race detection passing
+
 - Clock interface and AgentResolver interface for testing support (`internal/orbit/`)
   - `Clock` interface with `Now()` and `Sleep()` methods for deterministic timing tests
   - `RealClock` struct implementing `Clock` using actual time functions
