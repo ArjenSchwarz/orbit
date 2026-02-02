@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- Session resume failure detection for Claude Code "No conversation found" error
+  - Added "no conversation found" to `isSessionInvalidError()` pattern matching
+  - Fixes variant runs failing when resuming sessions in recreated worktrees
+  - Orbit now correctly falls back to starting a fresh session instead of failing
+
 ### Added
 
 - Integration test framework specification (`specs/integration-test-framework/`)

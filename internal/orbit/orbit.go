@@ -1284,6 +1284,7 @@ func isSessionInvalidError(result *agents.RunResult) bool {
 		"invalid session",
 		"session expired",
 		"no such session",
+		"no conversation found",
 	}
 
 	combinedLower := strings.ToLower(combined)

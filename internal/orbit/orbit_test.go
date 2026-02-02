@@ -451,6 +451,13 @@ func TestIsSessionInvalidError(t *testing.T) {
 			},
 			want: true,
 		},
+		"no conversation found": {
+			result: &agents.RunResult{
+				Stderr: "",
+				Output: "No conversation found with session ID: e97e6f18-bbe5-4186-84e8-74ccd65c7dcf",
+			},
+			want: true,
+		},
 		"case insensitive matching": {
 			result: &agents.RunResult{
 				Stderr: "SESSION NOT FOUND",
