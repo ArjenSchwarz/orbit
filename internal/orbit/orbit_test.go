@@ -16,6 +16,7 @@ import (
 	"github.com/arjenschwarz/orbit/internal/logs"
 	"github.com/arjenschwarz/orbit/internal/registry"
 	"github.com/arjenschwarz/orbit/internal/rune"
+	"github.com/arjenschwarz/orbit/internal/testutil"
 )
 
 // mockClaudeClient implements claudeRunner for testing.
@@ -170,78 +171,60 @@ func TestComplete_PostPromptSkippedWhenEmpty(t *testing.T) {
 }
 
 func TestRunPostPromptWithRetry_Success(t *testing.T) {
-	callCount := 0
-	mockAg := &mockAgent{
-		name: "test-agent",
-		runFunc: func(ctx context.Context, opts agents.RunOptions) (*agents.RunResult, error) {
-			callCount++
-			return &agents.RunResult{
-				SessionID: "test-session",
-				Cost:      &agents.CostMetrics{CostUSD: 0.01},
-				Duration:  time.Second,
-				NumTurns:  5,
-				Output:    "Success",
-				IsError:   false,
-			}, nil
-		},
-	}
+	// Define expected agent behavior using ScenarioBuilder
+	scenario := testutil.NewScenario().
+		Success("test-session", 0.01).
+		WithOutput("Success", "").
+		Build()
 
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	agent := testutil.NewTestAgent(t, "test-agent", scenario)
+	t.Cleanup(func() { agent.AssertAllConsumed(t) })
 
 	o := &Orbit{
 		config: Config{
 			PostPrompt: "test command",
 		},
-		agent:           mockAg,
+		agent:           agent,
 		logManager:      nil,
 		errorClassifier: agents.GetClassifier("test"), // Use default classifier
-		shutdownCtx:     ctx,
+		shutdownCtx:     t.Context(),
 	}
 
 	err := o.runPostPromptWithRetry()
 	if err != nil {
 		t.Errorf("runPostPromptWithRetry() returned error: %v", err)
 	}
-	if callCount != 1 {
-		t.Errorf("expected 1 call, got %d", callCount)
-	}
+
+	// Verify using Recorder
+	agent.Recorder().AssertCallCount(t, 1)
 }
 
 func TestRunPostPromptWithRetry_NonRetryableError(t *testing.T) {
-	callCount := 0
-	mockAg := &mockAgent{
-		name: "test-agent",
-		runFunc: func(ctx context.Context, opts agents.RunOptions) (*agents.RunResult, error) {
-			callCount++
-			return &agents.RunResult{
-				Stderr:  "unknown error occurred",
-				IsError: true,
-			}, errors.New("exit status 1")
-		},
-	}
+	// Define expected agent behavior - fatal error (non-retryable)
+	scenario := testutil.NewScenario().
+		FatalError("unknown error occurred").
+		Build()
 
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	agent := testutil.NewTestAgent(t, "test-agent", scenario)
+	t.Cleanup(func() { agent.AssertAllConsumed(t) })
 
 	o := &Orbit{
 		config: Config{
 			PostPrompt: "test command",
 		},
-		agent:           mockAg,
+		agent:           agent,
 		logManager:      nil,
 		errorClassifier: agents.GetClassifier("test"), // Use default classifier
-		shutdownCtx:     ctx,
+		shutdownCtx:     t.Context(),
 	}
 
 	err := o.runPostPromptWithRetry()
 	if err == nil {
 		t.Error("expected error, got nil")
 	}
-	// Non-retryable errors should not retry
-	if callCount != 1 {
-		t.Errorf("expected 1 call for non-retryable error, got %d", callCount)
-	}
+
+	// Non-retryable errors should not retry - verify only 1 call was made
+	agent.Recorder().AssertCallCount(t, 1)
 }
 
 func TestRunPostPromptWithRetry_RetryableError_EventualSuccess(t *testing.T) {
@@ -1245,10 +1228,11 @@ func TestIntegration_VariantRunWithDifferentModels(t *testing.T) {
 
 func TestRunAgentPreCommand_Success(t *testing.T) {
 	tempDir := t.TempDir()
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
 
-	mockAg := &mockAgent{name: "test-agent"}
+	// Use TestAgent with empty scenario - agent.Run() won't be called
+	scenario := testutil.NewScenario().Build()
+	agent := testutil.NewTestAgent(t, "test-agent", scenario)
+
 	dbg, _ := debug.NewLogger(debug.LoggerConfig{})
 	defer dbg.Close()
 
@@ -1258,9 +1242,9 @@ func TestRunAgentPreCommand_Success(t *testing.T) {
 			WorkingDir:      tempDir,
 			CommandTimeout:  30 * time.Second,
 		},
-		agent:       mockAg,
+		agent:       agent,
 		runeClient:  rune.NewClient(filepath.Join(tempDir, "tasks.md")),
-		shutdownCtx: ctx,
+		shutdownCtx: t.Context(),
 		debug:       dbg,
 	}
 
@@ -1272,10 +1256,11 @@ func TestRunAgentPreCommand_Success(t *testing.T) {
 
 func TestRunAgentPreCommand_SkipsWhenEmpty(t *testing.T) {
 	tempDir := t.TempDir()
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
 
-	mockAg := &mockAgent{name: "test-agent"}
+	// Use TestAgent with empty scenario - agent.Run() won't be called
+	scenario := testutil.NewScenario().Build()
+	agent := testutil.NewTestAgent(t, "test-agent", scenario)
+
 	dbg, _ := debug.NewLogger(debug.LoggerConfig{})
 	defer dbg.Close()
 
@@ -1285,9 +1270,9 @@ func TestRunAgentPreCommand_SkipsWhenEmpty(t *testing.T) {
 			WorkingDir:      tempDir,
 			CommandTimeout:  30 * time.Second,
 		},
-		agent:       mockAg,
+		agent:       agent,
 		runeClient:  rune.NewClient(filepath.Join(tempDir, "tasks.md")),
-		shutdownCtx: ctx,
+		shutdownCtx: t.Context(),
 		debug:       dbg,
 	}
 
@@ -1299,10 +1284,11 @@ func TestRunAgentPreCommand_SkipsWhenEmpty(t *testing.T) {
 
 func TestRunAgentPreCommand_FailureAbortsRun(t *testing.T) {
 	tempDir := t.TempDir()
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
 
-	mockAg := &mockAgent{name: "test-agent"}
+	// Use TestAgent with empty scenario - agent.Run() won't be called
+	scenario := testutil.NewScenario().Build()
+	agent := testutil.NewTestAgent(t, "test-agent", scenario)
+
 	dbg, _ := debug.NewLogger(debug.LoggerConfig{})
 	defer dbg.Close()
 
@@ -1312,9 +1298,9 @@ func TestRunAgentPreCommand_FailureAbortsRun(t *testing.T) {
 			WorkingDir:      tempDir,
 			CommandTimeout:  30 * time.Second,
 		},
-		agent:       mockAg,
+		agent:       agent,
 		runeClient:  rune.NewClient(filepath.Join(tempDir, "tasks.md")),
-		shutdownCtx: ctx,
+		shutdownCtx: t.Context(),
 		debug:       dbg,
 	}
 
@@ -1329,10 +1315,11 @@ func TestRunAgentPreCommand_FailureAbortsRun(t *testing.T) {
 
 func TestRunAgentPostCommand_Success(t *testing.T) {
 	tempDir := t.TempDir()
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
 
-	mockAg := &mockAgent{name: "test-agent"}
+	// Use TestAgent with empty scenario - agent.Run() won't be called
+	scenario := testutil.NewScenario().Build()
+	agent := testutil.NewTestAgent(t, "test-agent", scenario)
+
 	dbg, _ := debug.NewLogger(debug.LoggerConfig{})
 	defer dbg.Close()
 
@@ -1342,9 +1329,9 @@ func TestRunAgentPostCommand_Success(t *testing.T) {
 			WorkingDir:       tempDir,
 			CommandTimeout:   30 * time.Second,
 		},
-		agent:       mockAg,
+		agent:       agent,
 		runeClient:  rune.NewClient(filepath.Join(tempDir, "tasks.md")),
-		shutdownCtx: ctx,
+		shutdownCtx: t.Context(),
 		debug:       dbg,
 	}
 
@@ -1356,10 +1343,11 @@ func TestRunAgentPostCommand_Success(t *testing.T) {
 
 func TestRunAgentPostCommand_FailureWarns(t *testing.T) {
 	tempDir := t.TempDir()
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
 
-	mockAg := &mockAgent{name: "test-agent"}
+	// Use TestAgent with empty scenario - agent.Run() won't be called
+	scenario := testutil.NewScenario().Build()
+	agent := testutil.NewTestAgent(t, "test-agent", scenario)
+
 	dbg, _ := debug.NewLogger(debug.LoggerConfig{})
 	defer dbg.Close()
 
@@ -1369,9 +1357,9 @@ func TestRunAgentPostCommand_FailureWarns(t *testing.T) {
 			WorkingDir:       tempDir,
 			CommandTimeout:   30 * time.Second,
 		},
-		agent:       mockAg,
+		agent:       agent,
 		runeClient:  rune.NewClient(filepath.Join(tempDir, "tasks.md")),
-		shutdownCtx: ctx,
+		shutdownCtx: t.Context(),
 		debug:       dbg,
 	}
 
@@ -1384,10 +1372,11 @@ func TestRunAgentPostCommand_FailureWarns(t *testing.T) {
 
 func TestRunAgentPostCommand_SkipsWhenEmpty(t *testing.T) {
 	tempDir := t.TempDir()
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
 
-	mockAg := &mockAgent{name: "test-agent"}
+	// Use TestAgent with empty scenario - agent.Run() won't be called
+	scenario := testutil.NewScenario().Build()
+	agent := testutil.NewTestAgent(t, "test-agent", scenario)
+
 	dbg, _ := debug.NewLogger(debug.LoggerConfig{})
 	defer dbg.Close()
 
@@ -1397,9 +1386,9 @@ func TestRunAgentPostCommand_SkipsWhenEmpty(t *testing.T) {
 			WorkingDir:       tempDir,
 			CommandTimeout:   30 * time.Second,
 		},
-		agent:       mockAg,
+		agent:       agent,
 		runeClient:  rune.NewClient(filepath.Join(tempDir, "tasks.md")),
-		shutdownCtx: ctx,
+		shutdownCtx: t.Context(),
 		debug:       dbg,
 	}
 
@@ -1411,19 +1400,16 @@ func TestRunAgentPostCommand_SkipsWhenEmpty(t *testing.T) {
 
 func TestRunPrePrompt_Success(t *testing.T) {
 	tempDir := t.TempDir()
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
 
-	mockAg := &mockAgent{
-		name: "test-agent",
-		runFunc: func(ctx context.Context, opts agents.RunOptions) (*agents.RunResult, error) {
-			return &agents.RunResult{
-				SessionID: "pre-prompt-session-123",
-				Output:    "Pre-prompt executed successfully",
-				IsError:   false,
-			}, nil
-		},
-	}
+	// Define expected agent behavior - returns session ID
+	scenario := testutil.NewScenario().
+		Success("pre-prompt-session-123", 0.01).
+		WithOutput("Pre-prompt executed successfully", "").
+		Build()
+
+	agent := testutil.NewTestAgent(t, "test-agent", scenario)
+	t.Cleanup(func() { agent.AssertAllConsumed(t) })
+
 	dbg, _ := debug.NewLogger(debug.LoggerConfig{})
 	defer dbg.Close()
 
@@ -1433,8 +1419,8 @@ func TestRunPrePrompt_Success(t *testing.T) {
 			WorkingDir:     tempDir,
 			CommandTimeout: 30 * time.Second,
 		},
-		agent:       mockAg,
-		shutdownCtx: ctx,
+		agent:       agent,
+		shutdownCtx: t.Context(),
 		debug:       dbg,
 	}
 
@@ -1447,20 +1433,18 @@ func TestRunPrePrompt_Success(t *testing.T) {
 	if o.prePromptSessionID != "pre-prompt-session-123" {
 		t.Errorf("prePromptSessionID = %q, want %q", o.prePromptSessionID, "pre-prompt-session-123")
 	}
+
+	// Verify agent was called exactly once
+	agent.Recorder().AssertCallCount(t, 1)
 }
 
 func TestRunPrePrompt_SkipsWhenEmpty(t *testing.T) {
 	tempDir := t.TempDir()
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
 
-	mockAg := &mockAgent{
-		name: "test-agent",
-		runFunc: func(ctx context.Context, opts agents.RunOptions) (*agents.RunResult, error) {
-			t.Error("Agent should not be called when pre-prompt is empty")
-			return nil, errors.New("should not be called")
-		},
-	}
+	// Use TestAgent with empty scenario - agent should NOT be called
+	scenario := testutil.NewScenario().Build()
+	agent := testutil.NewTestAgent(t, "test-agent", scenario)
+
 	dbg, _ := debug.NewLogger(debug.LoggerConfig{})
 	defer dbg.Close()
 
@@ -1470,8 +1454,8 @@ func TestRunPrePrompt_SkipsWhenEmpty(t *testing.T) {
 			WorkingDir:     tempDir,
 			CommandTimeout: 30 * time.Second,
 		},
-		agent:       mockAg,
-		shutdownCtx: ctx,
+		agent:       agent,
+		shutdownCtx: t.Context(),
 		debug:       dbg,
 	}
 
@@ -1479,22 +1463,22 @@ func TestRunPrePrompt_SkipsWhenEmpty(t *testing.T) {
 	if err != nil {
 		t.Errorf("runPrePrompt() should not return error when prompt is empty: %v", err)
 	}
+
+	// Verify agent was NOT called
+	agent.Recorder().AssertCallCount(t, 0)
 }
 
 func TestRunPrePrompt_FailureAbortsRun(t *testing.T) {
 	tempDir := t.TempDir()
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
 
-	mockAg := &mockAgent{
-		name: "test-agent",
-		runFunc: func(ctx context.Context, opts agents.RunOptions) (*agents.RunResult, error) {
-			return &agents.RunResult{
-				Stderr:  "Agent failed",
-				IsError: true,
-			}, errors.New("agent execution failed")
-		},
-	}
+	// Define expected agent behavior - fatal error
+	scenario := testutil.NewScenario().
+		FatalError("agent execution failed").
+		Build()
+
+	agent := testutil.NewTestAgent(t, "test-agent", scenario)
+	t.Cleanup(func() { agent.AssertAllConsumed(t) })
+
 	dbg, _ := debug.NewLogger(debug.LoggerConfig{})
 	defer dbg.Close()
 
@@ -1504,8 +1488,8 @@ func TestRunPrePrompt_FailureAbortsRun(t *testing.T) {
 			WorkingDir:     tempDir,
 			CommandTimeout: 30 * time.Second,
 		},
-		agent:       mockAg,
-		shutdownCtx: ctx,
+		agent:       agent,
+		shutdownCtx: t.Context(),
 		debug:       dbg,
 	}
 
@@ -1516,12 +1500,13 @@ func TestRunPrePrompt_FailureAbortsRun(t *testing.T) {
 	if !strings.Contains(err.Error(), "pre-prompt failed") {
 		t.Errorf("expected 'pre-prompt failed' in error message, got: %v", err)
 	}
+
+	// Verify agent was called exactly once
+	agent.Recorder().AssertCallCount(t, 1)
 }
 
 func TestRunPrePrompt_ResumesCompletedSession(t *testing.T) {
 	tempDir := t.TempDir()
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
 
 	// Create log manager with completed pre-prompt state
 	logManager, err := logs.NewManagerWithOptions(tempDir, "test-branch", tempDir, logs.ManagerOptions{UseSubdirs: false})
@@ -1538,13 +1523,10 @@ func TestRunPrePrompt_ResumesCompletedSession(t *testing.T) {
 		t.Fatalf("CompletePrePrompt() returned error: %v", err)
 	}
 
-	mockAg := &mockAgent{
-		name: "test-agent",
-		runFunc: func(ctx context.Context, opts agents.RunOptions) (*agents.RunResult, error) {
-			t.Error("Agent should not be called when pre-prompt is already completed")
-			return nil, errors.New("should not be called")
-		},
-	}
+	// Use TestAgent with empty scenario - agent should NOT be called
+	scenario := testutil.NewScenario().Build()
+	agent := testutil.NewTestAgent(t, "test-agent", scenario)
+
 	dbg, _ := debug.NewLogger(debug.LoggerConfig{})
 	defer dbg.Close()
 
@@ -1554,9 +1536,9 @@ func TestRunPrePrompt_ResumesCompletedSession(t *testing.T) {
 			WorkingDir:     tempDir,
 			CommandTimeout: 30 * time.Second,
 		},
-		agent:       mockAg,
+		agent:       agent,
 		logManager:  logManager,
-		shutdownCtx: ctx,
+		shutdownCtx: t.Context(),
 		debug:       dbg,
 	}
 
@@ -1569,12 +1551,13 @@ func TestRunPrePrompt_ResumesCompletedSession(t *testing.T) {
 	if o.prePromptSessionID != "completed-session-id" {
 		t.Errorf("prePromptSessionID = %q, want %q", o.prePromptSessionID, "completed-session-id")
 	}
+
+	// Verify agent was NOT called (pre-prompt was already completed)
+	agent.Recorder().AssertCallCount(t, 0)
 }
 
 func TestRunPhase_UsesPrePromptSession(t *testing.T) {
 	tempDir := t.TempDir()
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
 
 	// Track whether Resume was called with the pre-prompt session
 	var resumedSessionID string
@@ -1599,10 +1582,10 @@ func TestRunPhase_UsesPrePromptSession(t *testing.T) {
 		config: Config{
 			WorkingDir: tempDir,
 		},
-		claudeClient:        mockClient,
-		prePromptSessionID:  "pre-prompt-session-123", // Simulates pre-prompt having completed
-		shutdownCtx:         ctx,
-		debug:               dbg,
+		claudeClient:       mockClient,
+		prePromptSessionID: "pre-prompt-session-123", // Simulates pre-prompt having completed
+		shutdownCtx:        t.Context(),
+		debug:              dbg,
 	}
 
 	err := o.runPhase(1) // Phase 1 should use pre-prompt session
@@ -1621,8 +1604,6 @@ func TestRunPhase_UsesPrePromptSession(t *testing.T) {
 
 func TestRunPhase_DoesNotUsePrePromptSessionForPhase2(t *testing.T) {
 	tempDir := t.TempDir()
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
 
 	var resumedSessionID string
 	var calledResume bool
@@ -1646,10 +1627,10 @@ func TestRunPhase_DoesNotUsePrePromptSessionForPhase2(t *testing.T) {
 		config: Config{
 			WorkingDir: tempDir,
 		},
-		claudeClient:        mockClient,
-		prePromptSessionID:  "pre-prompt-session-123",
-		shutdownCtx:         ctx,
-		debug:               dbg,
+		claudeClient:       mockClient,
+		prePromptSessionID: "pre-prompt-session-123",
+		shutdownCtx:        t.Context(),
+		debug:              dbg,
 	}
 
 	err := o.runPhase(2) // Phase 2 should NOT use pre-prompt session
@@ -1668,17 +1649,11 @@ func TestRunPhase_DoesNotUsePrePromptSessionForPhase2(t *testing.T) {
 
 func TestDryRun_PrintsHooksWithoutExecuting(t *testing.T) {
 	tempDir := t.TempDir()
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
 
-	agentCalled := false
-	mockAg := &mockAgent{
-		name: "test-agent",
-		runFunc: func(ctx context.Context, opts agents.RunOptions) (*agents.RunResult, error) {
-			agentCalled = true
-			return nil, errors.New("should not be called")
-		},
-	}
+	// Use TestAgent with empty scenario - agent should NOT be called
+	scenario := testutil.NewScenario().Build()
+	agent := testutil.NewTestAgent(t, "test-agent", scenario)
+
 	dbg, _ := debug.NewLogger(debug.LoggerConfig{})
 	defer dbg.Close()
 
@@ -1691,9 +1666,9 @@ func TestDryRun_PrintsHooksWithoutExecuting(t *testing.T) {
 			WorkingDir:       tempDir,
 			CommandTimeout:   30 * time.Second,
 		},
-		agent:       mockAg,
+		agent:       agent,
 		runeClient:  rune.NewClient(filepath.Join(tempDir, "tasks.md")),
-		shutdownCtx: ctx,
+		shutdownCtx: t.Context(),
 		debug:       dbg,
 	}
 
@@ -1715,17 +1690,17 @@ func TestDryRun_PrintsHooksWithoutExecuting(t *testing.T) {
 		t.Errorf("runPrePrompt() in dry-run should not return error: %v", err)
 	}
 
-	if agentCalled {
-		t.Error("Agent should NOT be called in dry-run mode")
-	}
+	// Verify agent was NOT called in dry-run mode
+	agent.Recorder().AssertCallCount(t, 0)
 }
 
 func TestExecutionOrder_SkipsUnconfigured(t *testing.T) {
 	tempDir := t.TempDir()
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
 
-	mockAg := &mockAgent{name: "test-agent"}
+	// Use TestAgent with empty scenario - agent should NOT be called
+	scenario := testutil.NewScenario().Build()
+	agent := testutil.NewTestAgent(t, "test-agent", scenario)
+
 	dbg, _ := debug.NewLogger(debug.LoggerConfig{})
 	defer dbg.Close()
 
@@ -1738,9 +1713,9 @@ func TestExecutionOrder_SkipsUnconfigured(t *testing.T) {
 			WorkingDir:       tempDir,
 			CommandTimeout:   30 * time.Second,
 		},
-		agent:       mockAg,
+		agent:       agent,
 		runeClient:  rune.NewClient(filepath.Join(tempDir, "tasks.md")),
-		shutdownCtx: ctx,
+		shutdownCtx: t.Context(),
 		debug:       dbg,
 	}
 
@@ -1754,4 +1729,7 @@ func TestExecutionOrder_SkipsUnconfigured(t *testing.T) {
 	if err := o.runAgentPostCommand(); err != nil {
 		t.Errorf("runAgentPostCommand() with empty config returned error: %v", err)
 	}
+
+	// Verify agent was NOT called
+	agent.Recorder().AssertCallCount(t, 0)
 }

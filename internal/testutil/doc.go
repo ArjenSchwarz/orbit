@@ -6,13 +6,31 @@
 //   - ScenarioBuilder: Fluent API for defining agent behavior sequences
 //   - Recorder: Call recording and assertions
 //   - FakeClock: Deterministic time control
-//   - Fixtures: Helpers for test setup (CreateTestOrbit, CreateTasksFile, etc.)
+//   - Fixtures: Helpers for test setup (CreateTasksFile, CreateConfig, etc.)
 //   - Generators: Property-based testing support with rapid
+//
+// For creating configured Orbit instances, use the orbithelpers subpackage:
+//
+//   - orbithelpers.CreateTestOrbit: Create Orbit with injected test agents
+//
+// # Package Organization
+//
+// This package is split to avoid import cycles:
+//
+//   - testutil: Core components (TestAgent, Scenario, Recorder, Clock) - can be
+//     used from within the orbit package
+//   - testutil/orbithelpers: Orbit-dependent helpers (CreateTestOrbit) - for
+//     external tests that need a configured Orbit instance
 //
 // # Basic Usage
 //
 // Define the expected agent behavior as a sequence of responses, create a test
-// agent with that scenario, and wire it into Orbit via CreateTestOrbit:
+// agent with that scenario, and wire it into Orbit:
+//
+//	import (
+//	    "github.com/arjenschwarz/orbit/internal/testutil"
+//	    "github.com/arjenschwarz/orbit/internal/testutil/orbithelpers"
+//	)
 //
 //	func TestOrchestration(t *testing.T) {
 //	    // Define the expected agent behavior sequence
@@ -26,9 +44,9 @@
 //	    t.Cleanup(func() { agent.AssertAllConsumed(t) })
 //
 //	    // Create an Orbit instance with the test agent
-//	    orbit := testutil.CreateTestOrbit(t,
-//	        testutil.WithAgent(agent),
-//	        testutil.WithTasksFile(testutil.CreateTasksFile(t, 2)),
+//	    orbit := orbithelpers.CreateTestOrbit(t,
+//	        orbithelpers.WithAgent(agent),
+//	        orbithelpers.WithTasksFile(testutil.CreateTasksFile(t, 2)),
 //	    )
 //
 //	    // Run and verify
@@ -83,9 +101,9 @@
 //	    clock := testutil.NewFakeClock(time.Now())
 //	    agent := testutil.NewTestAgent(t, "mock", scenario, testutil.WithClock(clock))
 //
-//	    orbit := testutil.CreateTestOrbit(t,
-//	        testutil.WithAgent(agent),
-//	        testutil.WithOrbitClock(clock),
+//	    orbit := orbithelpers.CreateTestOrbit(t,
+//	        orbithelpers.WithAgent(agent),
+//	        orbithelpers.WithOrbitClock(clock),
 //	    )
 //
 //	    err := orbit.Run()
@@ -137,7 +155,7 @@
 //	    "claude-sonnet": testutil.NewTestAgent(t, "claude-sonnet", scenario1),
 //	    "claude-opus":   testutil.NewTestAgent(t, "claude-opus", scenario2),
 //	}
-//	orbit := testutil.CreateTestOrbit(t, testutil.WithAgents(agents))
+//	orbit := orbithelpers.CreateTestOrbit(t, orbithelpers.WithAgents(agents))
 //
 // # Call Recording and Assertions
 //
@@ -171,7 +189,7 @@
 //	        scenario := testutil.RandomScenarioGen(length).Draw(rt, "scenario")
 //
 //	        agent := testutil.NewTestAgent(t, "mock", scenario)
-//	        orbit := testutil.CreateTestOrbit(t, testutil.WithAgent(agent))
+//	        orbit := orbithelpers.CreateTestOrbit(t, orbithelpers.WithAgent(agent))
 //
 //	        // Should not panic regardless of error sequence
 //	        _ = orbit.Run()

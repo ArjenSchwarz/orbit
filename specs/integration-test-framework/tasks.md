@@ -209,7 +209,7 @@ references:
 
 ## Documentation
 
-- [ ] 20. Write package documentation <!-- id:h55dblq -->
+- [x] 20. Write package documentation <!-- id:h55dblq -->
   - Create doc.go with package overview
   - Include basic usage example
   - Include error injection example
@@ -220,7 +220,7 @@ references:
   - Stream: 2
   - Requirements: [8.1](requirements.md#8.1), [8.2](requirements.md#8.2), [8.5](requirements.md#8.5), [6.7](requirements.md#6.7)
 
-- [ ] 21. Add Testing section to CLAUDE.md <!-- id:h55dblr -->
+- [x] 21. Add Testing section to CLAUDE.md <!-- id:h55dblr -->
   - Add Testing section after existing documentation
   - Include quick-start code example
   - Include common patterns (error recovery, Repeat, timing)
@@ -231,7 +231,7 @@ references:
 
 ## Migration
 
-- [ ] 22. Migrate orbit_test.go tests using mockAgent <!-- id:h55dbls -->
+- [x] 22. Migrate orbit_test.go tests using mockAgent <!-- id:h55dbls -->
   - Identify tests using mockAgent in orbit_test.go
   - Replace mockAgent with NewTestAgent and ScenarioBuilder
   - Add t.Cleanup for AssertAllConsumed
@@ -242,7 +242,7 @@ references:
   - Stream: 1
   - Requirements: [9.1](requirements.md#9.1), [9.4](requirements.md#9.4), [9.6](requirements.md#9.6)
 
-- [ ] 23. Migrate integration_test.go tests using mockAgent <!-- id:h55dblt -->
+- [x] 23. Migrate integration_test.go tests using mockAgent <!-- id:h55dblt -->
   - Identify tests using mock agents in integration_test.go
   - Replace with NewTestAgent and ScenarioBuilder
   - Add t.Cleanup for AssertAllConsumed
@@ -252,7 +252,7 @@ references:
   - Stream: 1
   - Requirements: [9.2](requirements.md#9.2), [9.4](requirements.md#9.4)
 
-- [ ] 24. Remove old mock implementations and verify coverage <!-- id:h55dblu -->
+- [x] 24. Remove old mock implementations and verify coverage <!-- id:h55dblu -->
   - Remove mockAgent type from test files
   - Remove mockClaudeClient type from test files
   - Run go test -coverprofile and compare to baseline

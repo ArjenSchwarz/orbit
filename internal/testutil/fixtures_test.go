@@ -159,56 +159,8 @@ func TestTestAgentResolver(t *testing.T) {
 	})
 }
 
-func TestCreateTestOrbit(t *testing.T) {
-	// Note: CreateTestOrbit creates a real Orbit instance which requires
-	// the full orbit package initialization. This test verifies the wiring works.
-	t.Run("with agent", func(t *testing.T) {
-		scenario := NewScenario().Success("session-1", 0.05).Build()
-		agent := NewTestAgent(t, "test-agent", scenario)
-
-		// Creating should not panic or error
-		orbit := CreateTestOrbit(t, WithAgent(agent))
-		if orbit == nil {
-			t.Fatal("CreateTestOrbit: returned nil")
-		}
-	})
-
-	t.Run("with custom tasks file", func(t *testing.T) {
-		scenario := NewScenario().Success("session-1", 0.05).Build()
-		agent := NewTestAgent(t, "test-agent", scenario)
-		tasksFile := CreateTasksFile(t, 3)
-
-		orbit := CreateTestOrbit(t,
-			WithAgent(agent),
-			WithTasksFile(tasksFile),
-		)
-		if orbit == nil {
-			t.Fatal("CreateTestOrbit: returned nil")
-		}
-	})
-
-	t.Run("with multiple agents", func(t *testing.T) {
-		scenario1 := NewScenario().Success("session-1", 0.05).Build()
-		scenario2 := NewScenario().Success("session-2", 0.05).Build()
-
-		// When using WithAgents, one of the agents must be named to match
-		// the default or you must also use WithAgent to set the primary agent
-		agentMap := map[string]agents.Agent{
-			"agent-1": NewTestAgent(t, "agent-1", scenario1),
-			"agent-2": NewTestAgent(t, "agent-2", scenario2),
-		}
-
-		// Use the first agent as the primary one via WithAgent
-		primaryAgent := NewTestAgent(t, "agent-1", scenario1)
-		orbit := CreateTestOrbit(t,
-			WithAgent(primaryAgent),
-			WithAgents(agentMap),
-		)
-		if orbit == nil {
-			t.Fatal("CreateTestOrbit: returned nil")
-		}
-	})
-}
+// Note: TestCreateTestOrbit is in internal/testutil/orbithelpers/helpers_test.go
+// to avoid import cycles. The CreateTestOrbit function depends on the orbit package.
 
 func TestSuccessScenario(t *testing.T) {
 	t.Parallel()
