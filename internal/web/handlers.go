@@ -12,6 +12,7 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/arjenschwarz/orbit/internal/cost"
 	"github.com/arjenschwarz/orbit/internal/logs"
 	"github.com/arjenschwarz/orbit/internal/registry"
 	"github.com/arjenschwarz/orbit/internal/transcript"
@@ -117,7 +118,7 @@ var templates *template.Template
 
 func init() {
 	var err error
-	templates, err = template.ParseFS(templatesFS, "templates/*.html")
+	templates, err = template.New("").Funcs(templateFuncs).ParseFS(templatesFS, "templates/*.html")
 	if err != nil {
 		panic("failed to parse templates: " + err.Error())
 	}
@@ -606,13 +607,23 @@ func (s *Server) handleError(w http.ResponseWriter, r *http.Request, code int, m
 	s.renderTemplate(w, "layout.html", "error.html", data)
 }
 
+// templateFuncs contains custom functions available in all templates.
+var templateFuncs = template.FuncMap{
+	"formatCostTotals": func(totals *cost.Totals) string {
+		if totals == nil {
+			return "-"
+		}
+		return cost.FormatTotals(*totals)
+	},
+}
+
 // pageTemplates holds pre-parsed templates for each page.
 var pageTemplates = make(map[string]*template.Template)
 
 func init() {
 	pages := []string{"dashboard.html", "run_detail.html", "transcript.html", "error.html"}
 	for _, page := range pages {
-		tmpl := template.Must(template.ParseFS(templatesFS, "templates/layout.html", "templates/"+page))
+		tmpl := template.Must(template.New("").Funcs(templateFuncs).ParseFS(templatesFS, "templates/layout.html", "templates/"+page))
 		pageTemplates[page] = tmpl
 	}
 }

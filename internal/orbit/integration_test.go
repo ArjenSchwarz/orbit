@@ -19,6 +19,7 @@ import (
 	_ "github.com/arjenschwarz/orbit/internal/agents/kiro"       // Register kiro agent
 	"github.com/arjenschwarz/orbit/internal/comparison"
 	orbitconfig "github.com/arjenschwarz/orbit/internal/config"
+	"github.com/arjenschwarz/orbit/internal/cost"
 	"github.com/arjenschwarz/orbit/internal/debug"
 	"github.com/arjenschwarz/orbit/internal/logs"
 	runepkg "github.com/arjenschwarz/orbit/internal/rune"
@@ -142,7 +143,7 @@ func TestVariantRun_Sequential(t *testing.T) {
 		if err := mgr.UpdateStatus(v.ID, variants.StatusCompleted, nil); err != nil {
 			t.Errorf("failed to update status to completed: %v", err)
 		}
-		if err := mgr.UpdateMetrics(v.ID, 0.05, time.Minute, 10); err != nil {
+		if err := mgr.UpdateMetrics(v.ID, 0.05, cost.UnitUSD, cost.Totals{USD: 0.05}, time.Minute, 10); err != nil {
 			t.Errorf("failed to update metrics: %v", err)
 		}
 	}
@@ -276,7 +277,7 @@ func TestVariantRun_SingleSuccess(t *testing.T) {
 	if err := mgr.UpdateStatus(1, variants.StatusCompleted, nil); err != nil {
 		t.Fatalf("failed to update status: %v", err)
 	}
-	if err := mgr.UpdateMetrics(1, 0.05, time.Minute, 10); err != nil {
+	if err := mgr.UpdateMetrics(1, 0.05, cost.UnitUSD, cost.Totals{USD: 0.05}, time.Minute, 10); err != nil {
 		t.Fatalf("failed to update metrics: %v", err)
 	}
 

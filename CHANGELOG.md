@@ -9,6 +9,68 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Copilot usage parser (`internal/agents/copilot/usage.go`) for extracting usage metrics from CLI output
+  - Parses premium requests, API time, session time, code changes, and token counts
+  - Supports k/m suffix for token values (e.g., 146.4k → 146400, 1.3m → 1300000)
+  - Supports minutes-seconds duration format (e.g., "1m 36.11s")
+  - Aggregates tokens from multiple model breakdown lines
+  - Integration with Copilot agent to populate `RunResult.Cost` after execution
+- Storage layer support for multi-unit cost tracking (`internal/logs/manager.go`)
+  - `CostValue` and `CostUnit` fields in `SessionEntry` for explicit cost typing
+  - `GetCost()` method with backward compatibility (infers unit from AgentType for legacy entries)
+  - `CostTotals` field in `Summary` struct for aggregated costs by unit
+  - `GetCostTotals()` method computes totals from sessions when not pre-computed
+  - `SaveSession()` and `SavePostCompletionSession()` handle cost unit extraction and aggregation
+- New `CostMetrics` fields for enhanced cost tracking (`internal/agents/agent.go`)
+  - `CachedTokens` for Copilot cached tokens
+  - `APIDuration` and `SessionDuration` pointer fields for optional time metrics
+  - `LinesAdded` and `LinesRemoved` pointer fields for code change metrics
+  - `CostUnit` field ("USD", "credits", "premium_requests") to distinguish cost types
+- Unit tests and property-based tests for Copilot usage parser using rapid
+- `internal/cost/` package added to CLAUDE.md architecture documentation
+
+### Changed
+
+- `CostMetrics.PremiumRequests` field type changed from `int` to `float64` to support Copilot's fractional values
+- Kiro agent now sets `CostUnit: credits` when extracting session credits
+- Terminal display updated to use `cost.Format()` for consistent cost formatting across all agents
+  - `formatCost()` in orbit.go now uses the centralized cost package
+  - `getSessionDuration()` helper added to use agent-reported session time when available
+  - Cost display shows "-" for unavailable costs instead of misleading "$0.00"
+- Web interface cost display updated with `formatCostTotals` template helper
+  - `run_detail.html` now uses `GetCostTotals()` method for aggregated cost display
+  - Template functions added to handlers.go for cost formatting
+- Report templates updated to use `cost.Format()` for unit-aware cost display
+  - `formatCost()` now takes cost unit as parameter
+  - HTML and Markdown reports display costs in their native units
+- Session transcript formatting updated to use unit-aware cost display
+  - `formatTranscript()` and `formatPostCompletionTranscript()` now use `cost.FormatWithPrecision()`
+  - Kiro credits display as "N.NNNN credits", Copilot as "N.NNNN premium requests"
+- `VariantMetrics` structs updated with `CostUnit` field in both report and variants packages
+- Compare command populates `CostUnit` from variant metadata or infers from agent type
+- Run index files (index.md, index.html) now use unit-aware cost formatting
+  - Total costs display using `cost.FormatTotals()` for multi-unit support
+  - Session costs display using `cost.FormatWithPrecision()` with proper units
+  - Kiro credits, Copilot premium requests, and USD all display with appropriate formatting
+- Consolidated cost unit constants to use `cost.Unit*` from internal/cost package
+  - Removed duplicate constants from internal/agents/agent.go
+  - Kiro and Copilot agents now import and use cost package constants
+
+- Cost formatting package for multi-unit cost display (`internal/cost/`)
+  - Unit constants: `UnitUSD`, `UnitCredits`, `UnitPremiumRequests`
+  - `Format()` function formats costs according to unit type ($N.NN, N.NN credits, N.NN premium requests)
+  - `FormatWithPrecision()` for detailed reports with custom decimal places
+  - `FormatCodeChanges()` for +N/-M lines display
+  - `Totals` struct for aggregated costs by unit type
+  - `FormatTotals()` displays aggregated costs in order: USD, credits, premium requests
+  - `InferUnitFromAgent()` for backward compatibility with legacy summary.json files
+
+- Spec for copilot-usage-tracking feature (`specs/copilot-usage-tracking/`)
+  - Requirements document with 6 requirement groups covering cost extraction, storage, display, and architecture
+  - Design document with component architecture, data models, and testing strategy
+  - Decision log with 10 architectural decisions (agent interface, cost abstraction, unit handling, etc.)
+  - Task list with 22 tasks across 5 phases (Foundation, Agent Layer, Storage Layer, Display Layer, Validation)
+
 - Auto-consolidate documentation in CLAUDE.md with CLI flags, config options, and environment variables
 - Auto-consolidate configuration support for `orbit run --variants`
   - `--auto-consolidate` flag to run consolidation on recommended variant after comparison

@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/arjenschwarz/orbit/internal/comparison"
+	"github.com/arjenschwarz/orbit/internal/cost"
 )
 
 func TestGenerate_CreatesIndexHTML(t *testing.T) {
@@ -27,7 +28,7 @@ func TestGenerate_CreatesIndexHTML(t *testing.T) {
 				Status: "completed",
 				Diff:   "+func hello() {}",
 				Metrics: VariantMetrics{
-					Cost:     0.0523,
+					Cost:     &cost.Totals{USD: 0.0523},
 					Duration: "3m0s",
 					NumTurns: 42,
 				},
@@ -38,7 +39,7 @@ func TestGenerate_CreatesIndexHTML(t *testing.T) {
 				Status: "completed",
 				Diff:   "+func world() {}",
 				Metrics: VariantMetrics{
-					Cost:     0.0312,
+					Cost:     &cost.Totals{USD: 0.0312},
 					Duration: "2m15s",
 					NumTurns: 35,
 				},
@@ -82,7 +83,7 @@ func TestGenerate_CreatesIndexHTML(t *testing.T) {
 		"Variant 1",
 		"orbit-impl-1/test-feature",
 		"completed",
-		"$0.0523",
+		"$0.05",
 		"high confidence",
 		"Variant 1 is cleaner.",
 		"More concise code",
@@ -341,42 +342,23 @@ func TestCountLines(t *testing.T) {
 
 func TestFormatCost(t *testing.T) {
 	tests := []struct {
-		cost float64
-		want string
-	}{
-		{0, "-"},
-		{0.05, "$0.05"},
-		{0.0523, "$0.0523"},
-		{0.1000, "$0.1"},
-		{1.2345, "$1.2345"},
-		{10.0, "$10"},
-	}
-
-	for _, tt := range tests {
-		got := formatCost(tt.cost)
-		if got != tt.want {
-			t.Errorf("formatCost(%v) = %q, want %q", tt.cost, got, tt.want)
-		}
-	}
-}
-
-func TestTrimTrailingZeros(t *testing.T) {
-	tests := []struct {
-		input string
+		value float64
+		unit  string
 		want  string
 	}{
-		{"10", "10"},
-		{"10.0", "10"},
-		{"10.00", "10"},
-		{"10.50", "10.5"},
-		{"10.123000", "10.123"},
-		{"0.1000", "0.1"},
+		{0, cost.UnitUSD, "-"},
+		{0.05, cost.UnitUSD, "$0.05"},
+		{0.0523, cost.UnitUSD, "$0.05"},
+		{1.23, cost.UnitUSD, "$1.23"},
+		{0.45, cost.UnitCredits, "0.45 credits"},
+		{0.33, cost.UnitPremiumRequests, "0.33 premium requests"},
+		{1.5, "", "$1.50"}, // Empty unit defaults to USD
 	}
 
 	for _, tt := range tests {
-		got := trimTrailingZeros(tt.input)
+		got := formatCost(tt.value, tt.unit)
 		if got != tt.want {
-			t.Errorf("trimTrailingZeros(%q) = %q, want %q", tt.input, got, tt.want)
+			t.Errorf("formatCost(%v, %q) = %q, want %q", tt.value, tt.unit, got, tt.want)
 		}
 	}
 }
@@ -403,7 +385,7 @@ func TestGenerate_CreatesMarkdownReport(t *testing.T) {
 				Diff:   "+func hello() {}",
 				Agent:  "claude-code",
 				Metrics: VariantMetrics{
-					Cost:     0.0523,
+					Cost:     &cost.Totals{USD: 0.0523},
 					Duration: "3m0s",
 					NumTurns: 42,
 				},
@@ -415,7 +397,7 @@ func TestGenerate_CreatesMarkdownReport(t *testing.T) {
 				Diff:   "+func world() {}",
 				Agent:  "codex",
 				Metrics: VariantMetrics{
-					Cost:     0.0312,
+					Cost:     &cost.Totals{USD: 0.0312},
 					Duration: "2m15s",
 					NumTurns: 35,
 				},
@@ -462,7 +444,7 @@ func TestGenerate_CreatesMarkdownReport(t *testing.T) {
 		"Variant 1",                   // variant identifier
 		"orbit-impl-1/test-feature",   // branch name
 		"completed",                   // status
-		"$0.0523",                     // cost
+		"$0.05",                       // cost
 		"high",                        // confidence
 		"Variant 1 is cleaner",        // summary
 		"More concise code",           // observation

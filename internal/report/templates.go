@@ -2,9 +2,9 @@ package report
 
 import (
 	_ "embed"
-	"fmt"
 	"html/template"
-	"strings"
+
+	"github.com/arjenschwarz/orbit/internal/cost"
 )
 
 //go:embed templates/index.html
@@ -45,30 +45,28 @@ func init() {
 
 // templateFuncs provides helper functions for templates.
 var templateFuncs = template.FuncMap{
-	"formatCost": formatCost,
-	"add":        add,
-	"sub":        sub,
+	"formatCost":       formatCost,
+	"formatCostTotals": formatCostTotals,
+	"add":              add,
+	"sub":              sub,
 }
 
-// formatCost formats a cost value as a currency string.
-func formatCost(cost float64) string {
-	if cost == 0 {
+// formatCost formats a cost value according to its unit type.
+// Uses the centralized cost.Format function for consistent formatting.
+func formatCost(value float64, unit string) string {
+	if unit == "" {
+		unit = cost.UnitUSD
+	}
+	return cost.Format(value, unit)
+}
+
+// formatCostTotals formats cost totals using the centralized cost.FormatTotals function.
+// Returns "-" if totals is nil or empty.
+func formatCostTotals(totals *cost.Totals) string {
+	if totals == nil {
 		return "-"
 	}
-	return "$" + trimTrailingZeros(fmt.Sprintf("%.4f", cost))
-}
-
-// trimTrailingZeros removes unnecessary trailing zeros after decimal point.
-func trimTrailingZeros(s string) string {
-	if !strings.Contains(s, ".") {
-		return s
-	}
-	s = strings.TrimRight(s, "0")
-	s = strings.TrimRight(s, ".")
-	if s == "" || s == "-" {
-		return "0"
-	}
-	return s
+	return cost.FormatTotals(*totals)
 }
 
 // add returns a + b.

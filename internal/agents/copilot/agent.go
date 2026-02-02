@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/arjenschwarz/orbit/internal/agents"
+	"github.com/arjenschwarz/orbit/internal/cost"
 )
 
 const defaultPrompt = "Run /next-task --phase and when complete run /commit"
@@ -201,6 +202,23 @@ func (a *Agent) execute(ctx context.Context, opts agents.RunOptions, resume bool
 
 	if err != nil {
 		result.Error = err
+	}
+
+	// Extract usage metrics from CLI output
+	if usage := ParseUsage(stdout.String(), stderr.String()); usage != nil {
+		result.Cost = &agents.CostMetrics{
+			PremiumRequests: usage.PremiumRequests,
+			InputTokens:     usage.InputTokens,
+			OutputTokens:    usage.OutputTokens,
+			CachedTokens:    usage.CachedTokens,
+			APIDuration:     usage.APIDuration,
+			SessionDuration: usage.SessionDuration,
+			LinesAdded:      usage.LinesAdded,
+			LinesRemoved:    usage.LinesRemoved,
+			CostUnit:        cost.UnitPremiumRequests,
+		}
+		debugLog("Extracted Copilot usage: %.2f premium requests, %d tokens in, %d tokens out",
+			usage.PremiumRequests, usage.InputTokens, usage.OutputTokens)
 	}
 
 	return result, err

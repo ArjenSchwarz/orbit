@@ -5,6 +5,9 @@ import (
 	"time"
 )
 
+// Cost unit constants - use cost.UnitUSD, cost.UnitCredits, cost.UnitPremiumRequests
+// from the internal/cost package for setting CostMetrics.CostUnit values.
+
 // Agent defines the interface for AI coding agent implementations.
 // All supported agents (Claude Code, Codex, Kiro, Copilot) implement this interface.
 type Agent interface {
@@ -73,15 +76,29 @@ type RunResult struct {
 
 // CostMetrics tracks usage costs in agent-specific units.
 type CostMetrics struct {
-	// Token-based (Claude, Codex)
+	// Token-based (Claude, Codex, Copilot)
 	InputTokens  int
 	OutputTokens int
+	CachedTokens int // Copilot cached tokens
 	TotalTokens  int
 
-	// Credit-based (Kiro, Copilot) - if applicable
-	Credits         float64
-	PremiumRequests int
+	// Credit-based (Kiro)
+	Credits float64
 
-	// Universal
+	// Premium request-based (Copilot)
+	PremiumRequests float64 // float64 because Copilot outputs fractional values
+
+	// Time metrics
+	APIDuration     *time.Duration // API time spent (pointer for optional)
+	SessionDuration *time.Duration // Session time (pointer for optional)
+
+	// Code change metrics
+	LinesAdded   *int // Pointer for optional
+	LinesRemoved *int // Pointer for optional
+
+	// Cost unit
+	CostUnit string // "USD", "credits", or "premium_requests"
+
+	// Universal (kept for backward compat)
 	CostUSD float64
 }

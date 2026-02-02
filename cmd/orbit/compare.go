@@ -12,6 +12,7 @@ import (
 	"github.com/arjenschwarz/orbit/internal/claude"
 	"github.com/arjenschwarz/orbit/internal/comparison"
 	"github.com/arjenschwarz/orbit/internal/config"
+	"github.com/arjenschwarz/orbit/internal/cost"
 	"github.com/arjenschwarz/orbit/internal/report"
 	"github.com/arjenschwarz/orbit/internal/variants"
 )
@@ -173,16 +174,36 @@ func compareCommand(args []string) error {
 			}
 		}
 
+		// Build cost totals from variant data
+		var costTotals cost.Totals
+		if v.CostTotals.USD > 0 || v.CostTotals.Credits > 0 || v.CostTotals.PremiumRequests > 0 {
+			costTotals = v.CostTotals
+		} else {
+			// Construct totals from single cost value
+			switch v.CostUnit {
+			case cost.UnitCredits:
+				costTotals.Credits = v.Cost
+			case cost.UnitPremiumRequests:
+				costTotals.PremiumRequests = v.Cost
+			default:
+				// Default to USD if unknown or explicitly USD
+				costTotals.USD = v.Cost
+			}
+		}
+
 		reportData.Variants = append(reportData.Variants, report.VariantReportData{
 			ID:     v.ID,
 			Branch: v.Branch,
 			Status: string(v.Status),
 			Error:  v.Error,
 			Diff:   diff,
+			Agent:  v.Agent,
 			Metrics: report.VariantMetrics{
-				Cost:     v.Cost,
-				Duration: formatDuration(v.Duration),
-				NumTurns: v.NumTurns,
+				Cost:         &costTotals,
+				Duration:     formatDuration(v.Duration),
+				NumTurns:     v.NumTurns,
+				LinesAdded:   v.LinesAdded,
+				LinesRemoved: v.LinesRemoved,
 			},
 		})
 	}

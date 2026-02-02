@@ -64,6 +64,7 @@ internal/
     logger.go        - Consolidation logging and history
     types.go         - Config, result, and report types
   report/            - Comparison report generation
+  cost/              - Cost formatting utilities for multi-unit cost display (USD, credits, premium requests)
   claude/client.go   - Legacy Claude Code CLI wrapper (used by comparison)
   claude/paths.go    - Claude project path utilities (shared by orbit and apsis)
   rune/client.go     - Wrapper for rune CLI task management
