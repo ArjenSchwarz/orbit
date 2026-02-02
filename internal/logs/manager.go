@@ -1067,7 +1067,7 @@ func (m *Manager) generateMarkdownIndex() string {
 		sb.WriteString(fmt.Sprintf("- **Total Duration:** %s\n", duration.Round(time.Second)))
 	}
 	sb.WriteString(fmt.Sprintf("- **Phases Completed:** %d\n", m.summary.PhasesCompleted))
-	sb.WriteString(fmt.Sprintf("- **Total Cost:** $%.4f\n", m.summary.TotalCostUSD))
+	sb.WriteString(fmt.Sprintf("- **Total Cost:** %s\n", cost.FormatTotals(m.summary.GetCostTotals())))
 	if m.summary.Error != "" {
 		sb.WriteString(fmt.Sprintf("- **Error:** %s\n", m.summary.Error))
 	}
@@ -1107,8 +1107,9 @@ func (m *Manager) generateMarkdownIndex() string {
 				statusIcon = "❌"
 			}
 
-			sb.WriteString(fmt.Sprintf("- %s **Session%s** - Cost: $%.4f, Duration: %s, Turns: %d\n",
-				statusIcon, runLabel, session.CostUSD,
+			costValue, costUnit := session.GetCost()
+			sb.WriteString(fmt.Sprintf("- %s **Session%s** - Cost: %s, Duration: %s, Turns: %d\n",
+				statusIcon, runLabel, cost.FormatWithPrecision(costValue, costUnit, 4),
 				time.Duration(session.DurationMS*int64(time.Millisecond)).Round(time.Second),
 				session.NumTurns))
 
@@ -1128,8 +1129,9 @@ func (m *Manager) generateMarkdownIndex() string {
 			if session.IsError {
 				statusIcon = "❌"
 			}
-			sb.WriteString(fmt.Sprintf("- %s **Session** - Cost: $%.4f, Duration: %s, Turns: %d\n",
-				statusIcon, session.CostUSD,
+			costValue, costUnit := session.GetCost()
+			sb.WriteString(fmt.Sprintf("- %s **Session** - Cost: %s, Duration: %s, Turns: %d\n",
+				statusIcon, cost.FormatWithPrecision(costValue, costUnit, 4),
 				time.Duration(session.DurationMS*int64(time.Millisecond)).Round(time.Second),
 				session.NumTurns))
 
@@ -1208,8 +1210,8 @@ func (m *Manager) generateHTMLIndex() string {
 	}
 	sb.WriteString(fmt.Sprintf("                <dt>Phases Completed</dt><dd>%d</dd>\n",
 		m.summary.PhasesCompleted))
-	sb.WriteString(fmt.Sprintf("                <dt>Total Cost</dt><dd>$%.4f</dd>\n",
-		m.summary.TotalCostUSD))
+	sb.WriteString(fmt.Sprintf("                <dt>Total Cost</dt><dd>%s</dd>\n",
+		cost.FormatTotals(m.summary.GetCostTotals())))
 	if m.summary.Error != "" {
 		sb.WriteString(fmt.Sprintf("                <dt>Error</dt><dd class=\"error-text\">%s</dd>\n",
 			html.EscapeString(m.summary.Error)))
@@ -1267,7 +1269,8 @@ func (m *Manager) generateHTMLIndex() string {
 			sb.WriteString(fmt.Sprintf("                    <div class=\"session-header\">%s Session%s</div>\n",
 				statusIcon, runLabel))
 			sb.WriteString("                    <div class=\"session-stats\">\n")
-			sb.WriteString(fmt.Sprintf("                        <span>Cost: $%.4f</span>\n", session.CostUSD))
+			costValue, costUnit := session.GetCost()
+			sb.WriteString(fmt.Sprintf("                        <span>Cost: %s</span>\n", cost.FormatWithPrecision(costValue, costUnit, 4)))
 			sb.WriteString(fmt.Sprintf("                        <span>Duration: %s</span>\n",
 				time.Duration(session.DurationMS*int64(time.Millisecond)).Round(time.Second)))
 			sb.WriteString(fmt.Sprintf("                        <span>Turns: %d</span>\n", session.NumTurns))
@@ -1300,7 +1303,8 @@ func (m *Manager) generateHTMLIndex() string {
 			sb.WriteString(fmt.Sprintf("                <div class=\"%s\">\n", cardClass))
 			sb.WriteString(fmt.Sprintf("                    <div class=\"session-header\">%s Session</div>\n", statusIcon))
 			sb.WriteString("                    <div class=\"session-stats\">\n")
-			sb.WriteString(fmt.Sprintf("                        <span>Cost: $%.4f</span>\n", session.CostUSD))
+			costValue, costUnit := session.GetCost()
+			sb.WriteString(fmt.Sprintf("                        <span>Cost: %s</span>\n", cost.FormatWithPrecision(costValue, costUnit, 4)))
 			sb.WriteString(fmt.Sprintf("                        <span>Duration: %s</span>\n",
 				time.Duration(session.DurationMS*int64(time.Millisecond)).Round(time.Second)))
 			sb.WriteString(fmt.Sprintf("                        <span>Turns: %d</span>\n", session.NumTurns))

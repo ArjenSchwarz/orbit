@@ -13,6 +13,7 @@ import (
 
 	"github.com/arjenschwarz/orbit/internal/agents"
 	"github.com/arjenschwarz/orbit/internal/agents/kiro/logs"
+	"github.com/arjenschwarz/orbit/internal/cost"
 	"github.com/arjenschwarz/orbit/internal/transcript"
 )
 
@@ -210,7 +211,7 @@ func (a *Agent) execute(ctx context.Context, opts agents.RunOptions, resume bool
 		if credits := a.extractSessionCredits(ctx, workDir); credits > 0 {
 			result.Cost = &agents.CostMetrics{
 				Credits:  credits,
-				CostUnit: agents.CostUnitCredits,
+				CostUnit: cost.UnitCredits,
 			}
 		}
 	}

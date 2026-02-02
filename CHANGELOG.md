@@ -26,7 +26,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - `APIDuration` and `SessionDuration` pointer fields for optional time metrics
   - `LinesAdded` and `LinesRemoved` pointer fields for code change metrics
   - `CostUnit` field ("USD", "credits", "premium_requests") to distinguish cost types
-- Cost unit constants (`CostUnitUSD`, `CostUnitCredits`, `CostUnitPremiumRequests`) in agents package
 - Unit tests and property-based tests for Copilot usage parser using rapid
 - `internal/cost/` package added to CLAUDE.md architecture documentation
 
@@ -49,6 +48,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Kiro credits display as "N.NNNN credits", Copilot as "N.NNNN premium requests"
 - `VariantMetrics` structs updated with `CostUnit` field in both report and variants packages
 - Compare command populates `CostUnit` from variant metadata or infers from agent type
+- Run index files (index.md, index.html) now use unit-aware cost formatting
+  - Total costs display using `cost.FormatTotals()` for multi-unit support
+  - Session costs display using `cost.FormatWithPrecision()` with proper units
+  - Kiro credits, Copilot premium requests, and USD all display with appropriate formatting
+- Consolidated cost unit constants to use `cost.Unit*` from internal/cost package
+  - Removed duplicate constants from internal/agents/agent.go
+  - Kiro and Copilot agents now import and use cost package constants
 
 - Cost formatting package for multi-unit cost display (`internal/cost/`)
   - Unit constants: `UnitUSD`, `UnitCredits`, `UnitPremiumRequests`

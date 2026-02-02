@@ -5,12 +5,8 @@ import (
 	"time"
 )
 
-// Cost unit constants for cost types.
-const (
-	CostUnitUSD             = "USD"
-	CostUnitCredits         = "credits"
-	CostUnitPremiumRequests = "premium_requests"
-)
+// Cost unit constants - use cost.UnitUSD, cost.UnitCredits, cost.UnitPremiumRequests
+// from the internal/cost package for setting CostMetrics.CostUnit values.
 
 // Agent defines the interface for AI coding agent implementations.
 // All supported agents (Claude Code, Codex, Kiro, Copilot) implement this interface.
