@@ -1843,3 +1843,4 @@ func TestAutoConsolidate_LogMessageWhenSingleVariant(t *testing.T) {
 		t.Log("When only 1 variant succeeds and auto-consolidate is enabled, the spec-required log message is output")
 	}
 }
+

@@ -1591,15 +1591,23 @@ func (o *Orbit) runWithVariants(ctx context.Context) error {
 		// Still try to generate a report without comparison
 	}
 
+	// Generate report first - auto-consolidation reads the report file
+	if err := o.generateReport(); err != nil {
+		log.Printf("Report generation failed: %v", err)
+		// Return early if report generation fails - consolidation depends on the report
+		return err
+	}
+
 	// Run auto-consolidation if enabled and comparison succeeded
+	// Must run after generateReport() since consolidation reads comparison-report/report.md
 	if o.config.AutoConsolidate && o.comparisonResult != nil {
 		if err := o.runAutoConsolidate(ctx); err != nil {
 			log.Printf("Auto-consolidation failed: %v", err)
-			// Non-fatal, continue to report generation
+			// Non-fatal - report already generated successfully
 		}
 	}
 
-	return o.generateReport()
+	return nil
 }
 
 // promptContinueOrRestart asks the user whether to continue an existing run or start fresh.
@@ -1957,6 +1965,18 @@ func (o *Orbit) runVariant(ctx context.Context, v *variants.Variant) error {
 			prePromptSessionUsed = true
 		}
 
+		// Start phase in log manager to track session ID for status display
+		// This populates CurrentPhase in summary.json so orbit status can show live activity
+		if variantLogManager != nil {
+			sessionID, _, err := variantLogManager.StartPhase(phaseNum, o.config.ContinueSession, continueSessionID)
+			if err != nil {
+				o.debug.Log("Variant %d: failed to start phase in log manager: %v", v.ID, err)
+			} else if continueSessionID == "" {
+				// If we didn't have a pre-prompt session to continue, use the generated session ID
+				continueSessionID = sessionID
+			}
+		}
+
 		// Run the phase with retry
 		phaseResult, err := o.runVariantPhaseWithRetry(ctx, v, variantAgent, variantPrompt, continueSessionID)
 		if err != nil {
@@ -1979,10 +1999,14 @@ func (o *Orbit) runVariant(ctx context.Context, v *variants.Variant) error {
 			return variantErr
 		}
 
-		// Save successful session
+		// Save successful session and complete phase in log manager
 		if variantLogManager != nil && phaseResult != nil {
 			if saveErr := variantLogManager.SaveSession(phaseNum, phaseResult, phaseStartTime); saveErr != nil {
 				log.Printf("Warning: variant %d failed to save session log: %v", v.ID, saveErr)
+			}
+			// Clear CurrentPhase now that this phase is done
+			if completeErr := variantLogManager.CompletePhase(); completeErr != nil {
+				o.debug.Log("Variant %d: failed to complete phase in log manager: %v", v.ID, completeErr)
 			}
 		}
 
