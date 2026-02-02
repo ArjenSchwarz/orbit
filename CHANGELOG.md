@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- Fix CLAUDE.md documentation examples to use correct `orbithelpers.CreateTestOrbit` import path
+- Migrate `TestSignalDuringPrePrompt` from legacy `mockAgent` to `testutil.NewTestAgent`
+
+### Removed
+
+- Remove unused `mockAgent` type from `orbit_test.go` (replaced by `testutil.NewTestAgent`)
+
 ### Added
 
 - Package documentation for `internal/testutil/` test framework

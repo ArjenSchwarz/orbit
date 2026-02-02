@@ -54,7 +54,7 @@ func TestMyFeature(t *testing.T) {
     // 2. Create test agent and orbit
     agent := testutil.NewTestAgent(t, "mock", scenario)
     t.Cleanup(func() { agent.AssertAllConsumed(t) })
-    orbit := testutil.CreateTestOrbit(t, testutil.WithAgent(agent))
+    orbit := orbithelpers.CreateTestOrbit(t, orbithelpers.WithAgent(agent))
 
     // 3. Run and verify
     err := orbit.Run()
@@ -85,9 +85,9 @@ scenario := testutil.NewScenario().
 ```go
 clock := testutil.NewFakeClock(time.Now())
 agent := testutil.NewTestAgent(t, "mock", scenario, testutil.WithClock(clock))
-orbit := testutil.CreateTestOrbit(t,
-    testutil.WithAgent(agent),
-    testutil.WithOrbitClock(clock),
+orbit := orbithelpers.CreateTestOrbit(t,
+    orbithelpers.WithAgent(agent),
+    orbithelpers.WithOrbitClock(clock),
 )
 // After run, verify backoff durations
 clock.AssertSleeps(t, []time.Duration{time.Second, 2*time.Second})

@@ -1,7 +1,6 @@
 package orbit
 
 import (
-	"context"
 	"errors"
 	"os"
 	"path/filepath"
@@ -51,35 +50,13 @@ func (m *mockClaudeClient) RunCustomPromptWithSession(prompt, sessionID string, 
 	return &agents.RunResult{}, nil
 }
 
-// mockAgent implements agents.Agent for testing.
-type mockAgent struct {
-	name       string
-	runFunc    func(ctx context.Context, opts agents.RunOptions) (*agents.RunResult, error)
-	resumeFunc func(ctx context.Context, sessionID string, opts agents.RunOptions) (*agents.RunResult, error)
-}
-
-func (m *mockAgent) Name() string                                { return m.name }
-func (m *mockAgent) CLICommand() string                          { return "mock-agent" }
-func (m *mockAgent) IsInstalled() bool                           { return true }
-func (m *mockAgent) Version() (string, error)                    { return "1.0.0", nil }
-func (m *mockAgent) DefaultSessionDir() string                   { return "" }
-func (m *mockAgent) DiscoverSessions(ctx context.Context, projectDir string) ([]agents.SessionInfo, error) {
-	return nil, nil
-}
-
-func (m *mockAgent) Run(ctx context.Context, opts agents.RunOptions) (*agents.RunResult, error) {
-	if m.runFunc != nil {
-		return m.runFunc(ctx, opts)
-	}
-	return &agents.RunResult{}, nil
-}
-
-func (m *mockAgent) Resume(ctx context.Context, sessionID string, opts agents.RunOptions) (*agents.RunResult, error) {
-	if m.resumeFunc != nil {
-		return m.resumeFunc(ctx, sessionID, opts)
-	}
-	return &agents.RunResult{}, nil
-}
+// NOTE: The mockClaudeClient above is retained for testing the legacy claudeRunner
+// interface which is still used in production. Tests using mockClaudeClient are
+// currently skipped because they require real time delays - they could be enabled
+// with FakeClock but would need significant refactoring to use the agent interface.
+//
+// The mockAgent type was removed as part of the integration test framework migration.
+// Use testutil.NewTestAgent() for agent mocking - see internal/testutil/doc.go.
 
 func TestConfig_Struct(t *testing.T) {
 	config := Config{
