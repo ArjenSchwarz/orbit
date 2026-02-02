@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Integration test framework specification (`specs/integration-test-framework/`)
+  - Requirements document defining 11 requirement sections with EARS-format acceptance criteria
+  - Design document with architecture, component interfaces, and data models for TestAgent, ScenarioBuilder, Recorder, and FakeClock
+  - Decision log with 12 architectural decisions (scenario-based mocking, dependency injection, t.Fatalf over panic, etc.)
+  - Task list with 24 implementation tasks across 6 phases and 2 parallel work streams
+
 ### Fixed
 
 - Variant status display showing "Waiting for activity..." despite active agent sessions
