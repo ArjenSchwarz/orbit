@@ -1,4 +1,3 @@
-// Package testutil provides testing utilities for Orbit integration tests.
 package testutil
 
 import (

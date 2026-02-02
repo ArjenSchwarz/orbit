@@ -9,6 +9,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Package documentation for `internal/testutil/` test framework
+  - `doc.go` with package-level documentation and usage examples
+  - Basic usage example showing scenario creation, TestAgent setup, and Orbit wiring
+  - Error injection examples (RetryableError, FatalError, SessionInvalid, RateLimitWait)
+  - Repeat modifier example for multiple identical responses
+  - FakeClock timing test example with backoff verification
+  - Custom response escape hatch documentation
+  - Multi-variant testing example
+  - Call recording and assertion documentation
+  - Property-based testing examples with rapid generators
+  - FakeClock scope limitation documentation (Now/Sleep only, no timer support)
+- Testing with testutil section in CLAUDE.md
+  - Quick start code example for basic test setup
+  - Common patterns for error recovery, Repeat, and timing tests
+  - Reference to internal/testutil/doc.go for full API
+
 - Test fixtures and rapid generators for integration testing (`internal/testutil/`)
   - `TestAgentResolver` implementing `orbit.AgentResolver` for dependency injection
   - `CreateTasksFile(t, phases)` creating minimal tasks.md in temp directory
