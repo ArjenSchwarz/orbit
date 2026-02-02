@@ -8,7 +8,7 @@ references:
 
 ## Pre-work (Orbit Changes)
 
-- [ ] 1. Add Clock interface to Orbit <!-- id:h55dbl7 -->
+- [x] 1. Add Clock interface to Orbit <!-- id:h55dbl7 -->
   - Add Clock interface with Now() and Sleep() methods
   - Implement RealClock using time.Now() and time.Sleep()
   - Add Clock field to orbit.Config with RealClock default
@@ -16,7 +16,7 @@ references:
   - Stream: 1
   - Requirements: [6.5](requirements.md#6.5), [6.6](requirements.md#6.6), [9](requirements.md#9)
 
-- [ ] 2. Add AgentResolver interface to Orbit <!-- id:h55dbl8 -->
+- [x] 2. Add AgentResolver interface to Orbit <!-- id:h55dbl8 -->
   - Create AgentResolver interface with GetAgent(name, cfg) method
   - Implement registryResolver wrapping agents.Get()
   - Add AgentResolver field to orbit.Config with DefaultAgentResolver default

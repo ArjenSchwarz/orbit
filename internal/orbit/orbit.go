@@ -38,6 +38,39 @@ const (
 	maxRetries = 5
 )
 
+// Clock interface for time operations.
+// This allows tests to inject a fake clock for deterministic timing tests.
+type Clock interface {
+	Now() time.Time
+	Sleep(d time.Duration)
+}
+
+// RealClock uses actual time functions.
+type RealClock struct{}
+
+// Now returns the current time.
+func (RealClock) Now() time.Time { return time.Now() }
+
+// Sleep pauses execution for the specified duration.
+func (RealClock) Sleep(d time.Duration) { time.Sleep(d) }
+
+// AgentResolver looks up agents by name.
+// This allows tests to inject mock agents without modifying the global registry.
+type AgentResolver interface {
+	GetAgent(name string, cfg agents.AgentConfig) (agents.Agent, error)
+}
+
+// registryResolver implements AgentResolver using the global agent registry.
+type registryResolver struct{}
+
+// GetAgent returns an agent from the global registry.
+func (registryResolver) GetAgent(name string, cfg agents.AgentConfig) (agents.Agent, error) {
+	return agents.Get(name, cfg)
+}
+
+// DefaultAgentResolver uses the global agent registry.
+var DefaultAgentResolver AgentResolver = registryResolver{}
+
 // claudeRunner is an interface for running Claude sessions.
 // This allows for mocking in tests.
 type claudeRunner interface {
@@ -134,6 +167,10 @@ type Config struct {
 	AutoConsolidate        bool   // If true, run consolidation after comparison
 	AllowDirty             bool   // If true, allow consolidation even with uncommitted changes
 	PostConsolidateCommand string // Shell command to run after consolidation completes
+
+	// Testing support
+	Clock         Clock         // Optional clock for time operations (defaults to RealClock{})
+	AgentResolver AgentResolver // Optional agent resolver (defaults to DefaultAgentResolver)
 }
 
 // Orbit orchestrates Claude Code sessions to implement spec phases.
@@ -188,6 +225,16 @@ func New(config Config) (*Orbit, error) {
 		Debug:           config.Debug,
 	})
 
+	// Set default clock for time operations
+	if config.Clock == nil {
+		config.Clock = RealClock{}
+	}
+
+	// Set default agent resolver
+	if config.AgentResolver == nil {
+		config.AgentResolver = DefaultAgentResolver
+	}
+
 	// Initialize agent and error classifier
 	// Use the configured agent or default to Claude Code
 	agentName := config.Agent
@@ -201,7 +248,7 @@ func New(config Config) (*Orbit, error) {
 		agentConfig.AutoApprove = true
 	}
 
-	agent, err := agents.Get(agentName, agentConfig)
+	agent, err := config.AgentResolver.GetAgent(agentName, agentConfig)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get agent %q: %w", agentName, err)
 	}
@@ -692,7 +739,7 @@ func (o *Orbit) runPhaseWithRetry(phase int) error {
 			o.spinner.Resume()
 		}
 
-		time.Sleep(waitTime)
+		o.config.Clock.Sleep(waitTime)
 
 		// Stop spinner before next phase attempt (runPhase will start it again)
 		if o.spinner != nil {
@@ -1237,7 +1284,7 @@ func (o *Orbit) runPostPromptWithRetry() error {
 			o.spinner.Resume()
 		}
 
-		time.Sleep(waitTime)
+		o.config.Clock.Sleep(waitTime)
 
 		// Stop spinner before next attempt (runPostPrompt will start it again)
 		if o.spinner != nil {
@@ -1768,7 +1815,7 @@ func (o *Orbit) runVariant(ctx context.Context, v *variants.Variant) error {
 		agentType = agentAlias
 	}
 
-	variantAgent, err := agents.Get(agentType, variantAgentConfig)
+	variantAgent, err := o.config.AgentResolver.GetAgent(agentType, variantAgentConfig)
 	if err != nil {
 		return fmt.Errorf("failed to get agent %q (type: %s) for variant %d: %w", agentAlias, agentType, v.ID, err)
 	}
@@ -2384,7 +2431,7 @@ func (o *Orbit) runAutoConsolidate(ctx context.Context) error {
 	}
 
 	// Create the agent using default agent config (not variant-specific)
-	agent, err := agents.Get(o.config.Agent, o.config.AgentConfig)
+	agent, err := o.config.AgentResolver.GetAgent(o.config.Agent, o.config.AgentConfig)
 	if err != nil {
 		return fmt.Errorf("failed to create agent for consolidation: %w", err)
 	}

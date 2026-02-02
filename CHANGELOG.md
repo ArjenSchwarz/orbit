@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Clock interface and AgentResolver interface for testing support (`internal/orbit/`)
+  - `Clock` interface with `Now()` and `Sleep()` methods for deterministic timing tests
+  - `RealClock` struct implementing `Clock` using actual time functions
+  - `AgentResolver` interface for looking up agents by name without global registry
+  - `registryResolver` as default implementation wrapping `agents.Get()`
+  - `Config.Clock` and `Config.AgentResolver` fields with sensible defaults
+  - Retry sleep calls now use injected clock instead of `time.Sleep()` directly
+
 ### Fixed
 
 - Session resume failure detection for Claude Code "No conversation found" error
