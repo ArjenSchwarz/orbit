@@ -10,6 +10,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 - Integration test framework core components (`internal/testutil/`)
+  - `TestAgent` implementing full `agents.Agent` interface for mock testing
+  - `TestAgentConfig` for configuring agent identity (Name, CLICommand, Version, etc.)
+  - `NewTestAgent(t, name, scenario, ...opts)` constructor with functional options
+  - `WithClock`, `WithConfig`, `WithSessionExport` options for TestAgent
+  - `SessionExporter` interface support via `WithSessionExport` option
+  - `AssertAllConsumed(t)` for verifying all scenario responses were used
   - `Recorder` with thread-safe call tracking and assertion methods (`AssertCallCount`, `AssertCallOrder`)
   - `ScenarioBuilder` fluent API for defining agent response sequences (`Success`, `RetryableError`, `FatalError`, `SessionInvalid`, `RateLimitWait`)
   - `ScenarioBuilder` modifiers (`WithDelay`, `WithOutput`, `WithCost`, `Repeat`, `Custom`)

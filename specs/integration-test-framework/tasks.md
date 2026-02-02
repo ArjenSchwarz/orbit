@@ -122,7 +122,7 @@ references:
 
 ## TestAgent Implementation
 
-- [ ] 12. Implement TestAgent core <!-- id:h55dbli -->
+- [x] 12. Implement TestAgent core <!-- id:h55dbli -->
   - Implement TestAgent struct with t, name, scenario, recorder, clock, config, mutex, callIndex fields
   - Implement TestAgentConfig struct for identity configuration
   - Implement NewTestAgent(t, name, scenario, ...opts) constructor
@@ -132,7 +132,7 @@ references:
   - Stream: 2
   - Requirements: [1.1](requirements.md#1.1), [1.4](requirements.md#1.4), [1.7](requirements.md#1.7)
 
-- [ ] 13. Implement TestAgent Run and Resume <!-- id:h55dblj -->
+- [x] 13. Implement TestAgent Run and Resume <!-- id:h55dblj -->
   - Implement Run() with mutex-protected callIndex increment
   - Extract context deadline to HasDeadline/Deadline (do not store context)
   - Record AgentCall via recorder
@@ -145,7 +145,7 @@ references:
   - Stream: 2
   - Requirements: [1.2](requirements.md#1.2), [1.3](requirements.md#1.3), [1.5](requirements.md#1.5), [2.11](requirements.md#2.11)
 
-- [ ] 14. Implement TestAgent options and SessionExporter <!-- id:h55dblk -->
+- [x] 14. Implement TestAgent options and SessionExporter <!-- id:h55dblk -->
   - Define TestAgentOption function type
   - Implement WithClock(clock) option
   - Implement WithSessionExport(path) option enabling SessionExporter
@@ -155,7 +155,7 @@ references:
   - Stream: 2
   - Requirements: [1.6](requirements.md#1.6), [6.5](requirements.md#6.5), [6.6](requirements.md#6.6)
 
-- [ ] 15. Write TestAgent unit tests <!-- id:h55dbll -->
+- [x] 15. Write TestAgent unit tests <!-- id:h55dbll -->
   - Test AssertAllConsumed detects unconsumed responses
   - Test unexpected call triggers t.Fatalf
   - Test Run/Resume record calls correctly
