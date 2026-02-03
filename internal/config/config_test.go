@@ -705,8 +705,9 @@ agents:
 
 func TestGetAgentConfig_WithTimeout(t *testing.T) {
 	cfg := &Config{
-		Agents: map[string]AgentConfig{
+		AgentAliases: map[string]AgentAliasConfig{
 			"claude-code": {
+				Type:        "claude-code",
 				CLIPath:     "/usr/local/bin/claude",
 				AutoApprove: true,
 				Timeout:     "30m",
@@ -730,8 +731,9 @@ func TestGetAgentConfig_WithTimeout(t *testing.T) {
 
 func TestGetAgentConfig_InvalidTimeout(t *testing.T) {
 	cfg := &Config{
-		Agents: map[string]AgentConfig{
+		AgentAliases: map[string]AgentAliasConfig{
 			"test-agent": {
+				Type:    "claude-code",
 				CLIPath: "test",
 				Timeout: "invalid-duration",
 			},
@@ -752,8 +754,9 @@ func TestGetAgentConfig_InvalidTimeout(t *testing.T) {
 
 func TestGetAgentConfig_NotConfigured(t *testing.T) {
 	cfg := &Config{
-		Agents: map[string]AgentConfig{
+		AgentAliases: map[string]AgentAliasConfig{
 			"other-agent": {
+				Type:    "claude-code",
 				CLIPath: "other",
 			},
 		},
@@ -775,8 +778,9 @@ func TestGetAgentConfig_NotConfigured(t *testing.T) {
 
 func TestGetAgentConfig_WithModel(t *testing.T) {
 	cfg := &Config{
-		Agents: map[string]AgentConfig{
+		AgentAliases: map[string]AgentAliasConfig{
 			"kiro": {
+				Type:    "kiro",
 				CLIPath: "kiro-cli",
 				Model:   "auto",
 			},
@@ -795,8 +799,9 @@ func TestGetAgentConfig_WithModel(t *testing.T) {
 
 func TestGetAgentConfig_WithExtraArgs(t *testing.T) {
 	cfg := &Config{
-		Agents: map[string]AgentConfig{
+		AgentAliases: map[string]AgentAliasConfig{
 			"codex": {
+				Type:      "codex",
 				CLIPath:   "codex",
 				ExtraArgs: []string{"--search", "--verbose"},
 			},
@@ -2185,6 +2190,92 @@ func TestLoad_EmptyCommandTreatedAsNoOp(t *testing.T) {
 	}
 	if alias.PostCommand != "" {
 		t.Errorf("expected PostCommand to be empty, got %q", alias.PostCommand)
+	}
+}
+
+// TestGetAgentConfig_IncludesPrePostCommands verifies that GetAgentConfig
+// returns PreCommand and PostCommand from AgentAliases. This is critical for
+// variant mode which uses GetAllAgentConfigs (which calls GetAgentConfig).
+func TestGetAgentConfig_IncludesPrePostCommands(t *testing.T) {
+	tmpDir := t.TempDir()
+	homeDir := t.TempDir()
+	t.Setenv("HOME", homeDir)
+
+	projectConfig := `agents:
+  copilot-gemini:
+    type: copilot
+    pre-command: "echo pre"
+    post-command: "echo post"
+`
+	if err := os.WriteFile(filepath.Join(tmpDir, ".orbit.yaml"), []byte(projectConfig), 0644); err != nil {
+		t.Fatalf("failed to write project config: %v", err)
+	}
+
+	cfg := Load(tmpDir)
+	if err := cfg.ResolveAliases(); err != nil {
+		t.Fatalf("ResolveAliases failed: %v", err)
+	}
+
+	// GetAgentConfig should return agents.AgentConfig with PreCommand/PostCommand
+	agentCfg := cfg.GetAgentConfig("copilot-gemini")
+
+	if agentCfg.PreCommand != "echo pre" {
+		t.Errorf("expected PreCommand %q, got %q", "echo pre", agentCfg.PreCommand)
+	}
+	if agentCfg.PostCommand != "echo post" {
+		t.Errorf("expected PostCommand %q, got %q", "echo post", agentCfg.PostCommand)
+	}
+}
+
+// TestGetAllAgentConfigs_IncludesPrePostCommands verifies that GetAllAgentConfigs
+// returns configs with PreCommand and PostCommand populated for each agent.
+func TestGetAllAgentConfigs_IncludesPrePostCommands(t *testing.T) {
+	tmpDir := t.TempDir()
+	homeDir := t.TempDir()
+	t.Setenv("HOME", homeDir)
+
+	projectConfig := `agents:
+  claude-code:
+    type: claude-code
+    pre-command: "make lint"
+  copilot-gemini:
+    type: copilot
+    pre-command: "echo pre"
+    post-command: "echo post"
+`
+	if err := os.WriteFile(filepath.Join(tmpDir, ".orbit.yaml"), []byte(projectConfig), 0644); err != nil {
+		t.Fatalf("failed to write project config: %v", err)
+	}
+
+	cfg := Load(tmpDir)
+	if err := cfg.ResolveAliases(); err != nil {
+		t.Fatalf("ResolveAliases failed: %v", err)
+	}
+
+	allConfigs := cfg.GetAllAgentConfigs()
+
+	// Check copilot-gemini has both commands
+	copilot, ok := allConfigs["copilot-gemini"]
+	if !ok {
+		t.Fatal("expected copilot-gemini in GetAllAgentConfigs result")
+	}
+	if copilot.PreCommand != "echo pre" {
+		t.Errorf("copilot-gemini: expected PreCommand %q, got %q", "echo pre", copilot.PreCommand)
+	}
+	if copilot.PostCommand != "echo post" {
+		t.Errorf("copilot-gemini: expected PostCommand %q, got %q", "echo post", copilot.PostCommand)
+	}
+
+	// Check claude-code has pre-command but no post-command
+	claude, ok := allConfigs["claude-code"]
+	if !ok {
+		t.Fatal("expected claude-code in GetAllAgentConfigs result")
+	}
+	if claude.PreCommand != "make lint" {
+		t.Errorf("claude-code: expected PreCommand %q, got %q", "make lint", claude.PreCommand)
+	}
+	if claude.PostCommand != "" {
+		t.Errorf("claude-code: expected empty PostCommand, got %q", claude.PostCommand)
 	}
 }
 
