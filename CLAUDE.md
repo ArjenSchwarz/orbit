@@ -37,6 +37,64 @@ When adding tests, ensure they provide actual value:
 - **Prefer testing real functionality** - Use mocks to isolate dependencies, but test actual code paths. Tests that just verify struct field initialization or duplicate validation logic from production code add little value.
 - **If proper testing isn't feasible, skip the test** - It's better to have no test than a fake test that gives false confidence. Document the gap and create a spec to address it properly.
 
+## Testing with testutil
+
+Orbit uses a custom test framework in `internal/testutil/` for integration testing. The framework provides mock agents that simulate real agent behavior without invoking CLIs.
+
+### Quick Start
+
+```go
+func TestMyFeature(t *testing.T) {
+    // 1. Define expected agent behavior
+    scenario := testutil.NewScenario().
+        Success("session-1", 0.05).
+        Success("session-2", 0.03).
+        Build()
+
+    // 2. Create test agent and orbit
+    agent := testutil.NewTestAgent(t, "mock", scenario)
+    t.Cleanup(func() { agent.AssertAllConsumed(t) })
+    orbit := orbithelpers.CreateTestOrbit(t, orbithelpers.WithAgent(agent))
+
+    // 3. Run and verify
+    err := orbit.Run()
+    require.NoError(t, err)
+    agent.Recorder().AssertCallCount(t, 2)
+}
+```
+
+### Common Patterns
+
+**Testing Error Recovery:**
+```go
+scenario := testutil.NewScenario().
+    RetryableError("timeout").
+    RetryableError("timeout").
+    Success("session-1", 0.05).
+    Build()
+```
+
+**Multiple Identical Responses:**
+```go
+scenario := testutil.NewScenario().
+    Success("session-1", 0.05).Repeat(5).
+    Build()
+```
+
+**Testing with Timing (FakeClock):**
+```go
+clock := testutil.NewFakeClock(time.Now())
+agent := testutil.NewTestAgent(t, "mock", scenario, testutil.WithClock(clock))
+orbit := orbithelpers.CreateTestOrbit(t,
+    orbithelpers.WithAgent(agent),
+    orbithelpers.WithOrbitClock(clock),
+)
+// After run, verify backoff durations
+clock.AssertSleeps(t, []time.Duration{time.Second, 2*time.Second})
+```
+
+See `internal/testutil/doc.go` for complete API documentation including error injection, multi-variant testing, and property-based testing with rapid.
+
 ## Architecture
 
 The codebase follows a clean internal package structure:

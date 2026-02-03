@@ -11,17 +11,16 @@ import (
 	"github.com/arjenschwarz/orbit/internal/debug"
 	"github.com/arjenschwarz/orbit/internal/logs"
 	"github.com/arjenschwarz/orbit/internal/rune"
+	"github.com/arjenschwarz/orbit/internal/testutil"
 )
 
 // setupTestOrbit creates a minimal Orbit instance for shell command testing.
 func setupTestOrbit(t *testing.T, workingDir string, timeout time.Duration) *Orbit {
 	t.Helper()
 
-	ctx, cancel := context.WithCancel(context.Background())
-	t.Cleanup(cancel)
-
-	// Create a mock agent for testing
-	mockAg := &mockAgent{name: "test-agent"}
+	// Create TestAgent with empty scenario - agent.Run() won't be called
+	scenario := testutil.NewScenario().Build()
+	agent := testutil.NewTestAgent(t, "test-agent", scenario)
 
 	// Create rune client with a dummy tasks file (won't be used in shell tests)
 	runeClient := rune.NewClient(filepath.Join(workingDir, "tasks.md"))
@@ -38,9 +37,9 @@ func setupTestOrbit(t *testing.T, workingDir string, timeout time.Duration) *Orb
 			WorkingDir:     workingDir,
 			CommandTimeout: timeout,
 		},
-		agent:       mockAg,
+		agent:       agent,
 		runeClient:  runeClient,
-		shutdownCtx: ctx,
+		shutdownCtx: t.Context(),
 		debug:       dbg,
 	}
 }
@@ -190,10 +189,10 @@ func TestSaveShellCommandLog(t *testing.T) {
 		t.Fatalf("Failed to create log manager: %v", err)
 	}
 
-	ctx, cancel := context.WithCancel(context.Background())
-	t.Cleanup(cancel)
+	// Create TestAgent with empty scenario - agent.Run() won't be called
+	scenario := testutil.NewScenario().Build()
+	agent := testutil.NewTestAgent(t, "test-agent", scenario)
 
-	mockAg := &mockAgent{name: "test-agent"}
 	dbg, _ := debug.NewLogger(debug.LoggerConfig{})
 	t.Cleanup(func() { dbg.Close() })
 
@@ -202,10 +201,10 @@ func TestSaveShellCommandLog(t *testing.T) {
 			WorkingDir:     tempDir,
 			CommandTimeout: 30 * time.Second,
 		},
-		agent:       mockAg,
+		agent:       agent,
 		runeClient:  rune.NewClient(filepath.Join(tempDir, "tasks.md")),
 		logManager:  logManager,
-		shutdownCtx: ctx,
+		shutdownCtx: t.Context(),
 		debug:       dbg,
 	}
 
@@ -249,7 +248,10 @@ func TestExecuteShellCommand_ShutdownInterrupt(t *testing.T) {
 	// Create a context that we'll cancel to simulate shutdown
 	ctx, cancel := context.WithCancel(context.Background())
 
-	mockAg := &mockAgent{name: "test-agent"}
+	// Create TestAgent with empty scenario - agent.Run() won't be called
+	scenario := testutil.NewScenario().Build()
+	agent := testutil.NewTestAgent(t, "test-agent", scenario)
+
 	dbg, _ := debug.NewLogger(debug.LoggerConfig{})
 	t.Cleanup(func() { dbg.Close() })
 
@@ -258,7 +260,7 @@ func TestExecuteShellCommand_ShutdownInterrupt(t *testing.T) {
 			WorkingDir:     tempDir,
 			CommandTimeout: 10 * time.Second,
 		},
-		agent:       mockAg,
+		agent:       agent,
 		runeClient:  rune.NewClient(filepath.Join(tempDir, "tasks.md")),
 		shutdownCtx: ctx,
 		debug:       dbg,

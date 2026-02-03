@@ -7,6 +7,85 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- Fix CLAUDE.md documentation examples to use correct `orbithelpers.CreateTestOrbit` import path
+- Migrate `TestSignalDuringPrePrompt` from legacy `mockAgent` to `testutil.NewTestAgent`
+
+### Removed
+
+- Remove unused `mockAgent` type from `orbit_test.go` (replaced by `testutil.NewTestAgent`)
+
+### Added
+
+- Package documentation for `internal/testutil/` test framework
+  - `doc.go` with package-level documentation and usage examples
+  - Basic usage example showing scenario creation, TestAgent setup, and Orbit wiring
+  - Error injection examples (RetryableError, FatalError, SessionInvalid, RateLimitWait)
+  - Repeat modifier example for multiple identical responses
+  - FakeClock timing test example with backoff verification
+  - Custom response escape hatch documentation
+  - Multi-variant testing example
+  - Call recording and assertion documentation
+  - Property-based testing examples with rapid generators
+  - FakeClock scope limitation documentation (Now/Sleep only, no timer support)
+- Testing with testutil section in CLAUDE.md
+  - Quick start code example for basic test setup
+  - Common patterns for error recovery, Repeat, and timing tests
+  - Reference to internal/testutil/doc.go for full API
+
+- Test fixtures and rapid generators for integration testing (`internal/testutil/`)
+  - `TestAgentResolver` implementing `orbit.AgentResolver` for dependency injection
+  - `CreateTasksFile(t, phases)` creating minimal tasks.md in temp directory
+  - `CreateConfig(t, opts)` creating .orbit.yaml with specified options
+  - `CreateTestOrbit(t, ...opts)` wiring TestAgent, Clock, and RuneClient
+  - `WithAgent`, `WithAgents`, `WithOrbitClock`, `WithTasksFile`, `WithPrePrompt`, `WithPostPrompt` options
+  - `CreateRuneClient(t, tasksFile)` for creating rune clients
+  - `SuccessScenario(t, phases)` convenience helper for all-success scenarios
+  - `RunResultGen()` rapid generator with SessionID/ExitCode invariants
+  - `CostMetricsGen()` rapid generator with non-negative CostUSD invariant
+  - `ErrorClassGen()` rapid generator for valid error classifications
+  - `RandomScenarioGen(length)` rapid generator for mixed success/error scenarios
+  - Property tests: `TestProperty_OrchestrationHandlesAnyErrorSequence`, `TestProperty_RetryCountBounded`
+  - Unit tests for all fixtures and generator invariants
+
+- Integration test framework core components (`internal/testutil/`)
+  - `TestAgent` implementing full `agents.Agent` interface for mock testing
+  - `TestAgentConfig` for configuring agent identity (Name, CLICommand, Version, etc.)
+  - `NewTestAgent(t, name, scenario, ...opts)` constructor with functional options
+  - `WithClock`, `WithConfig`, `WithSessionExport` options for TestAgent
+  - `SessionExporter` interface support via `WithSessionExport` option
+  - `AssertAllConsumed(t)` for verifying all scenario responses were used
+  - `Recorder` with thread-safe call tracking and assertion methods (`AssertCallCount`, `AssertCallOrder`)
+  - `ScenarioBuilder` fluent API for defining agent response sequences (`Success`, `RetryableError`, `FatalError`, `SessionInvalid`, `RateLimitWait`)
+  - `ScenarioBuilder` modifiers (`WithDelay`, `WithOutput`, `WithCost`, `Repeat`, `Custom`)
+  - `FakeClock` for deterministic timing tests with `Now()`, `Advance()`, `Sleep()`, and `AssertSleeps()`
+  - Core types: `AgentCall`, `CallResponse`, `Scenario`, `Clock` interface
+  - Full test suite with race detection passing
+
+- Clock interface and AgentResolver interface for testing support (`internal/orbit/`)
+  - `Clock` interface with `Now()` and `Sleep()` methods for deterministic timing tests
+  - `RealClock` struct implementing `Clock` using actual time functions
+  - `AgentResolver` interface for looking up agents by name without global registry
+  - `registryResolver` as default implementation wrapping `agents.Get()`
+  - `Config.Clock` and `Config.AgentResolver` fields with sensible defaults
+  - Retry sleep calls now use injected clock instead of `time.Sleep()` directly
+
+### Fixed
+
+- Session resume failure detection for Claude Code "No conversation found" error
+  - Added "no conversation found" to `isSessionInvalidError()` pattern matching
+  - Fixes variant runs failing when resuming sessions in recreated worktrees
+  - Orbit now correctly falls back to starting a fresh session instead of failing
+
+### Added
+
+- Integration test framework specification (`specs/integration-test-framework/`)
+  - Requirements document defining 11 requirement sections with EARS-format acceptance criteria
+  - Design document with architecture, component interfaces, and data models for TestAgent, ScenarioBuilder, Recorder, and FakeClock
+  - Decision log with 12 architectural decisions (scenario-based mocking, dependency injection, t.Fatalf over panic, etc.)
+  - Task list with 24 implementation tasks across 6 phases and 2 parallel work streams
+
 ### Fixed
 
 - Variant status display showing "Waiting for activity..." despite active agent sessions
