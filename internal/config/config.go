@@ -613,30 +613,29 @@ func (c *Config) GetAgentConfig(name string) agents.AgentConfig {
 		AutoApprove: true,
 	}
 
-	ac, ok := c.Agents[name]
+	// Use AgentAliases as the primary source (has all fields including PreCommand/PostCommand)
+	alias, ok := c.AgentAliases[name]
 	if !ok {
 		return cfg
 	}
 
-	cfg.CLIPath = ac.CLIPath
-	cfg.AutoApprove = ac.AutoApprove
-	cfg.ExtraArgs = ac.ExtraArgs
+	cfg.Type = alias.Type
+	cfg.CLIPath = alias.CLIPath
+	cfg.AutoApprove = alias.AutoApprove
+	cfg.ExtraArgs = alias.ExtraArgs
+	cfg.PreCommand = alias.PreCommand
+	cfg.PostCommand = alias.PostCommand
 
 	// Parse timeout duration
-	if ac.Timeout != "" {
-		if d, err := time.ParseDuration(ac.Timeout); err == nil {
+	if alias.Timeout != "" {
+		if d, err := time.ParseDuration(alias.Timeout); err == nil {
 			cfg.Timeout = d
 		}
 	}
 
 	// Store model in Options map
-	if ac.Model != "" {
-		cfg.Options = map[string]string{"model": ac.Model}
-	}
-
-	// Look up the underlying type from AgentAliases
-	if alias, ok := c.AgentAliases[name]; ok && alias.Type != "" {
-		cfg.Type = alias.Type
+	if alias.Model != "" {
+		cfg.Options = map[string]string{"model": alias.Model}
 	}
 
 	return cfg
@@ -646,7 +645,7 @@ func (c *Config) GetAgentConfig(name string) agents.AgentConfig {
 // Each config is converted to agents.AgentConfig format.
 func (c *Config) GetAllAgentConfigs() map[string]agents.AgentConfig {
 	result := make(map[string]agents.AgentConfig)
-	for name := range c.Agents {
+	for name := range c.AgentAliases {
 		result[name] = c.GetAgentConfig(name)
 	}
 	return result

@@ -73,6 +73,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Agent `pre-command` and `post-command` not executing in variant mode
+  - `GetAgentConfig()` now uses `AgentAliases` as the primary source instead of legacy `Agents` map
+  - `GetAllAgentConfigs()` now iterates over `AgentAliases` to include all configured agents
+  - All agent config fields (Type, CLIPath, AutoApprove, ExtraArgs, Timeout, Model, PreCommand, PostCommand) are now correctly passed to variant runs
+
 - Session resume failure detection for Claude Code "No conversation found" error
   - Added "no conversation found" to `isSessionInvalidError()` pattern matching
   - Fixes variant runs failing when resuming sessions in recreated worktrees
