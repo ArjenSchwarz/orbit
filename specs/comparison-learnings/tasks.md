@@ -8,26 +8,26 @@ references:
 
 ## Data Types
 
-- [ ] 1. Add LearningCategory type and constants <!-- id:th9obg8 -->
+- [x] 1. Add LearningCategory type and constants <!-- id:th9obg8 -->
   - Stream: 1
   - Requirements: [1.2](requirements.md#1.2)
 
-- [ ] 2. Add VariantLearning struct with JSON tags <!-- id:th9obg9 -->
+- [x] 2. Add VariantLearning struct with JSON tags <!-- id:th9obg9 -->
   - Blocked-by: th9obg8 (Add LearningCategory type and constants)
   - Stream: 1
   - Requirements: [1.1](requirements.md#1.1), [1.3](requirements.md#1.3)
 
-- [ ] 3. Add learnings limit constants <!-- id:th9obga -->
+- [x] 3. Add learnings limit constants <!-- id:th9obga -->
   - Blocked-by: th9obg9 (Add VariantLearning struct with JSON tags)
   - Stream: 1
   - Requirements: [6.1](requirements.md#6.1)
 
-- [ ] 4. Add Learnings field to Result struct with omitempty <!-- id:th9obgb -->
+- [x] 4. Add Learnings field to Result struct with omitempty <!-- id:th9obgb -->
   - Blocked-by: th9obg9 (Add VariantLearning struct with JSON tags)
   - Stream: 1
   - Requirements: [1.4](requirements.md#1.4), [1.5](requirements.md#1.5)
 
-- [ ] 5. Write unit tests for VariantLearning JSON marshaling <!-- id:th9obgc -->
+- [x] 5. Write unit tests for VariantLearning JSON marshaling <!-- id:th9obgc -->
   - Blocked-by: th9obg9 (Add VariantLearning struct with JSON tags), th9obgb (Add Learnings field to Result struct with omitempty)
   - Stream: 1
   - Requirements: [1.1](requirements.md#1.1), [1.5](requirements.md#1.5)

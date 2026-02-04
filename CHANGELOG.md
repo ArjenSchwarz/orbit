@@ -9,6 +9,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Learnings data types for comparison reports (`internal/comparison/types.go`)
+  - `LearningCategory` type with four constants: `code-pattern`, `architecture`, `testing`, `error-handling`
+  - `VariantLearning` struct with variant ID, category, title, description, rationale, and file references
+  - Limit constants to prevent unbounded AI output: `MaxLearningsPerVariant` (5), `MaxLearningsTotal` (20), `MaxFileRefsPerLearning` (5)
+  - `Learnings` field added to `Result` struct with `omitempty` for backwards compatibility
+  - Unit tests for JSON marshaling and field names
+
 - Feature spec for comparison-learnings (`specs/comparison-learnings/`)
   - Requirements document defining 7 requirement groups with 28 acceptance criteria
   - Design document with architecture, components, data models, and testing strategy
