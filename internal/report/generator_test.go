@@ -874,3 +874,232 @@ func TestGenerate_MarkdownLearningsAfterImprovements(t *testing.T) {
 		t.Errorf("Learnings section should come before Implementation Diffs section")
 	}
 }
+
+func TestGenerate_HTMLLearningsXSSEscaping(t *testing.T) {
+	tmpDir := t.TempDir()
+	outputDir := filepath.Join(tmpDir, "report")
+
+	gen := NewGenerator(outputDir)
+	data := &ReportData{
+		SpecName:       "xss-learnings-test",
+		GeneratedAt:    time.Now(),
+		BaseCommit:     "abc123",
+		OriginalBranch: "main",
+		Variants: []VariantReportData{
+			{
+				ID:     1,
+				Branch: "test-branch",
+				Status: "completed",
+				Diff:   "+code",
+			},
+		},
+		Comparison: &comparison.Result{
+			Recommendation: 1,
+			Confidence:     "high",
+			Summary:        "Test summary.",
+			Learnings: []comparison.VariantLearning{
+				{
+					VariantID:      1,
+					Category:       comparison.LearningCategoryCodePattern,
+					Title:          "<script>alert('xss-title')</script>",
+					Description:    "Test <b>bold</b> injection",
+					Rationale:      "Reason with \"quotes\" and <img src=x>",
+					FileReferences: []string{"<path>/file.go:42", "normal.go:10"},
+				},
+			},
+		},
+	}
+
+	err := gen.Generate(data)
+	if err != nil {
+		t.Fatalf("Generate() error = %v", err)
+	}
+
+	content, err := os.ReadFile(filepath.Join(outputDir, "index.html"))
+	if err != nil {
+		t.Fatalf("failed to read index.html: %v", err)
+	}
+
+	contentStr := string(content)
+
+	// Verify dangerous HTML tags are escaped in learnings [Req 4.7]
+	dangerous := []string{
+		"<script>alert",      // Title injection
+		"</script>",          // Script closing
+		"<b>bold</b>",        // Description HTML
+		"<img src=x>",        // Rationale img tag
+		"<path>",             // File reference HTML
+	}
+	for _, d := range dangerous {
+		if strings.Contains(contentStr, d) {
+			t.Errorf("index.html contains unescaped dangerous learnings content: %q", d)
+		}
+	}
+
+	// Verify escaped versions are present
+	escaped := []string{
+		"&lt;script&gt;",  // Escaped script tag
+		"&lt;b&gt;",       // Escaped bold tag
+		"&lt;img",         // Escaped img tag
+		"&lt;path&gt;",    // Escaped path tag in file reference
+	}
+	for _, e := range escaped {
+		if !strings.Contains(contentStr, e) {
+			t.Errorf("index.html missing escaped learnings content: %q", e)
+		}
+	}
+}
+
+func TestGenerate_HTMLLearningsSection(t *testing.T) {
+	tmpDir := t.TempDir()
+	outputDir := filepath.Join(tmpDir, "report")
+
+	gen := NewGenerator(outputDir)
+	data := &ReportData{
+		SpecName:       "html-learnings-test",
+		GeneratedAt:    time.Now(),
+		BaseCommit:     "abc123",
+		OriginalBranch: "main",
+		Variants: []VariantReportData{
+			{
+				ID:     1,
+				Branch: "test-branch",
+				Status: "completed",
+				Diff:   "+code",
+			},
+			{
+				ID:     2,
+				Branch: "test-branch-2",
+				Status: "completed",
+				Diff:   "+more code",
+			},
+		},
+		Comparison: &comparison.Result{
+			Recommendation: 1,
+			Confidence:     "high",
+			Summary:        "Variant 1 is better.",
+			Learnings: []comparison.VariantLearning{
+				{
+					VariantID:      1,
+					Category:       comparison.LearningCategoryCodePattern,
+					Title:          "Table-driven tests",
+					Description:    "Uses table-driven tests for comprehensive coverage.",
+					Rationale:      "Makes it easy to add new test cases.",
+					FileReferences: []string{"foo_test.go:42", "bar_test.go:100"},
+				},
+				{
+					VariantID:      2,
+					Category:       comparison.LearningCategoryArchitecture,
+					Title:          "Clean separation",
+					Description:    "Separates business logic from infrastructure.",
+					Rationale:      "Easier testing and better maintainability.",
+					FileReferences: []string{"service.go:1"},
+				},
+			},
+		},
+	}
+
+	err := gen.Generate(data)
+	if err != nil {
+		t.Fatalf("Generate() error = %v", err)
+	}
+
+	content, err := os.ReadFile(filepath.Join(outputDir, "index.html"))
+	if err != nil {
+		t.Fatalf("failed to read index.html: %v", err)
+	}
+
+	contentStr := string(content)
+
+	// Verify Learnings section is present [Req 4.1]
+	if !strings.Contains(contentStr, `class="learnings"`) {
+		t.Errorf("index.html missing learnings section")
+	}
+	if !strings.Contains(contentStr, "<h2>Learnings</h2>") {
+		t.Errorf("index.html missing Learnings heading")
+	}
+
+	// Verify category badges are present [Req 4.2]
+	if !strings.Contains(contentStr, `class="category-badge category-code-pattern"`) {
+		t.Errorf("index.html missing code-pattern category badge class")
+	}
+	if !strings.Contains(contentStr, `class="category-badge category-architecture"`) {
+		t.Errorf("index.html missing architecture category badge class")
+	}
+
+	// Verify learnings are grouped by variant [Req 4.3]
+	if !strings.Contains(contentStr, `class="variant-learnings"`) {
+		t.Errorf("index.html missing variant-learnings class")
+	}
+
+	// Verify file references are in monospace (code tags) [Req 4.4]
+	if !strings.Contains(contentStr, "<code>foo_test.go:42</code>") {
+		t.Errorf("index.html missing file reference in code tag")
+	}
+
+	// Verify learning content
+	checks := []string{
+		"Table-driven tests",
+		"Uses table-driven tests",
+		"Makes it easy to add new",
+		"Clean separation",
+		"service.go:1",
+	}
+	for _, check := range checks {
+		if !strings.Contains(contentStr, check) {
+			t.Errorf("index.html missing learnings content: %q", check)
+		}
+	}
+
+	// Verify stale reference disclaimer is present
+	if !strings.Contains(contentStr, "File references are a snapshot") {
+		t.Errorf("index.html missing stale reference disclaimer")
+	}
+}
+
+func TestGenerate_HTMLNoLearnings(t *testing.T) {
+	tmpDir := t.TempDir()
+	outputDir := filepath.Join(tmpDir, "report")
+
+	gen := NewGenerator(outputDir)
+	data := &ReportData{
+		SpecName:       "no-learnings",
+		GeneratedAt:    time.Now(),
+		BaseCommit:     "abc123",
+		OriginalBranch: "main",
+		Variants: []VariantReportData{
+			{
+				ID:     1,
+				Branch: "test-branch",
+				Status: "completed",
+				Diff:   "+code",
+			},
+		},
+		Comparison: &comparison.Result{
+			Recommendation: 1,
+			Confidence:     "high",
+			Summary:        "Variant 1 is the only one.",
+			Learnings:      nil, // No learnings
+		},
+	}
+
+	err := gen.Generate(data)
+	if err != nil {
+		t.Fatalf("Generate() error = %v", err)
+	}
+
+	content, err := os.ReadFile(filepath.Join(outputDir, "index.html"))
+	if err != nil {
+		t.Fatalf("failed to read index.html: %v", err)
+	}
+
+	contentStr := string(content)
+
+	// Verify Learnings section is NOT present when no learnings [Req 4.5]
+	if strings.Contains(contentStr, `class="learnings"`) {
+		t.Errorf("index.html should not contain learnings section when there are no learnings")
+	}
+	if strings.Contains(contentStr, "<h2>Learnings</h2>") {
+		t.Errorf("index.html should not contain Learnings heading when there are no learnings")
+	}
+}

@@ -172,6 +172,36 @@
             </div>
         </section>
         {{end}}
+
+        {{if .Comparison.Learnings}}
+        <section class="learnings">
+            <h2>Learnings</h2>
+            <p class="learnings-disclaimer">Note: File references are a snapshot from the time of analysis and may become outdated if code changes.</p>
+            {{$learningsByVariant := groupLearningsByVariant .Comparison.Learnings}}
+            {{range $variantID := sortedVariantIDs $learningsByVariant}}
+            {{$learnings := index $learningsByVariant $variantID}}
+            <div class="variant-learnings">
+                <h3>Variant {{$variantID}}</h3>
+                <div class="learnings-list">
+                    {{range $learnings}}
+                    <div class="learning">
+                        <div class="learning-header">
+                            <span class="category-badge category-{{.Category}}">{{.Category}}</span>
+                            <span class="learning-title">{{.Title}}</span>
+                        </div>
+                        <p class="learning-description">{{.Description}}</p>
+                        <p class="learning-rationale"><strong>Why it matters:</strong> {{.Rationale}}</p>
+                        <div class="learning-files">
+                            <strong>Files:</strong>
+                            {{range .FileReferences}}<code>{{.}}</code> {{end}}
+                        </div>
+                    </div>
+                    {{end}}
+                </div>
+            </div>
+            {{end}}
+        </section>
+        {{end}}
         {{end}}
 
         <section class="variant-diffs">

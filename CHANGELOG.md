@@ -9,6 +9,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Learnings section in HTML comparison reports (`internal/report/templates/index.html`)
+  - Template function `groupLearningsByVariant` and `sortedVariantIDs` for organizing learnings
+  - Learnings grouped by variant with visual category badges
+  - CSS styling with distinct colors for each category (code-pattern, architecture, testing, error-handling)
+  - Default styling for unknown/future categories for forward compatibility
+  - File references displayed in monospace font
+  - Stale reference disclaimer at top of section
+  - Section only rendered when learnings exist
+  - Responsive design for mobile devices
+  - XSS safety tests ensuring all learning content is properly escaped
+
 - Learnings section in markdown comparison reports (`internal/report/markdown.go`)
   - Learnings grouped by variant with category badges and titles
   - File references rendered in backticks (not clickable links)
