@@ -47,6 +47,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Whitespace trimming for title, description, and rationale
   - Unknown category support for forward compatibility
   - Integration with `parseAndValidate` for automatic validation during comparison
+  - Integration tests for end-to-end comparison with learnings
+  - Graceful degradation tests for malformed learnings (missing fields, invalid variant IDs, whitespace-only fields)
 
 - Learnings helper functions (`internal/comparison/learnings.go`)
   - `GroupLearningsByVariant` for organizing learnings by variant ID

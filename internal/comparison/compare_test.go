@@ -4,6 +4,8 @@ import (
 	"context"
 	"testing"
 	"time"
+
+	"github.com/arjenschwarz/orbit/internal/agents"
 )
 
 func TestBuildPrompt_IncludesAllVariants(t *testing.T) {
@@ -859,5 +861,369 @@ func TestBuildPrompt_LearningsQualityGuidelines(t *testing.T) {
 	}
 	if !foundBadExample {
 		t.Error("prompt should provide examples of trivial/bad learnings to exclude")
+	}
+}
+
+// Integration Tests for Comparison with Learnings
+
+// mockPromptRunner implements the promptRunner interface for testing.
+type mockPromptRunner struct {
+	response string
+	err      error
+}
+
+func (m *mockPromptRunner) RunCustomPrompt(prompt string) (*agents.RunResult, error) {
+	if m.err != nil {
+		return nil, m.err
+	}
+	return &agents.RunResult{Output: m.response}, nil
+}
+
+// TestIntegration_ComparisonWithLearnings tests the full comparison flow
+// from prompt to result, verifying learnings are correctly extracted.
+func TestIntegration_ComparisonWithLearnings(t *testing.T) {
+	// Mock AI response with learnings
+	aiResponse := `{
+		"recommendation": 1,
+		"confidence": "high",
+		"summary": "Variant 1 demonstrates cleaner architecture and better test coverage.",
+		"file_analyses": [
+			{
+				"path": "internal/service/handler.go",
+				"variants": {"1": "Clean separation of concerns", "2": "Mixed responsibilities"},
+				"preference": 1
+			}
+		],
+		"observations": [
+			"Variant 1 uses table-driven tests",
+			"Variant 2 has fewer test cases"
+		],
+		"learnings": [
+			{
+				"variant_id": 1,
+				"category": "code-pattern",
+				"title": "Table-driven tests with map[string]struct",
+				"description": "Uses map[string]struct{} for test cases to ensure unique names.",
+				"rationale": "Guarantees each test case has a unique name, making failures easier to identify.",
+				"file_references": ["internal/service/handler_test.go:42", "internal/service/handler_test.go:120"]
+			},
+			{
+				"variant_id": 1,
+				"category": "error-handling",
+				"title": "Sentinel errors with errors.Is()",
+				"description": "Defines package-level sentinel errors and checks them with errors.Is().",
+				"rationale": "Enables type-safe error checking across package boundaries without string matching.",
+				"file_references": ["internal/service/errors.go:10"]
+			},
+			{
+				"variant_id": 2,
+				"category": "architecture",
+				"title": "Functional options pattern",
+				"description": "Uses functional options for flexible struct configuration.",
+				"rationale": "Allows adding new options without breaking existing callers.",
+				"file_references": ["internal/config/options.go:15", "internal/config/options.go:30"]
+			}
+		]
+	}`
+
+	runner := &mockPromptRunner{response: aiResponse}
+	comp := NewComparator(runner, "")
+
+	variants := []VariantData{
+		{ID: 1, Diff: "+func handler() {}\n+// implementation"},
+		{ID: 2, Diff: "+func handler() {}\n+// different impl"},
+	}
+
+	ctx := context.Background()
+	result, err := comp.Compare(ctx, "test-feature", variants)
+	if err != nil {
+		t.Fatalf("Compare() failed: %v", err)
+	}
+
+	// Verify basic comparison fields
+	if result.Recommendation != 1 {
+		t.Errorf("expected recommendation 1, got %d", result.Recommendation)
+	}
+	if result.Confidence != "high" {
+		t.Errorf("expected confidence 'high', got %q", result.Confidence)
+	}
+
+	// Verify learnings were extracted
+	if len(result.Learnings) != 3 {
+		t.Fatalf("expected 3 learnings, got %d", len(result.Learnings))
+	}
+
+	// Verify first learning
+	l1 := result.Learnings[0]
+	if l1.VariantID != 1 {
+		t.Errorf("learning 0: expected variant_id 1, got %d", l1.VariantID)
+	}
+	if l1.Category != LearningCategoryCodePattern {
+		t.Errorf("learning 0: expected category %q, got %q", LearningCategoryCodePattern, l1.Category)
+	}
+	if l1.Title != "Table-driven tests with map[string]struct" {
+		t.Errorf("learning 0: unexpected title: %q", l1.Title)
+	}
+	if len(l1.FileReferences) != 2 {
+		t.Errorf("learning 0: expected 2 file references, got %d", len(l1.FileReferences))
+	}
+
+	// Verify second learning has error-handling category
+	l2 := result.Learnings[1]
+	if l2.Category != LearningCategoryErrorHandling {
+		t.Errorf("learning 1: expected category %q, got %q", LearningCategoryErrorHandling, l2.Category)
+	}
+
+	// Verify third learning is from variant 2
+	l3 := result.Learnings[2]
+	if l3.VariantID != 2 {
+		t.Errorf("learning 2: expected variant_id 2, got %d", l3.VariantID)
+	}
+	if l3.Category != LearningCategoryArchitecture {
+		t.Errorf("learning 2: expected category %q, got %q", LearningCategoryArchitecture, l3.Category)
+	}
+}
+
+// TestIntegration_ComparisonWithLearningsGroupedByVariant tests that learnings
+// can be grouped by variant for rendering.
+func TestIntegration_ComparisonWithLearningsGroupedByVariant(t *testing.T) {
+	aiResponse := `{
+		"recommendation": 2,
+		"confidence": "medium",
+		"summary": "Variant 2 is slightly better.",
+		"file_analyses": [],
+		"observations": [],
+		"learnings": [
+			{"variant_id": 1, "category": "testing", "title": "L1", "rationale": "R1", "file_references": ["f1.go"]},
+			{"variant_id": 2, "category": "architecture", "title": "L2", "rationale": "R2", "file_references": ["f2.go"]},
+			{"variant_id": 1, "category": "code-pattern", "title": "L3", "rationale": "R3", "file_references": ["f3.go"]},
+			{"variant_id": 3, "category": "error-handling", "title": "L4", "rationale": "R4", "file_references": ["f4.go"]}
+		]
+	}`
+
+	runner := &mockPromptRunner{response: aiResponse}
+	comp := NewComparator(runner, "")
+
+	variants := []VariantData{
+		{ID: 1, Diff: "+v1"},
+		{ID: 2, Diff: "+v2"},
+		{ID: 3, Diff: "+v3"},
+	}
+
+	ctx := context.Background()
+	result, err := comp.Compare(ctx, "test-feature", variants)
+	if err != nil {
+		t.Fatalf("Compare() failed: %v", err)
+	}
+
+	// Group learnings by variant
+	grouped := GroupLearningsByVariant(result.Learnings)
+
+	// Verify grouping
+	if len(grouped) != 3 {
+		t.Errorf("expected 3 variant groups, got %d", len(grouped))
+	}
+	if len(grouped[1]) != 2 {
+		t.Errorf("variant 1 should have 2 learnings, got %d", len(grouped[1]))
+	}
+	if len(grouped[2]) != 1 {
+		t.Errorf("variant 2 should have 1 learning, got %d", len(grouped[2]))
+	}
+	if len(grouped[3]) != 1 {
+		t.Errorf("variant 3 should have 1 learning, got %d", len(grouped[3]))
+	}
+
+	// Verify ordering via SortedVariantIDs
+	sortedIDs := SortedVariantIDs(grouped)
+	if len(sortedIDs) != 3 || sortedIDs[0] != 1 || sortedIDs[1] != 2 || sortedIDs[2] != 3 {
+		t.Errorf("expected sorted IDs [1, 2, 3], got %v", sortedIDs)
+	}
+}
+
+// TestIntegration_GracefulDegradation_MalformedLearnings tests that malformed
+// learnings do not break comparison - the comparison still succeeds but learnings
+// are filtered or omitted [Req 6.2, 6.4].
+func TestIntegration_GracefulDegradation_MalformedLearnings(t *testing.T) {
+	tests := map[string]struct {
+		response        string
+		wantLearnings   int
+		wantRecommend   int
+	}{
+		"all learnings missing required fields": {
+			response: `{
+				"recommendation": 1,
+				"confidence": "high",
+				"summary": "Test summary.",
+				"file_analyses": [],
+				"observations": [],
+				"learnings": [
+					{"variant_id": 1, "category": "testing", "title": "", "rationale": "R1", "file_references": ["f.go"]},
+					{"variant_id": 1, "category": "testing", "title": "T2", "rationale": "", "file_references": ["f.go"]},
+					{"variant_id": 1, "category": "testing", "title": "T3", "rationale": "R3", "file_references": []}
+				]
+			}`,
+			wantLearnings: 0, // All invalid
+			wantRecommend: 1,
+		},
+		"mix of valid and invalid learnings": {
+			response: `{
+				"recommendation": 2,
+				"confidence": "medium",
+				"summary": "Variant 2 wins.",
+				"file_analyses": [],
+				"observations": [],
+				"learnings": [
+					{"variant_id": 1, "category": "testing", "title": "Valid One", "rationale": "R1", "file_references": ["f.go"]},
+					{"variant_id": 99, "category": "testing", "title": "Invalid Variant", "rationale": "R2", "file_references": ["f.go"]},
+					{"variant_id": 2, "category": "architecture", "title": "Valid Two", "rationale": "R3", "file_references": ["g.go"]}
+				]
+			}`,
+			wantLearnings: 2, // Only 2 valid
+			wantRecommend: 2,
+		},
+		"learnings field completely missing (backwards compat)": {
+			response: `{
+				"recommendation": 1,
+				"confidence": "low",
+				"summary": "Old response format.",
+				"file_analyses": [],
+				"observations": []
+			}`,
+			wantLearnings: 0, // nil/absent
+			wantRecommend: 1,
+		},
+		"learnings field is null": {
+			response: `{
+				"recommendation": 1,
+				"confidence": "high",
+				"summary": "Null learnings.",
+				"file_analyses": [],
+				"observations": [],
+				"learnings": null
+			}`,
+			wantLearnings: 0,
+			wantRecommend: 1,
+		},
+		"learnings field is empty array": {
+			response: `{
+				"recommendation": 1,
+				"confidence": "high",
+				"summary": "Empty learnings.",
+				"file_analyses": [],
+				"observations": [],
+				"learnings": []
+			}`,
+			wantLearnings: 0,
+			wantRecommend: 1,
+		},
+		"learnings with unknown category (forward compat)": {
+			response: `{
+				"recommendation": 1,
+				"confidence": "high",
+				"summary": "Unknown category.",
+				"file_analyses": [],
+				"observations": [],
+				"learnings": [
+					{"variant_id": 1, "category": "performance", "title": "Fast Algorithm", "rationale": "O(1)", "file_references": ["algo.go"]}
+				]
+			}`,
+			wantLearnings: 1, // Unknown category is allowed
+			wantRecommend: 1,
+		},
+		"per-variant limit exceeded": {
+			response: `{
+				"recommendation": 1,
+				"confidence": "high",
+				"summary": "Too many learnings from one variant.",
+				"file_analyses": [],
+				"observations": [],
+				"learnings": [
+					{"variant_id": 1, "category": "testing", "title": "L1", "rationale": "R", "file_references": ["f.go"]},
+					{"variant_id": 1, "category": "testing", "title": "L2", "rationale": "R", "file_references": ["f.go"]},
+					{"variant_id": 1, "category": "testing", "title": "L3", "rationale": "R", "file_references": ["f.go"]},
+					{"variant_id": 1, "category": "testing", "title": "L4", "rationale": "R", "file_references": ["f.go"]},
+					{"variant_id": 1, "category": "testing", "title": "L5", "rationale": "R", "file_references": ["f.go"]},
+					{"variant_id": 1, "category": "testing", "title": "L6", "rationale": "R", "file_references": ["f.go"]},
+					{"variant_id": 1, "category": "testing", "title": "L7", "rationale": "R", "file_references": ["f.go"]}
+				]
+			}`,
+			wantLearnings: MaxLearningsPerVariant, // Capped at limit
+			wantRecommend: 1,
+		},
+	}
+
+	for name, tc := range tests {
+		t.Run(name, func(t *testing.T) {
+			runner := &mockPromptRunner{response: tc.response}
+			comp := NewComparator(runner, "")
+
+			variants := []VariantData{
+				{ID: 1, Diff: "+v1"},
+				{ID: 2, Diff: "+v2"},
+			}
+
+			ctx := context.Background()
+			result, err := comp.Compare(ctx, "test-feature", variants)
+			if err != nil {
+				t.Fatalf("Compare() should not fail on malformed learnings: %v", err)
+			}
+
+			// Core comparison fields should be valid
+			if result.Recommendation != tc.wantRecommend {
+				t.Errorf("expected recommendation %d, got %d", tc.wantRecommend, result.Recommendation)
+			}
+
+			// Learnings count should match expected
+			gotLearnings := len(result.Learnings)
+			if gotLearnings != tc.wantLearnings {
+				t.Errorf("expected %d learnings, got %d", tc.wantLearnings, gotLearnings)
+			}
+		})
+	}
+}
+
+// TestIntegration_GracefulDegradation_WhitespaceOnlyFields tests that learnings
+// with whitespace-only required fields are rejected.
+func TestIntegration_GracefulDegradation_WhitespaceOnlyFields(t *testing.T) {
+	aiResponse := `{
+		"recommendation": 1,
+		"confidence": "high",
+		"summary": "Testing whitespace.",
+		"file_analyses": [],
+		"observations": [],
+		"learnings": [
+			{"variant_id": 1, "category": "testing", "title": "   ", "rationale": "Valid rationale", "file_references": ["f.go"]},
+			{"variant_id": 1, "category": "testing", "title": "Valid title", "rationale": "  \t  ", "file_references": ["f.go"]},
+			{"variant_id": 1, "category": "testing", "title": "  Valid trimmed  ", "rationale": "  Also trimmed  ", "file_references": ["f.go"]}
+		]
+	}`
+
+	runner := &mockPromptRunner{response: aiResponse}
+	comp := NewComparator(runner, "")
+
+	variants := []VariantData{
+		{ID: 1, Diff: "+v1"},
+		{ID: 2, Diff: "+v2"},
+	}
+
+	ctx := context.Background()
+	result, err := comp.Compare(ctx, "test-feature", variants)
+	if err != nil {
+		t.Fatalf("Compare() failed: %v", err)
+	}
+
+	// Only the third learning should be valid (both title and rationale non-empty after trim)
+	if len(result.Learnings) != 1 {
+		t.Errorf("expected 1 valid learning, got %d", len(result.Learnings))
+	}
+
+	if len(result.Learnings) > 0 {
+		// Verify whitespace was trimmed
+		if result.Learnings[0].Title != "Valid trimmed" {
+			t.Errorf("expected trimmed title, got %q", result.Learnings[0].Title)
+		}
+		if result.Learnings[0].Rationale != "Also trimmed" {
+			t.Errorf("expected trimmed rationale, got %q", result.Learnings[0].Rationale)
+		}
 	}
 }

@@ -114,44 +114,44 @@ references:
 
 ## HTML Rendering
 
-- [ ] 20. Add groupLearningsByVariant template function <!-- id:th9obgr -->
+- [x] 20. Add groupLearningsByVariant template function <!-- id:th9obgr -->
   - Blocked-by: th9obgh (Create learnings.go with GroupLearningsByVariant helper)
   - Stream: 1
   - Requirements: [4.3](requirements.md#4.3)
 
-- [ ] 21. Add CSS styles for learnings section <!-- id:th9obgs -->
+- [x] 21. Add CSS styles for learnings section <!-- id:th9obgs -->
   - Blocked-by: th9obgr (Add groupLearningsByVariant template function)
   - Stream: 1
   - Requirements: [4.2](requirements.md#4.2), [4.4](requirements.md#4.4), [4.6](requirements.md#4.6)
 
-- [ ] 22. Add default CSS for unknown category badges <!-- id:th9obgt -->
+- [x] 22. Add default CSS for unknown category badges <!-- id:th9obgt -->
   - Blocked-by: th9obgs (Add CSS styles for learnings section)
   - Stream: 1
   - Requirements: [4.2](requirements.md#4.2)
 
-- [ ] 23. Add learnings section to index.html template <!-- id:th9obgu -->
+- [x] 23. Add learnings section to index.html template <!-- id:th9obgu -->
   - Blocked-by: th9obgt (Add default CSS for unknown category badges)
   - Stream: 1
   - Requirements: [4.1](requirements.md#4.1), [4.3](requirements.md#4.3), [4.5](requirements.md#4.5)
 
-- [ ] 24. Write XSS safety tests for HTML learnings rendering <!-- id:th9obgv -->
+- [x] 24. Write XSS safety tests for HTML learnings rendering <!-- id:th9obgv -->
   - Blocked-by: th9obgu (Add learnings section to index.html template)
   - Stream: 1
   - Requirements: [4.7](requirements.md#4.7)
 
 ## Integration
 
-- [ ] 25. Write integration test for comparison with learnings <!-- id:th9obgw -->
+- [x] 25. Write integration test for comparison with learnings <!-- id:th9obgw -->
   - Blocked-by: th9obgg (Integrate validateLearnings into parseAndValidate), th9obgn (Add quality guidelines and examples to prompt), th9obgq (Add stale reference disclaimer to markdown output), th9obgv (Write XSS safety tests for HTML learnings rendering)
   - Stream: 1
   - Requirements: [6.2](requirements.md#6.2), [6.4](requirements.md#6.4)
 
-- [ ] 26. Write integration test for graceful degradation on malformed learnings <!-- id:th9obgx -->
+- [x] 26. Write integration test for graceful degradation on malformed learnings <!-- id:th9obgx -->
   - Blocked-by: th9obgw (Write integration test for comparison with learnings)
   - Stream: 1
   - Requirements: [6.2](requirements.md#6.2), [6.4](requirements.md#6.4)
 
-- [ ] 27. Run full test suite and fix any issues <!-- id:th9obgy -->
+- [x] 27. Run full test suite and fix any issues <!-- id:th9obgy -->
   - Blocked-by: th9obgx (Write integration test for graceful degradation on malformed learnings)
   - Stream: 1
   - Requirements: [6.4](requirements.md#6.4)
