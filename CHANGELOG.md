@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Feature spec for comparison-learnings (`specs/comparison-learnings/`)
+  - Requirements document defining 7 requirement groups with 28 acceptance criteria
+  - Design document with architecture, components, data models, and testing strategy
+  - Decision log documenting 10 design decisions (categories, limits, graceful degradation, etc.)
+  - Task list with 27 implementation tasks across 7 phases with dependency tracking
+
 ### Changed
 
 - Fix CLAUDE.md documentation examples to use correct `orbithelpers.CreateTestOrbit` import path
