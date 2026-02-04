@@ -9,6 +9,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Feature spec for legacy-claude-removal (`specs/legacy-claude-removal/`)
+  - Requirements document defining 6 requirement groups for removing legacy `claudeRunner` interface
+  - Design document with AgentAdapter pattern for Comparator, runPhase() migration, and testing strategy
+  - Decision log documenting 4 design decisions (remove client.go, enable tests immediately, no backwards compat, adapter pattern)
+  - Task list with 16 implementation tasks across 6 phases with dependency tracking
+
 - Learnings section in HTML comparison reports (`internal/report/templates/index.html`)
   - Template function `groupLearningsByVariant` and `sortedVariantIDs` for organizing learnings
   - Learnings grouped by variant with visual category badges
