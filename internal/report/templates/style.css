@@ -732,6 +732,12 @@ details[open] summary {
     .variant-assessments dt:first-child {
         margin-top: 0;
     }
+
+    /* Learnings section responsive [Req 4.6] */
+    .learning-header {
+        flex-direction: column;
+        align-items: flex-start;
+    }
 }
 
 @media (max-width: 320px) {

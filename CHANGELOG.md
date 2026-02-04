@@ -67,6 +67,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Decision log documenting 10 design decisions (categories, limits, graceful degradation, etc.)
   - Task list with 27 implementation tasks across 7 phases with dependency tracking
 
+### Fixed
+
+- Add missing responsive CSS for learnings header in comparison reports (`internal/report/templates/style.css`)
+  - Learning header now stacks vertically on mobile (flex-direction: column) per design spec [Req 4.6]
+
 ### Changed
 
 - Fix CLAUDE.md documentation examples to use correct `orbithelpers.CreateTestOrbit` import path
