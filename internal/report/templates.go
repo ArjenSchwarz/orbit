@@ -4,6 +4,7 @@ import (
 	_ "embed"
 	"html/template"
 
+	"github.com/arjenschwarz/orbit/internal/comparison"
 	"github.com/arjenschwarz/orbit/internal/cost"
 )
 
@@ -45,10 +46,12 @@ func init() {
 
 // templateFuncs provides helper functions for templates.
 var templateFuncs = template.FuncMap{
-	"formatCost":       formatCost,
-	"formatCostTotals": formatCostTotals,
-	"add":              add,
-	"sub":              sub,
+	"formatCost":             formatCost,
+	"formatCostTotals":       formatCostTotals,
+	"add":                    add,
+	"sub":                    sub,
+	"groupLearningsByVariant": comparison.GroupLearningsByVariant,
+	"sortedVariantIDs":        comparison.SortedVariantIDs,
 }
 
 // formatCost formats a cost value according to its unit type.

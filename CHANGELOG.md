@@ -7,6 +7,71 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Learnings section in HTML comparison reports (`internal/report/templates/index.html`)
+  - Template function `groupLearningsByVariant` and `sortedVariantIDs` for organizing learnings
+  - Learnings grouped by variant with visual category badges
+  - CSS styling with distinct colors for each category (code-pattern, architecture, testing, error-handling)
+  - Default styling for unknown/future categories for forward compatibility
+  - File references displayed in monospace font
+  - Stale reference disclaimer at top of section
+  - Section only rendered when learnings exist
+  - Responsive design for mobile devices
+  - XSS safety tests ensuring all learning content is properly escaped
+
+- Learnings section in markdown comparison reports (`internal/report/markdown.go`)
+  - Learnings grouped by variant with category badges and titles
+  - File references rendered in backticks (not clickable links)
+  - Stale reference disclaimer at top of section
+  - Section only rendered when learnings exist
+  - Positioned after "Improvements from Other Variants" section
+  - Unit tests covering learnings rendering, empty/nil handling, and section ordering
+
+- Learnings section in AI comparison prompt (`internal/comparison/prompt.go`)
+  - JSON schema updated with `learnings` array structure for AI output
+  - Developer Learnings instructions requesting insights from each variant
+  - Category definitions: `code-pattern`, `architecture`, `testing`, `error-handling`
+  - File reference and rationale requirements for each learning
+  - Quality guidelines excluding trivial observations
+  - Good and bad learning examples for AI guidance
+  - Limit guidance (aim for 3-5 learnings per variant, maximum 5)
+  - Unit tests verifying prompt includes instructions, schema, and quality guidelines
+
+- Learnings validation function for comparison reports (`internal/comparison/compare.go`)
+  - `validateLearnings` function with field validation (title, rationale, file references required)
+  - Variant ID validation against number of variants
+  - Per-variant limit enforcement (max 5 learnings per variant)
+  - Total learnings limit enforcement (max 20 total)
+  - File references truncation (max 5 per learning)
+  - Whitespace trimming for title, description, and rationale
+  - Unknown category support for forward compatibility
+  - Integration with `parseAndValidate` for automatic validation during comparison
+  - Integration tests for end-to-end comparison with learnings
+  - Graceful degradation tests for malformed learnings (missing fields, invalid variant IDs, whitespace-only fields)
+
+- Learnings helper functions (`internal/comparison/learnings.go`)
+  - `GroupLearningsByVariant` for organizing learnings by variant ID
+  - `SortedVariantIDs` for deterministic iteration order
+
+- Learnings data types for comparison reports (`internal/comparison/types.go`)
+  - `LearningCategory` type with four constants: `code-pattern`, `architecture`, `testing`, `error-handling`
+  - `VariantLearning` struct with variant ID, category, title, description, rationale, and file references
+  - Limit constants to prevent unbounded AI output: `MaxLearningsPerVariant` (5), `MaxLearningsTotal` (20), `MaxFileRefsPerLearning` (5)
+  - `Learnings` field added to `Result` struct with `omitempty` for backwards compatibility
+  - Unit tests for JSON marshaling and field names
+
+- Feature spec for comparison-learnings (`specs/comparison-learnings/`)
+  - Requirements document defining 7 requirement groups with 28 acceptance criteria
+  - Design document with architecture, components, data models, and testing strategy
+  - Decision log documenting 10 design decisions (categories, limits, graceful degradation, etc.)
+  - Task list with 27 implementation tasks across 7 phases with dependency tracking
+
+### Fixed
+
+- Add missing responsive CSS for learnings header in comparison reports (`internal/report/templates/style.css`)
+  - Learning header now stacks vertically on mobile (flex-direction: column) per design spec [Req 4.6]
+
 ### Changed
 
 - Fix CLAUDE.md documentation examples to use correct `orbithelpers.CreateTestOrbit` import path

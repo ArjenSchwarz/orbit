@@ -41,6 +41,16 @@ const jsonSchema = `{
       "rationale": "<string: why it would improve the chosen variant>",
       "priority": "<string: 'high', 'medium', or 'low'>"
     }
+  ],
+  "learnings": [
+    {
+      "variant_id": <number: which variant this learning is from>,
+      "category": "<string: 'code-pattern', 'architecture', 'testing', or 'error-handling'>",
+      "title": "<string: brief title for the learning (5-10 words)>",
+      "description": "<string: what the pattern/technique is>",
+      "rationale": "<string: why this matters and how it could be applied elsewhere>",
+      "file_references": ["<string: path/to/file.go:123>"]
+    }
   ]
 }`
 
@@ -176,6 +186,40 @@ func buildComparisonPrompt(input ComparisonInput) string {
 	sb.WriteString("- What the improvement is\n")
 	sb.WriteString("- Why it would benefit the chosen variant\n")
 	sb.WriteString("- Priority (high/medium/low)\n\n")
+
+	// Learnings section [Req 2.1-2.5]
+	sb.WriteString("### Developer Learnings\n\n")
+	sb.WriteString("Identify educational insights from EACH variant that could help the user become a better developer.\n")
+	sb.WriteString("Focus on techniques that are transferable to other projects.\n\n")
+
+	sb.WriteString("**Categories:**\n")
+	sb.WriteString("- `code-pattern`: Idiomatic code, clever algorithms, elegant solutions\n")
+	sb.WriteString("- `architecture`: Structural decisions, module organization, separation of concerns\n")
+	sb.WriteString("- `testing`: Test approaches, coverage patterns, mocking techniques\n")
+	sb.WriteString("- `error-handling`: Defensive coding, edge case handling, resilience patterns\n\n")
+
+	sb.WriteString("**For each learning:**\n")
+	sb.WriteString("- Include specific file references (path/to/file.go:123)\n")
+	sb.WriteString("- Explain WHY this pattern matters (the broader principle)\n")
+	sb.WriteString("- Focus on techniques the user could apply in future projects\n\n")
+
+	// Quality guidelines [Req 5.1-5.4]
+	sb.WriteString("**Exclude trivial observations like:**\n")
+	sb.WriteString("- \"Uses comments\" or \"Has tests\"\n")
+	sb.WriteString("- Generic observations that apply to any codebase\n")
+	sb.WriteString("- Implementation details without educational value\n\n")
+
+	sb.WriteString("**Good learning examples:**\n")
+	sb.WriteString("- \"Uses table-driven tests with map[string]struct for unique test case names\"\n")
+	sb.WriteString("- \"Implements the functional options pattern for flexible configuration\"\n")
+	sb.WriteString("- \"Uses sentinel errors with errors.Is() for type-safe error checking\"\n\n")
+
+	sb.WriteString("**Bad learning examples (too trivial):**\n")
+	sb.WriteString("- \"Code is well-formatted\"\n")
+	sb.WriteString("- \"Functions have descriptive names\"\n")
+	sb.WriteString("- \"Uses if statements for control flow\"\n\n")
+
+	sb.WriteString("**Limits:** Provide the most important learnings only. Aim for 3-5 per variant, maximum 5.\n\n")
 
 	sb.WriteString("### Evaluation Criteria\n\n")
 	sb.WriteString("Consider:\n")

@@ -5,6 +5,33 @@ import (
 	"time"
 )
 
+// LearningCategory defines the type of learning extracted from a variant.
+type LearningCategory string
+
+const (
+	LearningCategoryCodePattern   LearningCategory = "code-pattern"
+	LearningCategoryArchitecture  LearningCategory = "architecture"
+	LearningCategoryTesting       LearningCategory = "testing"
+	LearningCategoryErrorHandling LearningCategory = "error-handling"
+)
+
+// Learnings limits to prevent unbounded AI output.
+const (
+	MaxLearningsPerVariant = 5  // Maximum learnings per variant
+	MaxLearningsTotal      = 20 // Maximum total learnings across all variants
+	MaxFileRefsPerLearning = 5  // Maximum file references per learning
+)
+
+// VariantLearning represents an educational insight from a variant's implementation.
+type VariantLearning struct {
+	VariantID      int              `json:"variant_id"`
+	Category       LearningCategory `json:"category"`
+	Title          string           `json:"title"`
+	Description    string           `json:"description"`
+	Rationale      string           `json:"rationale"`
+	FileReferences []string         `json:"file_references"` // e.g., "path/to/file.go:123"
+}
+
 // Result holds comparison output from Claude analysis.
 type Result struct {
 	Recommendation int            `json:"recommendation"`
@@ -18,6 +45,9 @@ type Result struct {
 
 	// Improvements that could be adopted from non-chosen variants
 	CrossVariantImprovements []CrossVariantImprovement `json:"cross_variant_improvements,omitempty"`
+
+	// Learnings extracted from each variant's implementation
+	Learnings []VariantLearning `json:"learnings,omitempty"`
 }
 
 // DocAssessment evaluates the documentation quality of a variant.

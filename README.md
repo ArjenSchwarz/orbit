@@ -660,6 +660,7 @@ orbit compare my-feature
 4. **File-Level Analysis** - Detailed comparison of individual files
 5. **Documentation Assessment** - Quality of docs/comments per variant
 6. **Cross-Variant Improvements** - Good ideas from non-recommended variants
+7. **Learnings** - Educational insights and transferable patterns from each variant
 
 ```mermaid
 flowchart TD
