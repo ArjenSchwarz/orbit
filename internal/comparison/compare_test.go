@@ -392,3 +392,351 @@ func itoa(i int) string {
 	}
 	return string(buf[pos:])
 }
+
+func TestValidateLearnings(t *testing.T) {
+	tests := map[string]struct {
+		input       []VariantLearning
+		numVariants int
+		wantCount   int
+		wantNil     bool
+	}{
+		"valid learning": {
+			input: []VariantLearning{{
+				VariantID:      1,
+				Category:       LearningCategoryCodePattern,
+				Title:          "Table-driven tests",
+				Rationale:      "Ensures unique names",
+				FileReferences: []string{"foo_test.go:42"},
+			}},
+			numVariants: 2,
+			wantCount:   1,
+		},
+		"missing title": {
+			input: []VariantLearning{{
+				VariantID:      1,
+				Rationale:      "reason",
+				FileReferences: []string{"file.go"},
+			}},
+			numVariants: 2,
+			wantNil:     true,
+		},
+		"missing rationale": {
+			input: []VariantLearning{{
+				VariantID:      1,
+				Title:          "title",
+				FileReferences: []string{"file.go"},
+			}},
+			numVariants: 2,
+			wantNil:     true,
+		},
+		"missing file references": {
+			input: []VariantLearning{{
+				VariantID: 1,
+				Title:     "title",
+				Rationale: "reason",
+			}},
+			numVariants: 2,
+			wantNil:     true,
+		},
+		"empty file references": {
+			input: []VariantLearning{{
+				VariantID:      1,
+				Title:          "title",
+				Rationale:      "reason",
+				FileReferences: []string{},
+			}},
+			numVariants: 2,
+			wantNil:     true,
+		},
+		"invalid variant ID too high": {
+			input: []VariantLearning{{
+				VariantID:      5, // > numVariants
+				Title:          "title",
+				Rationale:      "reason",
+				FileReferences: []string{"file.go"},
+			}},
+			numVariants: 2,
+			wantNil:     true,
+		},
+		"invalid variant ID zero": {
+			input: []VariantLearning{{
+				VariantID:      0,
+				Title:          "title",
+				Rationale:      "reason",
+				FileReferences: []string{"file.go"},
+			}},
+			numVariants: 2,
+			wantNil:     true,
+		},
+		"invalid variant ID negative": {
+			input: []VariantLearning{{
+				VariantID:      -1,
+				Title:          "title",
+				Rationale:      "reason",
+				FileReferences: []string{"file.go"},
+			}},
+			numVariants: 2,
+			wantNil:     true,
+		},
+		"unknown category allowed": {
+			input: []VariantLearning{{
+				VariantID:      1,
+				Category:       "performance", // unknown
+				Title:          "title",
+				Rationale:      "reason",
+				FileReferences: []string{"file.go"},
+			}},
+			numVariants: 2,
+			wantCount:   1,
+		},
+		"partial valid": {
+			input: []VariantLearning{
+				{VariantID: 1, Title: "valid", Rationale: "r", FileReferences: []string{"f.go"}},
+				{VariantID: 1, Title: "", Rationale: "r", FileReferences: []string{"f.go"}}, // invalid
+			},
+			numVariants: 2,
+			wantCount:   1,
+		},
+		"per-variant limit enforced": {
+			input: func() []VariantLearning {
+				learnings := make([]VariantLearning, 8)
+				for i := range 8 {
+					learnings[i] = VariantLearning{
+						VariantID:      1,
+						Title:          "title " + itoa(i),
+						Rationale:      "r",
+						FileReferences: []string{"f.go"},
+					}
+				}
+				return learnings
+			}(),
+			numVariants: 2,
+			wantCount:   MaxLearningsPerVariant, // 5
+		},
+		"total limit enforced": {
+			input: func() []VariantLearning {
+				learnings := make([]VariantLearning, 30)
+				for i := range 30 {
+					// Distribute across 6 variants to avoid per-variant limit
+					learnings[i] = VariantLearning{
+						VariantID:      (i % 6) + 1,
+						Title:          "title " + itoa(i),
+						Rationale:      "r",
+						FileReferences: []string{"f.go"},
+					}
+				}
+				return learnings
+			}(),
+			numVariants: 6,
+			wantCount:   MaxLearningsTotal, // 20
+		},
+		"whitespace-only title rejected": {
+			input: []VariantLearning{{
+				VariantID:      1,
+				Title:          "   ",
+				Rationale:      "reason",
+				FileReferences: []string{"file.go"},
+			}},
+			numVariants: 2,
+			wantNil:     true,
+		},
+		"whitespace-only rationale rejected": {
+			input: []VariantLearning{{
+				VariantID:      1,
+				Title:          "title",
+				Rationale:      "  \t  ",
+				FileReferences: []string{"file.go"},
+			}},
+			numVariants: 2,
+			wantNil:     true,
+		},
+		"nil input": {
+			input:       nil,
+			numVariants: 2,
+			wantNil:     true,
+		},
+		"empty input": {
+			input:       []VariantLearning{},
+			numVariants: 2,
+			wantNil:     true,
+		},
+	}
+
+	for name, tc := range tests {
+		t.Run(name, func(t *testing.T) {
+			got := validateLearnings(tc.input, tc.numVariants)
+			if tc.wantNil {
+				if got != nil {
+					t.Errorf("expected nil, got %v", got)
+				}
+				return
+			}
+			if len(got) != tc.wantCount {
+				t.Errorf("expected %d learnings, got %d", tc.wantCount, len(got))
+			}
+		})
+	}
+}
+
+func TestValidateLearnings_FileReferenceTruncation(t *testing.T) {
+	input := []VariantLearning{{
+		VariantID:      1,
+		Title:          "title",
+		Rationale:      "reason",
+		FileReferences: []string{"a.go", "b.go", "c.go", "d.go", "e.go", "f.go", "g.go"},
+	}}
+
+	got := validateLearnings(input, 2)
+	if got == nil {
+		t.Fatal("expected non-nil result")
+	}
+	if len(got) != 1 {
+		t.Fatalf("expected 1 learning, got %d", len(got))
+	}
+	if len(got[0].FileReferences) != MaxFileRefsPerLearning {
+		t.Errorf("expected %d file references (truncated), got %d",
+			MaxFileRefsPerLearning, len(got[0].FileReferences))
+	}
+}
+
+func TestValidateLearnings_WhitespaceTrimming(t *testing.T) {
+	input := []VariantLearning{{
+		VariantID:      1,
+		Title:          "  title with spaces  ",
+		Description:    "  description  ",
+		Rationale:      "  rationale  ",
+		FileReferences: []string{"file.go"},
+	}}
+
+	got := validateLearnings(input, 2)
+	if got == nil {
+		t.Fatal("expected non-nil result")
+	}
+	if got[0].Title != "title with spaces" {
+		t.Errorf("expected trimmed title, got %q", got[0].Title)
+	}
+	if got[0].Description != "description" {
+		t.Errorf("expected trimmed description, got %q", got[0].Description)
+	}
+	if got[0].Rationale != "rationale" {
+		t.Errorf("expected trimmed rationale, got %q", got[0].Rationale)
+	}
+}
+
+func TestParseAndValidate_WithLearnings(t *testing.T) {
+	comp := NewComparator(nil, "")
+
+	// JSON with valid learnings
+	validJSON := `{
+		"recommendation": 1,
+		"confidence": "high",
+		"summary": "Variant 1 is the best choice.",
+		"file_analyses": [],
+		"observations": [],
+		"learnings": [
+			{
+				"variant_id": 1,
+				"category": "code-pattern",
+				"title": "Table-driven tests",
+				"description": "Uses map[string]struct for test cases",
+				"rationale": "Ensures unique test names",
+				"file_references": ["foo_test.go:42"]
+			},
+			{
+				"variant_id": 2,
+				"category": "architecture",
+				"title": "Clean separation",
+				"description": "Separates concerns well",
+				"rationale": "Makes code easier to maintain",
+				"file_references": ["internal/pkg/module.go"]
+			}
+		]
+	}`
+
+	result, err := comp.parseAndValidate(validJSON, 2)
+	if err != nil {
+		t.Fatalf("parseAndValidate failed: %v", err)
+	}
+
+	if len(result.Learnings) != 2 {
+		t.Errorf("expected 2 learnings, got %d", len(result.Learnings))
+	}
+	if result.Learnings[0].Title != "Table-driven tests" {
+		t.Errorf("unexpected first learning title: %s", result.Learnings[0].Title)
+	}
+	if result.Learnings[1].Category != LearningCategoryArchitecture {
+		t.Errorf("unexpected second learning category: %s", result.Learnings[1].Category)
+	}
+}
+
+func TestParseAndValidate_FiltersInvalidLearnings(t *testing.T) {
+	comp := NewComparator(nil, "")
+
+	// JSON with mix of valid and invalid learnings
+	jsonWithInvalid := `{
+		"recommendation": 1,
+		"confidence": "medium",
+		"summary": "Test summary",
+		"file_analyses": [],
+		"observations": [],
+		"learnings": [
+			{
+				"variant_id": 1,
+				"category": "testing",
+				"title": "Valid learning",
+				"rationale": "Has all required fields",
+				"file_references": ["test.go"]
+			},
+			{
+				"variant_id": 1,
+				"category": "code-pattern",
+				"title": "",
+				"rationale": "Missing title",
+				"file_references": ["test.go"]
+			},
+			{
+				"variant_id": 99,
+				"category": "architecture",
+				"title": "Invalid variant",
+				"rationale": "Variant 99 doesn't exist",
+				"file_references": ["test.go"]
+			}
+		]
+	}`
+
+	result, err := comp.parseAndValidate(jsonWithInvalid, 2)
+	if err != nil {
+		t.Fatalf("parseAndValidate failed: %v", err)
+	}
+
+	// Should only have 1 valid learning
+	if len(result.Learnings) != 1 {
+		t.Errorf("expected 1 valid learning, got %d", len(result.Learnings))
+	}
+	if result.Learnings[0].Title != "Valid learning" {
+		t.Errorf("unexpected learning title: %s", result.Learnings[0].Title)
+	}
+}
+
+func TestParseAndValidate_NoLearnings(t *testing.T) {
+	comp := NewComparator(nil, "")
+
+	// JSON without learnings field (backwards compatibility)
+	jsonWithoutLearnings := `{
+		"recommendation": 2,
+		"confidence": "low",
+		"summary": "Variant 2 is marginally better",
+		"file_analyses": [],
+		"observations": []
+	}`
+
+	result, err := comp.parseAndValidate(jsonWithoutLearnings, 2)
+	if err != nil {
+		t.Fatalf("parseAndValidate failed: %v", err)
+	}
+
+	// Learnings should be nil (omitempty behavior)
+	if result.Learnings != nil {
+		t.Errorf("expected nil learnings, got %v", result.Learnings)
+	}
+}

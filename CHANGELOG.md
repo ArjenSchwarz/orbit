@@ -9,6 +9,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Learnings validation function for comparison reports (`internal/comparison/compare.go`)
+  - `validateLearnings` function with field validation (title, rationale, file references required)
+  - Variant ID validation against number of variants
+  - Per-variant limit enforcement (max 5 learnings per variant)
+  - Total learnings limit enforcement (max 20 total)
+  - File references truncation (max 5 per learning)
+  - Whitespace trimming for title, description, and rationale
+  - Unknown category support for forward compatibility
+  - Integration with `parseAndValidate` for automatic validation during comparison
+
+- Learnings helper functions (`internal/comparison/learnings.go`)
+  - `GroupLearningsByVariant` for organizing learnings by variant ID
+  - `SortedVariantIDs` for deterministic iteration order
+
 - Learnings data types for comparison reports (`internal/comparison/types.go`)
   - `LearningCategory` type with four constants: `code-pattern`, `architecture`, `testing`, `error-handling`
   - `VariantLearning` struct with variant ID, category, title, description, rationale, and file references

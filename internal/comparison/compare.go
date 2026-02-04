@@ -184,6 +184,10 @@ func (c *Comparator) parseAndValidate(response string, numVariants int) (*Result
 		return nil, fmt.Errorf("unmarshal: %w", err)
 	}
 
+	// Validate learnings (non-fatal) [Req 6.2, 6.4]
+	// Invalid learnings are filtered out; valid ones are kept
+	result.Learnings = validateLearnings(result.Learnings, numVariants)
+
 	// Validate required fields with range checks
 	if result.Recommendation < 1 || result.Recommendation > numVariants {
 		return nil, fmt.Errorf("recommendation must be between 1 and %d, got %d",
@@ -241,6 +245,85 @@ func extractJSON(response string) (string, error) {
 	}
 
 	return "", errors.New("no JSON found in response")
+}
+
+// validateLearnings filters learnings to include only valid entries and enforces limits.
+// Invalid learnings are logged and discarded. Returns nil if all learnings are invalid.
+func validateLearnings(learnings []VariantLearning, numVariants int) []VariantLearning {
+	if len(learnings) == 0 {
+		return nil
+	}
+
+	valid := make([]VariantLearning, 0, len(learnings))
+	validCategories := map[LearningCategory]bool{
+		LearningCategoryCodePattern:   true,
+		LearningCategoryArchitecture:  true,
+		LearningCategoryTesting:       true,
+		LearningCategoryErrorHandling: true,
+	}
+
+	// Track per-variant counts for limit enforcement
+	variantCounts := make(map[int]int)
+
+	for i, l := range learnings {
+		// Trim whitespace from string fields
+		l.Title = strings.TrimSpace(l.Title)
+		l.Rationale = strings.TrimSpace(l.Rationale)
+		l.Description = strings.TrimSpace(l.Description)
+
+		// Check required fields [Req 6.3]
+		if l.Title == "" {
+			log.Printf("Discarding learning %d: missing title", i)
+			continue
+		}
+		if l.Rationale == "" {
+			log.Printf("Discarding learning %d: missing rationale", i)
+			continue
+		}
+		if len(l.FileReferences) == 0 {
+			log.Printf("Discarding learning %d: missing file_references", i)
+			continue
+		}
+
+		// Validate variant ID
+		if l.VariantID < 1 || l.VariantID > numVariants {
+			log.Printf("Discarding learning %d: invalid variant_id %d", i, l.VariantID)
+			continue
+		}
+
+		// Enforce per-variant limit
+		if variantCounts[l.VariantID] >= MaxLearningsPerVariant {
+			log.Printf("Discarding learning %d: variant %d already has %d learnings (max %d)",
+				i, l.VariantID, variantCounts[l.VariantID], MaxLearningsPerVariant)
+			continue
+		}
+
+		// Enforce total limit
+		if len(valid) >= MaxLearningsTotal {
+			log.Printf("Discarding learning %d: total learnings limit reached (%d)", i, MaxLearningsTotal)
+			break
+		}
+
+		// Enforce file references limit
+		if len(l.FileReferences) > MaxFileRefsPerLearning {
+			log.Printf("Truncating file references for learning %d: %d -> %d",
+				i, len(l.FileReferences), MaxFileRefsPerLearning)
+			l.FileReferences = l.FileReferences[:MaxFileRefsPerLearning]
+		}
+
+		// Validate category (allow unknown for forward compatibility)
+		if !validCategories[l.Category] {
+			log.Printf("Learning %d has unknown category %q, using as-is", i, l.Category)
+		}
+
+		valid = append(valid, l)
+		variantCounts[l.VariantID]++
+	}
+
+	if len(valid) == 0 {
+		return nil
+	}
+	return valid
 }
 
 // extractJSONObject extracts a JSON object starting at the beginning of the string.
