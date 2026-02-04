@@ -168,6 +168,19 @@ func (e *DiffTooLargeError) Error() string {
 		e.EstimatedTokens, e.MaxTokens)
 }
 
+// resultRaw mirrors Result but with Learnings as json.RawMessage to allow
+// separate, more tolerant parsing of the learnings field.
+type resultRaw struct {
+	Recommendation           int                       `json:"recommendation"`
+	Confidence               string                    `json:"confidence"`
+	Summary                  string                    `json:"summary"`
+	FileAnalyses             []FileAnalysis            `json:"file_analyses"`
+	Observations             []string                  `json:"observations"`
+	DocumentationAssessment  []DocAssessment           `json:"documentation_assessment,omitempty"`
+	CrossVariantImprovements []CrossVariantImprovement `json:"cross_variant_improvements,omitempty"`
+	Learnings                json.RawMessage           `json:"learnings,omitempty"`
+}
+
 // parseAndValidate extracts JSON from Claude response and validates structure.
 func (c *Comparator) parseAndValidate(response string, numVariants int) (*Result, error) {
 	jsonStr, err := extractJSON(response)
@@ -175,13 +188,36 @@ func (c *Comparator) parseAndValidate(response string, numVariants int) (*Result
 		return nil, fmt.Errorf("extract JSON: %w", err)
 	}
 
-	// Use strict parsing to catch unknown fields
+	// Use strict parsing for core fields
 	decoder := json.NewDecoder(strings.NewReader(jsonStr))
 	decoder.DisallowUnknownFields()
 
-	var result Result
-	if err := decoder.Decode(&result); err != nil {
+	var raw resultRaw
+	if err := decoder.Decode(&raw); err != nil {
 		return nil, fmt.Errorf("unmarshal: %w", err)
+	}
+
+	// Copy validated core fields to result
+	result := &Result{
+		Recommendation:           raw.Recommendation,
+		Confidence:               raw.Confidence,
+		Summary:                  raw.Summary,
+		FileAnalyses:             raw.FileAnalyses,
+		Observations:             raw.Observations,
+		DocumentationAssessment:  raw.DocumentationAssessment,
+		CrossVariantImprovements: raw.CrossVariantImprovements,
+	}
+
+	// Parse learnings separately with tolerant decoding [Req 6.4]
+	// Type mismatches in learnings should not fail the entire comparison
+	if len(raw.Learnings) > 0 && string(raw.Learnings) != "null" {
+		var learnings []VariantLearning
+		if err := json.Unmarshal(raw.Learnings, &learnings); err != nil {
+			log.Printf("Warning: failed to parse learnings (non-fatal): %v", err)
+			// Continue with empty learnings - graceful degradation
+		} else {
+			result.Learnings = learnings
+		}
 	}
 
 	// Validate learnings (non-fatal) [Req 6.2, 6.4]
@@ -203,7 +239,7 @@ func (c *Comparator) parseAndValidate(response string, numVariants int) (*Result
 		return nil, errors.New("missing required field: summary")
 	}
 
-	return &result, nil
+	return result, nil
 }
 
 // extractJSON finds and extracts JSON from Claude's text response.

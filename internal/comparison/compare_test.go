@@ -743,6 +743,96 @@ func TestParseAndValidate_NoLearnings(t *testing.T) {
 	}
 }
 
+// TestParseAndValidate_MalformedLearnings verifies that malformed learnings
+// are handled gracefully without failing the entire comparison. [Req 6.4]
+func TestParseAndValidate_MalformedLearnings(t *testing.T) {
+	comp := NewComparator(nil, "")
+
+	tests := map[string]struct {
+		json string
+		desc string
+	}{
+		"variant_id as string": {
+			json: `{
+				"recommendation": 1,
+				"confidence": "high",
+				"summary": "Variant 1 is better",
+				"file_analyses": [],
+				"observations": [],
+				"learnings": [
+					{
+						"variant_id": "1",
+						"category": "code-pattern",
+						"title": "Good pattern",
+						"description": "A useful pattern",
+						"rationale": "Why it matters",
+						"file_references": ["file.go:10"]
+					}
+				]
+			}`,
+			desc: "AI returns variant_id as string instead of int",
+		},
+		"file_references as string": {
+			json: `{
+				"recommendation": 1,
+				"confidence": "high",
+				"summary": "Variant 1 is better",
+				"file_analyses": [],
+				"observations": [],
+				"learnings": [
+					{
+						"variant_id": 1,
+						"category": "code-pattern",
+						"title": "Good pattern",
+						"description": "A useful pattern",
+						"rationale": "Why it matters",
+						"file_references": "file.go:10"
+					}
+				]
+			}`,
+			desc: "AI returns file_references as string instead of array",
+		},
+		"learnings as object": {
+			json: `{
+				"recommendation": 1,
+				"confidence": "high",
+				"summary": "Variant 1 is better",
+				"file_analyses": [],
+				"observations": [],
+				"learnings": {
+					"variant_id": 1,
+					"category": "code-pattern"
+				}
+			}`,
+			desc: "AI returns learnings as object instead of array",
+		},
+	}
+
+	for name, tc := range tests {
+		t.Run(name, func(t *testing.T) {
+			result, err := comp.parseAndValidate(tc.json, 2)
+
+			// Core comparison should succeed even with malformed learnings
+			if err != nil {
+				t.Fatalf("parseAndValidate should not fail for malformed learnings (%s): %v", tc.desc, err)
+			}
+
+			// Verify core fields are parsed correctly
+			if result.Recommendation != 1 {
+				t.Errorf("expected recommendation 1, got %d", result.Recommendation)
+			}
+			if result.Confidence != "high" {
+				t.Errorf("expected confidence 'high', got %q", result.Confidence)
+			}
+
+			// Malformed learnings should be gracefully discarded (nil or empty)
+			if len(result.Learnings) > 0 {
+				t.Errorf("expected no learnings after malformed input, got %d", len(result.Learnings))
+			}
+		})
+	}
+}
+
 // Tests for learnings section in comparison prompt [Req 2.1-2.6]
 
 func TestBuildPrompt_IncludesLearningsInstructions(t *testing.T) {
