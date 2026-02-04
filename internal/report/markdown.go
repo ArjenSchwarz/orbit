@@ -137,7 +137,15 @@ func (g *Generator) generateMarkdownReport(data *ReportData) error {
 
 			for _, variantID := range variantIDs {
 				learnings := learningsByVariant[variantID]
-				b.Raw(output.FormatMarkdown, []byte(fmt.Sprintf("### Variant %d\n\n", variantID)))
+				// Build header with agent name if available (improvement from V3)
+				header := fmt.Sprintf("Variant %d", variantID)
+				for _, v := range data.Variants {
+					if v.ID == variantID && v.Agent != "" {
+						header += fmt.Sprintf(" (%s)", v.Agent)
+						break
+					}
+				}
+				b.Raw(output.FormatMarkdown, []byte(fmt.Sprintf("### %s\n\n", header)))
 
 				for _, l := range learnings {
 					// Category badge + title [Req 3.3]

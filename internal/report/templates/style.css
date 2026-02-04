@@ -571,9 +571,10 @@ details[open] summary {
 }
 
 .learnings-list {
-    display: flex;
-    flex-direction: column;
-    gap: 1rem;
+    /* Grid layout with auto-fill for responsive card layout (improvement from V3) */
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(350px, 1fr));
+    gap: 1.5rem;
 }
 
 .learning {
@@ -581,6 +582,19 @@ details[open] summary {
     border: 1px solid var(--border-color);
     border-radius: 6px;
     padding: 1rem;
+    /* Hover transitions for interactive feedback (improvement from V3) */
+    transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+.learning:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+}
+
+@media (prefers-color-scheme: dark) {
+    .learning:hover {
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+    }
 }
 
 .learning-header {
