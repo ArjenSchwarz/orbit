@@ -34,61 +34,63 @@ references:
 
 ## Validation
 
-- [ ] 6. Write unit tests for validateLearnings function <!-- id:th9obgd -->
+- [x] 6. Write unit tests for validateLearnings function <!-- id:th9obgd -->
   - Blocked-by: th9obga (Add learnings limit constants), th9obgb (Add Learnings field to Result struct with omitempty)
   - Stream: 1
+  - Owner: agent-validation
   - Requirements: [6.1](requirements.md#6.1), [6.3](requirements.md#6.3), [6.5](requirements.md#6.5)
 
-- [ ] 7. Implement validateLearnings with field validation <!-- id:th9obge -->
+- [x] 7. Implement validateLearnings with field validation <!-- id:th9obge -->
   - Blocked-by: th9obgd (Write unit tests for validateLearnings function)
   - Stream: 1
   - Requirements: [6.1](requirements.md#6.1), [6.3](requirements.md#6.3)
 
-- [ ] 8. Add limit enforcement to validateLearnings <!-- id:th9obgf -->
+- [x] 8. Add limit enforcement to validateLearnings <!-- id:th9obgf -->
   - Blocked-by: th9obge (Implement validateLearnings with field validation)
   - Stream: 1
   - Requirements: [6.5](requirements.md#6.5)
 
-- [ ] 9. Integrate validateLearnings into parseAndValidate <!-- id:th9obgg -->
+- [x] 9. Integrate validateLearnings into parseAndValidate <!-- id:th9obgg -->
   - Blocked-by: th9obgf (Add limit enforcement to validateLearnings)
   - Stream: 1
   - Requirements: [6.2](requirements.md#6.2), [6.4](requirements.md#6.4)
 
 ## Shared Helpers
 
-- [ ] 10. Create learnings.go with GroupLearningsByVariant helper <!-- id:th9obgh -->
+- [x] 10. Create learnings.go with GroupLearningsByVariant helper <!-- id:th9obgh -->
   - Blocked-by: th9obg9 (Add VariantLearning struct with JSON tags)
   - Stream: 1
+  - Owner: agent-validation
   - Requirements: [3.2](requirements.md#3.2), [4.3](requirements.md#4.3)
 
-- [ ] 11. Add SortedVariantIDs helper for deterministic ordering <!-- id:th9obgi -->
+- [x] 11. Add SortedVariantIDs helper for deterministic ordering <!-- id:th9obgi -->
   - Blocked-by: th9obgh (Create learnings.go with GroupLearningsByVariant helper)
   - Stream: 1
   - Requirements: [3.2](requirements.md#3.2), [4.3](requirements.md#4.3)
 
-- [ ] 12. Write unit tests for learnings helper functions <!-- id:th9obgj -->
+- [x] 12. Write unit tests for learnings helper functions <!-- id:th9obgj -->
   - Blocked-by: th9obgi (Add SortedVariantIDs helper for deterministic ordering)
   - Stream: 1
   - Requirements: [3.2](requirements.md#3.2)
 
 ## AI Prompt
 
-- [ ] 13. Write tests for learnings section in comparison prompt <!-- id:th9obgk -->
+- [x] 13. Write tests for learnings section in comparison prompt <!-- id:th9obgk -->
   - Blocked-by: th9obg9 (Add VariantLearning struct with JSON tags)
   - Stream: 2
   - Requirements: [2.1](requirements.md#2.1), [2.6](requirements.md#2.6)
 
-- [ ] 14. Update jsonSchema constant with learnings array structure <!-- id:th9obgl -->
+- [x] 14. Update jsonSchema constant with learnings array structure <!-- id:th9obgl -->
   - Blocked-by: th9obgk (Write tests for learnings section in comparison prompt)
   - Stream: 2
   - Requirements: [2.6](requirements.md#2.6)
 
-- [ ] 15. Add learnings instructions to buildComparisonPrompt <!-- id:th9obgm -->
+- [x] 15. Add learnings instructions to buildComparisonPrompt <!-- id:th9obgm -->
   - Blocked-by: th9obgl (Update jsonSchema constant with learnings array structure)
   - Stream: 2
   - Requirements: [2.1](requirements.md#2.1), [2.2](requirements.md#2.2), [2.3](requirements.md#2.3), [2.4](requirements.md#2.4), [2.5](requirements.md#2.5)
 
-- [ ] 16. Add quality guidelines and examples to prompt <!-- id:th9obgn -->
+- [x] 16. Add quality guidelines and examples to prompt <!-- id:th9obgn -->
   - Blocked-by: th9obgm (Add learnings instructions to buildComparisonPrompt)
   - Stream: 2
   - Requirements: [5.1](requirements.md#5.1), [5.2](requirements.md#5.2), [5.3](requirements.md#5.3), [5.4](requirements.md#5.4)

@@ -9,6 +9,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Learnings section in AI comparison prompt (`internal/comparison/prompt.go`)
+  - JSON schema updated with `learnings` array structure for AI output
+  - Developer Learnings instructions requesting insights from each variant
+  - Category definitions: `code-pattern`, `architecture`, `testing`, `error-handling`
+  - File reference and rationale requirements for each learning
+  - Quality guidelines excluding trivial observations
+  - Good and bad learning examples for AI guidance
+  - Limit guidance (aim for 3-5 learnings per variant, maximum 5)
+  - Unit tests verifying prompt includes instructions, schema, and quality guidelines
+
 - Learnings validation function for comparison reports (`internal/comparison/compare.go`)
   - `validateLearnings` function with field validation (title, rationale, file references required)
   - Variant ID validation against number of variants

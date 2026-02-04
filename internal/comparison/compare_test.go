@@ -740,3 +740,124 @@ func TestParseAndValidate_NoLearnings(t *testing.T) {
 		t.Errorf("expected nil learnings, got %v", result.Learnings)
 	}
 }
+
+// Tests for learnings section in comparison prompt [Req 2.1-2.6]
+
+func TestBuildPrompt_IncludesLearningsInstructions(t *testing.T) {
+	variants := []VariantData{
+		{ID: 1, Diff: "diff 1"},
+		{ID: 2, Diff: "diff 2"},
+	}
+
+	prompt := buildPrompt("test-spec", variants)
+
+	// [Req 2.1] The prompt SHALL include instructions for identifying learnings
+	if !containsString(prompt, "Developer Learnings") {
+		t.Error("prompt should contain Developer Learnings section header")
+	}
+
+	// [Req 2.2] The prompt SHALL request learnings across all four categories
+	expectedCategories := []string{
+		"code-pattern",
+		"architecture",
+		"testing",
+		"error-handling",
+	}
+	for _, category := range expectedCategories {
+		if !containsString(prompt, category) {
+			t.Errorf("prompt should mention category %q", category)
+		}
+	}
+
+	// [Req 2.3] The prompt SHALL instruct the AI to include specific file references
+	if !containsString(prompt, "file references") || !containsString(prompt, "file_references") {
+		t.Error("prompt should instruct AI to include file references")
+	}
+
+	// [Req 2.4] The prompt SHALL instruct the AI to explain why each learning matters
+	if !containsString(prompt, "why") && !containsString(prompt, "WHY") {
+		t.Error("prompt should instruct AI to explain why learnings matter")
+	}
+	if !containsString(prompt, "rationale") {
+		t.Error("prompt should mention rationale field")
+	}
+}
+
+func TestBuildPrompt_LearningsJSONSchema(t *testing.T) {
+	variants := []VariantData{
+		{ID: 1, Diff: "diff 1"},
+	}
+
+	prompt := buildPrompt("test-spec", variants)
+
+	// [Req 2.6] The JSON schema SHALL include the learnings array structure
+	if !containsString(prompt, `"learnings"`) {
+		t.Error("JSON schema should include learnings field")
+	}
+
+	// Schema should define all learning fields
+	schemaFields := []string{
+		"variant_id",
+		"category",
+		"title",
+		"description",
+		"rationale",
+		"file_references",
+	}
+	for _, field := range schemaFields {
+		if !containsString(prompt, field) {
+			t.Errorf("JSON schema should include learning field %q", field)
+		}
+	}
+}
+
+func TestBuildPrompt_LearningsQualityGuidelines(t *testing.T) {
+	variants := []VariantData{
+		{ID: 1, Diff: "diff 1"},
+	}
+
+	prompt := buildPrompt("test-spec", variants)
+
+	// [Req 5.1] The prompt SHALL instruct that learnings should be transferable
+	if !containsString(prompt, "transferable") {
+		t.Error("prompt should mention transferable techniques")
+	}
+
+	// [Req 5.2] The prompt SHALL instruct to exclude trivial observations
+	if !containsString(prompt, "trivial") {
+		t.Error("prompt should instruct to exclude trivial observations")
+	}
+
+	// [Req 5.4] The prompt SHALL provide examples of good learnings vs trivial ones
+	goodExamples := []string{
+		"table-driven",
+		"functional options",
+		"sentinel errors",
+	}
+	foundGoodExample := false
+	for _, example := range goodExamples {
+		if containsString(prompt, example) {
+			foundGoodExample = true
+			break
+		}
+	}
+	if !foundGoodExample {
+		t.Error("prompt should provide examples of good learnings")
+	}
+
+	// Bad examples should also be shown
+	badExamples := []string{
+		"well-formatted",
+		"descriptive names",
+	}
+	foundBadExample := false
+	for _, example := range badExamples {
+		if containsString(prompt, example) {
+			foundBadExample = true
+			break
+		}
+	}
+	if !foundBadExample {
+		t.Error("prompt should provide examples of trivial/bad learnings to exclude")
+	}
+}
