@@ -588,3 +588,289 @@ func TestBoolToCheck(t *testing.T) {
 		t.Errorf("boolToCheck(false) should return 'No'")
 	}
 }
+
+func TestGenerate_MarkdownLearningsSection(t *testing.T) {
+	tmpDir := t.TempDir()
+	outputDir := filepath.Join(tmpDir, "report")
+
+	gen := NewGenerator(outputDir)
+	data := &ReportData{
+		SpecName:       "learnings-test",
+		GeneratedAt:    time.Now(),
+		BaseCommit:     "abc123",
+		OriginalBranch: "main",
+		Variants: []VariantReportData{
+			{
+				ID:     1,
+				Branch: "test-branch",
+				Status: "completed",
+				Diff:   "+code",
+			},
+			{
+				ID:     2,
+				Branch: "test-branch-2",
+				Status: "completed",
+				Diff:   "+more code",
+			},
+		},
+		Comparison: &comparison.Result{
+			Recommendation: 1,
+			Confidence:     "high",
+			Summary:        "Variant 1 is better.",
+			Learnings: []comparison.VariantLearning{
+				{
+					VariantID:      1,
+					Category:       comparison.LearningCategoryCodePattern,
+					Title:          "Table-driven tests",
+					Description:    "Uses table-driven tests for comprehensive coverage.",
+					Rationale:      "Makes it easy to add new test cases.",
+					FileReferences: []string{"foo_test.go:42", "bar_test.go:100"},
+				},
+				{
+					VariantID:      1,
+					Category:       comparison.LearningCategoryErrorHandling,
+					Title:          "Sentinel errors",
+					Description:    "Uses sentinel errors with errors.Is().",
+					Rationale:      "Type-safe error checking across packages.",
+					FileReferences: []string{"errors.go:10"},
+				},
+				{
+					VariantID:      2,
+					Category:       comparison.LearningCategoryArchitecture,
+					Title:          "Clean separation",
+					Description:    "Separates business logic from infrastructure.",
+					Rationale:      "Easier testing and better maintainability.",
+					FileReferences: []string{"service.go:1", "repo.go:1"},
+				},
+			},
+		},
+	}
+
+	err := gen.Generate(data)
+	if err != nil {
+		t.Fatalf("Generate() error = %v", err)
+	}
+
+	content, err := os.ReadFile(filepath.Join(outputDir, "report.md"))
+	if err != nil {
+		t.Fatalf("failed to read report.md: %v", err)
+	}
+
+	contentStr := string(content)
+
+	// Verify Learnings section is present [Req 3.1]
+	// go-output uses # for top-level sections
+	if !strings.Contains(contentStr, "# Learnings") {
+		t.Errorf("report.md missing Learnings section header")
+	}
+
+	// Verify learnings are grouped by variant [Req 3.2]
+	if !strings.Contains(contentStr, "### Variant 1") {
+		t.Errorf("report.md missing Variant 1 heading in Learnings")
+	}
+	if !strings.Contains(contentStr, "### Variant 2") {
+		t.Errorf("report.md missing Variant 2 heading in Learnings")
+	}
+
+	// Verify learning content is present [Req 3.3]
+	checks := []string{
+		"[code-pattern]",         // category badge
+		"Table-driven tests",     // title
+		"table-driven tests for", // description (partial)
+		"easy to add new test",   // rationale (partial)
+		"`foo_test.go:42`",       // file reference in backticks
+		"`bar_test.go:100`",      // another file reference
+		"[error-handling]",       // second learning category
+		"Sentinel errors",        // second learning title
+		"[architecture]",         // variant 2 learning category
+		"Clean separation",       // variant 2 learning title
+	}
+	for _, check := range checks {
+		if !strings.Contains(contentStr, check) {
+			t.Errorf("report.md missing expected learnings content: %q", check)
+		}
+	}
+
+	// Verify file references are rendered as relative paths [Req 3.4]
+	// They should be in backticks, not as clickable links
+	if strings.Contains(contentStr, "[foo_test.go:42]") {
+		t.Errorf("file references should not be markdown links")
+	}
+
+	// Verify stale reference disclaimer is present [Req 3.6]
+	if !strings.Contains(contentStr, "File references are a snapshot") {
+		t.Errorf("report.md missing stale reference disclaimer")
+	}
+	if !strings.Contains(contentStr, "may become outdated if code changes") {
+		t.Errorf("report.md missing full disclaimer text")
+	}
+}
+
+func TestGenerate_MarkdownNoLearnings(t *testing.T) {
+	tmpDir := t.TempDir()
+	outputDir := filepath.Join(tmpDir, "report")
+
+	gen := NewGenerator(outputDir)
+	data := &ReportData{
+		SpecName:       "no-learnings",
+		GeneratedAt:    time.Now(),
+		BaseCommit:     "abc123",
+		OriginalBranch: "main",
+		Variants: []VariantReportData{
+			{
+				ID:     1,
+				Branch: "test-branch",
+				Status: "completed",
+				Diff:   "+code",
+			},
+		},
+		Comparison: &comparison.Result{
+			Recommendation: 1,
+			Confidence:     "high",
+			Summary:        "Variant 1 is the only one.",
+			Learnings:      nil, // No learnings
+		},
+	}
+
+	err := gen.Generate(data)
+	if err != nil {
+		t.Fatalf("Generate() error = %v", err)
+	}
+
+	content, err := os.ReadFile(filepath.Join(outputDir, "report.md"))
+	if err != nil {
+		t.Fatalf("failed to read report.md: %v", err)
+	}
+
+	contentStr := string(content)
+
+	// Verify Learnings section is NOT present when no learnings [Req 3.5]
+	if strings.Contains(contentStr, "# Learnings") {
+		t.Errorf("report.md should not contain Learnings section when there are no learnings")
+	}
+}
+
+func TestGenerate_MarkdownEmptyLearnings(t *testing.T) {
+	tmpDir := t.TempDir()
+	outputDir := filepath.Join(tmpDir, "report")
+
+	gen := NewGenerator(outputDir)
+	data := &ReportData{
+		SpecName:       "empty-learnings",
+		GeneratedAt:    time.Now(),
+		BaseCommit:     "abc123",
+		OriginalBranch: "main",
+		Variants: []VariantReportData{
+			{
+				ID:     1,
+				Branch: "test-branch",
+				Status: "completed",
+				Diff:   "+code",
+			},
+		},
+		Comparison: &comparison.Result{
+			Recommendation: 1,
+			Confidence:     "high",
+			Summary:        "Variant 1 is the only one.",
+			Learnings:      []comparison.VariantLearning{}, // Empty slice
+		},
+	}
+
+	err := gen.Generate(data)
+	if err != nil {
+		t.Fatalf("Generate() error = %v", err)
+	}
+
+	content, err := os.ReadFile(filepath.Join(outputDir, "report.md"))
+	if err != nil {
+		t.Fatalf("failed to read report.md: %v", err)
+	}
+
+	contentStr := string(content)
+
+	// Verify Learnings section is NOT present when learnings slice is empty [Req 3.5]
+	if strings.Contains(contentStr, "# Learnings") {
+		t.Errorf("report.md should not contain Learnings section when learnings slice is empty")
+	}
+}
+
+func TestGenerate_MarkdownLearningsAfterImprovements(t *testing.T) {
+	tmpDir := t.TempDir()
+	outputDir := filepath.Join(tmpDir, "report")
+
+	gen := NewGenerator(outputDir)
+	data := &ReportData{
+		SpecName:       "ordering-test",
+		GeneratedAt:    time.Now(),
+		BaseCommit:     "abc123",
+		OriginalBranch: "main",
+		Variants: []VariantReportData{
+			{
+				ID:     1,
+				Branch: "test-branch",
+				Status: "completed",
+				Diff:   "+code",
+			},
+		},
+		Comparison: &comparison.Result{
+			Recommendation: 1,
+			Confidence:     "high",
+			Summary:        "Test summary.",
+			CrossVariantImprovements: []comparison.CrossVariantImprovement{
+				{
+					SourceVariantID: 2,
+					Description:     "Better error messages",
+					Rationale:       "Helps debugging",
+					Priority:        "medium",
+				},
+			},
+			Learnings: []comparison.VariantLearning{
+				{
+					VariantID:      1,
+					Category:       comparison.LearningCategoryTesting,
+					Title:          "Mock patterns",
+					Description:    "Uses interface-based mocking.",
+					Rationale:      "Easy to test in isolation.",
+					FileReferences: []string{"mock.go:1"},
+				},
+			},
+		},
+	}
+
+	err := gen.Generate(data)
+	if err != nil {
+		t.Fatalf("Generate() error = %v", err)
+	}
+
+	content, err := os.ReadFile(filepath.Join(outputDir, "report.md"))
+	if err != nil {
+		t.Fatalf("failed to read report.md: %v", err)
+	}
+
+	contentStr := string(content)
+
+	// Verify both sections exist
+	improvementsIdx := strings.Index(contentStr, "Improvements from Other Variants")
+	learningsIdx := strings.Index(contentStr, "# Learnings")
+	diffsIdx := strings.Index(contentStr, "# Implementation Diffs")
+
+	if improvementsIdx == -1 {
+		t.Fatal("report.md missing Improvements section")
+	}
+	if learningsIdx == -1 {
+		t.Fatal("report.md missing Learnings section")
+	}
+	if diffsIdx == -1 {
+		t.Fatal("report.md missing Implementation Diffs section")
+	}
+
+	// Verify Learnings comes after Improvements [Req 3.1]
+	if learningsIdx < improvementsIdx {
+		t.Errorf("Learnings section should come after Improvements from Other Variants section")
+	}
+
+	// Verify Learnings comes before Implementation Diffs
+	if learningsIdx > diffsIdx {
+		t.Errorf("Learnings section should come before Implementation Diffs section")
+	}
+}

@@ -9,6 +9,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Learnings section in markdown comparison reports (`internal/report/markdown.go`)
+  - Learnings grouped by variant with category badges and titles
+  - File references rendered in backticks (not clickable links)
+  - Stale reference disclaimer at top of section
+  - Section only rendered when learnings exist
+  - Positioned after "Improvements from Other Variants" section
+  - Unit tests covering learnings rendering, empty/nil handling, and section ordering
+
 - Learnings section in AI comparison prompt (`internal/comparison/prompt.go`)
   - JSON schema updated with `learnings` array structure for AI output
   - Developer Learnings instructions requesting insights from each variant

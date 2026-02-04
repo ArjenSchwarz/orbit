@@ -97,17 +97,17 @@ references:
 
 ## Markdown Rendering
 
-- [ ] 17. Write tests for learnings markdown rendering <!-- id:th9obgo -->
+- [x] 17. Write tests for learnings markdown rendering <!-- id:th9obgo -->
   - Blocked-by: th9obgg (Integrate validateLearnings into parseAndValidate), th9obgj (Write unit tests for learnings helper functions)
   - Stream: 1
   - Requirements: [3.1](requirements.md#3.1), [3.5](requirements.md#3.5)
 
-- [ ] 18. Add learnings section to generateMarkdownReport <!-- id:th9obgp -->
+- [x] 18. Add learnings section to generateMarkdownReport <!-- id:th9obgp -->
   - Blocked-by: th9obgo (Write tests for learnings markdown rendering)
   - Stream: 1
   - Requirements: [3.1](requirements.md#3.1), [3.2](requirements.md#3.2), [3.3](requirements.md#3.3), [3.4](requirements.md#3.4)
 
-- [ ] 19. Add stale reference disclaimer to markdown output <!-- id:th9obgq -->
+- [x] 19. Add stale reference disclaimer to markdown output <!-- id:th9obgq -->
   - Blocked-by: th9obgp (Add learnings section to generateMarkdownReport)
   - Stream: 1
   - Requirements: [3.6](requirements.md#3.6)

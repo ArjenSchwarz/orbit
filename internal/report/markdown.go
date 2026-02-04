@@ -10,6 +10,7 @@ import (
 	"time"
 
 	output "github.com/ArjenSchwarz/go-output/v2"
+	"github.com/arjenschwarz/orbit/internal/comparison"
 )
 
 // generateMarkdownReport creates report.md alongside the HTML report using go-output v2.
@@ -120,6 +121,43 @@ func (g *Generator) generateMarkdownReport(data *ReportData) error {
 				b.Raw(output.FormatMarkdown, []byte(fmt.Sprintf("### From Variant %d (%s priority)\n", imp.SourceVariantID, imp.Priority)))
 				b.Raw(output.FormatMarkdown, []byte(imp.Description+"\n"))
 				b.Raw(output.FormatMarkdown, []byte(fmt.Sprintf("**Rationale:** %s\n", imp.Rationale)))
+			}
+		})
+	}
+
+	// Learnings section [Req 3.1]
+	if data.Comparison != nil && len(data.Comparison.Learnings) > 0 {
+		builder.Section("Learnings", func(b *output.Builder) {
+			// Disclaimer [Req 3.6]
+			b.Raw(output.FormatMarkdown, []byte("*Note: File references are a snapshot from the time of analysis and may become outdated if code changes.*\n\n"))
+
+			// Group learnings by variant [Req 3.2]
+			learningsByVariant := comparison.GroupLearningsByVariant(data.Comparison.Learnings)
+			variantIDs := comparison.SortedVariantIDs(learningsByVariant)
+
+			for _, variantID := range variantIDs {
+				learnings := learningsByVariant[variantID]
+				b.Raw(output.FormatMarkdown, []byte(fmt.Sprintf("### Variant %d\n\n", variantID)))
+
+				for _, l := range learnings {
+					// Category badge + title [Req 3.3]
+					b.Raw(output.FormatMarkdown, []byte(fmt.Sprintf("#### [%s] %s\n\n", l.Category, l.Title)))
+
+					// Description
+					if l.Description != "" {
+						b.Raw(output.FormatMarkdown, []byte(l.Description+"\n\n"))
+					}
+
+					// Rationale
+					b.Raw(output.FormatMarkdown, []byte(fmt.Sprintf("**Why it matters:** %s\n\n", l.Rationale)))
+
+					// File references [Req 3.4] - rendered as backticks, not clickable links
+					refs := make([]string, len(l.FileReferences))
+					for i, ref := range l.FileReferences {
+						refs[i] = fmt.Sprintf("`%s`", ref)
+					}
+					b.Raw(output.FormatMarkdown, []byte(fmt.Sprintf("**Files:** %s\n\n", strings.Join(refs, ", "))))
+				}
 			}
 		})
 	}
