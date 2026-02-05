@@ -124,6 +124,7 @@ internal/
     types.go         - Status data structures and output types
   comparison/        - Variant comparison logic
     compare.go       - Comparator for analyzing variant diffs
+    adapter.go       - AgentAdapter wrapping agents.Agent for Comparator
   consolidation/     - Variant consolidation support
     consolidator.go  - Applies improvements from non-chosen variants
     prompt.go        - AI prompt generation for consolidation
@@ -132,8 +133,6 @@ internal/
     types.go         - Config, result, and report types
   report/            - Comparison report generation
   cost/              - Cost formatting utilities for multi-unit cost display (USD, credits, premium requests)
-  claude/client.go   - Legacy Claude Code CLI wrapper (used by comparison)
-  claude/paths.go    - Claude project path utilities (shared by orbit and apsis)
   rune/client.go     - Wrapper for rune CLI task management
   errors/errors.go   - Legacy error classification (deprecated, use agents/errors)
   logs/manager.go    - Session log storage and summary management

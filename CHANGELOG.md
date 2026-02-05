@@ -23,6 +23,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- Update CLAUDE.md architecture section to reflect removal of `internal/claude/` directory and addition of `adapter.go`
+
 - Migrate `runPhase()` in `internal/orbit/orbit.go` to use the `agents.Agent` interface instead of the legacy `claudeRunner` interface
   - Replace `o.claudeClient.RunPhase()` calls with `o.agent.Run()`/`Resume()` calls
   - Follow pattern established in `runPostPrompt()` using `agents.RunOptions`
@@ -50,6 +52,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Design document with AgentAdapter pattern for Comparator, runPhase() migration, and testing strategy
   - Decision log documenting 4 design decisions (remove client.go, enable tests immediately, no backwards compat, adapter pattern)
   - Task list with 16 implementation tasks across 6 phases with dependency tracking
+  - Implementation explanation document with beginner/intermediate/expert level explanations and completeness assessment
 
 - Learnings section in HTML comparison reports (`internal/report/templates/index.html`)
   - Template function `groupLearningsByVariant` and `sortedVariantIDs` for organizing learnings
