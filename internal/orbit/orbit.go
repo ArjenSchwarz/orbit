@@ -19,7 +19,6 @@ import (
 	output "github.com/ArjenSchwarz/go-output/v2"
 	"github.com/arjenschwarz/orbit/internal/agents"
 	_ "github.com/arjenschwarz/orbit/internal/agents/claudecode" // Register claudecode agent
-	"github.com/arjenschwarz/orbit/internal/claude"
 	"github.com/arjenschwarz/orbit/internal/cost"
 	"github.com/arjenschwarz/orbit/internal/comparison"
 	"github.com/arjenschwarz/orbit/internal/consolidation"
@@ -70,14 +69,6 @@ func (registryResolver) GetAgent(name string, cfg agents.AgentConfig) (agents.Ag
 
 // DefaultAgentResolver uses the global agent registry.
 var DefaultAgentResolver AgentResolver = registryResolver{}
-
-// claudeRunner is an interface for running Claude sessions.
-// This allows for mocking in tests.
-type claudeRunner interface {
-	RunPhase(sessionID string, resume bool) (*agents.RunResult, error)
-	RunCustomPrompt(prompt string) (*agents.RunResult, error)
-	RunCustomPromptWithSession(prompt, sessionID string, resume bool) (*agents.RunResult, error)
-}
 
 // getCostUSD extracts the cost in USD from a RunResult, returning 0 if cost is nil.
 // Falls back to credits if USD is not available (for agents like Kiro that use credits).
@@ -177,7 +168,6 @@ type Config struct {
 type Orbit struct {
 	config               Config
 	runeClient           *rune.Client
-	claudeClient         claudeRunner
 	agent                agents.Agent           // Agent interface for multi-agent support
 	errorClassifier      agents.ErrorClassifier // Agent-specific error classifier
 	logManager           *logs.Manager
@@ -190,7 +180,6 @@ type Orbit struct {
 	currentPhaseRunCount int                // Track retry count for current phase
 	debug                *debug.Logger      // Debug logger
 	variantManager       *variants.Manager  // Variant lifecycle manager (nil for single-run mode)
-	rawClaudeClient      *claude.Client     // Raw Claude client for variant mode
 	comparisonResult     *comparison.Result // Comparison result for report generation
 	variantRunID         string             // Shared ID to group variant registry entries
 	variantRegistryIDs   map[int]string     // Maps variant ID to registry entry ID
@@ -217,13 +206,6 @@ func New(config Config) (*Orbit, error) {
 
 	runeClient := rune.NewClient(config.TasksFile)
 	runeClient.SetDebug(config.Debug)
-
-	claudeClient := claude.NewClient(claude.Config{
-		SkipPermissions: config.SkipPermissions,
-		WorkingDir:      config.WorkingDir,
-		Prompt:          config.Command,
-		Debug:           config.Debug,
-	})
 
 	// Set default clock for time operations
 	if config.Clock == nil {
@@ -379,7 +361,6 @@ func New(config Config) (*Orbit, error) {
 	return &Orbit{
 		config:          config,
 		runeClient:      runeClient,
-		claudeClient:    claudeClient,
 		agent:           agent,
 		errorClassifier: errorClassifier,
 		logManager:      logManager,
@@ -389,7 +370,6 @@ func New(config Config) (*Orbit, error) {
 		registry:        reg,
 		debug:           dbg,
 		variantManager:  variantMgr,
-		rawClaudeClient: claudeClient,
 	}, nil
 }
 

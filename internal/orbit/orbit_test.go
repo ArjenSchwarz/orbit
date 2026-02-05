@@ -19,46 +19,6 @@ import (
 	"github.com/arjenschwarz/orbit/internal/testutil"
 )
 
-// mockClaudeClient implements claudeRunner for testing.
-type mockClaudeClient struct {
-	runPhaseFunc                   func(sessionID string, resume bool) (*agents.RunResult, error)
-	runCustomPromptFunc            func(prompt string) (*agents.RunResult, error)
-	runCustomPromptWithSessionFunc func(prompt, sessionID string, resume bool) (*agents.RunResult, error)
-}
-
-func (m *mockClaudeClient) RunPhase(sessionID string, resume bool) (*agents.RunResult, error) {
-	if m.runPhaseFunc != nil {
-		return m.runPhaseFunc(sessionID, resume)
-	}
-	return &agents.RunResult{}, nil
-}
-
-func (m *mockClaudeClient) RunCustomPrompt(prompt string) (*agents.RunResult, error) {
-	if m.runCustomPromptFunc != nil {
-		return m.runCustomPromptFunc(prompt)
-	}
-	return &agents.RunResult{}, nil
-}
-
-func (m *mockClaudeClient) RunCustomPromptWithSession(prompt, sessionID string, resume bool) (*agents.RunResult, error) {
-	if m.runCustomPromptWithSessionFunc != nil {
-		return m.runCustomPromptWithSessionFunc(prompt, sessionID, resume)
-	}
-	// Fall back to runCustomPromptFunc if not set
-	if m.runCustomPromptFunc != nil {
-		return m.runCustomPromptFunc(prompt)
-	}
-	return &agents.RunResult{}, nil
-}
-
-// NOTE: The mockClaudeClient above is retained for testing the legacy claudeRunner
-// interface which is still used in production. Tests using mockClaudeClient are
-// currently skipped because they require real time delays - they could be enabled
-// with FakeClock but would need significant refactoring to use the agent interface.
-//
-// The mockAgent type was removed as part of the integration test framework migration.
-// Use testutil.NewTestAgent() for agent mocking - see internal/testutil/doc.go.
-
 func TestConfig_Struct(t *testing.T) {
 	config := Config{
 		TasksFile:       "specs/test/tasks.md",

@@ -125,21 +125,21 @@ references:
 
 ## Legacy Code Removal
 
-- [ ] 12. Remove mockClaudeClient type <!-- id:kc125y8 -->
+- [x] 12. Remove mockClaudeClient type <!-- id:kc125y8 -->
   - Delete the mockClaudeClient struct definition and all its methods from orbit_test.go (lines 21-55).
   - Verify no remaining references to mockClaudeClient in the test file.
   - Blocked-by: kc125y2 (Migrate TestRunPostPromptWithRetry_RetryableError_EventualSuccess), kc125y3 (Migrate TestRunPostPromptWithRetry_MaxRetriesExceeded), kc125y4 (Migrate TestRunPhaseWithRetry_RateLimitError), kc125y5 (Migrate TestRunPhaseWithRetry_OverloadedError), kc125y6 (Migrate remaining orbit_test.go mockClaudeClient tests), kc125y7 (Migrate integration_test.go mockClaudeClient test)
   - Stream: 1
   - Requirements: [5.3](requirements.md#5.3)
 
-- [ ] 13. Remove claudeRunner interface <!-- id:kc125y9 -->
+- [x] 13. Remove claudeRunner interface <!-- id:kc125y9 -->
   - Delete the claudeRunner interface definition from internal/orbit/orbit.go (lines 74-80).
   - This interface defined RunPhase() which is no longer used.
   - Blocked-by: kc125y8 (Remove mockClaudeClient type)
   - Stream: 1
   - Requirements: [2.1](requirements.md#2.1)
 
-- [ ] 14. Remove legacy fields from Orbit struct <!-- id:kc125ya -->
+- [x] 14. Remove legacy fields from Orbit struct <!-- id:kc125ya -->
   - Remove claudeClient (line 180) and rawClaudeClient (line 193) fields from the Orbit struct.
   - Remove their initialization in New() function.
   - Update any struct literals that reference these fields.
@@ -147,7 +147,7 @@ references:
   - Stream: 1
   - Requirements: [2.2](requirements.md#2.2), [2.3](requirements.md#2.3), [2.4](requirements.md#2.4), [2.9](requirements.md#2.9)
 
-- [ ] 15. Delete legacy files and directory <!-- id:kc125yb -->
+- [x] 15. Delete legacy files and directory <!-- id:kc125yb -->
   - Delete internal/claude/client.go and internal/claude/client_test.go.
   - Remove the internal/claude/ directory entirely.
   - Verify no imports of github.com/arjenschwarz/orbit/internal/claude remain in the codebase.

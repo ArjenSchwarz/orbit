@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Removed
+
+- Delete `internal/claude/client.go` and `internal/claude/client_test.go` - legacy Claude Code CLI wrapper replaced by `agents.Agent` interface
+- Remove `claudeRunner` interface from `internal/orbit/orbit.go` - no longer needed after migration to agent interface
+- Remove `claudeClient` and `rawClaudeClient` fields from `Orbit` struct - replaced by `agent` field
+- Remove `mockClaudeClient` type from `internal/orbit/orbit_test.go` - all tests now use `testutil.TestAgent`
+
 ### Changed
 
 - Migrate `runPhase()` in `internal/orbit/orbit.go` to use the `agents.Agent` interface instead of the legacy `claudeRunner` interface
