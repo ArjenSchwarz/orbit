@@ -7,9 +7,34 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 )
+
+// syncBuffer is a thread-safe buffer for concurrent read/write in tests.
+type syncBuffer struct {
+	mu  sync.RWMutex
+	buf bytes.Buffer
+}
+
+func (b *syncBuffer) Write(p []byte) (n int, err error) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return b.buf.Write(p)
+}
+
+func (b *syncBuffer) String() string {
+	b.mu.RLock()
+	defer b.mu.RUnlock()
+	return b.buf.String()
+}
+
+func (b *syncBuffer) Len() int {
+	b.mu.RLock()
+	defer b.mu.RUnlock()
+	return b.buf.Len()
+}
 
 func TestHashLine(t *testing.T) {
 	tests := []struct {
@@ -659,7 +684,7 @@ func TestFollower_Run_WithCancellation(t *testing.T) {
 		t.Fatalf("failed to create temp file: %v", err)
 	}
 
-	var buf bytes.Buffer
+	var buf syncBuffer
 	f, err := NewFollower(tmpFile, &buf, RenderOptions{})
 	if err != nil {
 		t.Fatalf("NewFollower() error: %v", err)
@@ -707,7 +732,7 @@ func TestFollower_Run_DetectsChanges(t *testing.T) {
 		t.Fatalf("failed to create temp file: %v", err)
 	}
 
-	var buf bytes.Buffer
+	var buf syncBuffer
 	f, err := NewFollower(tmpFile, &buf, RenderOptions{})
 	if err != nil {
 		t.Fatalf("NewFollower() error: %v", err)
@@ -746,7 +771,7 @@ func TestFollower_Run_DetectsChanges(t *testing.T) {
 }
 
 // waitForOutput polls the buffer until expected content appears or timeout.
-func waitForOutput(t *testing.T, buf *bytes.Buffer, expected string, timeout time.Duration) bool {
+func waitForOutput(t *testing.T, buf *syncBuffer, expected string, timeout time.Duration) bool {
 	t.Helper()
 	deadline := time.Now().Add(timeout)
 	for time.Now().Before(deadline) {
@@ -772,7 +797,7 @@ func TestFollowerIntegration_BasicFollowWithAppend(t *testing.T) {
 		t.Fatalf("failed to create temp file: %v", err)
 	}
 
-	var buf bytes.Buffer
+	var buf syncBuffer
 	f, err := NewFollower(tmpFile, &buf, RenderOptions{Title: "Session Transcript"})
 	if err != nil {
 		t.Fatalf("NewFollower() error: %v", err)
@@ -836,7 +861,7 @@ func TestFollowerIntegration_FileTruncation(t *testing.T) {
 		t.Fatalf("failed to create temp file: %v", err)
 	}
 
-	var buf bytes.Buffer
+	var buf syncBuffer
 	f, err := NewFollower(tmpFile, &buf, RenderOptions{Title: "Session Transcript"})
 	if err != nil {
 		t.Fatalf("NewFollower() error: %v", err)
@@ -899,7 +924,7 @@ func TestFollowerIntegration_FileReplacement(t *testing.T) {
 		t.Fatalf("failed to create temp file: %v", err)
 	}
 
-	var buf bytes.Buffer
+	var buf syncBuffer
 	f, err := NewFollower(tmpFile, &buf, RenderOptions{Title: "Session Transcript"})
 	if err != nil {
 		t.Fatalf("NewFollower() error: %v", err)
@@ -965,7 +990,7 @@ func TestFollowerIntegration_IncompleteJSONHandling(t *testing.T) {
 		t.Fatalf("failed to create temp file: %v", err)
 	}
 
-	var buf bytes.Buffer
+	var buf syncBuffer
 	f, err := NewFollower(tmpFile, &buf, RenderOptions{Title: "Session Transcript"})
 	if err != nil {
 		t.Fatalf("NewFollower() error: %v", err)

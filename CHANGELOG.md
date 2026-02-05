@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- Fix data race in `internal/transcript/follow_test.go` tests detected by `go test -race`
+  - Add thread-safe `syncBuffer` wrapper type using `sync.RWMutex` for concurrent read/write
+  - Replace `bytes.Buffer` with `syncBuffer` in tests that share a buffer between the Follower goroutine and test assertions
+  - Affected tests: `TestFollower_Run_WithCancellation`, `TestFollower_Run_DetectsChanges`, and all `TestFollowerIntegration_*` tests
+
 ### Removed
 
 - Delete `internal/claude/client.go` and `internal/claude/client_test.go` - legacy Claude Code CLI wrapper replaced by `agents.Agent` interface

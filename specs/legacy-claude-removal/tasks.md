@@ -157,7 +157,7 @@ references:
 
 ## Verification
 
-- [ ] 16. Verify test coverage and quality <!-- id:kc125yc -->
+- [x] 16. Verify test coverage and quality <!-- id:kc125yc -->
   - Run: make test, go test -race ./..., make lint.
   - Verify coverage is at least 22.4% for internal/orbit/.
   - Run: grep -r "internal/claude" --include="*.go" to ensure no imports remain.
