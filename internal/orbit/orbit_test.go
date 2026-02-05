@@ -1,6 +1,7 @@
 package orbit
 
 import (
+	"context"
 	"errors"
 	"os"
 	"path/filepath"
@@ -17,46 +18,6 @@ import (
 	"github.com/arjenschwarz/orbit/internal/rune"
 	"github.com/arjenschwarz/orbit/internal/testutil"
 )
-
-// mockClaudeClient implements claudeRunner for testing.
-type mockClaudeClient struct {
-	runPhaseFunc                   func(sessionID string, resume bool) (*agents.RunResult, error)
-	runCustomPromptFunc            func(prompt string) (*agents.RunResult, error)
-	runCustomPromptWithSessionFunc func(prompt, sessionID string, resume bool) (*agents.RunResult, error)
-}
-
-func (m *mockClaudeClient) RunPhase(sessionID string, resume bool) (*agents.RunResult, error) {
-	if m.runPhaseFunc != nil {
-		return m.runPhaseFunc(sessionID, resume)
-	}
-	return &agents.RunResult{}, nil
-}
-
-func (m *mockClaudeClient) RunCustomPrompt(prompt string) (*agents.RunResult, error) {
-	if m.runCustomPromptFunc != nil {
-		return m.runCustomPromptFunc(prompt)
-	}
-	return &agents.RunResult{}, nil
-}
-
-func (m *mockClaudeClient) RunCustomPromptWithSession(prompt, sessionID string, resume bool) (*agents.RunResult, error) {
-	if m.runCustomPromptWithSessionFunc != nil {
-		return m.runCustomPromptWithSessionFunc(prompt, sessionID, resume)
-	}
-	// Fall back to runCustomPromptFunc if not set
-	if m.runCustomPromptFunc != nil {
-		return m.runCustomPromptFunc(prompt)
-	}
-	return &agents.RunResult{}, nil
-}
-
-// NOTE: The mockClaudeClient above is retained for testing the legacy claudeRunner
-// interface which is still used in production. Tests using mockClaudeClient are
-// currently skipped because they require real time delays - they could be enabled
-// with FakeClock but would need significant refactoring to use the agent interface.
-//
-// The mockAgent type was removed as part of the integration test framework migration.
-// Use testutil.NewTestAgent() for agent mocking - see internal/testutil/doc.go.
 
 func TestConfig_Struct(t *testing.T) {
 	config := Config{
@@ -205,156 +166,193 @@ func TestRunPostPromptWithRetry_NonRetryableError(t *testing.T) {
 }
 
 func TestRunPostPromptWithRetry_RetryableError_EventualSuccess(t *testing.T) {
-	t.Skip("disabled: test uses real 3s delays - would slow down CI/commit validation")
+	// Import the claudecode package to register its classifier
+	_ = agents.GetClassifier("claude-code")
 
-	callCount := 0
-	mock := &mockClaudeClient{
-		runCustomPromptFunc: func(prompt string) (*agents.RunResult, error) {
-			callCount++
-			if callCount < 3 {
-				// Simulate connection error on first two attempts
-				return &agents.RunResult{
-					Stderr:  "connection timeout",
-					IsError: true,
-				}, errors.New("connection timeout")
-			}
-			// Success on third attempt
-			return &agents.RunResult{
-				SessionID: "test-session",
-				Output:    "Success",
-				IsError:   false,
-			}, nil
-		},
-	}
+	// Create FakeClock for deterministic timing
+	clock := testutil.NewFakeClock(time.Now())
+
+	// Define expected agent behavior: 2 connection timeouts then success
+	// Use "connection timeout" in stderr which the claude-code classifier recognizes as retryable
+	scenario := testutil.NewScenario().
+		RetryableError("connection timeout").
+		RetryableError("connection timeout").
+		Success("test-session", 0.01).
+		WithOutput("Success", "").
+		Build()
+
+	agent := testutil.NewTestAgent(t, "test-agent", scenario, testutil.WithClock(clock))
+	t.Cleanup(func() { agent.AssertAllConsumed(t) })
 
 	o := &Orbit{
 		config: Config{
 			PostPrompt: "test command",
+			Clock:      clock,
 		},
-		claudeClient: mock,
-		logManager:   nil,
+		agent:           agent,
+		logManager:      nil,
+		errorClassifier: agents.GetClassifier("claude-code"),
+		shutdownCtx:     t.Context(),
 	}
 
 	err := o.runPostPromptWithRetry()
 	if err != nil {
 		t.Errorf("runPostPromptWithRetry() returned error: %v", err)
 	}
-	if callCount != 3 {
-		t.Errorf("expected 3 calls (2 retries then success), got %d", callCount)
-	}
+
+	// Verify 3 calls: 2 retries then success
+	agent.Recorder().AssertCallCount(t, 3)
+
+	// Verify backoff durations: 1s after first failure, 2s after second failure
+	clock.AssertSleeps(t, []time.Duration{time.Second, 2 * time.Second})
 }
 
 func TestRunPostPromptWithRetry_MaxRetriesExceeded(t *testing.T) {
-	t.Skip("disabled: test uses real 31s delays - would slow down CI/commit validation")
+	// Import the claudecode package to register its classifier
+	_ = agents.GetClassifier("claude-code")
 
-	callCount := 0
-	mock := &mockClaudeClient{
-		runCustomPromptFunc: func(prompt string) (*agents.RunResult, error) {
-			callCount++
-			// Always return a connection error
-			return &agents.RunResult{
-				Stderr:  "connection refused",
-				IsError: true,
-			}, errors.New("connection refused")
-		},
-	}
+	// Create FakeClock for deterministic timing
+	clock := testutil.NewFakeClock(time.Now())
+
+	// Define expected agent behavior: always fail with connection error (retryable)
+	// Use "connection" in stderr which the claude-code classifier recognizes as retryable
+	// Need maxRetries (5) failures
+	scenario := testutil.NewScenario().
+		RetryableError("connection refused").Repeat(maxRetries).
+		Build()
+
+	agent := testutil.NewTestAgent(t, "test-agent", scenario, testutil.WithClock(clock))
+	t.Cleanup(func() { agent.AssertAllConsumed(t) })
 
 	o := &Orbit{
 		config: Config{
 			PostPrompt: "test command",
+			Clock:      clock,
 		},
-		claudeClient: mock,
-		logManager:   nil,
+		agent:           agent,
+		logManager:      nil,
+		errorClassifier: agents.GetClassifier("claude-code"),
+		shutdownCtx:     t.Context(),
 	}
 
 	err := o.runPostPromptWithRetry()
 	if err == nil {
 		t.Error("expected error after max retries, got nil")
 	}
-	if callCount != maxRetries {
-		t.Errorf("expected %d calls (max retries), got %d", maxRetries, callCount)
-	}
+
+	// Verify maxRetries (5) calls were made
+	agent.Recorder().AssertCallCount(t, maxRetries)
+
 	if !strings.Contains(err.Error(), "max retries exceeded") {
 		t.Errorf("expected 'max retries exceeded' in error message, got: %v", err)
 	}
-	var classified *orberrors.ClassifiedError
+
+	// Verify error is wrapped as ClassifiedError from agents package
+	var classified *agents.ClassifiedError
 	if !errors.As(err, &classified) {
-		t.Error("expected wrapped ClassifiedError")
+		t.Error("expected wrapped agents.ClassifiedError")
 	}
+
+	// Verify backoff durations: 1s, 2s, 4s, 8s, 16s (sleep after each of the 5 failed attempts)
+	// Note: The last sleep (16s) is technically unnecessary since no retry follows,
+	// but the current implementation sleeps before checking the loop condition
+	clock.AssertSleeps(t, []time.Duration{
+		time.Second,
+		2 * time.Second,
+		4 * time.Second,
+		8 * time.Second,
+		16 * time.Second,
+	})
 }
 
 func TestRunPhaseWithRetry_RateLimitError(t *testing.T) {
-	t.Skip("disabled: test uses real 60s delays - would slow down CI/commit validation")
+	// Import the claudecode package to register its classifier
+	_ = agents.GetClassifier("claude-code")
 
-	callCount := 0
-	mock := &mockClaudeClient{
-		runPhaseFunc: func(sessionID string, resume bool) (*agents.RunResult, error) {
-			callCount++
-			if callCount == 1 {
-				// Rate limit error on first attempt
-				return &agents.RunResult{
-					Stderr:  "rate limit exceeded",
-					IsError: true,
-				}, errors.New("rate limit")
-			}
-			return &agents.RunResult{
-				SessionID: "test-session",
-				Output:    "Success",
-				IsError:   false,
-			}, nil
-		},
-	}
+	// Create FakeClock for deterministic timing
+	clock := testutil.NewFakeClock(time.Now())
+
+	// Define expected agent behavior: rate limit error on first attempt, then success
+	// Use "rate limit" in stderr which the claude-code classifier recognizes as retryable
+	// The classifier will set a 60s RetryAfter for rate limit errors
+	scenario := testutil.NewScenario().
+		RetryableError("rate limit exceeded").
+		Success("test-session", 0.01).
+		WithOutput("Success", "").
+		Build()
+
+	agent := testutil.NewTestAgent(t, "test-agent", scenario,
+		testutil.WithClock(clock),
+		testutil.WithSessionExport("/tmp/test"),
+	)
+	t.Cleanup(func() { agent.AssertAllConsumed(t) })
 
 	o := &Orbit{
-		config:       Config{},
-		claudeClient: mock,
-		logManager:   nil,
+		config: Config{
+			Clock: clock,
+		},
+		agent:           agent,
+		logManager:      nil,
+		errorClassifier: agents.GetClassifier("claude-code"),
+		shutdownCtx:     t.Context(),
+		debug:           debug.New(false, ""),
 	}
 
 	err := o.runPhaseWithRetry(1)
 	if err != nil {
 		t.Errorf("runPhaseWithRetry() returned error: %v", err)
 	}
-	if callCount != 2 {
-		t.Errorf("expected 2 calls (1 retry after rate limit), got %d", callCount)
-	}
+
+	// Verify 2 calls: 1 failure then success
+	agent.Recorder().AssertCallCount(t, 2)
+
+	// Verify backoff duration: 60s from rate limit RetryAfter
+	clock.AssertSleeps(t, []time.Duration{60 * time.Second})
 }
 
 func TestRunPhaseWithRetry_OverloadedError(t *testing.T) {
-	t.Skip("disabled: test uses real 30s delays - would slow down CI/commit validation")
+	// Import the claudecode package to register its classifier
+	_ = agents.GetClassifier("claude-code")
 
-	callCount := 0
-	mock := &mockClaudeClient{
-		runPhaseFunc: func(sessionID string, resume bool) (*agents.RunResult, error) {
-			callCount++
-			if callCount == 1 {
-				// API overloaded on first attempt
-				return &agents.RunResult{
-					Stderr:  "503 service unavailable",
-					IsError: true,
-				}, errors.New("overloaded")
-			}
-			return &agents.RunResult{
-				SessionID: "test-session",
-				Output:    "Success",
-				IsError:   false,
-			}, nil
-		},
-	}
+	// Create FakeClock for deterministic timing
+	clock := testutil.NewFakeClock(time.Now())
+
+	// Define expected agent behavior: overloaded error on first attempt, then success
+	// Use "503 service unavailable" in stderr which the claude-code classifier recognizes as retryable
+	// The classifier will set a 30s RetryAfter for overloaded errors
+	scenario := testutil.NewScenario().
+		RetryableError("503 service unavailable").
+		Success("test-session", 0.01).
+		WithOutput("Success", "").
+		Build()
+
+	agent := testutil.NewTestAgent(t, "test-agent", scenario,
+		testutil.WithClock(clock),
+		testutil.WithSessionExport("/tmp/test"),
+	)
+	t.Cleanup(func() { agent.AssertAllConsumed(t) })
 
 	o := &Orbit{
-		config:       Config{},
-		claudeClient: mock,
-		logManager:   nil,
+		config: Config{
+			Clock: clock,
+		},
+		agent:           agent,
+		logManager:      nil,
+		errorClassifier: agents.GetClassifier("claude-code"),
+		shutdownCtx:     t.Context(),
+		debug:           debug.New(false, ""),
 	}
 
 	err := o.runPhaseWithRetry(1)
 	if err != nil {
 		t.Errorf("runPhaseWithRetry() returned error: %v", err)
 	}
-	if callCount != 2 {
-		t.Errorf("expected 2 calls (1 retry after overloaded), got %d", callCount)
-	}
+
+	// Verify 2 calls: 1 failure then success
+	agent.Recorder().AssertCallCount(t, 2)
+
+	// Verify backoff duration: 30s from overloaded RetryAfter
+	clock.AssertSleeps(t, []time.Duration{30 * time.Second})
 }
 
 func TestIsSessionInvalidError(t *testing.T) {
@@ -511,31 +509,23 @@ func TestErrorClassification_IsUsedCorrectly(t *testing.T) {
 }
 
 func TestRunPhase_SessionContinuation_NewSession(t *testing.T) {
-	// Track what RunPhase was called with
-	var capturedSessionID string
-	var capturedResume bool
+	// Create scenario that returns success
+	scenario := testutil.NewScenario().
+		Success("test-session", 0.0).
+		Build()
 
-	mock := &mockClaudeClient{
-		runPhaseFunc: func(sessionID string, resume bool) (*agents.RunResult, error) {
-			capturedSessionID = sessionID
-			capturedResume = resume
-			return &agents.RunResult{
-				SessionID: sessionID, // Return same session ID
-				Output:    "Success",
-				IsError:   false,
-			}, nil
-		},
-	}
-
-	// Create a temp dir for log manager
-	tempDir := t.TempDir()
+	agent := testutil.NewTestAgent(t, "mock", scenario, testutil.WithSessionExport("/tmp/test"))
+	t.Cleanup(func() { agent.AssertAllConsumed(t) })
 
 	o := &Orbit{
 		config: Config{
 			ContinueSession: true,
 		},
-		claudeClient: mock,
-		logManager:   nil, // No log manager - should generate fresh session
+		agent:           agent,
+		errorClassifier: agents.GetClassifier("claude-code"),
+		logManager:      nil, // No log manager - should generate fresh session
+		shutdownCtx:     context.Background(),
+		debug:           debug.New(false, ""),
 	}
 
 	err := o.runPhase(1)
@@ -544,38 +534,29 @@ func TestRunPhase_SessionContinuation_NewSession(t *testing.T) {
 	}
 
 	// Without log manager, should always be a new session (resume=false)
-	if capturedResume {
-		t.Error("expected resume=false without log manager")
+	// Check that Run was called (not Resume) via recorder
+	calls := agent.Recorder().Calls()
+	if len(calls) != 1 {
+		t.Fatalf("expected 1 call, got %d", len(calls))
+	}
+	if calls[0].Method != "Run" {
+		t.Errorf("expected method=Run for new session, got %s", calls[0].Method)
 	}
 
-	// Session ID should be non-empty (UUID generated)
-	if capturedSessionID == "" {
-		t.Error("expected non-empty session ID")
+	// Session ID should be non-empty (UUID generated in opts)
+	if calls[0].Options.SessionID == "" {
+		t.Error("expected non-empty session ID in options")
 	}
-
-	_ = tempDir // Silence unused warning
 }
 
 func TestRunPhase_SessionContinuation_WithLogManager(t *testing.T) {
-	// Track calls to RunPhase
-	var calls []struct {
-		sessionID string
-		resume    bool
-	}
+	// Create scenario that returns success
+	scenario := testutil.NewScenario().
+		Success("test-session", 0.0).
+		Build()
 
-	mock := &mockClaudeClient{
-		runPhaseFunc: func(sessionID string, resume bool) (*agents.RunResult, error) {
-			calls = append(calls, struct {
-				sessionID string
-				resume    bool
-			}{sessionID, resume})
-			return &agents.RunResult{
-				SessionID: sessionID,
-				Output:    "Success",
-				IsError:   false,
-			}, nil
-		},
-	}
+	agent := testutil.NewTestAgent(t, "mock", scenario, testutil.WithSessionExport("/tmp/test"))
+	t.Cleanup(func() { agent.AssertAllConsumed(t) })
 
 	// Create log manager in temp directory
 	tempDir := t.TempDir()
@@ -588,8 +569,11 @@ func TestRunPhase_SessionContinuation_WithLogManager(t *testing.T) {
 		config: Config{
 			ContinueSession: true,
 		},
-		claudeClient: mock,
-		logManager:   logManager,
+		agent:           agent,
+		errorClassifier: agents.GetClassifier("claude-code"),
+		logManager:      logManager,
+		shutdownCtx:     context.Background(),
+		debug:           debug.New(false, ""),
 	}
 
 	// First run - should start a new session
@@ -597,50 +581,30 @@ func TestRunPhase_SessionContinuation_WithLogManager(t *testing.T) {
 		t.Fatalf("First runPhase() returned error: %v", err)
 	}
 
+	calls := agent.Recorder().Calls()
 	if len(calls) != 1 {
 		t.Fatalf("expected 1 call, got %d", len(calls))
 	}
 
-	// First call should be resume=false (new session)
-	if calls[0].resume {
-		t.Error("first call should have resume=false")
+	// First call should be Run (not Resume) - new session
+	if calls[0].Method != "Run" {
+		t.Errorf("first call should be Run, got %s", calls[0].Method)
 	}
-	firstSessionID := calls[0].sessionID
+	firstSessionID := calls[0].Options.SessionID
 	if firstSessionID == "" {
 		t.Error("expected non-empty session ID")
 	}
 }
 
 func TestRunPhase_ResumeFallback(t *testing.T) {
-	// Track calls to RunPhase
-	var calls []struct {
-		sessionID string
-		resume    bool
-	}
+	// Create scenario: first call (Resume) fails with session not found, second (Run) succeeds
+	scenario := testutil.NewScenario().
+		SessionInvalid().            // Resume will fail with session not found
+		Success("new-session", 0.0). // Fresh Run succeeds
+		Build()
 
-	mock := &mockClaudeClient{
-		runPhaseFunc: func(sessionID string, resume bool) (*agents.RunResult, error) {
-			calls = append(calls, struct {
-				sessionID string
-				resume    bool
-			}{sessionID, resume})
-
-			// First call with resume=true should fail with session not found
-			if resume {
-				return &agents.RunResult{
-					Stderr:  "session not found",
-					IsError: true,
-				}, errors.New("session not found")
-			}
-
-			// New session should succeed
-			return &agents.RunResult{
-				SessionID: sessionID,
-				Output:    "Success",
-				IsError:   false,
-			}, nil
-		},
-	}
+	agent := testutil.NewTestAgent(t, "mock", scenario, testutil.WithSessionExport("/tmp/test"))
+	t.Cleanup(func() { agent.AssertAllConsumed(t) })
 
 	// Create log manager in temp directory
 	tempDir := t.TempDir()
@@ -651,7 +615,7 @@ func TestRunPhase_ResumeFallback(t *testing.T) {
 
 	// Manually set a CurrentPhase to simulate resuming
 	// We need to call StartPhase first, then simulate an interruption
-	sessionID, _, err := logManager.StartPhase(1, true)
+	originalSessionID, _, err := logManager.StartPhase(1, true)
 	if err != nil {
 		t.Fatalf("StartPhase() returned error: %v", err)
 	}
@@ -660,8 +624,11 @@ func TestRunPhase_ResumeFallback(t *testing.T) {
 		config: Config{
 			ContinueSession: true,
 		},
-		claudeClient: mock,
-		logManager:   logManager,
+		agent:           agent,
+		errorClassifier: agents.GetClassifier("claude-code"),
+		logManager:      logManager,
+		shutdownCtx:     context.Background(),
+		debug:           debug.New(false, ""),
 	}
 
 	// Run phase - should try resume first, then fall back
@@ -669,24 +636,25 @@ func TestRunPhase_ResumeFallback(t *testing.T) {
 		t.Fatalf("runPhase() returned error: %v", err)
 	}
 
-	// Should have 2 calls: first with resume=true (failed), second with resume=false
+	calls := agent.Recorder().Calls()
+	// Should have 2 calls: first Resume (failed), second Run
 	if len(calls) != 2 {
 		t.Fatalf("expected 2 calls, got %d", len(calls))
 	}
 
-	// First call should be resume=true with original session ID
-	if !calls[0].resume {
-		t.Error("first call should have resume=true")
+	// First call should be Resume with original session ID
+	if calls[0].Method != "Resume" {
+		t.Errorf("first call should be Resume, got %s", calls[0].Method)
 	}
-	if calls[0].sessionID != sessionID {
-		t.Errorf("first call session ID = %q, want %q", calls[0].sessionID, sessionID)
+	if calls[0].SessionID != originalSessionID {
+		t.Errorf("first call session ID = %q, want %q", calls[0].SessionID, originalSessionID)
 	}
 
-	// Second call should be resume=false with a new session ID
-	if calls[1].resume {
-		t.Error("second call should have resume=false")
+	// Second call should be Run with a new session ID
+	if calls[1].Method != "Run" {
+		t.Errorf("second call should be Run, got %s", calls[1].Method)
 	}
-	if calls[1].sessionID == sessionID {
+	if calls[1].Options.SessionID == originalSessionID {
 		t.Error("second call should have a different session ID")
 	}
 }
@@ -1536,21 +1504,13 @@ func TestRunPrePrompt_ResumesCompletedSession(t *testing.T) {
 func TestRunPhase_UsesPrePromptSession(t *testing.T) {
 	tempDir := t.TempDir()
 
-	// Track whether Resume was called with the pre-prompt session
-	var resumedSessionID string
-	var calledResume bool
+	// Create scenario that returns success
+	scenario := testutil.NewScenario().
+		Success("pre-prompt-session-123", 0.0).
+		Build()
 
-	mockClient := &mockClaudeClient{
-		runPhaseFunc: func(sessionID string, resume bool) (*agents.RunResult, error) {
-			resumedSessionID = sessionID
-			calledResume = resume
-			return &agents.RunResult{
-				SessionID: sessionID,
-				Output:    "Success",
-				IsError:   false,
-			}, nil
-		},
-	}
+	agent := testutil.NewTestAgent(t, "mock", scenario, testutil.WithSessionExport("/tmp/test"))
+	t.Cleanup(func() { agent.AssertAllConsumed(t) })
 
 	dbg, _ := debug.NewLogger(debug.LoggerConfig{})
 	defer dbg.Close()
@@ -1559,9 +1519,10 @@ func TestRunPhase_UsesPrePromptSession(t *testing.T) {
 		config: Config{
 			WorkingDir: tempDir,
 		},
-		claudeClient:       mockClient,
+		agent:              agent,
+		errorClassifier:    agents.GetClassifier("claude-code"),
 		prePromptSessionID: "pre-prompt-session-123", // Simulates pre-prompt having completed
-		shutdownCtx:        t.Context(),
+		shutdownCtx:        context.Background(),
 		debug:              dbg,
 	}
 
@@ -1571,31 +1532,28 @@ func TestRunPhase_UsesPrePromptSession(t *testing.T) {
 	}
 
 	// Phase 1 should resume the pre-prompt session
-	if !calledResume {
-		t.Error("Phase 1 should call with resume=true when pre-prompt session exists")
+	calls := agent.Recorder().Calls()
+	if len(calls) != 1 {
+		t.Fatalf("expected 1 call, got %d", len(calls))
 	}
-	if resumedSessionID != "pre-prompt-session-123" {
-		t.Errorf("Phase 1 should use pre-prompt session ID. Got %q, want %q", resumedSessionID, "pre-prompt-session-123")
+	if calls[0].Method != "Resume" {
+		t.Errorf("Phase 1 should call Resume when pre-prompt session exists, got %s", calls[0].Method)
+	}
+	if calls[0].SessionID != "pre-prompt-session-123" {
+		t.Errorf("Phase 1 should use pre-prompt session ID. Got %q, want %q", calls[0].SessionID, "pre-prompt-session-123")
 	}
 }
 
 func TestRunPhase_DoesNotUsePrePromptSessionForPhase2(t *testing.T) {
 	tempDir := t.TempDir()
 
-	var resumedSessionID string
-	var calledResume bool
+	// Create scenario that returns success
+	scenario := testutil.NewScenario().
+		Success("new-session", 0.0).
+		Build()
 
-	mockClient := &mockClaudeClient{
-		runPhaseFunc: func(sessionID string, resume bool) (*agents.RunResult, error) {
-			resumedSessionID = sessionID
-			calledResume = resume
-			return &agents.RunResult{
-				SessionID: sessionID,
-				Output:    "Success",
-				IsError:   false,
-			}, nil
-		},
-	}
+	agent := testutil.NewTestAgent(t, "mock", scenario, testutil.WithSessionExport("/tmp/test"))
+	t.Cleanup(func() { agent.AssertAllConsumed(t) })
 
 	dbg, _ := debug.NewLogger(debug.LoggerConfig{})
 	defer dbg.Close()
@@ -1604,9 +1562,10 @@ func TestRunPhase_DoesNotUsePrePromptSessionForPhase2(t *testing.T) {
 		config: Config{
 			WorkingDir: tempDir,
 		},
-		claudeClient:       mockClient,
+		agent:              agent,
+		errorClassifier:    agents.GetClassifier("claude-code"),
 		prePromptSessionID: "pre-prompt-session-123",
-		shutdownCtx:        t.Context(),
+		shutdownCtx:        context.Background(),
 		debug:              dbg,
 	}
 
@@ -1616,10 +1575,14 @@ func TestRunPhase_DoesNotUsePrePromptSessionForPhase2(t *testing.T) {
 	}
 
 	// Phase 2 should not use pre-prompt session
-	if calledResume {
-		t.Error("Phase 2 should NOT use resume when pre-prompt session exists (only phase 1 uses it)")
+	calls := agent.Recorder().Calls()
+	if len(calls) != 1 {
+		t.Fatalf("expected 1 call, got %d", len(calls))
 	}
-	if resumedSessionID == "pre-prompt-session-123" {
+	if calls[0].Method != "Run" {
+		t.Errorf("Phase 2 should call Run (not Resume) when pre-prompt session exists, got %s", calls[0].Method)
+	}
+	if calls[0].Options.SessionID == "pre-prompt-session-123" {
 		t.Error("Phase 2 should NOT use pre-prompt session ID")
 	}
 }

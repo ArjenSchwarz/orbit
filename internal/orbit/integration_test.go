@@ -516,21 +516,14 @@ func TestOrbit_WithVariants_MockExecution(t *testing.T) {
 		t.Fatalf("failed to write tasks file: %v", err)
 	}
 
-	// Track Claude calls
-	var claudeCalls int
-	mock := &mockClaudeClient{
-		runPhaseFunc: func(sessionID string, resume bool) (*agents.RunResult, error) {
-			claudeCalls++
-			return &agents.RunResult{
-				SessionID: sessionID,
-				Output:    "Phase completed successfully",
-				Cost:      &agents.CostMetrics{CostUSD: 0.05},
-				Duration:  time.Minute,
-				NumTurns:  10,
-				IsError:   false,
-			}, nil
-		},
-	}
+	// Create a test agent with a simple success scenario
+	// Note: In dry-run mode, the agent won't actually be called, but we set it up
+	// to follow the testutil.TestAgent pattern for consistency
+	scenario := testutil.NewScenario().
+		Success("test-session", 0.05).
+		Build()
+	agent := testutil.NewTestAgent(t, "mock", scenario, testutil.WithSessionExport("/tmp/test"))
+	// Note: We don't add AssertAllConsumed cleanup because DryRun mode doesn't call the agent
 
 	// Create Orbit config
 	config := Config{
@@ -549,8 +542,8 @@ func TestOrbit_WithVariants_MockExecution(t *testing.T) {
 
 	// Create Orbit instance (dry-run mode)
 	o := &Orbit{
-		config:       config,
-		claudeClient: mock,
+		config: config,
+		agent:  agent,
 	}
 
 	// Since we're in dry-run mode, variant manager is nil

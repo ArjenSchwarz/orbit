@@ -129,12 +129,13 @@ func TestProperty_OrchestrationHandlesAnyErrorSequence(t *testing.T) {
 		agent := NewTestAgent(t, "mock", scenario, WithClock(clock))
 
 		// Simulate making calls - should not panic
+		// Note: TestAgent returns errors when IsError is true, which is expected
 		ctx := context.Background()
 		for range length {
 			result, err := agent.Run(ctx, agents.RunOptions{})
-			if err != nil {
-				rt.Fatalf("agent.Run returned unexpected error: %v", err)
-			}
+			// Error is expected for error scenarios (RetryableError, FatalError, etc.)
+			// Both result and err are always returned (err != nil when IsError is true)
+			_ = err
 			if result == nil {
 				rt.Fatalf("agent.Run returned nil result")
 			}
@@ -163,11 +164,22 @@ func TestProperty_RetryCountBounded(t *testing.T) {
 		agent := NewTestAgent(t, "mock", scenario)
 
 		// Make all calls - should not panic
+		// Note: TestAgent returns errors for error scenarios, success for success scenarios
 		ctx := context.Background()
-		for range retryCount + 1 {
-			_, err := agent.Run(ctx, agents.RunOptions{})
-			if err != nil {
-				rt.Fatalf("agent.Run returned unexpected error: %v", err)
+		for i := range retryCount + 1 {
+			result, err := agent.Run(ctx, agents.RunOptions{})
+			// First retryCount calls return errors, last call succeeds
+			if i < retryCount {
+				if err == nil {
+					rt.Fatalf("call %d: expected error for retryable scenario", i)
+				}
+			} else {
+				if err != nil {
+					rt.Fatalf("call %d: unexpected error: %v", i, err)
+				}
+			}
+			if result == nil {
+				rt.Fatalf("call %d: got nil result", i)
 			}
 		}
 

@@ -19,7 +19,6 @@ import (
 	output "github.com/ArjenSchwarz/go-output/v2"
 	"github.com/arjenschwarz/orbit/internal/agents"
 	_ "github.com/arjenschwarz/orbit/internal/agents/claudecode" // Register claudecode agent
-	"github.com/arjenschwarz/orbit/internal/claude"
 	"github.com/arjenschwarz/orbit/internal/cost"
 	"github.com/arjenschwarz/orbit/internal/comparison"
 	"github.com/arjenschwarz/orbit/internal/consolidation"
@@ -70,14 +69,6 @@ func (registryResolver) GetAgent(name string, cfg agents.AgentConfig) (agents.Ag
 
 // DefaultAgentResolver uses the global agent registry.
 var DefaultAgentResolver AgentResolver = registryResolver{}
-
-// claudeRunner is an interface for running Claude sessions.
-// This allows for mocking in tests.
-type claudeRunner interface {
-	RunPhase(sessionID string, resume bool) (*agents.RunResult, error)
-	RunCustomPrompt(prompt string) (*agents.RunResult, error)
-	RunCustomPromptWithSession(prompt, sessionID string, resume bool) (*agents.RunResult, error)
-}
 
 // getCostUSD extracts the cost in USD from a RunResult, returning 0 if cost is nil.
 // Falls back to credits if USD is not available (for agents like Kiro that use credits).
@@ -177,7 +168,6 @@ type Config struct {
 type Orbit struct {
 	config               Config
 	runeClient           *rune.Client
-	claudeClient         claudeRunner
 	agent                agents.Agent           // Agent interface for multi-agent support
 	errorClassifier      agents.ErrorClassifier // Agent-specific error classifier
 	logManager           *logs.Manager
@@ -190,7 +180,6 @@ type Orbit struct {
 	currentPhaseRunCount int                // Track retry count for current phase
 	debug                *debug.Logger      // Debug logger
 	variantManager       *variants.Manager  // Variant lifecycle manager (nil for single-run mode)
-	rawClaudeClient      *claude.Client     // Raw Claude client for variant mode
 	comparisonResult     *comparison.Result // Comparison result for report generation
 	variantRunID         string             // Shared ID to group variant registry entries
 	variantRegistryIDs   map[int]string     // Maps variant ID to registry entry ID
@@ -217,13 +206,6 @@ func New(config Config) (*Orbit, error) {
 
 	runeClient := rune.NewClient(config.TasksFile)
 	runeClient.SetDebug(config.Debug)
-
-	claudeClient := claude.NewClient(claude.Config{
-		SkipPermissions: config.SkipPermissions,
-		WorkingDir:      config.WorkingDir,
-		Prompt:          config.Command,
-		Debug:           config.Debug,
-	})
 
 	// Set default clock for time operations
 	if config.Clock == nil {
@@ -379,7 +361,6 @@ func New(config Config) (*Orbit, error) {
 	return &Orbit{
 		config:          config,
 		runeClient:      runeClient,
-		claudeClient:    claudeClient,
 		agent:           agent,
 		errorClassifier: errorClassifier,
 		logManager:      logManager,
@@ -389,7 +370,6 @@ func New(config Config) (*Orbit, error) {
 		registry:        reg,
 		debug:           dbg,
 		variantManager:  variantMgr,
-		rawClaudeClient: claudeClient,
 	}, nil
 }
 
@@ -806,7 +786,7 @@ func (o *Orbit) runPhase(phase int) error {
 		o.debug.LogSession(sessionID, isResume, "generated (no log manager)")
 	}
 
-	o.debug.Log("Executing Claude for phase %d...", phase)
+	o.debug.Log("Executing agent %s for phase %d...", o.agent.Name(), phase)
 
 	// Log agent invocation (Req 3.4)
 	o.debug.LogStructured("info", "Agent invocation", map[string]any{
@@ -817,10 +797,23 @@ func (o *Orbit) runPhase(phase int) error {
 		"working_dir": o.config.WorkingDir,
 	})
 
-	result, err := o.claudeClient.RunPhase(sessionID, isResume)
-	o.debug.Log("Claude execution completed: err=%v", err)
+	// Execute using the configured agent (not hardcoded to Claude)
+	opts := agents.RunOptions{
+		Prompt:    o.config.Command,
+		WorkDir:   o.config.WorkingDir,
+		SessionID: sessionID,
+	}
 
-	// Stop spinner after Claude returns
+	var result *agents.RunResult
+	var err error
+	if isResume {
+		result, err = o.agent.Resume(o.shutdownCtx, sessionID, opts)
+	} else {
+		result, err = o.agent.Run(o.shutdownCtx, opts)
+	}
+	o.debug.Log("Agent execution completed: err=%v", err)
+
+	// Stop spinner after agent returns
 	if o.spinner != nil {
 		o.spinner.Stop()
 	}
@@ -837,7 +830,8 @@ func (o *Orbit) runPhase(phase int) error {
 				o.debug.Log("Failed to update session ID in log manager: %v", setErr)
 			}
 		}
-		result, err = o.claudeClient.RunPhase(sessionID, false)
+		opts.SessionID = sessionID
+		result, err = o.agent.Run(o.shutdownCtx, opts)
 		o.debug.Log("Fresh session execution completed: err=%v", err)
 	}
 
@@ -858,15 +852,15 @@ func (o *Orbit) runPhase(phase int) error {
 		return classified
 	}
 
-	// Reconcile session ID if Claude returned a different one (req 2.5, 2.6)
+	// Reconcile session ID if agent returned a different one (req 2.5, 2.6)
 	if o.logManager != nil && result.SessionID != sessionID {
 		o.debug.Log("Session ID changed: expected=%s got=%s", sessionID, result.SessionID)
 		o.logManager.ReconcileSessionID(result.SessionID)
 	}
 
-	// Check if Claude reported an error in its output
+	// Check if agent reported an error in its output
 	if result.IsError {
-		o.debug.Log("Claude reported error in output (IsError=true)")
+		o.debug.Log("Agent reported error in output (IsError=true)")
 		if o.logManager != nil {
 			_ = o.logManager.SaveSession(phase, result, startTime)
 		}
@@ -2382,7 +2376,8 @@ func (o *Orbit) runComparison(ctx context.Context) error {
 	specContext := o.readSpecContext()
 
 	// Create comparator and run comparison using summaries only (diffs excluded to save context)
-	comparator := comparison.NewComparator(o.rawClaudeClient, o.config.CompareCommand)
+	adapter := comparison.NewAgentAdapter(o.agent, o.shutdownCtx, o.config.WorkingDir)
+	comparator := comparison.NewComparator(adapter, o.config.CompareCommand)
 	result, err := comparator.CompareWithSummaries(ctx, o.config.BranchName, variantData, specContext)
 	if err != nil {
 		return fmt.Errorf("compare variants: %w", err)

@@ -7,7 +7,52 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- Fix data race in `internal/transcript/follow_test.go` tests detected by `go test -race`
+  - Add thread-safe `syncBuffer` wrapper type using `sync.RWMutex` for concurrent read/write
+  - Replace `bytes.Buffer` with `syncBuffer` in tests that share a buffer between the Follower goroutine and test assertions
+  - Affected tests: `TestFollower_Run_WithCancellation`, `TestFollower_Run_DetectsChanges`, and all `TestFollowerIntegration_*` tests
+
+### Removed
+
+- Delete `internal/claude/client.go` and `internal/claude/client_test.go` - legacy Claude Code CLI wrapper replaced by `agents.Agent` interface
+- Remove `claudeRunner` interface from `internal/orbit/orbit.go` - no longer needed after migration to agent interface
+- Remove `claudeClient` and `rawClaudeClient` fields from `Orbit` struct - replaced by `agent` field
+- Remove `mockClaudeClient` type from `internal/orbit/orbit_test.go` - all tests now use `testutil.TestAgent`
+
+### Changed
+
+- Update CLAUDE.md architecture section to reflect removal of `internal/claude/` directory and addition of `adapter.go`
+
+- Migrate `runPhase()` in `internal/orbit/orbit.go` to use the `agents.Agent` interface instead of the legacy `claudeRunner` interface
+  - Replace `o.claudeClient.RunPhase()` calls with `o.agent.Run()`/`Resume()` calls
+  - Follow pattern established in `runPostPrompt()` using `agents.RunOptions`
+  - Preserve error classification and session-invalid fallback logic
+- Update Comparator usage in `internal/orbit/orbit.go` to use `comparison.NewAgentAdapter()` instead of `rawClaudeClient`
+- Update `cmd/orbit/compare.go` to use agent interface with `AgentAdapter`
+  - Replace `claude.NewClient()` with `agents.Get("claude-code", ...)` and `comparison.NewAgentAdapter()`
+  - Register claudecode agent via blank import
+- Make `TestAgent` return errors when `result.IsError == true` to match real agent behavior
+  - Both `Run()` and `Resume()` now return `fmt.Errorf()` when result indicates an error
+  - This enables tests to verify error handling logic correctly
+- Migrate `runPhase()` tests from `mockClaudeClient` to `testutil.TestAgent`
+  - `TestRunPhase_SessionContinuation_NewSession`, `TestRunPhase_SessionContinuation_WithLogManager`
+  - `TestRunPhase_ResumeFallback`, `TestRunPhase_UsesPrePromptSession`
+  - `TestRunPhase_DoesNotUsePrePromptSessionForPhase2`
+- Update `TestAgentAdapter_PropagatesErrors` to expect error return (matching new TestAgent behavior)
+- Update property tests in `generators_test.go` to handle error scenarios correctly
+
 ### Added
+
+- AgentAdapter type in `internal/comparison/adapter.go` that wraps `agents.Agent` to satisfy the `promptRunner` interface required by `Comparator`, enabling removal of the legacy `claude.Client` dependency
+
+- Feature spec for legacy-claude-removal (`specs/legacy-claude-removal/`)
+  - Requirements document defining 6 requirement groups for removing legacy `claudeRunner` interface
+  - Design document with AgentAdapter pattern for Comparator, runPhase() migration, and testing strategy
+  - Decision log documenting 4 design decisions (remove client.go, enable tests immediately, no backwards compat, adapter pattern)
+  - Task list with 16 implementation tasks across 6 phases with dependency tracking
+  - Implementation explanation document with beginner/intermediate/expert level explanations and completeness assessment
 
 - Learnings section in HTML comparison reports (`internal/report/templates/index.html`)
   - Template function `groupLearningsByVariant` and `sortedVariantIDs` for organizing learnings
