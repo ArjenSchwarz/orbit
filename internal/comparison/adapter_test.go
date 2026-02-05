@@ -70,8 +70,8 @@ func TestAgentAdapter_PropagatesErrors(t *testing.T) {
 
 	result, err := adapter.RunCustomPrompt("test prompt")
 
-	// TestAgent returns errors via result, not error return
-	require.NoError(t, err)
+	// TestAgent returns errors like real agents do when IsError is true
+	require.Error(t, err)
 	require.NotNil(t, result)
 	require.True(t, result.IsError)
 	require.Equal(t, agents.ErrorClassFatal, result.ErrorClass)

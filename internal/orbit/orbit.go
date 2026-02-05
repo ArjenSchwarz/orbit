@@ -806,7 +806,7 @@ func (o *Orbit) runPhase(phase int) error {
 		o.debug.LogSession(sessionID, isResume, "generated (no log manager)")
 	}
 
-	o.debug.Log("Executing Claude for phase %d...", phase)
+	o.debug.Log("Executing agent %s for phase %d...", o.agent.Name(), phase)
 
 	// Log agent invocation (Req 3.4)
 	o.debug.LogStructured("info", "Agent invocation", map[string]any{
@@ -817,10 +817,23 @@ func (o *Orbit) runPhase(phase int) error {
 		"working_dir": o.config.WorkingDir,
 	})
 
-	result, err := o.claudeClient.RunPhase(sessionID, isResume)
-	o.debug.Log("Claude execution completed: err=%v", err)
+	// Execute using the configured agent (not hardcoded to Claude)
+	opts := agents.RunOptions{
+		Prompt:    o.config.Command,
+		WorkDir:   o.config.WorkingDir,
+		SessionID: sessionID,
+	}
 
-	// Stop spinner after Claude returns
+	var result *agents.RunResult
+	var err error
+	if isResume {
+		result, err = o.agent.Resume(o.shutdownCtx, sessionID, opts)
+	} else {
+		result, err = o.agent.Run(o.shutdownCtx, opts)
+	}
+	o.debug.Log("Agent execution completed: err=%v", err)
+
+	// Stop spinner after agent returns
 	if o.spinner != nil {
 		o.spinner.Stop()
 	}
@@ -837,7 +850,8 @@ func (o *Orbit) runPhase(phase int) error {
 				o.debug.Log("Failed to update session ID in log manager: %v", setErr)
 			}
 		}
-		result, err = o.claudeClient.RunPhase(sessionID, false)
+		opts.SessionID = sessionID
+		result, err = o.agent.Run(o.shutdownCtx, opts)
 		o.debug.Log("Fresh session execution completed: err=%v", err)
 	}
 
@@ -858,15 +872,15 @@ func (o *Orbit) runPhase(phase int) error {
 		return classified
 	}
 
-	// Reconcile session ID if Claude returned a different one (req 2.5, 2.6)
+	// Reconcile session ID if agent returned a different one (req 2.5, 2.6)
 	if o.logManager != nil && result.SessionID != sessionID {
 		o.debug.Log("Session ID changed: expected=%s got=%s", sessionID, result.SessionID)
 		o.logManager.ReconcileSessionID(result.SessionID)
 	}
 
-	// Check if Claude reported an error in its output
+	// Check if agent reported an error in its output
 	if result.IsError {
-		o.debug.Log("Claude reported error in output (IsError=true)")
+		o.debug.Log("Agent reported error in output (IsError=true)")
 		if o.logManager != nil {
 			_ = o.logManager.SaveSession(phase, result, startTime)
 		}
@@ -2382,7 +2396,8 @@ func (o *Orbit) runComparison(ctx context.Context) error {
 	specContext := o.readSpecContext()
 
 	// Create comparator and run comparison using summaries only (diffs excluded to save context)
-	comparator := comparison.NewComparator(o.rawClaudeClient, o.config.CompareCommand)
+	adapter := comparison.NewAgentAdapter(o.agent, o.shutdownCtx, o.config.WorkingDir)
+	comparator := comparison.NewComparator(adapter, o.config.CompareCommand)
 	result, err := comparator.CompareWithSummaries(ctx, o.config.BranchName, variantData, specContext)
 	if err != nil {
 		return fmt.Errorf("compare variants: %w", err)

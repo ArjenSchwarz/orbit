@@ -1,6 +1,7 @@
 package orbit
 
 import (
+	"context"
 	"errors"
 	"os"
 	"path/filepath"
@@ -511,31 +512,23 @@ func TestErrorClassification_IsUsedCorrectly(t *testing.T) {
 }
 
 func TestRunPhase_SessionContinuation_NewSession(t *testing.T) {
-	// Track what RunPhase was called with
-	var capturedSessionID string
-	var capturedResume bool
+	// Create scenario that returns success
+	scenario := testutil.NewScenario().
+		Success("test-session", 0.0).
+		Build()
 
-	mock := &mockClaudeClient{
-		runPhaseFunc: func(sessionID string, resume bool) (*agents.RunResult, error) {
-			capturedSessionID = sessionID
-			capturedResume = resume
-			return &agents.RunResult{
-				SessionID: sessionID, // Return same session ID
-				Output:    "Success",
-				IsError:   false,
-			}, nil
-		},
-	}
-
-	// Create a temp dir for log manager
-	tempDir := t.TempDir()
+	agent := testutil.NewTestAgent(t, "mock", scenario, testutil.WithSessionExport("/tmp/test"))
+	t.Cleanup(func() { agent.AssertAllConsumed(t) })
 
 	o := &Orbit{
 		config: Config{
 			ContinueSession: true,
 		},
-		claudeClient: mock,
-		logManager:   nil, // No log manager - should generate fresh session
+		agent:           agent,
+		errorClassifier: agents.GetClassifier("claude-code"),
+		logManager:      nil, // No log manager - should generate fresh session
+		shutdownCtx:     context.Background(),
+		debug:           debug.New(false, ""),
 	}
 
 	err := o.runPhase(1)
@@ -544,38 +537,29 @@ func TestRunPhase_SessionContinuation_NewSession(t *testing.T) {
 	}
 
 	// Without log manager, should always be a new session (resume=false)
-	if capturedResume {
-		t.Error("expected resume=false without log manager")
+	// Check that Run was called (not Resume) via recorder
+	calls := agent.Recorder().Calls()
+	if len(calls) != 1 {
+		t.Fatalf("expected 1 call, got %d", len(calls))
+	}
+	if calls[0].Method != "Run" {
+		t.Errorf("expected method=Run for new session, got %s", calls[0].Method)
 	}
 
-	// Session ID should be non-empty (UUID generated)
-	if capturedSessionID == "" {
-		t.Error("expected non-empty session ID")
+	// Session ID should be non-empty (UUID generated in opts)
+	if calls[0].Options.SessionID == "" {
+		t.Error("expected non-empty session ID in options")
 	}
-
-	_ = tempDir // Silence unused warning
 }
 
 func TestRunPhase_SessionContinuation_WithLogManager(t *testing.T) {
-	// Track calls to RunPhase
-	var calls []struct {
-		sessionID string
-		resume    bool
-	}
+	// Create scenario that returns success
+	scenario := testutil.NewScenario().
+		Success("test-session", 0.0).
+		Build()
 
-	mock := &mockClaudeClient{
-		runPhaseFunc: func(sessionID string, resume bool) (*agents.RunResult, error) {
-			calls = append(calls, struct {
-				sessionID string
-				resume    bool
-			}{sessionID, resume})
-			return &agents.RunResult{
-				SessionID: sessionID,
-				Output:    "Success",
-				IsError:   false,
-			}, nil
-		},
-	}
+	agent := testutil.NewTestAgent(t, "mock", scenario, testutil.WithSessionExport("/tmp/test"))
+	t.Cleanup(func() { agent.AssertAllConsumed(t) })
 
 	// Create log manager in temp directory
 	tempDir := t.TempDir()
@@ -588,8 +572,11 @@ func TestRunPhase_SessionContinuation_WithLogManager(t *testing.T) {
 		config: Config{
 			ContinueSession: true,
 		},
-		claudeClient: mock,
-		logManager:   logManager,
+		agent:           agent,
+		errorClassifier: agents.GetClassifier("claude-code"),
+		logManager:      logManager,
+		shutdownCtx:     context.Background(),
+		debug:           debug.New(false, ""),
 	}
 
 	// First run - should start a new session
@@ -597,50 +584,30 @@ func TestRunPhase_SessionContinuation_WithLogManager(t *testing.T) {
 		t.Fatalf("First runPhase() returned error: %v", err)
 	}
 
+	calls := agent.Recorder().Calls()
 	if len(calls) != 1 {
 		t.Fatalf("expected 1 call, got %d", len(calls))
 	}
 
-	// First call should be resume=false (new session)
-	if calls[0].resume {
-		t.Error("first call should have resume=false")
+	// First call should be Run (not Resume) - new session
+	if calls[0].Method != "Run" {
+		t.Errorf("first call should be Run, got %s", calls[0].Method)
 	}
-	firstSessionID := calls[0].sessionID
+	firstSessionID := calls[0].Options.SessionID
 	if firstSessionID == "" {
 		t.Error("expected non-empty session ID")
 	}
 }
 
 func TestRunPhase_ResumeFallback(t *testing.T) {
-	// Track calls to RunPhase
-	var calls []struct {
-		sessionID string
-		resume    bool
-	}
+	// Create scenario: first call (Resume) fails with session not found, second (Run) succeeds
+	scenario := testutil.NewScenario().
+		SessionInvalid().            // Resume will fail with session not found
+		Success("new-session", 0.0). // Fresh Run succeeds
+		Build()
 
-	mock := &mockClaudeClient{
-		runPhaseFunc: func(sessionID string, resume bool) (*agents.RunResult, error) {
-			calls = append(calls, struct {
-				sessionID string
-				resume    bool
-			}{sessionID, resume})
-
-			// First call with resume=true should fail with session not found
-			if resume {
-				return &agents.RunResult{
-					Stderr:  "session not found",
-					IsError: true,
-				}, errors.New("session not found")
-			}
-
-			// New session should succeed
-			return &agents.RunResult{
-				SessionID: sessionID,
-				Output:    "Success",
-				IsError:   false,
-			}, nil
-		},
-	}
+	agent := testutil.NewTestAgent(t, "mock", scenario, testutil.WithSessionExport("/tmp/test"))
+	t.Cleanup(func() { agent.AssertAllConsumed(t) })
 
 	// Create log manager in temp directory
 	tempDir := t.TempDir()
@@ -651,7 +618,7 @@ func TestRunPhase_ResumeFallback(t *testing.T) {
 
 	// Manually set a CurrentPhase to simulate resuming
 	// We need to call StartPhase first, then simulate an interruption
-	sessionID, _, err := logManager.StartPhase(1, true)
+	originalSessionID, _, err := logManager.StartPhase(1, true)
 	if err != nil {
 		t.Fatalf("StartPhase() returned error: %v", err)
 	}
@@ -660,8 +627,11 @@ func TestRunPhase_ResumeFallback(t *testing.T) {
 		config: Config{
 			ContinueSession: true,
 		},
-		claudeClient: mock,
-		logManager:   logManager,
+		agent:           agent,
+		errorClassifier: agents.GetClassifier("claude-code"),
+		logManager:      logManager,
+		shutdownCtx:     context.Background(),
+		debug:           debug.New(false, ""),
 	}
 
 	// Run phase - should try resume first, then fall back
@@ -669,24 +639,25 @@ func TestRunPhase_ResumeFallback(t *testing.T) {
 		t.Fatalf("runPhase() returned error: %v", err)
 	}
 
-	// Should have 2 calls: first with resume=true (failed), second with resume=false
+	calls := agent.Recorder().Calls()
+	// Should have 2 calls: first Resume (failed), second Run
 	if len(calls) != 2 {
 		t.Fatalf("expected 2 calls, got %d", len(calls))
 	}
 
-	// First call should be resume=true with original session ID
-	if !calls[0].resume {
-		t.Error("first call should have resume=true")
+	// First call should be Resume with original session ID
+	if calls[0].Method != "Resume" {
+		t.Errorf("first call should be Resume, got %s", calls[0].Method)
 	}
-	if calls[0].sessionID != sessionID {
-		t.Errorf("first call session ID = %q, want %q", calls[0].sessionID, sessionID)
+	if calls[0].SessionID != originalSessionID {
+		t.Errorf("first call session ID = %q, want %q", calls[0].SessionID, originalSessionID)
 	}
 
-	// Second call should be resume=false with a new session ID
-	if calls[1].resume {
-		t.Error("second call should have resume=false")
+	// Second call should be Run with a new session ID
+	if calls[1].Method != "Run" {
+		t.Errorf("second call should be Run, got %s", calls[1].Method)
 	}
-	if calls[1].sessionID == sessionID {
+	if calls[1].Options.SessionID == originalSessionID {
 		t.Error("second call should have a different session ID")
 	}
 }
@@ -1536,21 +1507,13 @@ func TestRunPrePrompt_ResumesCompletedSession(t *testing.T) {
 func TestRunPhase_UsesPrePromptSession(t *testing.T) {
 	tempDir := t.TempDir()
 
-	// Track whether Resume was called with the pre-prompt session
-	var resumedSessionID string
-	var calledResume bool
+	// Create scenario that returns success
+	scenario := testutil.NewScenario().
+		Success("pre-prompt-session-123", 0.0).
+		Build()
 
-	mockClient := &mockClaudeClient{
-		runPhaseFunc: func(sessionID string, resume bool) (*agents.RunResult, error) {
-			resumedSessionID = sessionID
-			calledResume = resume
-			return &agents.RunResult{
-				SessionID: sessionID,
-				Output:    "Success",
-				IsError:   false,
-			}, nil
-		},
-	}
+	agent := testutil.NewTestAgent(t, "mock", scenario, testutil.WithSessionExport("/tmp/test"))
+	t.Cleanup(func() { agent.AssertAllConsumed(t) })
 
 	dbg, _ := debug.NewLogger(debug.LoggerConfig{})
 	defer dbg.Close()
@@ -1559,9 +1522,10 @@ func TestRunPhase_UsesPrePromptSession(t *testing.T) {
 		config: Config{
 			WorkingDir: tempDir,
 		},
-		claudeClient:       mockClient,
+		agent:              agent,
+		errorClassifier:    agents.GetClassifier("claude-code"),
 		prePromptSessionID: "pre-prompt-session-123", // Simulates pre-prompt having completed
-		shutdownCtx:        t.Context(),
+		shutdownCtx:        context.Background(),
 		debug:              dbg,
 	}
 
@@ -1571,31 +1535,28 @@ func TestRunPhase_UsesPrePromptSession(t *testing.T) {
 	}
 
 	// Phase 1 should resume the pre-prompt session
-	if !calledResume {
-		t.Error("Phase 1 should call with resume=true when pre-prompt session exists")
+	calls := agent.Recorder().Calls()
+	if len(calls) != 1 {
+		t.Fatalf("expected 1 call, got %d", len(calls))
 	}
-	if resumedSessionID != "pre-prompt-session-123" {
-		t.Errorf("Phase 1 should use pre-prompt session ID. Got %q, want %q", resumedSessionID, "pre-prompt-session-123")
+	if calls[0].Method != "Resume" {
+		t.Errorf("Phase 1 should call Resume when pre-prompt session exists, got %s", calls[0].Method)
+	}
+	if calls[0].SessionID != "pre-prompt-session-123" {
+		t.Errorf("Phase 1 should use pre-prompt session ID. Got %q, want %q", calls[0].SessionID, "pre-prompt-session-123")
 	}
 }
 
 func TestRunPhase_DoesNotUsePrePromptSessionForPhase2(t *testing.T) {
 	tempDir := t.TempDir()
 
-	var resumedSessionID string
-	var calledResume bool
+	// Create scenario that returns success
+	scenario := testutil.NewScenario().
+		Success("new-session", 0.0).
+		Build()
 
-	mockClient := &mockClaudeClient{
-		runPhaseFunc: func(sessionID string, resume bool) (*agents.RunResult, error) {
-			resumedSessionID = sessionID
-			calledResume = resume
-			return &agents.RunResult{
-				SessionID: sessionID,
-				Output:    "Success",
-				IsError:   false,
-			}, nil
-		},
-	}
+	agent := testutil.NewTestAgent(t, "mock", scenario, testutil.WithSessionExport("/tmp/test"))
+	t.Cleanup(func() { agent.AssertAllConsumed(t) })
 
 	dbg, _ := debug.NewLogger(debug.LoggerConfig{})
 	defer dbg.Close()
@@ -1604,9 +1565,10 @@ func TestRunPhase_DoesNotUsePrePromptSessionForPhase2(t *testing.T) {
 		config: Config{
 			WorkingDir: tempDir,
 		},
-		claudeClient:       mockClient,
+		agent:              agent,
+		errorClassifier:    agents.GetClassifier("claude-code"),
 		prePromptSessionID: "pre-prompt-session-123",
-		shutdownCtx:        t.Context(),
+		shutdownCtx:        context.Background(),
 		debug:              dbg,
 	}
 
@@ -1616,10 +1578,14 @@ func TestRunPhase_DoesNotUsePrePromptSessionForPhase2(t *testing.T) {
 	}
 
 	// Phase 2 should not use pre-prompt session
-	if calledResume {
-		t.Error("Phase 2 should NOT use resume when pre-prompt session exists (only phase 1 uses it)")
+	calls := agent.Recorder().Calls()
+	if len(calls) != 1 {
+		t.Fatalf("expected 1 call, got %d", len(calls))
 	}
-	if resumedSessionID == "pre-prompt-session-123" {
+	if calls[0].Method != "Run" {
+		t.Errorf("Phase 2 should call Run (not Resume) when pre-prompt session exists, got %s", calls[0].Method)
+	}
+	if calls[0].Options.SessionID == "pre-prompt-session-123" {
 		t.Error("Phase 2 should NOT use pre-prompt session ID")
 	}
 }

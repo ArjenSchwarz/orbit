@@ -2,6 +2,7 @@ package testutil
 
 import (
 	"context"
+	"fmt"
 	"sync"
 	"testing"
 
@@ -152,6 +153,11 @@ func (a *TestAgent) Run(ctx context.Context, opts agents.RunOptions) (*agents.Ru
 		result.ErrorClass = resp.ErrorClass
 	}
 
+	// Return an error if the result indicates an error (matches real agent behavior)
+	if result.IsError {
+		return result, fmt.Errorf("agent error: exit code %d", result.ExitCode)
+	}
+
 	return result, nil
 }
 
@@ -217,6 +223,11 @@ func (a *TestAgent) Resume(ctx context.Context, sessionID string, opts agents.Ru
 	// Set error class on result
 	if resp.ErrorClass != agents.ErrorClassUnknown {
 		result.ErrorClass = resp.ErrorClass
+	}
+
+	// Return an error if the result indicates an error (matches real agent behavior)
+	if result.IsError {
+		return result, fmt.Errorf("agent error: exit code %d", result.ExitCode)
 	}
 
 	return result, nil

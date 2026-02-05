@@ -27,7 +27,7 @@ references:
 
 ## Production Code Migration
 
-- [ ] 3. Migrate runPhase() to use agent interface <!-- id:kc125xz -->
+- [x] 3. Migrate runPhase() to use agent interface <!-- id:kc125xz -->
   - Replace o.claudeClient.RunPhase() calls at lines 820 and 840 in orbit.go with o.agent.Run()/Resume().
   - Follow the runPostPrompt() pattern: create RunOptions with Prompt, WorkDir, SessionID.
   - Use agent.Resume() when isResume is true, agent.Run() otherwise.
@@ -36,14 +36,14 @@ references:
   - Stream: 1
   - Requirements: [1.1](requirements.md#1.1), [1.2](requirements.md#1.2), [1.3](requirements.md#1.3), [1.4](requirements.md#1.4)
 
-- [ ] 4. Update Comparator usage in Orbit <!-- id:kc125y0 -->
+- [x] 4. Update Comparator usage in Orbit <!-- id:kc125y0 -->
   - In internal/orbit/orbit.go, change the comparison.NewComparator() call.
   - Use comparison.NewAgentAdapter(o.agent, o.shutdownCtx, o.config.WorkingDir) instead of o.rawClaudeClient.
   - Blocked-by: kc125xz (Migrate runPhase() to use agent interface)
   - Stream: 1
   - Requirements: [3.3](requirements.md#3.3)
 
-- [ ] 5. Update cmd/orbit/compare.go <!-- id:kc125y1 -->
+- [x] 5. Update cmd/orbit/compare.go <!-- id:kc125y1 -->
   - In cmd/orbit/compare.go, replace claude.NewClient() with:
   - agents.Get("claude-code", agents.AgentConfig{WorkDir: workDir, AutoApprove: true})
   - Create adapter with comparison.NewAgentAdapter(agent, ctx, workDir).

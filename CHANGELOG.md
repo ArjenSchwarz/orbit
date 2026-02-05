@@ -7,6 +7,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- Migrate `runPhase()` in `internal/orbit/orbit.go` to use the `agents.Agent` interface instead of the legacy `claudeRunner` interface
+  - Replace `o.claudeClient.RunPhase()` calls with `o.agent.Run()`/`Resume()` calls
+  - Follow pattern established in `runPostPrompt()` using `agents.RunOptions`
+  - Preserve error classification and session-invalid fallback logic
+- Update Comparator usage in `internal/orbit/orbit.go` to use `comparison.NewAgentAdapter()` instead of `rawClaudeClient`
+- Update `cmd/orbit/compare.go` to use agent interface with `AgentAdapter`
+  - Replace `claude.NewClient()` with `agents.Get("claude-code", ...)` and `comparison.NewAgentAdapter()`
+  - Register claudecode agent via blank import
+- Make `TestAgent` return errors when `result.IsError == true` to match real agent behavior
+  - Both `Run()` and `Resume()` now return `fmt.Errorf()` when result indicates an error
+  - This enables tests to verify error handling logic correctly
+- Migrate `runPhase()` tests from `mockClaudeClient` to `testutil.TestAgent`
+  - `TestRunPhase_SessionContinuation_NewSession`, `TestRunPhase_SessionContinuation_WithLogManager`
+  - `TestRunPhase_ResumeFallback`, `TestRunPhase_UsesPrePromptSession`
+  - `TestRunPhase_DoesNotUsePrePromptSessionForPhase2`
+- Update `TestAgentAdapter_PropagatesErrors` to expect error return (matching new TestAgent behavior)
+- Update property tests in `generators_test.go` to handle error scenarios correctly
+
 ### Added
 
 - AgentAdapter type in `internal/comparison/adapter.go` that wraps `agents.Agent` to satisfy the `promptRunner` interface required by `Comparator`, enabling removal of the legacy `claude.Client` dependency

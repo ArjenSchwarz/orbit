@@ -9,7 +9,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/arjenschwarz/orbit/internal/claude"
+	"github.com/arjenschwarz/orbit/internal/agents"
+	_ "github.com/arjenschwarz/orbit/internal/agents/claudecode" // Register claudecode agent
 	"github.com/arjenschwarz/orbit/internal/comparison"
 	"github.com/arjenschwarz/orbit/internal/config"
 	"github.com/arjenschwarz/orbit/internal/cost"
@@ -120,11 +121,16 @@ func compareCommand(args []string) error {
 	// Run comparison
 	fmt.Println("\nRunning comparison analysis...")
 
-	claudeClient := claude.NewClient(claude.Config{
-		WorkingDir: workDir,
+	// Get the default agent (claude-code) with AutoApprove for non-interactive use
+	agent, err := agents.Get("claude-code", agents.AgentConfig{
+		AutoApprove: true, // Comparison runs non-interactively
 	})
+	if err != nil {
+		return fmt.Errorf("failed to get agent: %w", err)
+	}
 
-	comparator := comparison.NewComparator(claudeClient, *compareCmd)
+	adapter := comparison.NewAgentAdapter(agent, ctx, workDir)
+	comparator := comparison.NewComparator(adapter, *compareCmd)
 
 	// Use the unified comparison method with summaries only (diffs excluded to save context)
 	comparisonInput := comparison.ComparisonInput{
