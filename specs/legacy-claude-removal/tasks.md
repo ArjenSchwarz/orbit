@@ -54,7 +54,7 @@ references:
 
 ## Test Migration - Skipped Tests
 
-- [ ] 6. Migrate TestRunPostPromptWithRetry_RetryableError_EventualSuccess <!-- id:kc125y2 -->
+- [x] 6. Migrate TestRunPostPromptWithRetry_RetryableError_EventualSuccess <!-- id:kc125y2 -->
   - At line 211 in orbit_test.go:
   - Replace mockClaudeClient with testutil.TestAgent using ScenarioBuilder.
   - Configure RetryableError() followed by Success().
@@ -66,7 +66,7 @@ references:
   - Stream: 1
   - Requirements: [4.1](requirements.md#4.1), [4.5](requirements.md#4.5), [4.6](requirements.md#4.6), [4.7](requirements.md#4.7), [4.8](requirements.md#4.8)
 
-- [ ] 7. Migrate TestRunPostPromptWithRetry_MaxRetriesExceeded <!-- id:kc125y3 -->
+- [x] 7. Migrate TestRunPostPromptWithRetry_MaxRetriesExceeded <!-- id:kc125y3 -->
   - At line 251 in orbit_test.go:
   - Replace mockClaudeClient with testutil.TestAgent.
   - Configure multiple RetryableError() calls to exceed max retries.
@@ -78,7 +78,7 @@ references:
   - Stream: 1
   - Requirements: [4.2](requirements.md#4.2), [4.5](requirements.md#4.5), [4.6](requirements.md#4.6), [4.7](requirements.md#4.7), [4.8](requirements.md#4.8)
 
-- [ ] 8. Migrate TestRunPhaseWithRetry_RateLimitError <!-- id:kc125y4 -->
+- [x] 8. Migrate TestRunPhaseWithRetry_RateLimitError <!-- id:kc125y4 -->
   - At line 290 in orbit_test.go:
   - Replace mockClaudeClient with testutil.TestAgent.
   - Configure RateLimitError with reset time.
@@ -90,7 +90,7 @@ references:
   - Stream: 1
   - Requirements: [4.3](requirements.md#4.3), [4.5](requirements.md#4.5), [4.6](requirements.md#4.6), [4.7](requirements.md#4.7), [4.8](requirements.md#4.8)
 
-- [ ] 9. Migrate TestRunPhaseWithRetry_OverloadedError <!-- id:kc125y5 -->
+- [x] 9. Migrate TestRunPhaseWithRetry_OverloadedError <!-- id:kc125y5 -->
   - At line 327 in orbit_test.go:
   - Replace mockClaudeClient with testutil.TestAgent.
   - Configure OverloadedError.

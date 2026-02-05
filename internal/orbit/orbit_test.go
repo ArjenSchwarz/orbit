@@ -206,156 +206,193 @@ func TestRunPostPromptWithRetry_NonRetryableError(t *testing.T) {
 }
 
 func TestRunPostPromptWithRetry_RetryableError_EventualSuccess(t *testing.T) {
-	t.Skip("disabled: test uses real 3s delays - would slow down CI/commit validation")
+	// Import the claudecode package to register its classifier
+	_ = agents.GetClassifier("claude-code")
 
-	callCount := 0
-	mock := &mockClaudeClient{
-		runCustomPromptFunc: func(prompt string) (*agents.RunResult, error) {
-			callCount++
-			if callCount < 3 {
-				// Simulate connection error on first two attempts
-				return &agents.RunResult{
-					Stderr:  "connection timeout",
-					IsError: true,
-				}, errors.New("connection timeout")
-			}
-			// Success on third attempt
-			return &agents.RunResult{
-				SessionID: "test-session",
-				Output:    "Success",
-				IsError:   false,
-			}, nil
-		},
-	}
+	// Create FakeClock for deterministic timing
+	clock := testutil.NewFakeClock(time.Now())
+
+	// Define expected agent behavior: 2 connection timeouts then success
+	// Use "connection timeout" in stderr which the claude-code classifier recognizes as retryable
+	scenario := testutil.NewScenario().
+		RetryableError("connection timeout").
+		RetryableError("connection timeout").
+		Success("test-session", 0.01).
+		WithOutput("Success", "").
+		Build()
+
+	agent := testutil.NewTestAgent(t, "test-agent", scenario, testutil.WithClock(clock))
+	t.Cleanup(func() { agent.AssertAllConsumed(t) })
 
 	o := &Orbit{
 		config: Config{
 			PostPrompt: "test command",
+			Clock:      clock,
 		},
-		claudeClient: mock,
-		logManager:   nil,
+		agent:           agent,
+		logManager:      nil,
+		errorClassifier: agents.GetClassifier("claude-code"),
+		shutdownCtx:     t.Context(),
 	}
 
 	err := o.runPostPromptWithRetry()
 	if err != nil {
 		t.Errorf("runPostPromptWithRetry() returned error: %v", err)
 	}
-	if callCount != 3 {
-		t.Errorf("expected 3 calls (2 retries then success), got %d", callCount)
-	}
+
+	// Verify 3 calls: 2 retries then success
+	agent.Recorder().AssertCallCount(t, 3)
+
+	// Verify backoff durations: 1s after first failure, 2s after second failure
+	clock.AssertSleeps(t, []time.Duration{time.Second, 2 * time.Second})
 }
 
 func TestRunPostPromptWithRetry_MaxRetriesExceeded(t *testing.T) {
-	t.Skip("disabled: test uses real 31s delays - would slow down CI/commit validation")
+	// Import the claudecode package to register its classifier
+	_ = agents.GetClassifier("claude-code")
 
-	callCount := 0
-	mock := &mockClaudeClient{
-		runCustomPromptFunc: func(prompt string) (*agents.RunResult, error) {
-			callCount++
-			// Always return a connection error
-			return &agents.RunResult{
-				Stderr:  "connection refused",
-				IsError: true,
-			}, errors.New("connection refused")
-		},
-	}
+	// Create FakeClock for deterministic timing
+	clock := testutil.NewFakeClock(time.Now())
+
+	// Define expected agent behavior: always fail with connection error (retryable)
+	// Use "connection" in stderr which the claude-code classifier recognizes as retryable
+	// Need maxRetries (5) failures
+	scenario := testutil.NewScenario().
+		RetryableError("connection refused").Repeat(maxRetries).
+		Build()
+
+	agent := testutil.NewTestAgent(t, "test-agent", scenario, testutil.WithClock(clock))
+	t.Cleanup(func() { agent.AssertAllConsumed(t) })
 
 	o := &Orbit{
 		config: Config{
 			PostPrompt: "test command",
+			Clock:      clock,
 		},
-		claudeClient: mock,
-		logManager:   nil,
+		agent:           agent,
+		logManager:      nil,
+		errorClassifier: agents.GetClassifier("claude-code"),
+		shutdownCtx:     t.Context(),
 	}
 
 	err := o.runPostPromptWithRetry()
 	if err == nil {
 		t.Error("expected error after max retries, got nil")
 	}
-	if callCount != maxRetries {
-		t.Errorf("expected %d calls (max retries), got %d", maxRetries, callCount)
-	}
+
+	// Verify maxRetries (5) calls were made
+	agent.Recorder().AssertCallCount(t, maxRetries)
+
 	if !strings.Contains(err.Error(), "max retries exceeded") {
 		t.Errorf("expected 'max retries exceeded' in error message, got: %v", err)
 	}
-	var classified *orberrors.ClassifiedError
+
+	// Verify error is wrapped as ClassifiedError from agents package
+	var classified *agents.ClassifiedError
 	if !errors.As(err, &classified) {
-		t.Error("expected wrapped ClassifiedError")
+		t.Error("expected wrapped agents.ClassifiedError")
 	}
+
+	// Verify backoff durations: 1s, 2s, 4s, 8s, 16s (sleep after each of the 5 failed attempts)
+	// Note: The last sleep (16s) is technically unnecessary since no retry follows,
+	// but the current implementation sleeps before checking the loop condition
+	clock.AssertSleeps(t, []time.Duration{
+		time.Second,
+		2 * time.Second,
+		4 * time.Second,
+		8 * time.Second,
+		16 * time.Second,
+	})
 }
 
 func TestRunPhaseWithRetry_RateLimitError(t *testing.T) {
-	t.Skip("disabled: test uses real 60s delays - would slow down CI/commit validation")
+	// Import the claudecode package to register its classifier
+	_ = agents.GetClassifier("claude-code")
 
-	callCount := 0
-	mock := &mockClaudeClient{
-		runPhaseFunc: func(sessionID string, resume bool) (*agents.RunResult, error) {
-			callCount++
-			if callCount == 1 {
-				// Rate limit error on first attempt
-				return &agents.RunResult{
-					Stderr:  "rate limit exceeded",
-					IsError: true,
-				}, errors.New("rate limit")
-			}
-			return &agents.RunResult{
-				SessionID: "test-session",
-				Output:    "Success",
-				IsError:   false,
-			}, nil
-		},
-	}
+	// Create FakeClock for deterministic timing
+	clock := testutil.NewFakeClock(time.Now())
+
+	// Define expected agent behavior: rate limit error on first attempt, then success
+	// Use "rate limit" in stderr which the claude-code classifier recognizes as retryable
+	// The classifier will set a 60s RetryAfter for rate limit errors
+	scenario := testutil.NewScenario().
+		RetryableError("rate limit exceeded").
+		Success("test-session", 0.01).
+		WithOutput("Success", "").
+		Build()
+
+	agent := testutil.NewTestAgent(t, "test-agent", scenario,
+		testutil.WithClock(clock),
+		testutil.WithSessionExport("/tmp/test"),
+	)
+	t.Cleanup(func() { agent.AssertAllConsumed(t) })
 
 	o := &Orbit{
-		config:       Config{},
-		claudeClient: mock,
-		logManager:   nil,
+		config: Config{
+			Clock: clock,
+		},
+		agent:           agent,
+		logManager:      nil,
+		errorClassifier: agents.GetClassifier("claude-code"),
+		shutdownCtx:     t.Context(),
+		debug:           debug.New(false, ""),
 	}
 
 	err := o.runPhaseWithRetry(1)
 	if err != nil {
 		t.Errorf("runPhaseWithRetry() returned error: %v", err)
 	}
-	if callCount != 2 {
-		t.Errorf("expected 2 calls (1 retry after rate limit), got %d", callCount)
-	}
+
+	// Verify 2 calls: 1 failure then success
+	agent.Recorder().AssertCallCount(t, 2)
+
+	// Verify backoff duration: 60s from rate limit RetryAfter
+	clock.AssertSleeps(t, []time.Duration{60 * time.Second})
 }
 
 func TestRunPhaseWithRetry_OverloadedError(t *testing.T) {
-	t.Skip("disabled: test uses real 30s delays - would slow down CI/commit validation")
+	// Import the claudecode package to register its classifier
+	_ = agents.GetClassifier("claude-code")
 
-	callCount := 0
-	mock := &mockClaudeClient{
-		runPhaseFunc: func(sessionID string, resume bool) (*agents.RunResult, error) {
-			callCount++
-			if callCount == 1 {
-				// API overloaded on first attempt
-				return &agents.RunResult{
-					Stderr:  "503 service unavailable",
-					IsError: true,
-				}, errors.New("overloaded")
-			}
-			return &agents.RunResult{
-				SessionID: "test-session",
-				Output:    "Success",
-				IsError:   false,
-			}, nil
-		},
-	}
+	// Create FakeClock for deterministic timing
+	clock := testutil.NewFakeClock(time.Now())
+
+	// Define expected agent behavior: overloaded error on first attempt, then success
+	// Use "503 service unavailable" in stderr which the claude-code classifier recognizes as retryable
+	// The classifier will set a 30s RetryAfter for overloaded errors
+	scenario := testutil.NewScenario().
+		RetryableError("503 service unavailable").
+		Success("test-session", 0.01).
+		WithOutput("Success", "").
+		Build()
+
+	agent := testutil.NewTestAgent(t, "test-agent", scenario,
+		testutil.WithClock(clock),
+		testutil.WithSessionExport("/tmp/test"),
+	)
+	t.Cleanup(func() { agent.AssertAllConsumed(t) })
 
 	o := &Orbit{
-		config:       Config{},
-		claudeClient: mock,
-		logManager:   nil,
+		config: Config{
+			Clock: clock,
+		},
+		agent:           agent,
+		logManager:      nil,
+		errorClassifier: agents.GetClassifier("claude-code"),
+		shutdownCtx:     t.Context(),
+		debug:           debug.New(false, ""),
 	}
 
 	err := o.runPhaseWithRetry(1)
 	if err != nil {
 		t.Errorf("runPhaseWithRetry() returned error: %v", err)
 	}
-	if callCount != 2 {
-		t.Errorf("expected 2 calls (1 retry after overloaded), got %d", callCount)
-	}
+
+	// Verify 2 calls: 1 failure then success
+	agent.Recorder().AssertCallCount(t, 2)
+
+	// Verify backoff duration: 30s from overloaded RetryAfter
+	clock.AssertSleeps(t, []time.Duration{30 * time.Second})
 }
 
 func TestIsSessionInvalidError(t *testing.T) {
