@@ -104,7 +104,7 @@ references:
 
 ## Test Migration - Other Tests
 
-- [ ] 10. Migrate remaining orbit_test.go mockClaudeClient tests <!-- id:kc125y6 -->
+- [x] 10. Migrate remaining orbit_test.go mockClaudeClient tests <!-- id:kc125y6 -->
   - Migrate tests at lines 518, 566, 621, 1543, 1588 in orbit_test.go.
   - For each: Replace mockClaudeClient with testutil.TestAgent.
   - Configure appropriate scenarios using ScenarioBuilder.
@@ -114,7 +114,7 @@ references:
   - Stream: 1
   - Requirements: [5.1](requirements.md#5.1), [5.4](requirements.md#5.4), [5.5](requirements.md#5.5)
 
-- [ ] 11. Migrate integration_test.go mockClaudeClient test <!-- id:kc125y7 -->
+- [x] 11. Migrate integration_test.go mockClaudeClient test <!-- id:kc125y7 -->
   - Migrate test at line 521 in integration_test.go.
   - Replace mockClaudeClient with testutil.TestAgent.
   - Configure scenario matching original test behavior.
