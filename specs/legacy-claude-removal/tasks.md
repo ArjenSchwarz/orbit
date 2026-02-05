@@ -8,14 +8,14 @@ references:
 
 ## AgentAdapter Implementation
 
-- [ ] 1. Create AgentAdapter type <!-- id:kc125xx -->
+- [x] 1. Create AgentAdapter type <!-- id:kc125xx -->
   - Create internal/comparison/adapter.go with AgentAdapter struct containing agent (agents.Agent), ctx (context.Context), and workDir (string) fields.
   - Implement NewAgentAdapter(agent, ctx, workDir) constructor.
   - Implement RunCustomPrompt(prompt string) (*agents.RunResult, error) that delegates to agent.Run() with RunOptions{Prompt: prompt, WorkDir: workDir}.
   - Stream: 1
   - Requirements: [3.1](requirements.md#3.1), [3.2](requirements.md#3.2)
 
-- [ ] 2. Write AgentAdapter unit tests <!-- id:kc125xy -->
+- [x] 2. Write AgentAdapter unit tests <!-- id:kc125xy -->
   - Create internal/comparison/adapter_test.go with tests for:
   - RunCustomPrompt delegates to agent.Run() with correct prompt
   - WorkDir is passed through correctly

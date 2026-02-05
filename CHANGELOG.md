@@ -9,6 +9,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- AgentAdapter type in `internal/comparison/adapter.go` that wraps `agents.Agent` to satisfy the `promptRunner` interface required by `Comparator`, enabling removal of the legacy `claude.Client` dependency
+
 - Feature spec for legacy-claude-removal (`specs/legacy-claude-removal/`)
   - Requirements document defining 6 requirement groups for removing legacy `claudeRunner` interface
   - Design document with AgentAdapter pattern for Comparator, runPhase() migration, and testing strategy
