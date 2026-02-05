@@ -19,7 +19,18 @@ type AgentAdapter struct {
 }
 
 // NewAgentAdapter creates a new adapter wrapping the given agent.
+// Panics if agent is nil, ctx is nil, or workDir is empty, as these are
+// programming errors that should be caught at initialization.
 func NewAgentAdapter(agent agents.Agent, ctx context.Context, workDir string) *AgentAdapter {
+	if agent == nil {
+		panic("agent cannot be nil")
+	}
+	if ctx == nil {
+		panic("ctx cannot be nil")
+	}
+	if workDir == "" {
+		panic("workDir cannot be empty")
+	}
 	return &AgentAdapter{
 		agent:   agent,
 		ctx:     ctx,

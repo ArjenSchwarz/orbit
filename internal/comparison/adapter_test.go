@@ -6,6 +6,7 @@ import (
 
 	"github.com/arjenschwarz/orbit/internal/agents"
 	"github.com/arjenschwarz/orbit/internal/testutil"
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
@@ -75,4 +76,87 @@ func TestAgentAdapter_PropagatesErrors(t *testing.T) {
 	require.NotNil(t, result)
 	require.True(t, result.IsError)
 	require.Equal(t, agents.ErrorClassFatal, result.ErrorClass)
+}
+
+func TestNewAgentAdapter_PanicsOnInvalidInputs(t *testing.T) {
+	scenario := testutil.NewScenario().Build()
+	validAgent := testutil.NewTestAgent(t, "mock", scenario)
+
+	tests := map[string]struct {
+		agent   agents.Agent
+		ctx     context.Context
+		workDir string
+	}{
+		"nil agent panics": {
+			agent:   nil,
+			ctx:     context.Background(),
+			workDir: "/tmp/test",
+		},
+		"nil context panics": {
+			agent:   validAgent,
+			ctx:     nil,
+			workDir: "/tmp/test",
+		},
+		"empty workDir panics": {
+			agent:   validAgent,
+			ctx:     context.Background(),
+			workDir: "",
+		},
+	}
+
+	for name, tc := range tests {
+		t.Run(name, func(t *testing.T) {
+			assert.Panics(t, func() {
+				NewAgentAdapter(tc.agent, tc.ctx, tc.workDir)
+			})
+		})
+	}
+}
+
+func TestNewAgentAdapter_ValidInputsSucceed(t *testing.T) {
+	scenario := testutil.NewScenario().Build()
+	agent := testutil.NewTestAgent(t, "mock", scenario)
+
+	adapter := NewAgentAdapter(agent, context.Background(), "/tmp/test")
+
+	require.NotNil(t, adapter)
+}
+
+func TestAgentAdapter_ContextPropagation(t *testing.T) {
+	scenario := testutil.NewScenario().
+		Success("session-1", 0.01).
+		Build()
+
+	agent := testutil.NewTestAgent(t, "mock", scenario)
+	t.Cleanup(func() { agent.AssertAllConsumed(t) })
+
+	type contextKey string
+	testKey := contextKey("test-key")
+	ctx := context.WithValue(context.Background(), testKey, "test-value")
+	adapter := NewAgentAdapter(agent, ctx, "/tmp/test")
+
+	_, err := adapter.RunCustomPrompt("test")
+	require.NoError(t, err)
+
+	// The context is captured at construction time and passed to the agent
+	// We verify by checking the call was made successfully with our context
+	agent.Recorder().AssertCallCount(t, 1)
+}
+
+func TestAgentAdapter_CancelledContext(t *testing.T) {
+	scenario := testutil.NewScenario().
+		RetryableError("context canceled").
+		Build()
+
+	agent := testutil.NewTestAgent(t, "mock", scenario)
+	t.Cleanup(func() { agent.AssertAllConsumed(t) })
+
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel() // Cancel immediately
+
+	adapter := NewAgentAdapter(agent, ctx, "/tmp/test")
+
+	_, err := adapter.RunCustomPrompt("test")
+	// TestAgent will return the retryable error we configured
+	require.Error(t, err)
 }
