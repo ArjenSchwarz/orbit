@@ -42,14 +42,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - `TestListKiroIDESessions` tests: multiple files per executionId, multiple executionIds, non-existent workspace, malformed files, tie-breaking, timestamp extraction
   - `TestResolveKiroIDESession` tests: valid executionId, unknown executionId, non-existent workspace, best file selection
   - `TestCostPathIntegration`: end-to-end cost threading from session resolution through parsing with execution detail file
-
-### Fixed
-
-- Remove invalid `--last` flag from Codex agent resume - `codex exec` does not support session resumption, so `Resume()` now starts a fresh session instead of failing with an unsupported flag
-- Pass `GlobalGuidance` config to variant manager in `cmd/orbit/run.go`
-
-### Added
-
 - Add spec for Kiro IDE session support in apsis (`specs/apsis-kiro-ide-support/`)
   - Requirements document with 8 sections and 33 acceptance criteria covering session discovery, cross-platform paths, session resolution, transcript parsing, cost extraction, JSON output, file path recognition, and integration points
   - Design document with architecture, 7 components, data models, error handling, and testing strategy
@@ -57,6 +49,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Task list with 11 tasks across 6 phases and 2 parallel work streams
 
 ### Fixed
+
+- Fix cost path not being threaded to parser during auto-detection for Kiro IDE sessions resolved by ID
+- Merge duplicate `### Added` sections in CHANGELOG.md
+- Remove invalid `--last` flag from Codex agent resume - `codex exec` does not support session resumption, so `Resume()` now starts a fresh session instead of failing with an unsupported flag
+- Pass `GlobalGuidance` config to variant manager in `cmd/orbit/run.go`
 
 - Fix data race in `internal/transcript/follow_test.go` tests detected by `go test -race`
   - Add thread-safe `syncBuffer` wrapper type using `sync.RWMutex` for concurrent read/write

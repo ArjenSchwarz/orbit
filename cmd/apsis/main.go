@@ -266,7 +266,7 @@ func resolveInput(arg string, projectPath string) (io.ReadCloser, string, string
 		return f, sessionID, "", nil
 	}
 
-	// Treat as session ID - check Claude location first, then Codex, then Copilot, then Kiro
+	// Treat as session ID - check Claude, Codex, Copilot, Kiro CLI, then Kiro IDE
 	homeDir, err := os.UserHomeDir()
 	if err != nil {
 		return nil, "", "", fmt.Errorf("failed to get home directory: %w", err)
@@ -1194,8 +1194,11 @@ func convert(input io.Reader, output io.Writer, sessionID string, format string,
 	if agent != "" {
 		// Force specific agent format
 		result, err = transcript.ParseJSONLWithFormat(input, agentToFormat(agent), parseOpts...)
+	} else if costPath != "" {
+		// costPath is only set for Kiro IDE sessions — use the specific parser to thread cost data
+		result, err = transcript.ParseJSONLWithFormat(input, transcript.FormatKiroIDE, parseOpts...)
 	} else {
-		// Auto-detect format (handles all formats: Claude, Codex, Kiro, Copilot)
+		// Auto-detect format (handles all formats: Claude, Codex, Kiro, Kiro IDE, Copilot)
 		result, err = transcript.Parse(input)
 	}
 	if err != nil {

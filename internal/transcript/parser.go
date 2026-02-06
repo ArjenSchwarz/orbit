@@ -266,7 +266,7 @@ type ParseWarning struct {
 }
 
 // Parse reads a transcript file and automatically detects its format.
-// It handles all supported formats: Claude JSONL, Codex JSONL, Kiro JSON, and Copilot JSONL.
+// It handles all supported formats: Claude JSONL, Codex JSONL, Kiro CLI JSON, Kiro IDE JSON, and Copilot JSONL.
 // Use this function when the format is unknown; use ParseJSONLWithFormat when the format is known.
 func Parse(r io.Reader) (*ParseResult, error) {
 	// Use DetectFormat to identify the format (handles both JSON and JSONL)
