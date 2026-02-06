@@ -29,6 +29,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - `extractKiroIDECost()` for reading execution detail files and summing credit usage
   - Format detection in `detectKiroFormat()` for both complete and truncated `.chat` files
   - Table-driven tests for parser, cost extraction, entry conversion, and format detection
+- Add Kiro IDE session discovery and resolution in apsis CLI
+  - `listKiroIDESessions()` discovers `.chat` files, groups by `executionId`, selects representative file with most entries
+  - `resolveKiroIDESession()` resolves session by `executionId` and returns cost path for credit extraction
+  - Kiro IDE added to `resolveInput()` lookup chain (after Kiro CLI) with cost path threading
+  - `convert()` and `ParseJSONLWithFormat()` now thread cost path via `ParseOptions` for Kiro IDE sessions
+  - `.chat` files recognized by `isFilePath()` for direct file path input
+  - `kiro-ide` added as valid `-a/--agent` format flag
+  - `FormatKiroIDE` handled in `convertToJSON()` for JSON output
+  - `"kiro ide"` source with priority 4 in session listing sort order
 
 ### Fixed
 

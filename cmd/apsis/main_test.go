@@ -397,7 +397,7 @@ func TestConvert(t *testing.T) {
 {"type":"assistant","timestamp":"2025-12-23T10:00:01Z","message":{"role":"assistant","content":[{"type":"text","text":"Hello! How can I help?"}]}}`
 
 	var output bytes.Buffer
-	err := convert(strings.NewReader(input), &output, "test-session-id", "md", "")
+	err := convert(strings.NewReader(input), &output, "test-session-id", "md", "", "")
 	if err != nil {
 		t.Fatalf("convert failed: %v", err)
 	}
@@ -433,7 +433,7 @@ func TestConvert(t *testing.T) {
 
 func TestConvert_EmptyFile(t *testing.T) {
 	var output bytes.Buffer
-	err := convert(strings.NewReader(""), &output, "empty-session", "md", "")
+	err := convert(strings.NewReader(""), &output, "empty-session", "md", "", "")
 
 	// Empty files now return an error during format detection
 	if err == nil {
@@ -469,7 +469,7 @@ func TestFormatSize(t *testing.T) {
 
 func TestResolveInput_Stdin(t *testing.T) {
 	// When arg is empty, should return stdin
-	reader, sessionID, err := resolveInput("", "/some/project")
+	reader, sessionID, _, err := resolveInput("", "/some/project")
 	if err != nil {
 		t.Fatalf("resolveInput failed: %v", err)
 	}
@@ -492,7 +492,7 @@ func TestResolveInput_FilePath(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	reader, sessionID, err := resolveInput(tmpFile, "/some/project")
+	reader, sessionID, _, err := resolveInput(tmpFile, "/some/project")
 	if err != nil {
 		t.Fatalf("resolveInput failed: %v", err)
 	}
@@ -508,7 +508,7 @@ func TestConvert_HTMLFormat(t *testing.T) {
 {"type":"assistant","timestamp":"2025-12-23T10:00:01Z","message":{"role":"assistant","content":[{"type":"text","text":"Hello! How can I help?"}]}}`
 
 	var output bytes.Buffer
-	err := convert(strings.NewReader(input), &output, "test-session-id", "html", "")
+	err := convert(strings.NewReader(input), &output, "test-session-id", "html", "", "")
 	if err != nil {
 		t.Fatalf("convert failed: %v", err)
 	}
@@ -547,7 +547,7 @@ func TestConvert_UnsupportedFormat(t *testing.T) {
 	input := `{"type":"user","message":{"role":"user","content":[{"type":"text","text":"test"}]}}`
 
 	var output bytes.Buffer
-	err := convert(strings.NewReader(input), &output, "test-session", "xml", "")
+	err := convert(strings.NewReader(input), &output, "test-session", "xml", "", "")
 
 	if err == nil {
 		t.Fatal("expected error for unsupported format")
@@ -1346,7 +1346,7 @@ func TestResolveInput_ClaudeSessionByID(t *testing.T) {
 	}
 	defer func() { _ = os.Setenv("HOME", origHomeDir) }()
 
-	reader, resolvedID, err := resolveInput(sessionID, "/test/project")
+	reader, resolvedID, _, err := resolveInput(sessionID, "/test/project")
 	if err != nil {
 		t.Fatalf("resolveInput failed: %v", err)
 	}
@@ -1382,7 +1382,7 @@ func TestResolveInput_CodexSessionByUUID(t *testing.T) {
 	}
 	defer func() { _ = os.Setenv("HOME", origHomeDir) }()
 
-	reader, resolvedID, err := resolveInput(sessionUUID, "/test/project")
+	reader, resolvedID, _, err := resolveInput(sessionUUID, "/test/project")
 	if err != nil {
 		t.Fatalf("resolveInput failed: %v", err)
 	}
@@ -1429,7 +1429,7 @@ func TestResolveInput_ClaudeFirst_WhenBothExist(t *testing.T) {
 	}
 	defer func() { _ = os.Setenv("HOME", origHomeDir) }()
 
-	reader, _, err := resolveInput(sessionID, "/test/project")
+	reader, _, _, err := resolveInput(sessionID, "/test/project")
 	if err != nil {
 		t.Fatalf("resolveInput failed: %v", err)
 	}
@@ -1461,7 +1461,7 @@ func TestResolveInput_NotFound(t *testing.T) {
 	}
 	defer func() { _ = os.Setenv("HOME", origHomeDir) }()
 
-	_, _, err := resolveInput("nonexistent-session", "/test/project")
+	_, _, _, err := resolveInput("nonexistent-session", "/test/project")
 	if err == nil {
 		t.Fatal("expected error for non-existent session")
 	}
@@ -1618,7 +1618,7 @@ func TestListCodexSessions_IgnoresEmptyFiles_Negative(t *testing.T) {
 func TestConvert_EmptyFile_Negative(t *testing.T) {
 	// Test convert on empty file returns proper error
 	var output bytes.Buffer
-	err := convert(strings.NewReader(""), &output, "empty-session", "md", "")
+	err := convert(strings.NewReader(""), &output, "empty-session", "md", "", "")
 
 	if err == nil {
 		t.Fatal("expected error for empty file")
@@ -1631,7 +1631,7 @@ func TestConvert_EmptyFile_Negative(t *testing.T) {
 func TestConvert_InvalidJSONFile_Negative(t *testing.T) {
 	// Test convert on invalid JSON returns proper error
 	var output bytes.Buffer
-	err := convert(strings.NewReader("{invalid json}"), &output, "test-session", "md", "")
+	err := convert(strings.NewReader("{invalid json}"), &output, "test-session", "md", "", "")
 
 	if err == nil {
 		t.Fatal("expected error for invalid JSON")
@@ -1645,7 +1645,7 @@ func TestConvert_InvalidJSONFile_Negative(t *testing.T) {
 func TestConvert_UnknownFormatType_Negative(t *testing.T) {
 	// Test convert on unknown format type returns proper error
 	var output bytes.Buffer
-	err := convert(strings.NewReader(`{"type":"unknown_format"}`), &output, "test-session", "md", "")
+	err := convert(strings.NewReader(`{"type":"unknown_format"}`), &output, "test-session", "md", "", "")
 
 	if err == nil {
 		t.Fatal("expected error for unknown format type")
@@ -1668,7 +1668,7 @@ func TestConvert_WarningSummaryOutput(t *testing.T) {
 	os.Stderr = w
 
 	var output bytes.Buffer
-	err := convert(strings.NewReader(input), &output, "test-session", "md", "")
+	err := convert(strings.NewReader(input), &output, "test-session", "md", "", "")
 
 	// Restore stderr and capture output
 	_ = w.Close()
@@ -1706,7 +1706,7 @@ func TestConvert_CodexSessionToMarkdown(t *testing.T) {
 {"timestamp":"2026-01-04T13:23:30.000Z","type":"response_item","payload":{"type":"message","role":"assistant","content":[{"type":"output_text","text":"The directory contains 2 files."}]}}`
 
 	var output bytes.Buffer
-	err := convert(strings.NewReader(input), &output, "codex-test-session", "md", "")
+	err := convert(strings.NewReader(input), &output, "codex-test-session", "md", "", "")
 	if err != nil {
 		t.Fatalf("convert failed for Codex session: %v", err)
 	}
@@ -1760,7 +1760,7 @@ func TestConvert_CodexSessionToHTML(t *testing.T) {
 {"timestamp":"2026-01-04T13:22:30.000Z","type":"response_item","payload":{"type":"message","role":"assistant","content":[{"type":"output_text","text":"Hello! How can I help you today?"}]}}`
 
 	var output bytes.Buffer
-	err := convert(strings.NewReader(input), &output, "codex-html-session", "html", "")
+	err := convert(strings.NewReader(input), &output, "codex-html-session", "html", "", "")
 	if err != nil {
 		t.Fatalf("convert failed for Codex HTML: %v", err)
 	}
@@ -1804,7 +1804,7 @@ func TestConvert_CodexReasoningBlocks(t *testing.T) {
 {"timestamp":"2026-01-04T13:23:30.000Z","type":"response_item","payload":{"type":"message","role":"assistant","content":[{"type":"output_text","text":"Here is my analysis."}]}}`
 
 	var output bytes.Buffer
-	err := convert(strings.NewReader(input), &output, "reasoning-session", "md", "")
+	err := convert(strings.NewReader(input), &output, "reasoning-session", "md", "", "")
 	if err != nil {
 		t.Fatalf("convert failed: %v", err)
 	}
@@ -1838,7 +1838,7 @@ func TestIntegration_ApsisWithCodexFile(t *testing.T) {
 	}
 
 	// Test resolving input from file path
-	reader, sessionID, err := resolveInput(sessionFile, "/some/project")
+	reader, sessionID, _, err := resolveInput(sessionFile, "/some/project")
 	if err != nil {
 		t.Fatalf("resolveInput failed: %v", err)
 	}
@@ -1854,7 +1854,7 @@ func TestIntegration_ApsisWithCodexFile(t *testing.T) {
 	var output bytes.Buffer
 	f, _ := os.Open(sessionFile)
 	defer func() { _ = f.Close() }()
-	err = convert(f, &output, sessionID, "md", "")
+	err = convert(f, &output, sessionID, "md", "", "")
 	if err != nil {
 		t.Fatalf("convert failed: %v", err)
 	}
@@ -2251,7 +2251,7 @@ func TestResolveInput_FallsThroughKiroWhenDatabaseNotFound(t *testing.T) {
 	defer func() { _ = os.Setenv("HOME", origHomeDir) }()
 
 	// Try to resolve a non-existent session ID
-	_, _, err := resolveInput("nonexistent-session-id", "/test/project")
+	_, _, _, err := resolveInput("nonexistent-session-id", "/test/project")
 	if err == nil {
 		t.Fatal("expected error for non-existent session")
 	}
@@ -2453,7 +2453,7 @@ func TestConvert_JSONFormat(t *testing.T) {
 	input := `{"type":"user","timestamp":"2025-12-23T10:00:00Z","message":{"role":"user","content":"Hello"}}`
 
 	var output bytes.Buffer
-	err := convert(strings.NewReader(input), &output, "test-session", "json", "")
+	err := convert(strings.NewReader(input), &output, "test-session", "json", "", "")
 
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)

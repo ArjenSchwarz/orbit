@@ -74,8 +74,8 @@ func parseFlags() *Config {
 	flag.StringVar(&cfg.Project, "project", "", "Project directory (default: current directory)")
 	flag.StringVar(&cfg.Format, "f", "md", "Output format: md, markdown, html, json (default: md)")
 	flag.StringVar(&cfg.Format, "format", "md", "Output format: md, markdown, html, json (default: md)")
-	flag.StringVar(&cfg.Agent, "a", "", "Force agent format (claude-code, codex, kiro, copilot)")
-	flag.StringVar(&cfg.Agent, "agent", "", "Force agent format (claude-code, codex, kiro, copilot)")
+	flag.StringVar(&cfg.Agent, "a", "", "Force agent format (claude-code, codex, kiro, kiro-ide, copilot)")
+	flag.StringVar(&cfg.Agent, "agent", "", "Force agent format (claude-code, codex, kiro, kiro-ide, copilot)")
 	flag.BoolVar(&cfg.Follow, "F", false, "Follow mode: monitor file for new entries")
 	flag.BoolVar(&cfg.Follow, "follow", false, "Follow mode: monitor file for new entries")
 	flag.BoolVar(&cfg.Version, "v", false, "Show version")
@@ -107,7 +107,7 @@ Options:
   -p, --project <path>    Project directory (default: current directory)
   -f, --format <format>   Output format: md, markdown, html, json (default: md)
                           json outputs the raw session data as pretty-printed JSON
-  -a, --agent <name>      Force agent format: claude-code, codex, kiro, copilot
+  -a, --agent <name>      Force agent format: claude-code, codex, kiro, kiro-ide, copilot
                           (default: auto-detect from content)
   -F, --follow            Follow mode: continuously monitor file for new entries
                           (like tail -f, markdown output to stdout only)
@@ -194,7 +194,7 @@ func run(cfg *Config) (int, error) {
 	}
 
 	// Non-follow mode: resolve input source
-	input, sessionID, err := resolveInput(cfg.Input, absProjectPath)
+	input, sessionID, costPath, err := resolveInput(cfg.Input, absProjectPath)
 	if err != nil {
 		return 0, err
 	}
@@ -211,7 +211,7 @@ func run(cfg *Config) (int, error) {
 		output = f
 	}
 
-	return 0, convert(input, output, sessionID, cfg.Format, cfg.Agent)
+	return 0, convert(input, output, sessionID, cfg.Format, cfg.Agent, costPath)
 }
 
 // isFilePath returns true if the argument appears to be a file path rather than a session ID.
@@ -221,8 +221,8 @@ func isFilePath(arg string) bool {
 		return true
 	}
 
-	// Ends with .jsonl extension
-	if strings.HasSuffix(arg, ".jsonl") {
+	// Ends with known file extensions
+	if strings.HasSuffix(arg, ".jsonl") || strings.HasSuffix(arg, ".chat") {
 		return true
 	}
 
@@ -243,79 +243,89 @@ func isInputFromPipe() bool {
 	return (stat.Mode() & os.ModeCharDevice) == 0
 }
 
-// resolveInput determines the input source and returns a reader and session ID.
-// It checks Claude location first, then Codex, then Copilot, then Kiro.
-func resolveInput(arg string, projectPath string) (io.ReadCloser, string, error) {
+// resolveInput determines the input source and returns a reader, session ID, and cost path.
+// It checks Claude location first, then Codex, then Copilot, then Kiro CLI, then Kiro IDE.
+// The cost path is non-empty only for Kiro IDE sessions (used for credit cost extraction).
+func resolveInput(arg string, projectPath string) (io.ReadCloser, string, string, error) {
 	// If no argument, read from stdin
 	if arg == "" {
-		return os.Stdin, "", nil
+		return os.Stdin, "", "", nil
 	}
 
 	// Check if it's a file path
 	if isFilePath(arg) {
 		f, err := os.Open(arg)
 		if err != nil {
-			return nil, "", fmt.Errorf("failed to open file: %w", err)
+			return nil, "", "", fmt.Errorf("failed to open file: %w", err)
 		}
 		// Extract session ID from filename if it's a .jsonl file
 		sessionID := ""
 		if strings.HasSuffix(arg, ".jsonl") {
 			sessionID = strings.TrimSuffix(filepath.Base(arg), ".jsonl")
 		}
-		return f, sessionID, nil
+		return f, sessionID, "", nil
 	}
 
 	// Treat as session ID - check Claude location first, then Codex, then Copilot, then Kiro
 	homeDir, err := os.UserHomeDir()
 	if err != nil {
-		return nil, "", fmt.Errorf("failed to get home directory: %w", err)
+		return nil, "", "", fmt.Errorf("failed to get home directory: %w", err)
 	}
 
 	// Try Claude location first
 	claudeProjectPath := claudecode.BuildProjectPath(projectPath)
 	claudeSessionFile := filepath.Join(homeDir, ".claude", "projects", claudeProjectPath, arg+".jsonl")
 	if f, err := os.Open(claudeSessionFile); err == nil {
-		return f, arg, nil
+		return f, arg, "", nil
 	}
 
 	// Try Codex location second
 	codexPath, err := findCodexSession(homeDir, arg)
 	if err != nil {
-		return nil, "", fmt.Errorf("failed to search Codex sessions: %w", err)
+		return nil, "", "", fmt.Errorf("failed to search Codex sessions: %w", err)
 	}
 	if codexPath != "" {
 		f, err := os.Open(codexPath)
 		if err != nil {
-			return nil, "", fmt.Errorf("failed to open Codex session file: %w", err)
+			return nil, "", "", fmt.Errorf("failed to open Codex session file: %w", err)
 		}
-		return f, arg, nil
+		return f, arg, "", nil
 	}
 
 	// Try Copilot location third
 	copilotPath, err := findCopilotSession(homeDir, arg)
 	if err != nil {
-		return nil, "", fmt.Errorf("failed to search Copilot sessions: %w", err)
+		return nil, "", "", fmt.Errorf("failed to search Copilot sessions: %w", err)
 	}
 	if copilotPath != "" {
 		f, err := os.Open(copilotPath)
 		if err != nil {
-			return nil, "", fmt.Errorf("failed to open Copilot session file: %w", err)
+			return nil, "", "", fmt.Errorf("failed to open Copilot session file: %w", err)
 		}
-		return f, arg, nil
+		return f, arg, "", nil
 	}
 
-	// Try Kiro location fourth
+	// Try Kiro CLI location fourth
 	reader, err := resolveKiroSession(arg, projectPath)
 	if err == nil {
-		return io.NopCloser(reader), arg, nil
+		return io.NopCloser(reader), arg, "", nil
 	}
 	// Only continue searching if session not found or database not available
 	if !errors.Is(err, logs.ErrSessionNotFound) && !errors.Is(err, logs.ErrDatabaseNotFound) {
-		return nil, "", fmt.Errorf("kiro lookup: %w", err)
+		return nil, "", "", fmt.Errorf("kiro lookup: %w", err)
+	}
+
+	// Try Kiro IDE location fifth
+	ideReader, costPath, ideErr := resolveKiroIDESession(arg, projectPath)
+	if ideErr == nil {
+		return ideReader, arg, costPath, nil
+	}
+	if !errors.Is(ideErr, transcript.ErrKiroIDENotFound) {
+		return nil, "", "", fmt.Errorf("kiro ide lookup: %w", ideErr)
 	}
 
 	// Not found in any location
-	return nil, "", fmt.Errorf("session not found: %s", arg)
+	return nil, "", "", fmt.Errorf("session not found: %s", arg)
 }
 
 // listSessions lists all sessions for a project from both Claude and Codex sources.
@@ -609,6 +619,121 @@ func listClaudeSessions(projectPath string) ([]SessionInfo, error) {
 	return sessions, nil
 }
 
+// listKiroIDESessions returns all Kiro IDE sessions for a project directory.
+// Returns nil with no error if Kiro IDE is not installed.
+func listKiroIDESessions(projectPath string) ([]SessionInfo, error) {
+	workspaceDir, err := transcript.KiroIDEWorkspaceDir(projectPath)
+	if err != nil {
+		if errors.Is(err, transcript.ErrKiroIDENotFound) {
+			return nil, nil
+		}
+		return nil, fmt.Errorf("kiro ide workspace: %w", err)
+	}
+
+	entries, err := os.ReadDir(workspaceDir)
+	if err != nil {
+		return nil, fmt.Errorf("read kiro ide workspace: %w", err)
+	}
+
+	// Group .chat files by executionId, keeping the best representative per group.
+	type chatCandidate struct {
+		path      string
+		entryCount int
+		mtime     time.Time
+		startTime int64
+		size      int64
+	}
+	best := make(map[string]*chatCandidate)
+
+	for _, entry := range entries {
+		if entry.IsDir() || !strings.HasSuffix(entry.Name(), ".chat") {
+			continue
+		}
+
+		path := filepath.Join(workspaceDir, entry.Name())
+		data, err := os.ReadFile(path)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Warning: could not read %s: %v\n", entry.Name(), err)
+			continue
+		}
+
+		var header kiroIDEChatHeader
+		if err := json.Unmarshal(data, &header); err != nil {
+			fmt.Fprintf(os.Stderr, "Warning: could not parse %s: %v\n", entry.Name(), err)
+			continue
+		}
+
+		if header.ExecutionID == "" {
+			continue
+		}
+
+		info, err := entry.Info()
+		if err != nil {
+			continue
+		}
+
+		var startTime int64
+		if header.Metadata != nil {
+			startTime = header.Metadata.StartTime
+		}
+
+		candidate := &chatCandidate{
+			path:       path,
+			entryCount: len(header.Chat),
+			mtime:      info.ModTime(),
+			startTime:  startTime,
+			size:       info.Size(),
+		}
+
+		existing, ok := best[header.ExecutionID]
+		if !ok {
+			best[header.ExecutionID] = candidate
+			continue
+		}
+
+		// Prefer more entries, then newer mtime, then lexicographic filename
+		if candidate.entryCount > existing.entryCount {
+			best[header.ExecutionID] = candidate
+		} else if candidate.entryCount == existing.entryCount {
+			if candidate.mtime.After(existing.mtime) {
+				best[header.ExecutionID] = candidate
+			} else if candidate.mtime.Equal(existing.mtime) && candidate.path < existing.path {
+				best[header.ExecutionID] = candidate
+			}
+		}
+	}
+
+	var sessions []SessionInfo
+	for execID, c := range best {
+		var createdAt time.Time
+		if c.startTime > 0 {
+			createdAt = time.UnixMilli(c.startTime)
+		} else {
+			createdAt = c.mtime
+		}
+		sessions = append(sessions, SessionInfo{
+			ID:        execID,
+			CreatedAt: createdAt,
+			Size:      c.size,
+			Source:    "kiro ide",
+		})
+	}
+
+	return sessions, nil
+}
+
+// kiroIDEChatHeader is a lightweight struct for parsing .chat files during discovery.
+// Only extracts the fields needed for listing, not the full chat content.
+type kiroIDEChatHeader struct {
+	ExecutionID string              `json:"executionId"`
+	Chat        []json.RawMessage   `json:"chat"`
+	Metadata    *kiroIDEMetadata    `json:"metadata"`
+}
+
+type kiroIDEMetadata struct {
+	StartTime int64 `json:"startTime"`
+}
+
 // listKiroSessions returns all Kiro sessions for the current working directory.
 // Returns nil with no error if the Kiro database is not found (Kiro not installed).
 func listKiroSessions(cwd string) ([]SessionInfo, error) {
@@ -637,6 +762,71 @@ func listKiroSessions(cwd string) ([]SessionInfo, error) {
 // Returns an io.Reader for the session JSON, or ErrSessionNotFound/ErrDatabaseNotFound.
 func resolveKiroSession(sessionID, cwd string) (io.Reader, error) {
 	return logs.GetSession(context.Background(), sessionID, cwd)
+}
+
+// resolveKiroIDESession attempts to find a Kiro IDE session by executionId.
+// Returns an io.ReadCloser for the .chat file and the execution detail path for cost extraction.
+func resolveKiroIDESession(sessionID, projectPath string) (io.ReadCloser, string, error) {
+	workspaceDir, err := transcript.KiroIDEWorkspaceDir(projectPath)
+	if err != nil {
+		return nil, "", err
+	}
+
+	entries, err := os.ReadDir(workspaceDir)
+	if err != nil {
+		return nil, "", fmt.Errorf("read kiro ide workspace: %w", err)
+	}
+
+	// Find the best .chat file for this executionId (most entries)
+	var bestPath string
+	var bestCount int
+	var bestMtime time.Time
+
+	for _, entry := range entries {
+		if entry.IsDir() || !strings.HasSuffix(entry.Name(), ".chat") {
+			continue
+		}
+
+		path := filepath.Join(workspaceDir, entry.Name())
+		data, err := os.ReadFile(path)
+		if err != nil {
+			continue
+		}
+
+		var header kiroIDEChatHeader
+		if err := json.Unmarshal(data, &header); err != nil {
+			continue
+		}
+
+		if header.ExecutionID != sessionID {
+			continue
+		}
+
+		info, err := entry.Info()
+		if err != nil {
+			continue
+		}
+
+		count := len(header.Chat)
+		mtime := info.ModTime()
+		if bestPath == "" || count > bestCount || (count == bestCount && mtime.After(bestMtime)) {
+			bestPath = path
+			bestCount = count
+			bestMtime = mtime
+		}
+	}
+
+	if bestPath == "" {
+		return nil, "", transcript.ErrKiroIDENotFound
+	}
+
+	f, err := os.Open(bestPath)
+	if err != nil {
+		return nil, "", err
+	}
+
+	costPath := transcript.KiroIDEExecutionDetailPath(workspaceDir, sessionID)
+	return f, costPath, nil
 }
 
 // CopilotWorkspace represents the metadata from a Copilot workspace.yaml file.
@@ -821,12 +1011,19 @@ func listAllSessions(projectPath string) ([]SessionInfo, error) {
 		fmt.Fprintf(os.Stderr, "Warning: could not list Kiro sessions: %v\n", err)
 	}
 
+	// Get Kiro IDE sessions
+	kiroIDESessions, err := listKiroIDESessions(projectPath)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Warning: could not list Kiro IDE sessions: %v\n", err)
+	}
+
 	// Merge sessions
-	allSessions := make([]SessionInfo, 0, len(claudeSessions)+len(copilotSessions)+len(codexSessions)+len(kiroSessions))
+	allSessions := make([]SessionInfo, 0, len(claudeSessions)+len(copilotSessions)+len(codexSessions)+len(kiroSessions)+len(kiroIDESessions))
 	allSessions = append(allSessions, claudeSessions...)
 	allSessions = append(allSessions, copilotSessions...)
 	allSessions = append(allSessions, codexSessions...)
 	allSessions = append(allSessions, kiroSessions...)
+	allSessions = append(allSessions, kiroIDESessions...)
 
 	// Sort by timestamp (oldest first) with Claude first for ties
 	sortSessionsByTimestamp(allSessions)
@@ -837,12 +1034,13 @@ func listAllSessions(projectPath string) ([]SessionInfo, error) {
 // sortSessionsByTimestamp sorts sessions by creation time (oldest first).
 // When timestamps are equal, sources are ordered: claude > copilot > codex > kiro.
 func sortSessionsByTimestamp(sessions []SessionInfo) {
-	// Source priority: claude=0, copilot=1, codex=2, kiro-cli=3
+	// Source priority: claude=0, copilot=1, codex=2, kiro-cli=3, kiro ide=4
 	sourcePriority := map[string]int{
 		"claude":   0,
 		"copilot":  1,
 		"codex":    2,
 		"kiro-cli": 3,
+		"kiro ide": 4,
 	}
 
 	sort.Slice(sessions, func(i, j int) bool {
@@ -968,6 +1166,8 @@ func agentToFormat(agent string) transcript.Format {
 		return transcript.FormatKiro
 	case "copilot":
 		return transcript.FormatCopilot
+	case "kiro-ide":
+		return transcript.FormatKiroIDE
 	default:
 		return transcript.FormatUnknown
 	}
@@ -975,7 +1175,8 @@ func agentToFormat(agent string) transcript.Format {
 
 // convert reads a transcript file from input and writes formatted output (Markdown, HTML, or JSON).
 // If agent is specified, it forces the use of that agent's parser instead of auto-detection.
-func convert(input io.Reader, output io.Writer, sessionID string, format string, agent string) error {
+// costPath is used for Kiro IDE sessions to extract credit cost from the execution detail file.
+func convert(input io.Reader, output io.Writer, sessionID string, format string, agent string, costPath string) error {
 	// Handle JSON format separately (outputs raw data, not parsed entries)
 	if strings.ToLower(format) == "json" {
 		return convertToJSON(input, output, agent)
@@ -984,9 +1185,15 @@ func convert(input io.Reader, output io.Writer, sessionID string, format string,
 	var result *transcript.ParseResult
 	var err error
 
+	// Build parse options for cost path threading
+	var parseOpts []transcript.ParseOptions
+	if costPath != "" {
+		parseOpts = append(parseOpts, transcript.ParseOptions{KiroIDECostPath: costPath})
+	}
+
 	if agent != "" {
 		// Force specific agent format
-		result, err = transcript.ParseJSONLWithFormat(input, agentToFormat(agent))
+		result, err = transcript.ParseJSONLWithFormat(input, agentToFormat(agent), parseOpts...)
 	} else {
 		// Auto-detect format (handles all formats: Claude, Codex, Kiro, Copilot)
 		result, err = transcript.Parse(input)
@@ -1068,10 +1275,10 @@ func convertToJSON(input io.Reader, output io.Writer, agent string) error {
 
 	var result any
 
-	if detectedFormat == transcript.FormatKiro {
-		// Kiro is already JSON - unmarshal to preserve structure
+	if detectedFormat == transcript.FormatKiro || detectedFormat == transcript.FormatKiroIDE {
+		// Already JSON - unmarshal to preserve structure
 		if err := json.Unmarshal(data, &result); err != nil {
-			return fmt.Errorf("failed to parse Kiro JSON: %w", err)
+			return fmt.Errorf("failed to parse JSON: %w", err)
 		}
 	} else {
 		// JSONL formats - parse each line and collect into array

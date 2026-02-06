@@ -94,7 +94,7 @@ references:
 
 ## Integration
 
-- [ ] 8. Implement session discovery and listing <!-- id:1jh0z67 -->
+- [x] 8. Implement session discovery and listing <!-- id:1jh0z67 -->
   - Add `listKiroIDESessions(projectPath string) ([]SessionInfo, error)` to `cmd/apsis/main.go`
   - Define unexported `kiroIDEChatHeader` struct with `[]json.RawMessage` for lightweight parsing
   - Implement: compute workspace dir, scan .chat files, group by executionId, select representative file (most entries, tie-break by mtime then filename), build SessionInfo with source `kiro ide`
@@ -108,7 +108,7 @@ references:
   - Requirements: [1.1](requirements.md#1.1), [1.2](requirements.md#1.2), [1.3](requirements.md#1.3), [1.4](requirements.md#1.4), [1.5](requirements.md#1.5), [1.6](requirements.md#1.6), [1.7](requirements.md#1.7), [1.8](requirements.md#1.8), [1.9](requirements.md#1.9), [8.1](requirements.md#8.1), [8.4](requirements.md#8.4)
   - References: cmd/apsis/main.go
 
-- [ ] 9. Implement session resolution and cost threading <!-- id:1jh0z68 -->
+- [x] 9. Implement session resolution and cost threading <!-- id:1jh0z68 -->
   - Add `resolveKiroIDESession(sessionID, projectPath string) (io.ReadCloser, string, error)` to `cmd/apsis/main.go` — returns reader + cost path
   - Update `resolveInput()` signature to return cost path: `(io.ReadCloser, string, string, error)` — add Kiro IDE lookup after Kiro CLI with `ErrKiroIDENotFound` fall-through
   - Update `convert()` signature to accept `costPath string` parameter
