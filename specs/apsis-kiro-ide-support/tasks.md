@@ -8,7 +8,7 @@ references:
 
 ## Foundation Types
 
-- [ ] 1. Add FormatKiroIDE constant and ParseOptions type <!-- id:1jh0z60 -->
+- [x] 1. Add FormatKiroIDE constant and ParseOptions type <!-- id:1jh0z60 -->
   - Add `FormatKiroIDE` to the `Format` enum in `internal/transcript/types.go`
   - Add `ParseOptions` struct with `KiroIDECostPath string` field in `internal/transcript/parser.go`
   - Update `ParseJSONLWithFormat()` signature to accept variadic `...ParseOptions`
@@ -16,7 +16,7 @@ references:
   - Requirements: [4.8](requirements.md#4.8), [8.6](requirements.md#8.6), [8.7](requirements.md#8.7)
   - References: internal/transcript/types.go, internal/transcript/parser.go
 
-- [ ] 2. Create Kiro IDE types <!-- id:1jh0z61 -->
+- [x] 2. Create Kiro IDE types <!-- id:1jh0z61 -->
   - Create `internal/transcript/kiro_ide_types.go`
   - Define `KiroIDEChatFile`, `KiroIDEMessage`, `KiroIDEMetadata` structs
   - Define `KiroIDEExecutionDetail`, `KiroIDEUsageSummary` structs for cost extraction

@@ -14,6 +14,7 @@ const (
 	FormatCodex
 	FormatKiro
 	FormatCopilot
+	FormatKiroIDE
 )
 
 // Entry represents a single line in the Claude session JSONL.

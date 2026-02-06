@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Add foundation types for Kiro IDE session support in apsis
+  - `FormatKiroIDE` constant in the `Format` enum
+  - `ParseOptions` struct with `KiroIDECostPath` for threading cost data to parsers
+  - Variadic `ParseOptions` parameter on `ParseJSONLWithFormat()` (backward-compatible)
+  - `KiroIDEChatFile`, `KiroIDEMessage`, `KiroIDEMetadata` types for `.chat` file parsing
+  - `KiroIDEExecutionDetail`, `KiroIDEUsageSummary` types for cost extraction
+  - `FormatKiroIDE` case in `ParseJSONLWithFormat()` dispatcher (stub parser)
+
 ### Fixed
 
 - Remove invalid `--last` flag from Codex agent resume - `codex exec` does not support session resumption, so `Resume()` now starts a fresh session instead of failing with an unsupported flag

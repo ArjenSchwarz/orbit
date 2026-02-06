@@ -262,10 +262,15 @@ func Parse(r io.Reader) (*ParseResult, error) {
 	return ParseJSONLWithFormat(combined, format)
 }
 
+// ParseOptions provides optional configuration for format-specific parsers.
+type ParseOptions struct {
+	KiroIDECostPath string // execution detail file path for cost extraction
+}
+
 // ParseJSONLWithFormat reads JSONL from the provided reader using the specified format.
 // This skips format detection and directly uses the given parser.
 // Use Parse for auto-detection of all formats, or ParseJSONL for JSONL-only auto-detection.
-func ParseJSONLWithFormat(r io.Reader, format Format) (*ParseResult, error) {
+func ParseJSONLWithFormat(r io.Reader, format Format, opts ...ParseOptions) (*ParseResult, error) {
 	switch format {
 	case FormatCodex:
 		return ParseCodexJSONL(r)
@@ -275,6 +280,11 @@ func ParseJSONLWithFormat(r io.Reader, format Format) (*ParseResult, error) {
 		return ParseKiro(r)
 	case FormatCopilot:
 		return ParseCopilot(r)
+	case FormatKiroIDE:
+		if len(opts) > 0 && opts[0].KiroIDECostPath != "" {
+			return ParseKiroIDEWithCostPath(r, opts[0].KiroIDECostPath)
+		}
+		return ParseKiroIDE(r)
 	default:
 		return nil, fmt.Errorf("unsupported format: %d", format)
 	}
