@@ -3,11 +3,16 @@ package main
 import (
 	"bytes"
 	"context"
+	"crypto/sha256"
+	"encoding/json"
 	"errors"
 	"flag"
 	"fmt"
+	"io"
+	"math"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -2853,5 +2858,481 @@ func TestSortSessionsByTimestamp_CopilotAfterClaude(t *testing.T) {
 		if sessions[i].Source != expected {
 			t.Errorf("position %d: expected source %s, got %s", i, expected, sessions[i].Source)
 		}
+	}
+}
+
+// sha256Hex32Test computes SHA-256 of input and returns first 32 hex chars.
+// Duplicated from transcript package to avoid exporting an internal helper.
+func sha256Hex32Test(input string) string {
+	h := sha256.Sum256([]byte(input))
+	return fmt.Sprintf("%x", h)[:32]
+}
+
+// kiroIDEConfigSubdir returns the platform-specific subdirectory path for Kiro IDE
+// storage, relative to the home directory. On macOS this is
+// "Library/Application Support/Kiro/User/globalStorage/kiro.kiroagent", etc.
+func kiroIDEConfigSubdir() string {
+	switch runtime.GOOS {
+	case "darwin":
+		return filepath.Join("Library", "Application Support", "Kiro", "User", "globalStorage", "kiro.kiroagent")
+	case "windows":
+		return filepath.Join("AppData", "Roaming", "Kiro", "User", "globalStorage", "kiro.kiroagent")
+	default: // linux and others
+		return filepath.Join(".config", "Kiro", "User", "globalStorage", "kiro.kiroagent")
+	}
+}
+
+// setupKiroIDEWorkspace creates a mock Kiro IDE workspace structure in a temp directory.
+// Returns (homeDir, workspaceDir, projectPath). Sets HOME env var and returns a cleanup function.
+func setupKiroIDEWorkspace(t *testing.T) (homeDir, workspaceDir, projectPath string) {
+	t.Helper()
+	tmpDir := t.TempDir()
+	homeDir = filepath.Join(tmpDir, "home")
+
+	// Use a stable project path within the temp dir so filepath.Abs works
+	projectPath = filepath.Join(tmpDir, "myproject")
+	if err := os.MkdirAll(projectPath, 0755); err != nil {
+		t.Fatalf("create project dir: %v", err)
+	}
+
+	// Create the Kiro IDE base directory
+	kiroBase := filepath.Join(homeDir, kiroIDEConfigSubdir())
+	workspaceHash := sha256Hex32Test(projectPath)
+	workspaceDir = filepath.Join(kiroBase, workspaceHash)
+	if err := os.MkdirAll(workspaceDir, 0755); err != nil {
+		t.Fatalf("create workspace dir: %v", err)
+	}
+
+	// Override HOME for os.UserConfigDir()
+	origHome := os.Getenv("HOME")
+	if err := os.Setenv("HOME", homeDir); err != nil {
+		t.Fatalf("set HOME: %v", err)
+	}
+	t.Cleanup(func() { _ = os.Setenv("HOME", origHome) })
+
+	return homeDir, workspaceDir, projectPath
+}
+
+// writeChatFile writes a .chat JSON file to the given directory.
+func writeChatFile(t *testing.T, dir, filename, executionID string, messages []map[string]string, startTime int64) {
+	t.Helper()
+	chatMsgs := make([]map[string]string, len(messages))
+	copy(chatMsgs, messages)
+
+	data := map[string]any{
+		"executionId": executionID,
+		"chat":        chatMsgs,
+		"metadata": map[string]any{
+			"modelId":       "auto",
+			"modelProvider": "qdev",
+			"workflow":      "act",
+			"workflowId":    "test-workflow-id",
+			"startTime":     startTime,
+			"endTime":       startTime + 5000,
+		},
+	}
+
+	jsonData, err := json.Marshal(data)
+	if err != nil {
+		t.Fatalf("marshal chat file: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, filename), jsonData, 0644); err != nil {
+		t.Fatalf("write chat file: %v", err)
+	}
+}
+
+func TestListKiroIDESessions_MultipleFilesForSameExecutionId(t *testing.T) {
+	_, workspaceDir, projectPath := setupKiroIDEWorkspace(t)
+
+	execID := "ccfd398f-c4d8-44d7-ad56-532bb7f2ffa1"
+	startTime := int64(1770349922198)
+
+	// Write two .chat files with the same executionId but different message counts.
+	// The one with more messages should be selected as representative.
+	writeChatFile(t, workspaceDir, "snapshot1.chat", execID,
+		[]map[string]string{
+			{"role": "human", "content": "Hello"},
+		}, startTime)
+
+	writeChatFile(t, workspaceDir, "snapshot2.chat", execID,
+		[]map[string]string{
+			{"role": "human", "content": "Hello"},
+			{"role": "bot", "content": "Hi there"},
+			{"role": "human", "content": "How are you?"},
+		}, startTime)
+
+	sessions, err := listKiroIDESessions(projectPath)
+	if err != nil {
+		t.Fatalf("listKiroIDESessions: %v", err)
+	}
+
+	if len(sessions) != 1 {
+		t.Fatalf("expected 1 session, got %d", len(sessions))
+	}
+
+	if sessions[0].ID != execID {
+		t.Errorf("expected ID %q, got %q", execID, sessions[0].ID)
+	}
+	if sessions[0].Source != "kiro ide" {
+		t.Errorf("expected source %q, got %q", "kiro ide", sessions[0].Source)
+	}
+}
+
+func TestListKiroIDESessions_MultipleExecutionIds(t *testing.T) {
+	_, workspaceDir, projectPath := setupKiroIDEWorkspace(t)
+
+	exec1 := "aaaa1111-2222-3333-4444-555566667777"
+	exec2 := "bbbb1111-2222-3333-4444-555566667777"
+
+	writeChatFile(t, workspaceDir, "session1.chat", exec1,
+		[]map[string]string{{"role": "human", "content": "First"}},
+		1770349922198)
+
+	writeChatFile(t, workspaceDir, "session2.chat", exec2,
+		[]map[string]string{{"role": "human", "content": "Second"}},
+		1770349932198)
+
+	sessions, err := listKiroIDESessions(projectPath)
+	if err != nil {
+		t.Fatalf("listKiroIDESessions: %v", err)
+	}
+
+	if len(sessions) != 2 {
+		t.Fatalf("expected 2 sessions, got %d", len(sessions))
+	}
+
+	ids := map[string]bool{}
+	for _, s := range sessions {
+		ids[s.ID] = true
+		if s.Source != "kiro ide" {
+			t.Errorf("expected source %q, got %q", "kiro ide", s.Source)
+		}
+	}
+	if !ids[exec1] {
+		t.Errorf("missing session %q", exec1)
+	}
+	if !ids[exec2] {
+		t.Errorf("missing session %q", exec2)
+	}
+}
+
+func TestListKiroIDESessions_NonExistentWorkspaceDir(t *testing.T) {
+	tmpDir := t.TempDir()
+	homeDir := filepath.Join(tmpDir, "home")
+
+	// Create Kiro IDE base but no workspace dir for this project
+	kiroBase := filepath.Join(homeDir, kiroIDEConfigSubdir())
+	if err := os.MkdirAll(kiroBase, 0755); err != nil {
+		t.Fatalf("create kiro base: %v", err)
+	}
+
+	origHome := os.Getenv("HOME")
+	if err := os.Setenv("HOME", homeDir); err != nil {
+		t.Fatalf("set HOME: %v", err)
+	}
+	defer func() { _ = os.Setenv("HOME", origHome) }()
+
+	sessions, err := listKiroIDESessions("/nonexistent/project")
+	if err != nil {
+		t.Fatalf("expected no error, got: %v", err)
+	}
+	if sessions != nil {
+		t.Errorf("expected nil sessions, got %v", sessions)
+	}
+}
+
+func TestListKiroIDESessions_MalformedChatFile(t *testing.T) {
+	_, workspaceDir, projectPath := setupKiroIDEWorkspace(t)
+
+	// Write a valid .chat file
+	writeChatFile(t, workspaceDir, "good.chat", "good-exec-id-1234-5678-abcd-ef0123456789",
+		[]map[string]string{{"role": "human", "content": "Hello"}},
+		1770349922198)
+
+	// Write a malformed .chat file
+	if err := os.WriteFile(filepath.Join(workspaceDir, "bad.chat"), []byte("not json{{{"), 0644); err != nil {
+		t.Fatalf("write bad chat file: %v", err)
+	}
+
+	sessions, err := listKiroIDESessions(projectPath)
+	if err != nil {
+		t.Fatalf("listKiroIDESessions: %v", err)
+	}
+
+	// Should still list the valid session, skipping the malformed one
+	if len(sessions) != 1 {
+		t.Fatalf("expected 1 session (malformed skipped), got %d", len(sessions))
+	}
+	if sessions[0].ID != "good-exec-id-1234-5678-abcd-ef0123456789" {
+		t.Errorf("expected good session ID, got %q", sessions[0].ID)
+	}
+}
+
+func TestListKiroIDESessions_TieBreakingSameEntryCount(t *testing.T) {
+	_, workspaceDir, projectPath := setupKiroIDEWorkspace(t)
+
+	execID := "tie-break-1234-5678-abcd-ef0123456789"
+	startTime := int64(1770349922198)
+
+	// Write two files with the same executionId and same entry count.
+	// Both have 2 messages, so tie-break goes to the newer mtime.
+	writeChatFile(t, workspaceDir, "aaa.chat", execID,
+		[]map[string]string{
+			{"role": "human", "content": "Hello"},
+			{"role": "bot", "content": "Hi"},
+		}, startTime)
+
+	// Set the first file's mtime to the past
+	oldTime := time.Date(2025, 1, 1, 0, 0, 0, 0, time.UTC)
+	if err := os.Chtimes(filepath.Join(workspaceDir, "aaa.chat"), oldTime, oldTime); err != nil {
+		t.Fatalf("chtimes: %v", err)
+	}
+
+	writeChatFile(t, workspaceDir, "bbb.chat", execID,
+		[]map[string]string{
+			{"role": "human", "content": "Hello"},
+			{"role": "bot", "content": "Hi there"},
+		}, startTime)
+
+	sessions, err := listKiroIDESessions(projectPath)
+	if err != nil {
+		t.Fatalf("listKiroIDESessions: %v", err)
+	}
+
+	if len(sessions) != 1 {
+		t.Fatalf("expected 1 session, got %d", len(sessions))
+	}
+	// Should pick the file with the newer mtime (bbb.chat)
+	// We can't directly verify which file was chosen from SessionInfo,
+	// but we verify only one session is returned and it has the right ID
+	if sessions[0].ID != execID {
+		t.Errorf("expected ID %q, got %q", execID, sessions[0].ID)
+	}
+}
+
+func TestListKiroIDESessions_UsesStartTime(t *testing.T) {
+	_, workspaceDir, projectPath := setupKiroIDEWorkspace(t)
+
+	execID := "time-test-1234-5678-abcd-ef0123456789"
+	startTime := int64(1770349922198) // specific millisecond timestamp
+
+	writeChatFile(t, workspaceDir, "session.chat", execID,
+		[]map[string]string{{"role": "human", "content": "Hello"}},
+		startTime)
+
+	sessions, err := listKiroIDESessions(projectPath)
+	if err != nil {
+		t.Fatalf("listKiroIDESessions: %v", err)
+	}
+
+	if len(sessions) != 1 {
+		t.Fatalf("expected 1 session, got %d", len(sessions))
+	}
+
+	expectedTime := time.UnixMilli(startTime)
+	if !sessions[0].CreatedAt.Equal(expectedTime) {
+		t.Errorf("expected CreatedAt %v, got %v", expectedTime, sessions[0].CreatedAt)
+	}
+}
+
+func TestResolveKiroIDESession_ValidExecutionId(t *testing.T) {
+	_, workspaceDir, projectPath := setupKiroIDEWorkspace(t)
+
+	execID := "resolve-test-1234-5678-abcd-ef012345"
+
+	writeChatFile(t, workspaceDir, "session.chat", execID,
+		[]map[string]string{
+			{"role": "human", "content": "Hello"},
+			{"role": "bot", "content": "Hi there!"},
+		}, 1770349922198)
+
+	reader, costPath, err := resolveKiroIDESession(execID, projectPath)
+	if err != nil {
+		t.Fatalf("resolveKiroIDESession: %v", err)
+	}
+	defer func() { _ = reader.Close() }()
+
+	// Verify we got a valid reader with content
+	data, err := io.ReadAll(reader)
+	if err != nil {
+		t.Fatalf("read session: %v", err)
+	}
+	if len(data) == 0 {
+		t.Error("expected non-empty reader content")
+	}
+
+	// Verify the content is valid JSON with the right executionId
+	var chatFile struct {
+		ExecutionID string `json:"executionId"`
+	}
+	if err := json.Unmarshal(data, &chatFile); err != nil {
+		t.Fatalf("unmarshal session: %v", err)
+	}
+	if chatFile.ExecutionID != execID {
+		t.Errorf("expected executionId %q, got %q", execID, chatFile.ExecutionID)
+	}
+
+	// Verify cost path is non-empty and deterministic
+	if costPath == "" {
+		t.Error("expected non-empty cost path")
+	}
+	expectedCostPath := transcript.KiroIDEExecutionDetailPath(workspaceDir, execID)
+	if costPath != expectedCostPath {
+		t.Errorf("cost path = %q, want %q", costPath, expectedCostPath)
+	}
+}
+
+func TestResolveKiroIDESession_UnknownExecutionId(t *testing.T) {
+	_, workspaceDir, projectPath := setupKiroIDEWorkspace(t)
+
+	// Write a session with a different executionId
+	writeChatFile(t, workspaceDir, "other.chat", "other-exec-id-0000-0000-0000-000000000000",
+		[]map[string]string{{"role": "human", "content": "Hello"}},
+		1770349922198)
+
+	_, _, err := resolveKiroIDESession("nonexistent-exec-id-0000-0000-000000", projectPath)
+	if !errors.Is(err, transcript.ErrKiroIDENotFound) {
+		t.Errorf("expected ErrKiroIDENotFound, got: %v", err)
+	}
+}
+
+func TestResolveKiroIDESession_NonExistentWorkspace(t *testing.T) {
+	tmpDir := t.TempDir()
+	homeDir := filepath.Join(tmpDir, "home")
+
+	// Create Kiro IDE base but no workspace dir
+	kiroBase := filepath.Join(homeDir, kiroIDEConfigSubdir())
+	if err := os.MkdirAll(kiroBase, 0755); err != nil {
+		t.Fatalf("create kiro base: %v", err)
+	}
+
+	origHome := os.Getenv("HOME")
+	if err := os.Setenv("HOME", homeDir); err != nil {
+		t.Fatalf("set HOME: %v", err)
+	}
+	defer func() { _ = os.Setenv("HOME", origHome) }()
+
+	_, _, err := resolveKiroIDESession("any-exec-id", "/nonexistent/project/path")
+	if !errors.Is(err, transcript.ErrKiroIDENotFound) {
+		t.Errorf("expected ErrKiroIDENotFound, got: %v", err)
+	}
+}
+
+func TestResolveKiroIDESession_SelectsBestFile(t *testing.T) {
+	_, workspaceDir, projectPath := setupKiroIDEWorkspace(t)
+
+	execID := "best-file-1234-5678-abcd-ef0123456789"
+
+	// Write a snapshot with 1 message
+	writeChatFile(t, workspaceDir, "old.chat", execID,
+		[]map[string]string{{"role": "human", "content": "Hello"}},
+		1770349922198)
+
+	// Write a snapshot with 3 messages (should be selected)
+	writeChatFile(t, workspaceDir, "new.chat", execID,
+		[]map[string]string{
+			{"role": "human", "content": "Hello"},
+			{"role": "bot", "content": "Hi!"},
+			{"role": "human", "content": "How are you?"},
+		}, 1770349922198)
+
+	reader, _, err := resolveKiroIDESession(execID, projectPath)
+	if err != nil {
+		t.Fatalf("resolveKiroIDESession: %v", err)
+	}
+	defer func() { _ = reader.Close() }()
+
+	data, err := io.ReadAll(reader)
+	if err != nil {
+		t.Fatalf("read: %v", err)
+	}
+
+	// Verify the returned file has 3 messages (the one with more entries)
+	var chatFile struct {
+		Chat []json.RawMessage `json:"chat"`
+	}
+	if err := json.Unmarshal(data, &chatFile); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	if len(chatFile.Chat) != 3 {
+		t.Errorf("expected 3 chat entries (best file), got %d", len(chatFile.Chat))
+	}
+}
+
+func TestCostPathIntegration(t *testing.T) {
+	_, workspaceDir, projectPath := setupKiroIDEWorkspace(t)
+
+	execID := "cost-test-1234-5678-abcd-ef0123456789"
+
+	// Write a .chat file
+	writeChatFile(t, workspaceDir, "session.chat", execID,
+		[]map[string]string{
+			{"role": "human", "content": "Hello"},
+			{"role": "bot", "content": "Hi there!"},
+		}, 1770349922198)
+
+	// Create execution detail file with known cost data
+	costPath := transcript.KiroIDEExecutionDetailPath(workspaceDir, execID)
+	if err := os.MkdirAll(filepath.Dir(costPath), 0755); err != nil {
+		t.Fatalf("create execution saves dir: %v", err)
+	}
+
+	executionDetail := map[string]any{
+		"executionId": execID,
+		"usageSummary": []map[string]any{
+			{"unit": "credit", "unitPlural": "credits", "usage": 0.0024},
+			{"unit": "credit", "unitPlural": "credits", "usage": 0.1022},
+		},
+	}
+	detailJSON, err := json.Marshal(executionDetail)
+	if err != nil {
+		t.Fatalf("marshal execution detail: %v", err)
+	}
+	if err := os.WriteFile(costPath, detailJSON, 0644); err != nil {
+		t.Fatalf("write execution detail: %v", err)
+	}
+
+	// Resolve session to get reader and cost path
+	reader, resolvedCostPath, err := resolveKiroIDESession(execID, projectPath)
+	if err != nil {
+		t.Fatalf("resolveKiroIDESession: %v", err)
+	}
+	defer func() { _ = reader.Close() }()
+
+	// Parse with cost path
+	result, err := transcript.ParseKiroIDEWithCostPath(reader, resolvedCostPath)
+	if err != nil {
+		t.Fatalf("ParseKiroIDEWithCostPath: %v", err)
+	}
+
+	// Verify cost was extracted
+	if result.Metadata == nil {
+		t.Fatal("expected non-nil Metadata")
+	}
+	if result.Metadata.TotalCost == nil {
+		t.Fatal("expected non-nil TotalCost")
+	}
+
+	expectedCost := 0.1046 // 0.0024 + 0.1022
+	if math.Abs(*result.Metadata.TotalCost-expectedCost) > 0.0001 {
+		t.Errorf("TotalCost = %f, want %f (within 0.0001)", *result.Metadata.TotalCost, expectedCost)
+	}
+	if result.Metadata.CostUnit != "credits" {
+		t.Errorf("CostUnit = %q, want %q", result.Metadata.CostUnit, "credits")
+	}
+
+	// Also verify parsing without cost path returns no cost
+	reader2, _, err := resolveKiroIDESession(execID, projectPath)
+	if err != nil {
+		t.Fatalf("resolveKiroIDESession (second): %v", err)
+	}
+	defer func() { _ = reader2.Close() }()
+
+	resultNoCost, err := transcript.ParseKiroIDE(reader2)
+	if err != nil {
+		t.Fatalf("ParseKiroIDE: %v", err)
+	}
+	if resultNoCost.Metadata != nil {
+		t.Errorf("expected nil Metadata without cost path, got %+v", resultNoCost.Metadata)
 	}
 }

@@ -125,7 +125,7 @@ references:
 
 ## Testing
 
-- [ ] 10. Write integration tests for session discovery and resolution <!-- id:1jh0z69 -->
+- [x] 10. Write integration tests for session discovery and resolution <!-- id:1jh0z69 -->
   - Add `TestListKiroIDESessions` to `cmd/apsis/` tests using temp directory with mock .chat files: multiple files for same executionId -> single session with most messages, multiple executionIds -> multiple sessions, non-existent workspace dir -> empty list, malformed .chat -> skipped with warning, tie-breaking with same entry count
   - Add `TestResolveKiroIDESession` tests: valid executionId -> returns reader and cost path, unknown executionId -> not found, non-existent workspace dir -> not found
   - Add `TestCostPathIntegration`: set up temp workspace with .chat + execution detail file, resolve session, parse with cost path, verify ParseResult.Metadata.TotalCost matches expected

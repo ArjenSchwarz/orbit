@@ -38,6 +38,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - `kiro-ide` added as valid `-a/--agent` format flag
   - `FormatKiroIDE` handled in `convertToJSON()` for JSON output
   - `"kiro ide"` source with priority 4 in session listing sort order
+- Add integration tests for Kiro IDE session discovery and resolution
+  - `TestListKiroIDESessions` tests: multiple files per executionId, multiple executionIds, non-existent workspace, malformed files, tie-breaking, timestamp extraction
+  - `TestResolveKiroIDESession` tests: valid executionId, unknown executionId, non-existent workspace, best file selection
+  - `TestCostPathIntegration`: end-to-end cost threading from session resolution through parsing with execution detail file
 
 ### Fixed
 
