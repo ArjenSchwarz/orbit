@@ -16,6 +16,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - `KiroIDEChatFile`, `KiroIDEMessage`, `KiroIDEMetadata` types for `.chat` file parsing
   - `KiroIDEExecutionDetail`, `KiroIDEUsageSummary` types for cost extraction
   - `FormatKiroIDE` case in `ParseJSONLWithFormat()` dispatcher (stub parser)
+- Add path resolution for Kiro IDE session storage
+  - `sha256Hex32()` helper for computing first 32 hex chars of SHA-256 hashes
+  - `KiroIDEBasePath()` for platform-specific base directory via `os.UserConfigDir()`
+  - `KiroIDEWorkspaceDir()` for workspace directory lookup with path normalization
+  - `KiroIDEExecutionDetailPath()` for deterministic execution detail file paths
+  - `ErrKiroIDENotFound` sentinel error for graceful degradation
+  - Property-based tests using `pgregory.net/rapid` for hash function verification
 
 ### Fixed
 

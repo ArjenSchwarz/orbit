@@ -27,7 +27,7 @@ references:
 
 ## Path Resolution
 
-- [ ] 3. Write path resolution tests <!-- id:1jh0z62 -->
+- [x] 3. Write path resolution tests <!-- id:1jh0z62 -->
   - Create `internal/transcript/kiro_ide_path_test.go`
   - Write `TestSha256Hex32` with known input/output pairs including `KIRO::EXECUTION::SAVES` -> `414d1636299d2b9e4ce7e17fb11f63e9`
   - Write `TestKiroIDEBasePath` verifying subdirectory appended to `os.UserConfigDir()` result
@@ -39,7 +39,7 @@ references:
   - Requirements: [1.1](requirements.md#1.1), [2.1](requirements.md#2.1), [2.2](requirements.md#2.2), [2.3](requirements.md#2.3), [2.4](requirements.md#2.4), [5.1](requirements.md#5.1)
   - References: internal/transcript/kiro_ide_path_test.go
 
-- [ ] 4. Implement path resolution functions <!-- id:1jh0z63 -->
+- [x] 4. Implement path resolution functions <!-- id:1jh0z63 -->
   - Create `internal/transcript/kiro_ide_path.go`
   - Implement `sha256Hex32(input string) string` helper using crypto/sha256
   - Implement `KiroIDEBasePath() (string, error)` using `os.UserConfigDir()` + `Kiro/User/globalStorage/kiro.kiroagent/`
