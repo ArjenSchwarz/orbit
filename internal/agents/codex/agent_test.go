@@ -77,7 +77,7 @@ func TestAgent_BuildArgs_NewSession(t *testing.T) {
 	args := agent.buildArgs(agents.RunOptions{
 		Prompt:    "Test prompt",
 		SessionID: "test-session-id-123",
-	}, false)
+	})
 
 	// Should start with "exec"
 	if len(args) < 1 || args[0] != "exec" {
@@ -94,13 +94,15 @@ func TestAgent_BuildArgs_NewSession(t *testing.T) {
 		t.Errorf("Should not have --dangerously-bypass-approvals-and-sandbox without AutoApprove, got %v", args)
 	}
 
-	// Should NOT contain --resume or --last
+	// codex exec never uses --resume or --last (no session resumption support)
 	if slices.Contains(args, "--resume") || slices.Contains(args, "--last") {
-		t.Errorf("New session should not have --resume or --last flag, got %v", args)
+		t.Errorf("Should not have --resume or --last flag, got %v", args)
 	}
 }
 
-func TestAgent_BuildArgs_ResumeSession(t *testing.T) {
+func TestAgent_ResumeStartsFreshSession(t *testing.T) {
+	// codex exec does not support session resumption, so Resume()
+	// should produce the same args as Run() (no --last flag).
 	agent := New(agents.AgentConfig{
 		AutoApprove: false,
 	}).(*Agent)
@@ -108,19 +110,17 @@ func TestAgent_BuildArgs_ResumeSession(t *testing.T) {
 	args := agent.buildArgs(agents.RunOptions{
 		Prompt:    "Test prompt",
 		SessionID: "existing-session-456",
-	}, true)
+	})
 
-	// Should start with "exec"
 	if len(args) < 1 || args[0] != "exec" {
 		t.Errorf("Expected args to start with 'exec', got %v", args)
 	}
 
-	// Check that --last is present for resume
-	if !slices.Contains(args, "--last") {
-		t.Errorf("Resume should have --last flag, got %v", args)
+	// Must NOT contain --last since codex exec doesn't support it
+	if slices.Contains(args, "--last") {
+		t.Errorf("Should not have --last flag (codex exec has no resume), got %v", args)
 	}
 
-	// Check that the prompt is included
 	if !slices.Contains(args, "Test prompt") {
 		t.Errorf("Expected 'Test prompt' in args, got %v", args)
 	}
@@ -134,7 +134,7 @@ func TestAgent_BuildArgs_WithAutoApprove(t *testing.T) {
 	args := agent.buildArgs(agents.RunOptions{
 		Prompt:    "Test prompt",
 		SessionID: "test-session",
-	}, false)
+	})
 
 	if !slices.Contains(args, "--dangerously-bypass-approvals-and-sandbox") {
 		t.Errorf("Expected --dangerously-bypass-approvals-and-sandbox in args, got %v", args)
@@ -149,7 +149,7 @@ func TestAgent_BuildArgs_WithExtraArgs(t *testing.T) {
 	args := agent.buildArgs(agents.RunOptions{
 		Prompt:    "Test prompt",
 		SessionID: "test-session",
-	}, false)
+	})
 
 	if !slices.Contains(args, "--sandbox") {
 		t.Errorf("Expected --sandbox in args, got %v", args)
@@ -166,7 +166,7 @@ func TestAgent_BuildArgs_WithOptsExtraArgs(t *testing.T) {
 		Prompt:    "Test prompt",
 		SessionID: "test-session",
 		ExtraArgs: []string{"--custom-flag"},
-	}, false)
+	})
 
 	if !slices.Contains(args, "--custom-flag") {
 		t.Errorf("Expected --custom-flag in args, got %v", args)
@@ -179,7 +179,7 @@ func TestAgent_DefaultPrompt(t *testing.T) {
 	args := agent.buildArgs(agents.RunOptions{
 		Prompt:    "", // Empty prompt should use default
 		SessionID: "test-session",
-	}, false)
+	})
 
 	if !slices.Contains(args, defaultPrompt) {
 		t.Errorf("Expected default prompt %q in args, got %v", defaultPrompt, args)
@@ -225,7 +225,7 @@ func TestAgent_BuildArgs_WithModel(t *testing.T) {
 			args := agent.buildArgs(agents.RunOptions{
 				Prompt:    "Test prompt",
 				SessionID: "test-session",
-			}, false)
+			})
 
 			modelIdx := slices.Index(args, "--model")
 			if tt.wantFlag {
@@ -251,7 +251,7 @@ func TestAgent_BuildArgs_ModelBeforePrompt(t *testing.T) {
 	args := agent.buildArgs(agents.RunOptions{
 		Prompt:    "Test prompt",
 		SessionID: "test-session",
-	}, false)
+	})
 
 	modelIdx := slices.Index(args, "--model")
 	promptIdx := slices.Index(args, "Test prompt")
@@ -309,10 +309,9 @@ func TestAgent_ArgOrder(t *testing.T) {
 	tests := []struct {
 		name      string
 		sessionID string
-		resume    bool
 	}{
-		{"new session", "new-id", false},
-		{"resume session", "existing-id", true},
+		{"new session", "new-id"},
+		{"any session", "existing-id"},
 	}
 
 	for _, tt := range tests {
@@ -320,7 +319,7 @@ func TestAgent_ArgOrder(t *testing.T) {
 			args := agent.buildArgs(agents.RunOptions{
 				Prompt:    "Test prompt",
 				SessionID: tt.sessionID,
-			}, tt.resume)
+			})
 
 			// First arg should always be "exec"
 			if len(args) < 1 || args[0] != "exec" {

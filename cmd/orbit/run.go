@@ -306,6 +306,7 @@ func runCommand(args []string) error {
 		BranchPrefix:     *branchPrefix,
 		Guidance:         guidance,
 		CompareCommand:   *compareCommand,
+		GlobalGuidance:   cfg.GlobalGuidance,
 		SpecDir:                specDir,
 		RepoRoot:               repoRoot,
 		VariantAgents:          variantAgents,

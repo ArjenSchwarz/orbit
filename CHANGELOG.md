@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- Remove invalid `--last` flag from Codex agent resume - `codex exec` does not support session resumption, so `Resume()` now starts a fresh session instead of failing with an unsupported flag
+- Pass `GlobalGuidance` config to variant manager in `cmd/orbit/run.go`
+
 ### Added
 
 - Add spec for Kiro IDE session support in apsis (`specs/apsis-kiro-ide-support/`)
