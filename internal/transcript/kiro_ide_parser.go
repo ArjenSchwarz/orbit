@@ -52,10 +52,10 @@ func parseKiroIDE(r io.Reader, costPath string) (*ParseResult, error) {
 
 // convertKiroIDEToEntries converts a KiroIDEChatFile to the common Entry format.
 // Filters system prompts (first human message with <identity> prefix), skips empty
-// content messages, and generates warnings for messages with missing roles.
+// content messages, and generates warnings for messages with missing or unknown roles.
 func convertKiroIDEToEntries(chatFile *KiroIDEChatFile) ([]Entry, []ParseWarning) {
-	var entries []Entry
-	var warnings []ParseWarning
+	entries := make([]Entry, 0, len(chatFile.Chat))
+	warnings := make([]ParseWarning, 0)
 
 	for i, msg := range chatFile.Chat {
 		// Skip messages with empty role
@@ -67,13 +67,14 @@ func convertKiroIDEToEntries(chatFile *KiroIDEChatFile) ([]Entry, []ParseWarning
 			continue
 		}
 
-		// Skip empty content (streaming artifacts)
-		if msg.Content == "" {
+		// Filter first human message if it's a system prompt
+		if i == 0 && msg.Role == "human" && strings.HasPrefix(msg.Content, "<identity>") {
 			continue
 		}
 
-		// Filter first human message if it's a system prompt
-		if i == 0 && msg.Role == "human" && strings.HasPrefix(msg.Content, "<identity>") {
+		// Skip empty or whitespace-only content (streaming artifacts)
+		content := strings.TrimSpace(msg.Content)
+		if content == "" {
 			continue
 		}
 
@@ -84,7 +85,7 @@ func convertKiroIDEToEntries(chatFile *KiroIDEChatFile) ([]Entry, []ParseWarning
 				Message: &Message{
 					Role: "user",
 					Content: []ContentItem{
-						{Type: "text", Text: msg.Content},
+						{Type: "text", Text: content},
 					},
 				},
 			})
@@ -94,7 +95,7 @@ func convertKiroIDEToEntries(chatFile *KiroIDEChatFile) ([]Entry, []ParseWarning
 				Message: &Message{
 					Role: "assistant",
 					Content: []ContentItem{
-						{Type: "text", Text: msg.Content},
+						{Type: "text", Text: content},
 					},
 				},
 			})
@@ -104,9 +105,14 @@ func convertKiroIDEToEntries(chatFile *KiroIDEChatFile) ([]Entry, []ParseWarning
 				Message: &Message{
 					Role: "user",
 					Content: []ContentItem{
-						{Type: "tool_result", Content: msg.Content},
+						{Type: "tool_result", Content: content},
 					},
 				},
+			})
+		default:
+			warnings = append(warnings, ParseWarning{
+				Line:    i + 1,
+				Message: fmt.Sprintf("unknown role %q in chat message", msg.Role),
 			})
 		}
 	}
@@ -115,8 +121,12 @@ func convertKiroIDEToEntries(chatFile *KiroIDEChatFile) ([]Entry, []ParseWarning
 }
 
 // extractKiroIDECost reads an execution detail file and sums credit usage.
-// Returns 0 if the file doesn't exist or can't be parsed.
+// Returns 0 if the path is empty, the file doesn't exist, or can't be parsed.
 func extractKiroIDECost(path string) float64 {
+	if path == "" {
+		return 0
+	}
+
 	data, err := os.ReadFile(path)
 	if err != nil {
 		return 0

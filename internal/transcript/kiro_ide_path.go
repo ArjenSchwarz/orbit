@@ -2,6 +2,7 @@ package transcript
 
 import (
 	"crypto/sha256"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"os"
@@ -20,8 +21,10 @@ var ErrKiroIDENotFound = errors.New("kiro ide storage not found")
 
 // sha256Hex32 returns the first 32 hex characters of the SHA-256 hash of input.
 func sha256Hex32(input string) string {
-	h := sha256.Sum256([]byte(input))
-	return fmt.Sprintf("%x", h)[:32]
+	sum := sha256.Sum256([]byte(input))
+	var out [32]byte
+	hex.Encode(out[:], sum[:16])
+	return string(out[:])
 }
 
 // KiroIDEBasePath returns the platform-specific base directory for Kiro IDE session storage.
@@ -33,8 +36,15 @@ func KiroIDEBasePath() (string, error) {
 		return "", ErrKiroIDENotFound
 	}
 	base := filepath.Join(configDir, kiroIDESubdir)
-	if _, err := os.Stat(base); err != nil {
-		return "", ErrKiroIDENotFound
+	info, err := os.Stat(base)
+	if err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			return "", ErrKiroIDENotFound
+		}
+		return "", fmt.Errorf("stat kiro ide base path: %w", err)
+	}
+	if !info.IsDir() {
+		return "", fmt.Errorf("kiro ide base path is not a directory: %s", base)
 	}
 	return base, nil
 }
@@ -56,13 +66,20 @@ func KiroIDEWorkspaceDir(projectPath string) (string, error) {
 func kiroIDEWorkspaceDirWithBase(base, projectPath string) (string, error) {
 	absPath, err := filepath.Abs(projectPath)
 	if err != nil {
-		return "", ErrKiroIDENotFound
+		return "", fmt.Errorf("resolve absolute project path: %w", err)
 	}
 	absPath = filepath.Clean(absPath)
 
 	dir := filepath.Join(base, sha256Hex32(absPath))
-	if _, err := os.Stat(dir); err != nil {
-		return "", ErrKiroIDENotFound
+	info, err := os.Stat(dir)
+	if err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			return "", ErrKiroIDENotFound
+		}
+		return "", fmt.Errorf("stat kiro ide workspace dir: %w", err)
+	}
+	if !info.IsDir() {
+		return "", fmt.Errorf("kiro ide workspace path is not a directory: %s", dir)
 	}
 	return dir, nil
 }
