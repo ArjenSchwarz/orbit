@@ -263,7 +263,12 @@ func resolveInput(arg string, projectPath string) (io.ReadCloser, string, string
 		if strings.HasSuffix(arg, ".jsonl") {
 			sessionID = strings.TrimSuffix(filepath.Base(arg), ".jsonl")
 		}
-		return f, sessionID, "", nil
+		// For .chat files, derive cost path from the file's executionId and parent directory
+		costPath := ""
+		if strings.HasSuffix(arg, ".chat") {
+			costPath = deriveChatFileCostPath(arg)
+		}
+		return f, sessionID, costPath, nil
 	}
 
 	// Treat as session ID - check Claude, Codex, Copilot, Kiro CLI, then Kiro IDE
@@ -827,6 +832,24 @@ func resolveKiroIDESession(sessionID, projectPath string) (io.ReadCloser, string
 
 	costPath := transcript.KiroIDEExecutionDetailPath(workspaceDir, sessionID)
 	return f, costPath, nil
+}
+
+// deriveChatFileCostPath extracts the executionId from a .chat file and derives
+// the cost path from the file's parent directory. Returns empty string on any error.
+func deriveChatFileCostPath(chatPath string) string {
+	data, err := os.ReadFile(chatPath)
+	if err != nil {
+		return ""
+	}
+	var header struct {
+		ExecutionID string `json:"executionId"`
+	}
+	if err := json.Unmarshal(data, &header); err != nil || header.ExecutionID == "" {
+		return ""
+	}
+	// The .chat file lives in the workspace directory
+	workspaceDir := filepath.Dir(chatPath)
+	return transcript.KiroIDEExecutionDetailPath(workspaceDir, header.ExecutionID)
 }
 
 // CopilotWorkspace represents the metadata from a Copilot workspace.yaml file.

@@ -50,6 +50,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Fix cost path not populated for direct `.chat` file inputs — `apsis /path/to/session.chat` now extracts `executionId` from the file and derives cost path from the parent directory, matching behavior of `apsis <executionId>`
+- Preserve original message whitespace in Kiro IDE parser — `TrimSpace` is now only used for empty content detection, no longer mutates stored message content
 - Fix cost path not being threaded to parser during auto-detection for Kiro IDE sessions resolved by ID
 - Merge duplicate `### Added` sections in CHANGELOG.md
 - Remove invalid `--last` flag from Codex agent resume - `codex exec` does not support session resumption, so `Resume()` now starts a fresh session instead of failing with an unsupported flag

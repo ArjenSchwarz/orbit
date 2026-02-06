@@ -73,8 +73,7 @@ func convertKiroIDEToEntries(chatFile *KiroIDEChatFile) ([]Entry, []ParseWarning
 		}
 
 		// Skip empty or whitespace-only content (streaming artifacts)
-		content := strings.TrimSpace(msg.Content)
-		if content == "" {
+		if strings.TrimSpace(msg.Content) == "" {
 			continue
 		}
 
@@ -85,7 +84,7 @@ func convertKiroIDEToEntries(chatFile *KiroIDEChatFile) ([]Entry, []ParseWarning
 				Message: &Message{
 					Role: "user",
 					Content: []ContentItem{
-						{Type: "text", Text: content},
+						{Type: "text", Text: msg.Content},
 					},
 				},
 			})
@@ -95,7 +94,7 @@ func convertKiroIDEToEntries(chatFile *KiroIDEChatFile) ([]Entry, []ParseWarning
 				Message: &Message{
 					Role: "assistant",
 					Content: []ContentItem{
-						{Type: "text", Text: content},
+						{Type: "text", Text: msg.Content},
 					},
 				},
 			})
@@ -105,7 +104,7 @@ func convertKiroIDEToEntries(chatFile *KiroIDEChatFile) ([]Entry, []ParseWarning
 				Message: &Message{
 					Role: "user",
 					Content: []ContentItem{
-						{Type: "tool_result", Content: content},
+						{Type: "tool_result", Content: msg.Content},
 					},
 				},
 			})
