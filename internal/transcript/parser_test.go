@@ -1757,6 +1757,56 @@ func TestDetectFormat_KiroMissingConversationID(t *testing.T) {
 	}
 }
 
+func TestDetectFormat_KiroIDEChat(t *testing.T) {
+	// Kiro IDE uses .chat JSON format with executionId, chat array, and metadata
+	input := `{"executionId":"ccfd398f-c4d8-44d7-ad56-532bb7f2ffa1","chat":[{"role":"human","content":"Hello"}],"metadata":{"modelId":"auto","startTime":1000,"endTime":2000}}`
+	format, _, err := DetectFormat(strings.NewReader(input))
+	if err != nil {
+		t.Fatalf("DetectFormat returned error: %v", err)
+	}
+	if format != FormatKiroIDE {
+		t.Errorf("expected FormatKiroIDE, got %v", format)
+	}
+}
+
+func TestDetectFormat_KiroCLINotKiroIDE(t *testing.T) {
+	// Kiro CLI format should not be detected as Kiro IDE
+	input := `{"conversation_id":"3b200b15-9728-46df-8a79-afddbe4f55a5","history":[{"user":{"content":{"Prompt":{"prompt":"test"}}}}]}`
+	format, _, err := DetectFormat(strings.NewReader(input))
+	if err != nil {
+		t.Fatalf("DetectFormat returned error: %v", err)
+	}
+	if format != FormatKiro {
+		t.Errorf("expected FormatKiro, got %v", format)
+	}
+}
+
+func TestDetectFormat_KiroIDETruncated(t *testing.T) {
+	// Truncated .chat content should still be detected via string fallback.
+	// A real .chat file has metadata near the end, but the format detection buffer
+	// might capture enough of the structure to see all three key fields.
+	input := `{"executionId":"ccfd398f-c4d8-44d7-ad56-532bb7f2ffa1","actionId":"act","chat":[{"role":"human","content":"Hello"}],"metadata":{"modelId":"auto","startTime":1000,"endTime":20`
+	format, _, err := DetectFormat(strings.NewReader(input))
+	if err != nil {
+		t.Fatalf("DetectFormat returned error: %v", err)
+	}
+	if format != FormatKiroIDE {
+		t.Errorf("expected FormatKiroIDE for truncated .chat content, got %v", format)
+	}
+}
+
+func TestDetectFormat_JSONLNotKiroIDE(t *testing.T) {
+	// JSONL content should not be detected as Kiro IDE
+	input := `{"type":"user","message":{"role":"user","content":[{"type":"text","text":"hello"}]}}`
+	format, _, err := DetectFormat(strings.NewReader(input))
+	if err != nil {
+		t.Fatalf("DetectFormat returned error: %v", err)
+	}
+	if format == FormatKiroIDE {
+		t.Error("JSONL content should not be detected as FormatKiroIDE")
+	}
+}
+
 func TestDetectFormat_CopilotSessionStart(t *testing.T) {
 	// Copilot uses JSONL format with session.start type
 	input := `{"type":"session.start","data":{"sessionId":"0765df0e-fada-412a-9c46-55040a3b495d"},"id":"929a0412-f0ae-471c-992e-70f9d7cde9c1","timestamp":"2026-01-17T12:12:21.934Z"}`

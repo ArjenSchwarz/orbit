@@ -86,8 +86,9 @@ func DetectFormat(r io.Reader) (Format, []byte, error) {
 	return detectJSONLFormat(chunk)
 }
 
-// detectKiroFormat checks if content is Kiro plain JSON format.
-// Kiro format is a single JSON object with conversation_id and non-empty history fields.
+// detectKiroFormat checks if content is Kiro plain JSON format (CLI or IDE).
+// Kiro CLI format is a single JSON object with conversation_id and non-empty history fields.
+// Kiro IDE format is a single JSON object with executionId, chat array, and metadata fields.
 func detectKiroFormat(data []byte) Format {
 	// Kiro sessions can be large; we only need to check the beginning structure.
 	// Look for the characteristic fields: conversation_id and history array start.
@@ -107,12 +108,30 @@ func detectKiroFormat(data []byte) Format {
 			// Likely Kiro but truncated - still return as Kiro since full file would parse
 			return FormatKiro
 		}
+		// Check for truncated Kiro IDE format
+		if strings.Contains(dataStr, `"executionId"`) &&
+			strings.Contains(dataStr, `"chat"`) &&
+			strings.Contains(dataStr, `"metadata"`) {
+			return FormatKiroIDE
+		}
 		return FormatUnknown
 	}
 
-	// Must have both fields populated to be valid Kiro format
+	// Must have both fields populated to be valid Kiro CLI format
 	if kiroCheck.ConversationID != "" && len(kiroCheck.History) > 0 {
 		return FormatKiro
+	}
+
+	// Check for Kiro IDE format: executionId + chat + metadata
+	var ideCheck struct {
+		ExecutionID string `json:"executionId"`
+		Chat        []any  `json:"chat"`
+		Metadata    any    `json:"metadata"`
+	}
+	if err := json.Unmarshal(data, &ideCheck); err == nil {
+		if ideCheck.ExecutionID != "" && ideCheck.Chat != nil && ideCheck.Metadata != nil {
+			return FormatKiroIDE
+		}
 	}
 
 	return FormatUnknown

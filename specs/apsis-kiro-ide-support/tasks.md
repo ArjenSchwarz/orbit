@@ -55,7 +55,7 @@ references:
 
 ## Parser
 
-- [ ] 5. Write parser unit tests <!-- id:1jh0z64 -->
+- [x] 5. Write parser unit tests <!-- id:1jh0z64 -->
   - Create `internal/transcript/kiro_ide_parser_test.go`
   - Write `TestParseKiroIDE` map-based table-driven tests with cases: basic conversation, system prompt filtering (<identity> prefix), tool messages, empty chat array, missing role, empty content messages, no identity prefix, only system prompt
   - Write `TestExtractKiroIDECost` tests: valid usage summary, mixed units, missing file, invalid json, empty usage summary
@@ -67,7 +67,7 @@ references:
   - Requirements: [4.1](requirements.md#4.1), [4.2](requirements.md#4.2), [4.3](requirements.md#4.3), [4.4](requirements.md#4.4), [4.5](requirements.md#4.5), [4.6](requirements.md#4.6), [4.10](requirements.md#4.10), [5.2](requirements.md#5.2), [5.3](requirements.md#5.3), [5.4](requirements.md#5.4)
   - References: internal/transcript/kiro_ide_parser_test.go, internal/transcript/kiro_parser_test.go
 
-- [ ] 6. Implement Kiro IDE parser <!-- id:1jh0z65 -->
+- [x] 6. Implement Kiro IDE parser <!-- id:1jh0z65 -->
   - Create `internal/transcript/kiro_ide_parser.go`
   - Implement `ParseKiroIDE(r io.Reader) (*ParseResult, error)` — parse JSON, convert entries, no cost
   - Implement `ParseKiroIDEWithCostPath(r io.Reader, executionDetailPath string) (*ParseResult, error)` — parse JSON, convert entries, extract cost
@@ -80,7 +80,7 @@ references:
   - Requirements: [4.1](requirements.md#4.1), [4.2](requirements.md#4.2), [4.3](requirements.md#4.3), [4.4](requirements.md#4.4), [4.5](requirements.md#4.5), [4.6](requirements.md#4.6), [4.10](requirements.md#4.10), [5.1](requirements.md#5.1), [5.2](requirements.md#5.2), [5.3](requirements.md#5.3), [5.4](requirements.md#5.4)
   - References: internal/transcript/kiro_ide_parser.go, internal/transcript/kiro_parser.go
 
-- [ ] 7. Write format detection tests and implement <!-- id:1jh0z66 -->
+- [x] 7. Write format detection tests and implement <!-- id:1jh0z66 -->
   - Add `TestDetectKiroIDEFormat` to `internal/transcript/parser_test.go`
   - Test cases: .chat JSON with executionId+chat+metadata -> FormatKiroIDE, Kiro CLI JSON -> FormatKiro (no false positive), truncated .chat content -> FormatKiroIDE (string fallback), JSONL content -> not detected as Kiro IDE
   - Extend `detectKiroFormat()` in `parser.go` to check for executionId+chat+metadata after existing Kiro CLI check

@@ -23,6 +23,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - `KiroIDEExecutionDetailPath()` for deterministic execution detail file paths
   - `ErrKiroIDENotFound` sentinel error for graceful degradation
   - Property-based tests using `pgregory.net/rapid` for hash function verification
+- Add Kiro IDE `.chat` file parser and format detection
+  - `ParseKiroIDE()` and `ParseKiroIDEWithCostPath()` for parsing `.chat` JSON files
+  - `convertKiroIDEToEntries()` with role mapping (human→user, bot→assistant, tool→tool_result), system prompt filtering, and empty content skipping
+  - `extractKiroIDECost()` for reading execution detail files and summing credit usage
+  - Format detection in `detectKiroFormat()` for both complete and truncated `.chat` files
+  - Table-driven tests for parser, cost extraction, entry conversion, and format detection
 
 ### Fixed
 
