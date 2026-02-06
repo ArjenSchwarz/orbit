@@ -108,9 +108,9 @@ type Config struct {
 	ResolvedAgents map[string]ResolvedAgent
 
 	// Config file state
-	ConfigFileFound   bool     // Whether .orbit.yaml was found (home or project)
-	ConfigParseError  []error  // Errors from parsing config (e.g., invalid model types)
-	ConfigSources     []string // List of config sources loaded (e.g., "home", "project", "env")
+	ConfigFileFound  bool     // Whether .orbit.yaml was found (home or project)
+	ConfigParseError []error  // Errors from parsing config (e.g., invalid model types)
+	ConfigSources    []string // List of config sources loaded (e.g., "home", "project", "env")
 
 	// Variant configuration for multi-spec comparison
 	VariantCount   int    // Number of variants (0 = single-run mode)
@@ -462,7 +462,7 @@ func parseAgentsConfig(v *viper.Viper) (map[string]AgentConfig, []error) {
 
 	for name, cfg := range agentsRaw {
 		// Each agent config is a map[string]interface{}
-		cfgMap, ok := cfg.(map[string]interface{})
+		cfgMap, ok := cfg.(map[string]any)
 		if !ok {
 			continue
 		}
@@ -492,7 +492,7 @@ func parseAgentsConfig(v *viper.Viper) (map[string]AgentConfig, []error) {
 			}
 		}
 		// Handle extra-args as a slice
-		if v, ok := cfgMap["extra-args"].([]interface{}); ok {
+		if v, ok := cfgMap["extra-args"].([]any); ok {
 			for _, arg := range v {
 				if s, ok := arg.(string); ok {
 					agentCfg.ExtraArgs = append(agentCfg.ExtraArgs, s)
@@ -521,7 +521,7 @@ func parseAgentAliasesConfig(v *viper.Viper) (map[string]AgentAliasConfig, []err
 
 	for name, cfg := range agentsRaw {
 		// Each agent config is a map[string]interface{}
-		cfgMap, ok := cfg.(map[string]interface{})
+		cfgMap, ok := cfg.(map[string]any)
 		if !ok {
 			continue
 		}
@@ -555,7 +555,7 @@ func parseAgentAliasesConfig(v *viper.Viper) (map[string]AgentAliasConfig, []err
 			}
 		}
 		// Handle extra-args as a slice
-		if v, ok := cfgMap["extra-args"].([]interface{}); ok {
+		if v, ok := cfgMap["extra-args"].([]any); ok {
 			for _, arg := range v {
 				if s, ok := arg.(string); ok {
 					aliasCfg.ExtraArgs = append(aliasCfg.ExtraArgs, s)
@@ -579,7 +579,7 @@ func parseAgentAliasesConfig(v *viper.Viper) (map[string]AgentAliasConfig, []err
 // coerceModelValue coerces a YAML model value to a string.
 // Valid types: string, int, int64, float64 (coerced to string)
 // Invalid types: bool, slice, map (returns error)
-func coerceModelValue(aliasName string, value interface{}) (string, error) {
+func coerceModelValue(aliasName string, value any) (string, error) {
 	switch v := value.(type) {
 	case string:
 		return v, nil
@@ -594,9 +594,9 @@ func coerceModelValue(aliasName string, value interface{}) (string, error) {
 		return "", nil
 	case bool:
 		return "", fmt.Errorf("alias %q: model must be a string or number, got bool", aliasName)
-	case []interface{}:
+	case []any:
 		return "", fmt.Errorf("alias %q: model must be a string or number, got array", aliasName)
-	case map[string]interface{}:
+	case map[string]any:
 		return "", fmt.Errorf("alias %q: model must be a string or number, got map", aliasName)
 	default:
 		return "", fmt.Errorf("alias %q: model must be a string or number, got %T", aliasName, v)
@@ -812,7 +812,7 @@ func hasDeprecatedTopLevelKey(path, key string) bool {
 	}
 
 	// Parse YAML to check for top-level key
-	var config map[string]interface{}
+	var config map[string]any
 	if err := yaml.Unmarshal(data, &config); err != nil {
 		return false // Invalid YAML, will be caught by config loading
 	}

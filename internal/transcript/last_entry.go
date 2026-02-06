@@ -68,10 +68,7 @@ func GetLastDisplayableEntry(filePath string) (*Entry, error) {
 			chunkSize = fileSize
 		}
 
-		offset := fileSize - chunkSize
-		if offset < 0 {
-			offset = 0
-		}
+		offset := max(fileSize-chunkSize, 0)
 
 		// Get buffer from pool and resize if needed
 		bufPtr := lastEntryBufferPool.Get().(*[]byte)

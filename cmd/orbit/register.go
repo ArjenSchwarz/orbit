@@ -319,7 +319,7 @@ func deriveBranch(logDir string) string {
 func deriveRepository(logDir string) string {
 	// Navigate up to find the git root
 	dir := logDir
-	for i := 0; i < 5; i++ { // Limit depth
+	for range 5 { // Limit depth
 		if _, err := os.Stat(filepath.Join(dir, ".git")); err == nil {
 			return registry.GetRepository(dir)
 		}

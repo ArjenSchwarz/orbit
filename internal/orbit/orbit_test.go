@@ -55,11 +55,11 @@ func TestConfig_Struct(t *testing.T) {
 
 func TestConfig_CommandFields(t *testing.T) {
 	config := Config{
-		TasksFile:   "specs/test/tasks.md",
-		LogDir:      ".claude/logs",
-		BranchName:  "feature/test",
-		WorkingDir:  "/path/to/project",
-		Command:     "Run /next-task --phase",
+		TasksFile:  "specs/test/tasks.md",
+		LogDir:     ".claude/logs",
+		BranchName: "feature/test",
+		WorkingDir: "/path/to/project",
+		Command:    "Run /next-task --phase",
 		PostPrompt: "Review the implementation",
 	}
 
@@ -73,11 +73,11 @@ func TestConfig_CommandFields(t *testing.T) {
 
 func TestConfig_EmptyPostPrompt(t *testing.T) {
 	config := Config{
-		TasksFile:   "specs/test/tasks.md",
-		LogDir:      ".claude/logs",
-		BranchName:  "feature/test",
-		WorkingDir:  "/path/to/project",
-		Command:     "Run /next-task --phase",
+		TasksFile:  "specs/test/tasks.md",
+		LogDir:     ".claude/logs",
+		BranchName: "feature/test",
+		WorkingDir: "/path/to/project",
+		Command:    "Run /next-task --phase",
 		PostPrompt: "", // Explicitly disabled
 	}
 
@@ -1155,7 +1155,7 @@ func TestIntegration_VariantRunWithDifferentModels(t *testing.T) {
 	variantAgents = []string{"claude-sonnet", "claude-opus"}
 	variantCount := 4
 
-	for i := 0; i < variantCount; i++ {
+	for i := range variantCount {
 		expectedAlias := variantAgents[i%len(variantAgents)]
 		resolved, err := cfg.GetResolvedAgent(expectedAlias)
 		if err != nil {

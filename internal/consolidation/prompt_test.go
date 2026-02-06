@@ -104,8 +104,8 @@ func TestPromptBuilder_Build(t *testing.T) {
 
 		assert.Contains(t, prompt, "Chosen variant worktree: /path/to/variant-1")
 		// Should not have "Other variant worktrees" with content
-		lines := strings.Split(prompt, "\n")
-		for _, line := range lines {
+		lines := strings.SplitSeq(prompt, "\n")
+		for line := range lines {
 			if strings.Contains(line, "Other variant worktrees:") {
 				// The line should just have empty content after the colon
 				assert.Equal(t, "- Other variant worktrees: ", line)

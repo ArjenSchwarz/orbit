@@ -258,13 +258,13 @@ func (c *Consolidator) checkEmptyImprovements(ctx context.Context) error {
 	// This section contains the cross-variant improvements
 	// The heading is h1 (# ) in the go-output generated report
 	sectionHeader := "# Improvements from Other Variants"
-	idx := strings.Index(contentStr, sectionHeader)
-	if idx == -1 {
+	_, after, ok := strings.Cut(contentStr, sectionHeader)
+	if !ok {
 		return ErrNoImprovements
 	}
 
 	// Get content after the header
-	afterHeader := contentStr[idx+len(sectionHeader):]
+	afterHeader := after
 
 	// Find the next section (# heading at start of line)
 	nextSection := strings.Index(afterHeader[1:], "\n# ")
@@ -755,8 +755,8 @@ func (c *Consolidator) logConsolidation(result *ConsolidationResult, report stri
 		ImprovementsAttempted: applied + skipped,
 		ImprovementsApplied:   applied,
 		ImprovementsSkipped:   skipped,
-		TestsPassed:      result.TestsPassed,
-		PostPromptPassed: result.PostPromptPassed,
+		TestsPassed:           result.TestsPassed,
+		PostPromptPassed:      result.PostPromptPassed,
 		Errors:                result.Errors,
 	}
 
@@ -821,9 +821,9 @@ func parseImprovementCounts(report string) (applied, skipped int) {
 	// Count rows in Applied table
 	inApplied := false
 	inSkipped := false
-	lines := strings.Split(report, "\n")
+	lines := strings.SplitSeq(report, "\n")
 
-	for _, line := range lines {
+	for line := range lines {
 		line = strings.TrimSpace(line)
 
 		if strings.HasPrefix(line, "### Applied") {

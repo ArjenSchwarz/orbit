@@ -270,10 +270,7 @@ func (s *Spinner) updateSuffix() {
 
 	var suffix string
 	if s.isWaiting {
-		remaining := time.Until(s.waitEndTime)
-		if remaining < 0 {
-			remaining = 0
-		}
+		remaining := max(time.Until(s.waitEndTime), 0)
 		suffix = fmt.Sprintf(" [waiting %ds]", int(remaining.Seconds()))
 	} else {
 		elapsed := time.Since(s.startTime)

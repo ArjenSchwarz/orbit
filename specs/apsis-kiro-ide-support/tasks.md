@@ -136,7 +136,7 @@ references:
 
 ## Verification
 
-- [ ] 11. Run full test suite and lint <!-- id:1jh0z6a -->
+- [x] 11. Run full test suite and lint <!-- id:1jh0z6a -->
   - Run `make test` to verify all tests pass including new and existing tests
   - Run `make lint` to check for lint issues
   - Run `make modernize` to verify modern Go idioms are used

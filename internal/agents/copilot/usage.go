@@ -107,7 +107,7 @@ func ParseUsage(stdout, stderr string) *UsageInfo {
 
 	// Aggregate tokens from all model breakdown lines
 	// Process line-by-line to use the anchored regex correctly
-	for _, line := range strings.Split(combined, "\n") {
+	for line := range strings.SplitSeq(combined, "\n") {
 		if match := tokenBreakdownRe.FindStringSubmatch(line); match != nil {
 			info.InputTokens += parseTokenValue(match[1], match[2])
 			info.OutputTokens += parseTokenValue(match[3], match[4])

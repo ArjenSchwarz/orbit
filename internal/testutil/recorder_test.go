@@ -11,7 +11,7 @@ func TestRecorder_ConcurrentAccess(t *testing.T) {
 	r := NewRecorder()
 
 	var wg sync.WaitGroup
-	for i := 0; i < 100; i++ {
+	for i := range 100 {
 		wg.Add(1)
 		go func(idx int) {
 			defer wg.Done()

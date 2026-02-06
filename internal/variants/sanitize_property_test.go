@@ -1,6 +1,7 @@
 package variants
 
 import (
+	"slices"
 	"testing"
 	"unicode"
 
@@ -11,10 +12,8 @@ import (
 func isFilesystemSafe(c rune) bool {
 	// Disallowed: / \ : * ? " < > | and space
 	disallowed := []rune{'/', '\\', ':', '*', '?', '"', '<', '>', '|', ' '}
-	for _, d := range disallowed {
-		if c == d {
-			return false
-		}
+	if slices.Contains(disallowed, c) {
+		return false
 	}
 	// Also disallow control characters
 	if unicode.IsControl(c) {
@@ -136,9 +135,9 @@ func TestPropertySanitizeName_CollapsesMultipleDashes(t *testing.T) {
 		{"a--b", "a-b"},
 		{"a---b", "a-b"},
 		{"a----b", "a-b"},
-		{"a/ /b", "a-b"},       // Multiple unsafe chars become multiple dashes, then collapsed
-		{"a///b", "a-b"},       // Multiple slashes become multiple dashes, then collapsed
-		{"a:*:b", "a-b"},       // Mixed unsafe chars
+		{"a/ /b", "a-b"}, // Multiple unsafe chars become multiple dashes, then collapsed
+		{"a///b", "a-b"}, // Multiple slashes become multiple dashes, then collapsed
+		{"a:*:b", "a-b"}, // Mixed unsafe chars
 	}
 
 	for _, tc := range tests {
@@ -159,8 +158,8 @@ func TestPropertySanitizeName_TrimsEdgeDashes(t *testing.T) {
 		{"abc-", "abc"},
 		{"-abc-", "abc"},
 		{"--abc--", "abc"},
-		{"/abc/", "abc"},    // Slashes at edges become dashes, then trimmed
-		{" abc ", "abc"},    // Spaces at edges become dashes, then trimmed
+		{"/abc/", "abc"}, // Slashes at edges become dashes, then trimmed
+		{" abc ", "abc"}, // Spaces at edges become dashes, then trimmed
 	}
 
 	for _, tc := range tests {

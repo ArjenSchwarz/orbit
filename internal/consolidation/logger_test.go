@@ -25,8 +25,8 @@ func TestLogger_Append(t *testing.T) {
 			ImprovementsAttempted: 3,
 			ImprovementsApplied:   2,
 			ImprovementsSkipped:   1,
-			TestsPassed:      true,
-			PostPromptPassed: true,
+			TestsPassed:           true,
+			PostPromptPassed:      true,
 		}
 
 		err := logger.Append(entry)
@@ -124,7 +124,7 @@ func TestLogger_ConcurrentAppend(t *testing.T) {
 	var wg sync.WaitGroup
 	wg.Add(numGoroutines)
 
-	for i := 0; i < numGoroutines; i++ {
+	for i := range numGoroutines {
 		go func(id int) {
 			defer wg.Done()
 			entry := LogEntry{

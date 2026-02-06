@@ -3,6 +3,7 @@ package copilot
 import (
 	"fmt"
 	"math"
+	"strings"
 	"testing"
 	"time"
 
@@ -183,17 +184,17 @@ func TestParseDuration(t *testing.T) {
 		expected time.Duration
 		wantErr  bool
 	}{
-		"seconds only":              {"", "28", 28 * time.Second, false},
-		"seconds with decimal":      {"", "36.11", 36110 * time.Millisecond, false},
-		"minutes and seconds":       {"1", "36", 96 * time.Second, false},
-		"minutes and decimal secs":  {"1", "36.11", 96110 * time.Millisecond, false},
-		"large minutes":             {"10", "30", 630 * time.Second, false},
-		"zero seconds":              {"", "0", 0, false},
-		"zero minutes and seconds":  {"0", "0", 0, false},
-		"invalid seconds":           {"", "abc", 0, true},
-		"invalid minutes":           {"abc", "10", 0, true},
-		"high precision seconds":    {"", "48.964", 48964 * time.Millisecond, false},
-		"very high precision":       {"", "1.123456", 1123456 * time.Microsecond, false},
+		"seconds only":             {"", "28", 28 * time.Second, false},
+		"seconds with decimal":     {"", "36.11", 36110 * time.Millisecond, false},
+		"minutes and seconds":      {"1", "36", 96 * time.Second, false},
+		"minutes and decimal secs": {"1", "36.11", 96110 * time.Millisecond, false},
+		"large minutes":            {"10", "30", 630 * time.Second, false},
+		"zero seconds":             {"", "0", 0, false},
+		"zero minutes and seconds": {"0", "0", 0, false},
+		"invalid seconds":          {"", "abc", 0, true},
+		"invalid minutes":          {"abc", "10", 0, true},
+		"high precision seconds":   {"", "48.964", 48964 * time.Millisecond, false},
+		"very high precision":      {"", "1.123456", 1123456 * time.Microsecond, false},
 	}
 
 	for name, tc := range tests {
@@ -278,17 +279,17 @@ func TestPropertyParseUsage_WhitespaceTolerance(t *testing.T) {
 		spaces2 := rapid.IntRange(1, 10).Draw(rt, "spaces2")
 
 		// Build whitespace strings
-		ws1 := ""
+		var ws1 strings.Builder
 		for range spaces1 {
-			ws1 += " "
+			ws1.WriteString(" ")
 		}
-		ws2 := ""
+		var ws2 strings.Builder
 		for range spaces2 {
-			ws2 += " "
+			ws2.WriteString(" ")
 		}
 
 		// Generate output with varying whitespace
-		output := fmt.Sprintf("Total%susage%sest:  0.5 Premium requests", ws1, ws2)
+		output := fmt.Sprintf("Total%susage%sest:  0.5 Premium requests", ws1.String(), ws2.String())
 
 		result := ParseUsage(output, "")
 		if result == nil {

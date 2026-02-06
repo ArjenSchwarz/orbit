@@ -647,7 +647,7 @@ func TestFollower_AddSeenHash_Cap(t *testing.T) {
 	}
 
 	// Fill up to just below cap
-	for i := 0; i < maxSeenHashes-1; i++ {
+	for i := range maxSeenHashes - 1 {
 		h := [16]byte{byte(i >> 24), byte(i >> 16), byte(i >> 8), byte(i)}
 		f.addSeenHash(h)
 	}
