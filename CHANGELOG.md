@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Add spec for Kiro IDE session support in apsis (`specs/apsis-kiro-ide-support/`)
+  - Requirements document with 8 sections and 33 acceptance criteria covering session discovery, cross-platform paths, session resolution, transcript parsing, cost extraction, JSON output, file path recognition, and integration points
+  - Design document with architecture, 7 components, data models, error handling, and testing strategy
+  - Decision log with 7 decisions (spec naming, session ID format, cost tracking, platform support, transcript source, follow mode, review refinements)
+  - Task list with 11 tasks across 6 phases and 2 parallel work streams
+
 ### Fixed
 
 - Fix data race in `internal/transcript/follow_test.go` tests detected by `go test -race`
