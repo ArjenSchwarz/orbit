@@ -9,6 +9,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Add GitHub Actions CI workflow for automated testing and linting on push/PR
+- Add GitHub Actions release workflow for multi-platform binary builds (linux/windows/darwin × amd64/arm64)
 - Add foundation types for Kiro IDE session support in apsis
   - `FormatKiroIDE` constant in the `Format` enum
   - `ParseOptions` struct with `KiroIDECostPath` for threading cost data to parsers
