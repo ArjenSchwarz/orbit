@@ -138,11 +138,11 @@ func TestGenerate_EscapesContent(t *testing.T) {
 	// Ensure dangerous HTML tags are escaped (not rendered as HTML)
 	// These patterns indicate unescaped user content that could be parsed as HTML
 	dangerous := []string{
-		"<script>alert",      // User-injected script that could execute
-		"</script>",          // Script tag closing
-		"<img src=x>",        // User-injected img tag
-		"<b>error</b>",       // User-injected HTML tag (should be escaped)
-		"<a href='bad'>",     // User-injected link
+		"<script>alert",  // User-injected script that could execute
+		"</script>",      // Script tag closing
+		"<img src=x>",    // User-injected img tag
+		"<b>error</b>",   // User-injected HTML tag (should be escaped)
+		"<a href='bad'>", // User-injected link
 	}
 	for _, d := range dangerous {
 		if strings.Contains(contentStr, d) {
@@ -152,9 +152,9 @@ func TestGenerate_EscapesContent(t *testing.T) {
 
 	// Ensure escaped versions are present (content is displayed, not executed)
 	escaped := []string{
-		"&lt;script&gt;",   // Escaped script open tag
-		"&lt;/script&gt;",  // Escaped script close tag
-		"&lt;img",          // Escaped img tag
+		"&lt;script&gt;",  // Escaped script open tag
+		"&lt;/script&gt;", // Escaped script close tag
+		"&lt;img",         // Escaped img tag
 	}
 	for _, e := range escaped {
 		if !strings.Contains(contentStr, e) {
@@ -169,7 +169,7 @@ func TestGenerate_SplitsLargeDiffs(t *testing.T) {
 
 	// Create a large diff (>500 lines)
 	var largeDiff strings.Builder
-	for i := 0; i < 600; i++ {
+	for i := range 600 {
 		largeDiff.WriteString("+line ")
 		largeDiff.WriteString(string(rune('0' + i%10)))
 		largeDiff.WriteString("\n")
@@ -438,19 +438,19 @@ func TestGenerate_CreatesMarkdownReport(t *testing.T) {
 
 	// Verify key content is present
 	checks := []string{
-		"test-feature",                // spec name
-		"abc123def456",                // base commit
-		"feature/test",                // original branch
-		"Variant 1",                   // variant identifier
-		"orbit-impl-1/test-feature",   // branch name
-		"completed",                   // status
-		"$0.05",                       // cost
-		"high",                        // confidence
-		"Variant 1 is cleaner",        // summary
-		"More concise code",           // observation
-		"main.go",                     // file analysis path
-		"claude-code",                 // agent name
-		"```diff",                     // diff code fence
+		"test-feature",              // spec name
+		"abc123def456",              // base commit
+		"feature/test",              // original branch
+		"Variant 1",                 // variant identifier
+		"orbit-impl-1/test-feature", // branch name
+		"completed",                 // status
+		"$0.05",                     // cost
+		"high",                      // confidence
+		"Variant 1 is cleaner",      // summary
+		"More concise code",         // observation
+		"main.go",                   // file analysis path
+		"claude-code",               // agent name
+		"```diff",                   // diff code fence
 	}
 	for _, check := range checks {
 		if !strings.Contains(contentStr, check) {
@@ -488,7 +488,7 @@ func TestGenerate_MarkdownLinksToLargeDiffs(t *testing.T) {
 
 	// Create a large diff (>500 lines)
 	var largeDiff strings.Builder
-	for i := 0; i < 600; i++ {
+	for i := range 600 {
 		largeDiff.WriteString("+line ")
 		largeDiff.WriteString(string(rune('0' + i%10)))
 		largeDiff.WriteString("\n")
@@ -924,11 +924,11 @@ func TestGenerate_HTMLLearningsXSSEscaping(t *testing.T) {
 
 	// Verify dangerous HTML tags are escaped in learnings [Req 4.7]
 	dangerous := []string{
-		"<script>alert",      // Title injection
-		"</script>",          // Script closing
-		"<b>bold</b>",        // Description HTML
-		"<img src=x>",        // Rationale img tag
-		"<path>",             // File reference HTML
+		"<script>alert", // Title injection
+		"</script>",     // Script closing
+		"<b>bold</b>",   // Description HTML
+		"<img src=x>",   // Rationale img tag
+		"<path>",        // File reference HTML
 	}
 	for _, d := range dangerous {
 		if strings.Contains(contentStr, d) {
@@ -938,10 +938,10 @@ func TestGenerate_HTMLLearningsXSSEscaping(t *testing.T) {
 
 	// Verify escaped versions are present
 	escaped := []string{
-		"&lt;script&gt;",  // Escaped script tag
-		"&lt;b&gt;",       // Escaped bold tag
-		"&lt;img",         // Escaped img tag
-		"&lt;path&gt;",    // Escaped path tag in file reference
+		"&lt;script&gt;", // Escaped script tag
+		"&lt;b&gt;",      // Escaped bold tag
+		"&lt;img",        // Escaped img tag
+		"&lt;path&gt;",   // Escaped path tag in file reference
 	}
 	for _, e := range escaped {
 		if !strings.Contains(contentStr, e) {

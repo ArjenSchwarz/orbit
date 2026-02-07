@@ -7,7 +7,55 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Add foundation types for Kiro IDE session support in apsis
+  - `FormatKiroIDE` constant in the `Format` enum
+  - `ParseOptions` struct with `KiroIDECostPath` for threading cost data to parsers
+  - Variadic `ParseOptions` parameter on `ParseJSONLWithFormat()` (backward-compatible)
+  - `KiroIDEChatFile`, `KiroIDEMessage`, `KiroIDEMetadata` types for `.chat` file parsing
+  - `KiroIDEExecutionDetail`, `KiroIDEUsageSummary` types for cost extraction
+  - `FormatKiroIDE` case in `ParseJSONLWithFormat()` dispatcher (stub parser)
+- Add path resolution for Kiro IDE session storage
+  - `sha256Hex32()` helper for computing first 32 hex chars of SHA-256 hashes
+  - `KiroIDEBasePath()` for platform-specific base directory via `os.UserConfigDir()`
+  - `KiroIDEWorkspaceDir()` for workspace directory lookup with path normalization
+  - `KiroIDEExecutionDetailPath()` for deterministic execution detail file paths
+  - `ErrKiroIDENotFound` sentinel error for graceful degradation
+  - Property-based tests using `pgregory.net/rapid` for hash function verification
+- Add Kiro IDE `.chat` file parser and format detection
+  - `ParseKiroIDE()` and `ParseKiroIDEWithCostPath()` for parsing `.chat` JSON files
+  - `convertKiroIDEToEntries()` with role mapping (human→user, bot→assistant, tool→tool_result), system prompt filtering, and empty content skipping
+  - `extractKiroIDECost()` for reading execution detail files and summing credit usage
+  - Format detection in `detectKiroFormat()` for both complete and truncated `.chat` files
+  - Table-driven tests for parser, cost extraction, entry conversion, and format detection
+- Add Kiro IDE session discovery and resolution in apsis CLI
+  - `listKiroIDESessions()` discovers `.chat` files, groups by `executionId`, selects representative file with most entries
+  - `resolveKiroIDESession()` resolves session by `executionId` and returns cost path for credit extraction
+  - Kiro IDE added to `resolveInput()` lookup chain (after Kiro CLI) with cost path threading
+  - `convert()` and `ParseJSONLWithFormat()` now thread cost path via `ParseOptions` for Kiro IDE sessions
+  - `.chat` files recognized by `isFilePath()` for direct file path input
+  - `kiro-ide` added as valid `-a/--agent` format flag
+  - `FormatKiroIDE` handled in `convertToJSON()` for JSON output
+  - `"kiro ide"` source with priority 4 in session listing sort order
+- Add integration tests for Kiro IDE session discovery and resolution
+  - `TestListKiroIDESessions` tests: multiple files per executionId, multiple executionIds, non-existent workspace, malformed files, tie-breaking, timestamp extraction
+  - `TestResolveKiroIDESession` tests: valid executionId, unknown executionId, non-existent workspace, best file selection
+  - `TestCostPathIntegration`: end-to-end cost threading from session resolution through parsing with execution detail file
+- Add spec for Kiro IDE session support in apsis (`specs/apsis-kiro-ide-support/`)
+  - Requirements document with 8 sections and 33 acceptance criteria covering session discovery, cross-platform paths, session resolution, transcript parsing, cost extraction, JSON output, file path recognition, and integration points
+  - Design document with architecture, 7 components, data models, error handling, and testing strategy
+  - Decision log with 7 decisions (spec naming, session ID format, cost tracking, platform support, transcript source, follow mode, review refinements)
+  - Task list with 11 tasks across 6 phases and 2 parallel work streams
+
 ### Fixed
+
+- Fix cost path not populated for direct `.chat` file inputs — `apsis /path/to/session.chat` now extracts `executionId` from the file and derives cost path from the parent directory, matching behavior of `apsis <executionId>`
+- Preserve original message whitespace in Kiro IDE parser — `TrimSpace` is now only used for empty content detection, no longer mutates stored message content
+- Fix cost path not being threaded to parser during auto-detection for Kiro IDE sessions resolved by ID
+- Merge duplicate `### Added` sections in CHANGELOG.md
+- Remove invalid `--last` flag from Codex agent resume - `codex exec` does not support session resumption, so `Resume()` now starts a fresh session instead of failing with an unsupported flag
+- Pass `GlobalGuidance` config to variant manager in `cmd/orbit/run.go`
 
 - Fix data race in `internal/transcript/follow_test.go` tests detected by `go test -race`
   - Add thread-safe `syncBuffer` wrapper type using `sync.RWMutex` for concurrent read/write

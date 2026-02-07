@@ -99,8 +99,8 @@ func stripProjectDir(filePath, projectDir string) string {
 	if !strings.HasSuffix(prefix, "/") {
 		prefix += "/"
 	}
-	if strings.HasPrefix(filePath, prefix) {
-		return strings.TrimPrefix(filePath, prefix)
+	if after, ok := strings.CutPrefix(filePath, prefix); ok {
+		return after
 	}
 	return filePath
 }

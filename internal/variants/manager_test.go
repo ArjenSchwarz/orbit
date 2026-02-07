@@ -888,7 +888,7 @@ func TestSave_ConcurrentAccess(t *testing.T) {
 		wg.Add(1)
 		go func(id int) {
 			defer wg.Done()
-			for j := 0; j < 10; j++ {
+			for range 10 {
 				_ = mgr.UpdateStatus(id, StatusRunning, nil)
 			}
 		}(i)

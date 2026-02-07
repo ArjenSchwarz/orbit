@@ -33,7 +33,7 @@ type Variant struct {
 	// Metrics populated after completion
 	Cost         float64       `json:"cost,omitempty"`
 	CostUnit     string        `json:"cost_unit,omitempty"` // Cost unit type: "USD", "credits", or "premium_requests"
-	CostTotals   cost.Totals   `json:"cost_totals,omitempty"`
+	CostTotals   cost.Totals   `json:"cost_totals"`
 	Duration     time.Duration `json:"duration,omitempty"`
 	NumTurns     int           `json:"num_turns,omitempty"`
 	LinesAdded   *int          `json:"lines_added,omitempty"`

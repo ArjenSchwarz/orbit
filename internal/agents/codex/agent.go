@@ -112,14 +112,13 @@ func (a *Agent) Run(ctx context.Context, opts agents.RunOptions) (*agents.RunRes
 }
 
 // Resume continues an existing session.
-// Note: Codex uses --last to resume the most recent session.
+// Codex exec does not support session resumption, so this starts a fresh session.
 func (a *Agent) Resume(ctx context.Context, sessionID string, opts agents.RunOptions) (*agents.RunResult, error) {
-	opts.SessionID = sessionID
-	return a.execute(ctx, opts, true)
+	return a.execute(ctx, opts, false)
 }
 
 // buildArgs constructs the command-line arguments for a Codex session.
-func (a *Agent) buildArgs(opts agents.RunOptions, resume bool) []string {
+func (a *Agent) buildArgs(opts agents.RunOptions) []string {
 	prompt := opts.Prompt
 	if prompt == "" {
 		prompt = defaultPrompt
@@ -127,15 +126,11 @@ func (a *Agent) buildArgs(opts agents.RunOptions, resume bool) []string {
 
 	// Codex uses: codex exec "<prompt>"
 	// With --dangerously-bypass-approvals-and-sandbox for non-interactive operation
-	// With --last to resume previous session
+	// Note: codex exec does not support session resumption (no --last flag)
 	args := []string{"exec"}
 
 	if a.config.AutoApprove {
 		args = append(args, "--dangerously-bypass-approvals-and-sandbox")
-	}
-
-	if resume {
-		args = append(args, "--last")
 	}
 
 	// Add model flag if configured
@@ -156,8 +151,8 @@ func (a *Agent) buildArgs(opts agents.RunOptions, resume bool) []string {
 }
 
 // execute runs the Codex CLI with the given options.
-func (a *Agent) execute(ctx context.Context, opts agents.RunOptions, resume bool) (*agents.RunResult, error) {
-	args := a.buildArgs(opts, resume)
+func (a *Agent) execute(ctx context.Context, opts agents.RunOptions, _ bool) (*agents.RunResult, error) {
+	args := a.buildArgs(opts)
 
 	cmd := exec.CommandContext(ctx, a.cliPath, args...)
 	if opts.WorkDir != "" {

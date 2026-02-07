@@ -350,8 +350,8 @@ func (g *Git) GetRecentCommits(ctx context.Context, worktreePath, baseCommit str
 	}
 
 	var commits []Commit
-	lines := strings.Split(strings.TrimSpace(string(out)), "\n")
-	for _, line := range lines {
+	lines := strings.SplitSeq(strings.TrimSpace(string(out)), "\n")
+	for line := range lines {
 		if line == "" {
 			continue
 		}

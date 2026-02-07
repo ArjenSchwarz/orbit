@@ -21,11 +21,11 @@ type mockAgent struct {
 	exportCalled bool
 }
 
-func (m *mockAgent) Name() string                                              { return m.name }
-func (m *mockAgent) CLICommand() string                                        { return "mock" }
-func (m *mockAgent) IsInstalled() bool                                         { return true }
-func (m *mockAgent) Version() (string, error)                                  { return "1.0.0", nil }
-func (m *mockAgent) DefaultSessionDir() string                                 { return "/tmp" }
+func (m *mockAgent) Name() string              { return m.name }
+func (m *mockAgent) CLICommand() string        { return "mock" }
+func (m *mockAgent) IsInstalled() bool         { return true }
+func (m *mockAgent) Version() (string, error)  { return "1.0.0", nil }
+func (m *mockAgent) DefaultSessionDir() string { return "/tmp" }
 func (m *mockAgent) DiscoverSessions(ctx context.Context, projectDir string) ([]agents.SessionInfo, error) {
 	return nil, nil
 }
@@ -42,31 +42,31 @@ func (m *mockAgent) ExportSession(ctx context.Context, filename string) error {
 
 // mockGitClient implements variants.GitClient for testing.
 type mockGitClient struct {
-	currentBranch       string
-	headCommit          string
-	headCommitInPath    map[string]string
-	hasUncommittedChg   bool
-	worktrees           map[string]string // branch -> path
-	createdBranches     []string
-	createdWorktrees    []string
-	removedWorktrees    []string
-	deletedBranches     []string
-	rebaseCalled        bool
-	branchHasDiverged   bool
-	diffResult          string
-	commitLog           []string
-	diffStat            string
+	currentBranch     string
+	headCommit        string
+	headCommitInPath  map[string]string
+	hasUncommittedChg bool
+	worktrees         map[string]string // branch -> path
+	createdBranches   []string
+	createdWorktrees  []string
+	removedWorktrees  []string
+	deletedBranches   []string
+	rebaseCalled      bool
+	branchHasDiverged bool
+	diffResult        string
+	commitLog         []string
+	diffStat          string
 }
 
-func (m *mockGitClient) GetCurrentBranch() (string, error)          { return m.currentBranch, nil }
-func (m *mockGitClient) GetHeadCommit() (string, error)             { return m.headCommit, nil }
+func (m *mockGitClient) GetCurrentBranch() (string, error) { return m.currentBranch, nil }
+func (m *mockGitClient) GetHeadCommit() (string, error)    { return m.headCommit, nil }
 func (m *mockGitClient) GetHeadCommitInPath(path string) (string, error) {
 	if commit, ok := m.headCommitInPath[path]; ok {
 		return commit, nil
 	}
 	return m.headCommit, nil
 }
-func (m *mockGitClient) HasUncommittedChanges() (bool, error)       { return m.hasUncommittedChg, nil }
+func (m *mockGitClient) HasUncommittedChanges() (bool, error) { return m.hasUncommittedChg, nil }
 func (m *mockGitClient) CreateBranch(name string) error {
 	m.createdBranches = append(m.createdBranches, name)
 	return nil
@@ -521,9 +521,9 @@ abc123def456`,
 
 func TestParseImprovementCounts(t *testing.T) {
 	tests := map[string]struct {
-		report   string
-		applied  int
-		skipped  int
+		report  string
+		applied int
+		skipped int
 	}{
 		"with applied and skipped": {
 			report: `## Consolidation Report
@@ -893,7 +893,7 @@ func createTestManagerWithVariants(t *testing.T, numVariants int, specDir string
 	// Create worktree directories
 	worktrees := make([]string, numVariants)
 	headCommitInPath := make(map[string]string)
-	for i := 0; i < numVariants; i++ {
+	for i := range numVariants {
 		worktrees[i] = filepath.Join(specDir, ".orbit", "worktrees", "orbit-impl-"+string(rune('1'+i))+"-test-spec")
 		require.NoError(t, os.MkdirAll(worktrees[i], 0755))
 		headCommitInPath[worktrees[i]] = "commit" + string(rune('1'+i))

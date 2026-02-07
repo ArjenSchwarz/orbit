@@ -87,9 +87,9 @@ func (g *Generator) generateMarkdownReport(data *ReportData) error {
 				if fa.Preference > 0 {
 					header += fmt.Sprintf(" (Variant %d preferred)", fa.Preference)
 				}
-				b.Raw(output.FormatMarkdown, []byte(fmt.Sprintf("### %s\n", header)))
+				b.Raw(output.FormatMarkdown, fmt.Appendf(nil, "### %s\n", header))
 				for id, assessment := range fa.Variants {
-					b.Raw(output.FormatMarkdown, []byte(fmt.Sprintf("- **Variant %d:** %s\n", id, assessment)))
+					b.Raw(output.FormatMarkdown, fmt.Appendf(nil, "- **Variant %d:** %s\n", id, assessment))
 				}
 			}
 		})
@@ -118,9 +118,9 @@ func (g *Generator) generateMarkdownReport(data *ReportData) error {
 		builder.Section("Improvements from Other Variants", func(b *output.Builder) {
 			b.Text("These improvements from non-chosen variants could enhance the recommended implementation:")
 			for _, imp := range data.Comparison.CrossVariantImprovements {
-				b.Raw(output.FormatMarkdown, []byte(fmt.Sprintf("### From Variant %d (%s priority)\n", imp.SourceVariantID, imp.Priority)))
+				b.Raw(output.FormatMarkdown, fmt.Appendf(nil, "### From Variant %d (%s priority)\n", imp.SourceVariantID, imp.Priority))
 				b.Raw(output.FormatMarkdown, []byte(imp.Description+"\n"))
-				b.Raw(output.FormatMarkdown, []byte(fmt.Sprintf("**Rationale:** %s\n", imp.Rationale)))
+				b.Raw(output.FormatMarkdown, fmt.Appendf(nil, "**Rationale:** %s\n", imp.Rationale))
 			}
 		})
 	}
@@ -138,18 +138,19 @@ func (g *Generator) generateMarkdownReport(data *ReportData) error {
 			for _, variantID := range variantIDs {
 				learnings := learningsByVariant[variantID]
 				// Build header with agent name if available (improvement from V3)
-				header := fmt.Sprintf("Variant %d", variantID)
+				var header strings.Builder
+				header.WriteString(fmt.Sprintf("Variant %d", variantID))
 				for _, v := range data.Variants {
 					if v.ID == variantID && v.Agent != "" {
-						header += fmt.Sprintf(" (%s)", v.Agent)
+						header.WriteString(fmt.Sprintf(" (%s)", v.Agent))
 						break
 					}
 				}
-				b.Raw(output.FormatMarkdown, []byte(fmt.Sprintf("### %s\n\n", header)))
+				b.Raw(output.FormatMarkdown, fmt.Appendf(nil, "### %s\n\n", header.String()))
 
 				for _, l := range learnings {
 					// Category badge + title [Req 3.3]
-					b.Raw(output.FormatMarkdown, []byte(fmt.Sprintf("#### [%s] %s\n\n", l.Category, l.Title)))
+					b.Raw(output.FormatMarkdown, fmt.Appendf(nil, "#### [%s] %s\n\n", l.Category, l.Title))
 
 					// Description
 					if l.Description != "" {
@@ -157,14 +158,14 @@ func (g *Generator) generateMarkdownReport(data *ReportData) error {
 					}
 
 					// Rationale
-					b.Raw(output.FormatMarkdown, []byte(fmt.Sprintf("**Why it matters:** %s\n\n", l.Rationale)))
+					b.Raw(output.FormatMarkdown, fmt.Appendf(nil, "**Why it matters:** %s\n\n", l.Rationale))
 
 					// File references [Req 3.4] - rendered as backticks, not clickable links
 					refs := make([]string, len(l.FileReferences))
 					for i, ref := range l.FileReferences {
 						refs[i] = fmt.Sprintf("`%s`", ref)
 					}
-					b.Raw(output.FormatMarkdown, []byte(fmt.Sprintf("**Files:** %s\n\n", strings.Join(refs, ", "))))
+					b.Raw(output.FormatMarkdown, fmt.Appendf(nil, "**Files:** %s\n\n", strings.Join(refs, ", ")))
 				}
 			}
 		})
@@ -188,7 +189,7 @@ func (g *Generator) generateMarkdownReport(data *ReportData) error {
 					// Create relative link for markdown [Req 1.2]
 					sb.Text(fmt.Sprintf("Diff is large (>%d lines). [View full diff](%s)", LargeDiffThreshold, v.DiffFile))
 				} else if v.Diff != "" {
-					sb.Raw(output.FormatMarkdown, []byte(fmt.Sprintf("```diff\n%s\n```", v.Diff)))
+					sb.Raw(output.FormatMarkdown, fmt.Appendf(nil, "```diff\n%s\n```", v.Diff))
 				} else {
 					sb.Text("No changes from base commit.")
 				}

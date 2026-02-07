@@ -86,8 +86,9 @@ func DetectFormat(r io.Reader) (Format, []byte, error) {
 	return detectJSONLFormat(chunk)
 }
 
-// detectKiroFormat checks if content is Kiro plain JSON format.
-// Kiro format is a single JSON object with conversation_id and non-empty history fields.
+// detectKiroFormat checks if content is Kiro plain JSON format (CLI or IDE).
+// Kiro CLI format is a single JSON object with conversation_id and non-empty history fields.
+// Kiro IDE format is a single JSON object with executionId, chat array, and metadata fields.
 func detectKiroFormat(data []byte) Format {
 	// Kiro sessions can be large; we only need to check the beginning structure.
 	// Look for the characteristic fields: conversation_id and history array start.
@@ -107,12 +108,30 @@ func detectKiroFormat(data []byte) Format {
 			// Likely Kiro but truncated - still return as Kiro since full file would parse
 			return FormatKiro
 		}
+		// Check for truncated Kiro IDE format
+		if strings.Contains(dataStr, `"executionId"`) &&
+			strings.Contains(dataStr, `"chat"`) &&
+			strings.Contains(dataStr, `"metadata"`) {
+			return FormatKiroIDE
+		}
 		return FormatUnknown
 	}
 
-	// Must have both fields populated to be valid Kiro format
+	// Must have both fields populated to be valid Kiro CLI format
 	if kiroCheck.ConversationID != "" && len(kiroCheck.History) > 0 {
 		return FormatKiro
+	}
+
+	// Check for Kiro IDE format: executionId + chat + metadata
+	var ideCheck struct {
+		ExecutionID string `json:"executionId"`
+		Chat        []any  `json:"chat"`
+		Metadata    any    `json:"metadata"`
+	}
+	if err := json.Unmarshal(data, &ideCheck); err == nil {
+		if ideCheck.ExecutionID != "" && ideCheck.Chat != nil && ideCheck.Metadata != nil {
+			return FormatKiroIDE
+		}
 	}
 
 	return FormatUnknown
@@ -123,9 +142,9 @@ func detectKiroFormat(data []byte) Format {
 // Also skips lines that fail to parse (may be truncated due to chunk size).
 func detectJSONLFormat(data []byte) (Format, []byte, error) {
 	// Split into lines and find first format-defining line
-	lines := bytes.Split(data, []byte("\n"))
+	lines := bytes.SplitSeq(data, []byte("\n"))
 
-	for _, line := range lines {
+	for line := range lines {
 		trimmed := bytes.TrimSpace(line)
 		if len(trimmed) == 0 {
 			continue
@@ -247,7 +266,7 @@ type ParseWarning struct {
 }
 
 // Parse reads a transcript file and automatically detects its format.
-// It handles all supported formats: Claude JSONL, Codex JSONL, Kiro JSON, and Copilot JSONL.
+// It handles all supported formats: Claude JSONL, Codex JSONL, Kiro CLI JSON, Kiro IDE JSON, and Copilot JSONL.
 // Use this function when the format is unknown; use ParseJSONLWithFormat when the format is known.
 func Parse(r io.Reader) (*ParseResult, error) {
 	// Use DetectFormat to identify the format (handles both JSON and JSONL)
@@ -262,10 +281,15 @@ func Parse(r io.Reader) (*ParseResult, error) {
 	return ParseJSONLWithFormat(combined, format)
 }
 
+// ParseOptions provides optional configuration for format-specific parsers.
+type ParseOptions struct {
+	KiroIDECostPath string // execution detail file path for cost extraction
+}
+
 // ParseJSONLWithFormat reads JSONL from the provided reader using the specified format.
 // This skips format detection and directly uses the given parser.
 // Use Parse for auto-detection of all formats, or ParseJSONL for JSONL-only auto-detection.
-func ParseJSONLWithFormat(r io.Reader, format Format) (*ParseResult, error) {
+func ParseJSONLWithFormat(r io.Reader, format Format, opts ...ParseOptions) (*ParseResult, error) {
 	switch format {
 	case FormatCodex:
 		return ParseCodexJSONL(r)
@@ -275,6 +299,11 @@ func ParseJSONLWithFormat(r io.Reader, format Format) (*ParseResult, error) {
 		return ParseKiro(r)
 	case FormatCopilot:
 		return ParseCopilot(r)
+	case FormatKiroIDE:
+		if len(opts) > 0 && opts[0].KiroIDECostPath != "" {
+			return ParseKiroIDEWithCostPath(r, opts[0].KiroIDECostPath)
+		}
+		return ParseKiroIDE(r)
 	default:
 		return nil, fmt.Errorf("unsupported format: %d", format)
 	}

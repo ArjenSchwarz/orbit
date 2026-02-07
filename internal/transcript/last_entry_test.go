@@ -129,7 +129,7 @@ func TestGetLastDisplayableEntry_LargeFile(t *testing.T) {
 	// Each line is ~100 bytes, so we need ~700 lines to exceed 64KB
 	// Add 800 user messages (about 80KB) to ensure we exceed the 64KB initial chunk
 	var content strings.Builder
-	for i := 0; i < 800; i++ {
+	for i := range 800 {
 		// Create lines that are about 100 bytes each
 		content.WriteString(`{"type":"user","message":{"role":"user","content":"This is a filler message number ` +
 			fmt.Sprintf("%04d", i) + ` with some extra padding to make it longer"}}` + "\n")

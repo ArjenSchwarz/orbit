@@ -19,9 +19,9 @@ import (
 	output "github.com/ArjenSchwarz/go-output/v2"
 	"github.com/arjenschwarz/orbit/internal/agents"
 	_ "github.com/arjenschwarz/orbit/internal/agents/claudecode" // Register claudecode agent
-	"github.com/arjenschwarz/orbit/internal/cost"
 	"github.com/arjenschwarz/orbit/internal/comparison"
 	"github.com/arjenschwarz/orbit/internal/consolidation"
+	"github.com/arjenschwarz/orbit/internal/cost"
 	"github.com/arjenschwarz/orbit/internal/debug"
 	"github.com/arjenschwarz/orbit/internal/display"
 	orberrors "github.com/arjenschwarz/orbit/internal/errors"
@@ -117,17 +117,17 @@ func getSessionDuration(result *agents.RunResult) time.Duration {
 
 // Config holds the orchestrator configuration.
 type Config struct {
-	TasksFile       string
-	LogDir          string
-	BranchName      string
-	SkipPermissions bool
-	Verbose         bool
-	DryRun          bool
-	Debug           bool   // Enable debug logging for troubleshooting
-	CentralizedLog  bool   // Enable centralized file logging
-	RunID           string // UUID for this orchestration run
-	Version         string // Orbit version for logging
-	WorkingDir      string
+	TasksFile        string
+	LogDir           string
+	BranchName       string
+	SkipPermissions  bool
+	Verbose          bool
+	DryRun           bool
+	Debug            bool   // Enable debug logging for troubleshooting
+	CentralizedLog   bool   // Enable centralized file logging
+	RunID            string // UUID for this orchestration run
+	Version          string // Orbit version for logging
+	WorkingDir       string
 	Command          string        // Custom phase command
 	PrePrompt        string        // AI prompt before phases start (empty = disabled)
 	PostPrompt       string        // Post-completion AI prompt (renamed from PostCommand, empty = disabled)
@@ -135,7 +135,7 @@ type Config struct {
 	AgentPostCommand string        // Shell command after last phase (from agent config)
 	CommandTimeout   time.Duration // Timeout for shell commands (default 5m)
 	DateSubdirs      bool          // If true, use timestamped subdirectories for logs
-	ContinueSession bool   // If true, continue existing Claude sessions when resuming
+	ContinueSession  bool          // If true, continue existing Claude sessions when resuming
 
 	// Agent configuration
 	Agent        string                        // Agent name (claude-code, codex, kiro, copilot)
@@ -663,11 +663,11 @@ func (o *Orbit) runPhaseWithRetry(phase int) error {
 
 		// Log error with chain for structured output (Req 3.8)
 		o.debug.LogErrorWithChain("Phase execution failed", err, map[string]any{
-			"phase":           phase,
-			"attempt":         attempt + 1,
-			"error_class":     classified.Class.String(),
-			"retryable":       classified.Class.IsRetryable(),
-			"is_rate_limit":   classified.Class.IsRateLimitWait(),
+			"phase":         phase,
+			"attempt":       attempt + 1,
+			"error_class":   classified.Class.String(),
+			"retryable":     classified.Class.IsRetryable(),
+			"is_rate_limit": classified.Class.IsRateLimitWait(),
 		})
 
 		lastErr = err
@@ -1008,7 +1008,7 @@ func (o *Orbit) runPrePrompt() error {
 		case logs.PrePromptStatusStarted:
 			// Started but crashed - will attempt resume below
 			o.debug.Log("Pre-prompt was interrupted, will resume session: %s", sessionID)
-		// case PrePromptStatusNotStarted: fall through to start fresh
+			// case PrePromptStatusNotStarted: fall through to start fresh
 		}
 	}
 
@@ -1239,7 +1239,7 @@ func (o *Orbit) runPostPrompt() error {
 func (o *Orbit) runPostPromptWithRetry() error {
 	var lastErr error
 
-	for attempt := 0; attempt < maxRetries; attempt++ {
+	for attempt := range maxRetries {
 		err := o.runPostPrompt()
 		if err == nil {
 			return nil

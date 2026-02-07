@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"html"
+	"maps"
 	"strings"
 	"unicode/utf8"
 )
@@ -89,9 +90,7 @@ func RenderEntries(entries []Entry, toolMeta map[string]ToolMeta, skillDescripti
 	// Create a working copy of toolMeta to accumulate state during rendering
 	// This is needed because formatToolUse populates the map as it encounters tool_use entries
 	workingMeta := make(map[string]toolMetadata, len(toolMeta))
-	for k, v := range toolMeta {
-		workingMeta[k] = v
-	}
+	maps.Copy(workingMeta, toolMeta)
 
 	// Render each group
 	for _, group := range groups {
