@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Fix Copilot premium requests not appearing in multi-variant run metrics and comparison reports; `getCostUSD` (now `getCostValue`) was ignoring the `PremiumRequests` field, causing cost to always be 0 for Copilot variants
 - Fix `apsis -l` not filtering Codex sessions by working directory; sessions from other projects were included in the listing
 
 ### Added

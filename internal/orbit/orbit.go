@@ -70,16 +70,19 @@ func (registryResolver) GetAgent(name string, cfg agents.AgentConfig) (agents.Ag
 // DefaultAgentResolver uses the global agent registry.
 var DefaultAgentResolver AgentResolver = registryResolver{}
 
-// getCostUSD extracts the cost in USD from a RunResult, returning 0 if cost is nil.
-// Falls back to credits if USD is not available (for agents like Kiro that use credits).
-func getCostUSD(result *agents.RunResult) float64 {
+// getCostValue extracts the primary cost value from a RunResult, returning 0 if cost is nil.
+// Checks CostUSD first, then Credits, then PremiumRequests.
+func getCostValue(result *agents.RunResult) float64 {
 	if result == nil || result.Cost == nil {
 		return 0
 	}
 	if result.Cost.CostUSD > 0 {
 		return result.Cost.CostUSD
 	}
-	return result.Cost.Credits
+	if result.Cost.Credits > 0 {
+		return result.Cost.Credits
+	}
+	return result.Cost.PremiumRequests
 }
 
 // formatCost returns a human-readable cost string from a RunResult.
@@ -902,7 +905,7 @@ func (o *Orbit) runPhase(phase int) error {
 		"duration":   result.Duration.String(),
 		"session_id": result.SessionID,
 		"num_turns":  result.NumTurns,
-		"cost_usd":   getCostUSD(result),
+		"cost_usd":   getCostValue(result),
 	}
 	if result.Cost != nil && result.Cost.Credits > 0 {
 		agentLogFields["credits"] = result.Cost.Credits
@@ -2054,8 +2057,8 @@ func (o *Orbit) runVariant(ctx context.Context, v *variants.Variant) error {
 
 		// Accumulate metrics
 		if phaseResult != nil {
-			phaseCost += getCostUSD(phaseResult)
-			totalCost += getCostUSD(phaseResult)
+			phaseCost += getCostValue(phaseResult)
+			totalCost += getCostValue(phaseResult)
 			totalTurns += phaseResult.NumTurns
 		}
 	}
@@ -2096,7 +2099,7 @@ func (o *Orbit) runVariant(ctx context.Context, v *variants.Variant) error {
 			}
 		}
 		if postResult != nil {
-			totalCost += getCostUSD(postResult)
+			totalCost += getCostValue(postResult)
 			totalTurns += postResult.NumTurns
 		}
 		log.Printf("Variant %d: post-prompt finished", v.ID)
