@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- Fix `apsis -l` not filtering Codex sessions by working directory; sessions from other projects were included in the listing
+
 ### Added
 
 - Add GitHub Actions CI workflow for automated testing and linting on push/PR

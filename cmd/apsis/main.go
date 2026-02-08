@@ -500,9 +500,51 @@ func getCodexSessionTimestamp(path string) (time.Time, error) {
 	return info.ModTime(), nil
 }
 
-// listCodexSessions returns all Codex sessions from ~/.codex/sessions/.
+// normalizePath resolves symlinks and cleans a file path for reliable comparison.
+// Returns the cleaned path if symlink resolution fails (e.g., path doesn't exist).
+func normalizePath(p string) string {
+	resolved, err := filepath.EvalSymlinks(p)
+	if err != nil {
+		return filepath.Clean(p)
+	}
+	return filepath.Clean(resolved)
+}
+
+// getCodexSessionCwd extracts the working directory from a Codex session file.
+// It reads the first line looking for a session_meta event with a cwd field in its payload.
+// Returns empty string if cwd cannot be extracted.
+func getCodexSessionCwd(path string) string {
+	f, err := os.Open(path)
+	if err != nil {
+		return ""
+	}
+	defer func() { _ = f.Close() }()
+
+	scanner := bufio.NewScanner(f)
+	if scanner.Scan() {
+		var entry struct {
+			Type    string          `json:"type"`
+			Payload json.RawMessage `json:"payload"`
+		}
+		if err := json.Unmarshal(scanner.Bytes(), &entry); err == nil {
+			if entry.Type == "session_meta" && len(entry.Payload) > 0 {
+				var meta struct {
+					Cwd string `json:"cwd"`
+				}
+				if err := json.Unmarshal(entry.Payload, &meta); err == nil {
+					return meta.Cwd
+				}
+			}
+		}
+	}
+
+	return ""
+}
+
+// listCodexSessions returns Codex sessions from ~/.codex/sessions/ filtered by project path.
+// Only sessions whose cwd matches projectPath are returned.
 // The homeDir parameter allows testing with a mock home directory.
-func listCodexSessions(homeDir string) ([]SessionInfo, error) {
+func listCodexSessions(homeDir, projectPath string) ([]SessionInfo, error) {
 	codexDir := filepath.Join(homeDir, ".codex", "sessions")
 
 	// Check if directory exists
@@ -529,6 +571,17 @@ func listCodexSessions(homeDir string) ([]SessionInfo, error) {
 		// Skip empty files
 		if info.Size() == 0 {
 			return nil
+		}
+
+		// Filter by project path: skip sessions whose cwd doesn't match
+		if projectPath != "" {
+			cwd := getCodexSessionCwd(path)
+			if cwd == "" {
+				return nil // Skip sessions without cwd (legacy files)
+			}
+			if normalizePath(cwd) != normalizePath(projectPath) {
+				return nil
+			}
 		}
 
 		// Extract session ID from filename (the UUID part)
@@ -642,11 +695,11 @@ func listKiroIDESessions(projectPath string) ([]SessionInfo, error) {
 
 	// Group .chat files by executionId, keeping the best representative per group.
 	type chatCandidate struct {
-		path      string
+		path       string
 		entryCount int
-		mtime     time.Time
-		startTime int64
-		size      int64
+		mtime      time.Time
+		startTime  int64
+		size       int64
 	}
 	best := make(map[string]*chatCandidate)
 
@@ -730,9 +783,9 @@ func listKiroIDESessions(projectPath string) ([]SessionInfo, error) {
 // kiroIDEChatHeader is a lightweight struct for parsing .chat files during discovery.
 // Only extracts the fields needed for listing, not the full chat content.
 type kiroIDEChatHeader struct {
-	ExecutionID string              `json:"executionId"`
-	Chat        []json.RawMessage   `json:"chat"`
-	Metadata    *kiroIDEMetadata    `json:"metadata"`
+	ExecutionID string            `json:"executionId"`
+	Chat        []json.RawMessage `json:"chat"`
+	Metadata    *kiroIDEMetadata  `json:"metadata"`
 }
 
 type kiroIDEMetadata struct {
@@ -1021,7 +1074,7 @@ func listAllSessions(projectPath string) ([]SessionInfo, error) {
 	}
 
 	// Get Codex sessions
-	codexSessions, err := listCodexSessions(homeDir)
+	codexSessions, err := listCodexSessions(homeDir, projectPath)
 	if err != nil {
 		// Log warning but continue with other sessions
 		fmt.Fprintf(os.Stderr, "Warning: could not list Codex sessions: %v\n", err)
