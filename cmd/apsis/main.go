@@ -500,6 +500,16 @@ func getCodexSessionTimestamp(path string) (time.Time, error) {
 	return info.ModTime(), nil
 }
 
+// normalizePath resolves symlinks and cleans a file path for reliable comparison.
+// Returns the cleaned path if symlink resolution fails (e.g., path doesn't exist).
+func normalizePath(p string) string {
+	resolved, err := filepath.EvalSymlinks(p)
+	if err != nil {
+		return filepath.Clean(p)
+	}
+	return filepath.Clean(resolved)
+}
+
 // getCodexSessionCwd extracts the working directory from a Codex session file.
 // It reads the first line looking for a session_meta event with a cwd field in its payload.
 // Returns empty string if cwd cannot be extracted.
@@ -566,11 +576,10 @@ func listCodexSessions(homeDir, projectPath string) ([]SessionInfo, error) {
 		// Filter by project path: skip sessions whose cwd doesn't match
 		if projectPath != "" {
 			cwd := getCodexSessionCwd(path)
-			if cwd != "" && cwd != projectPath {
-				return nil
-			}
-			// If cwd is empty (old sessions without it), skip them too
 			if cwd == "" {
+				return nil // Skip sessions without cwd (legacy files)
+			}
+			if normalizePath(cwd) != normalizePath(projectPath) {
 				return nil
 			}
 		}

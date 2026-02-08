@@ -1178,6 +1178,42 @@ func TestListCodexSessions_FiltersByProjectPath(t *testing.T) {
 	}
 }
 
+func TestListCodexSessions_MatchesSymlinkedPaths(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	// Create a real project directory and a symlink to it
+	realDir := filepath.Join(tmpDir, "real-project")
+	if err := os.MkdirAll(realDir, 0755); err != nil {
+		t.Fatal(err)
+	}
+	symlinkDir := filepath.Join(tmpDir, "link-project")
+	if err := os.Symlink(realDir, symlinkDir); err != nil {
+		t.Fatal(err)
+	}
+
+	sessionsDir := filepath.Join(tmpDir, ".codex", "sessions")
+	if err := os.MkdirAll(sessionsDir, 0755); err != nil {
+		t.Fatal(err)
+	}
+
+	uuid := "aaaaaaaa-1111-2222-3333-444444444444"
+	// Session cwd uses the real path
+	session := `{"timestamp":"2026-01-05T10:00:00Z","type":"session_meta","payload":{"id":"` + uuid + `","cwd":"` + realDir + `"}}`
+	if err := os.WriteFile(filepath.Join(sessionsDir, "session-"+uuid+".jsonl"), []byte(session), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	// Query using the symlink path — should still match
+	sessions, err := listCodexSessions(tmpDir, symlinkDir)
+	if err != nil {
+		t.Fatalf("listCodexSessions failed: %v", err)
+	}
+
+	if len(sessions) != 1 {
+		t.Fatalf("expected 1 session when querying via symlink, got %d", len(sessions))
+	}
+}
+
 func TestListCodexSessions_NonExistentDirectory(t *testing.T) {
 	tmpDir := t.TempDir()
 	// Don't create .codex/sessions
