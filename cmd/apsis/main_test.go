@@ -1104,9 +1104,9 @@ func TestListCodexSessions_Basic(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// Create two Codex session files with different timestamps
-	session1 := `{"timestamp":"2026-01-05T10:00:00Z","type":"session_meta","payload":{"id":"019b892c-3a14-7773-bd76-6465a8a0b634"}}`
-	session2 := `{"timestamp":"2026-01-05T09:00:00Z","type":"session_meta","payload":{"id":"019b892c-3a14-7773-bd76-6465a8a0b635"}}`
+	// Create two Codex session files with different timestamps, both for the same project
+	session1 := `{"timestamp":"2026-01-05T10:00:00Z","type":"session_meta","payload":{"id":"019b892c-3a14-7773-bd76-6465a8a0b634","cwd":"/test/project"}}`
+	session2 := `{"timestamp":"2026-01-05T09:00:00Z","type":"session_meta","payload":{"id":"019b892c-3a14-7773-bd76-6465a8a0b635","cwd":"/test/project"}}`
 
 	sessionFile1 := filepath.Join(sessionsDir, "session-019b892c-3a14-7773-bd76-6465a8a0b634.jsonl")
 	sessionFile2 := filepath.Join(sessionsDir, "session-019b892c-3a14-7773-bd76-6465a8a0b635.jsonl")
@@ -1118,7 +1118,7 @@ func TestListCodexSessions_Basic(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	sessions, err := listCodexSessions(tmpDir)
+	sessions, err := listCodexSessions(tmpDir, "/test/project")
 	if err != nil {
 		t.Fatalf("listCodexSessions failed: %v", err)
 	}
@@ -1135,11 +1135,54 @@ func TestListCodexSessions_Basic(t *testing.T) {
 	}
 }
 
+func TestListCodexSessions_FiltersByProjectPath(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	sessionsDir := filepath.Join(tmpDir, ".codex", "sessions", "2026", "01", "05")
+	if err := os.MkdirAll(sessionsDir, 0755); err != nil {
+		t.Fatal(err)
+	}
+
+	uuidA := "aaaaaaaa-1111-2222-3333-444444444444"
+	uuidB := "bbbbbbbb-1111-2222-3333-444444444444"
+	uuidC := "cccccccc-1111-2222-3333-444444444444"
+
+	// Session for /project-a
+	sessionA := `{"timestamp":"2026-01-05T10:00:00Z","type":"session_meta","payload":{"id":"` + uuidA + `","cwd":"/project-a"}}`
+	// Session for /project-b
+	sessionB := `{"timestamp":"2026-01-05T11:00:00Z","type":"session_meta","payload":{"id":"` + uuidB + `","cwd":"/project-b"}}`
+	// Session with no cwd
+	sessionNoCwd := `{"timestamp":"2026-01-05T12:00:00Z","type":"session_meta","payload":{"id":"` + uuidC + `"}}`
+
+	for name, content := range map[string]string{
+		"session-" + uuidA + ".jsonl": sessionA,
+		"session-" + uuidB + ".jsonl": sessionB,
+		"session-" + uuidC + ".jsonl": sessionNoCwd,
+	} {
+		if err := os.WriteFile(filepath.Join(sessionsDir, name), []byte(content), 0644); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	// Filter for /project-a should return only session A
+	sessions, err := listCodexSessions(tmpDir, "/project-a")
+	if err != nil {
+		t.Fatalf("listCodexSessions failed: %v", err)
+	}
+
+	if len(sessions) != 1 {
+		t.Fatalf("expected 1 session for /project-a, got %d", len(sessions))
+	}
+	if sessions[0].ID != uuidA {
+		t.Errorf("expected session ID %q, got %q", uuidA, sessions[0].ID)
+	}
+}
+
 func TestListCodexSessions_NonExistentDirectory(t *testing.T) {
 	tmpDir := t.TempDir()
 	// Don't create .codex/sessions
 
-	sessions, err := listCodexSessions(tmpDir)
+	sessions, err := listCodexSessions(tmpDir, "/any/project")
 	if err != nil {
 		t.Fatalf("listCodexSessions should not error when directory doesn't exist: %v", err)
 	}
@@ -1212,8 +1255,8 @@ func TestUnifiedSessionListing_MergeClaudeAndCodex(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// Create Codex session
-	codexSession := `{"timestamp":"2026-01-05T09:00:00Z","type":"session_meta","payload":{"id":"019b892c-3a14-7773-bd76-6465a8a0b634"}}`
+	// Create Codex session (with cwd matching the project path)
+	codexSession := `{"timestamp":"2026-01-05T09:00:00Z","type":"session_meta","payload":{"id":"019b892c-3a14-7773-bd76-6465a8a0b634","cwd":"/test/project"}}`
 	if err := os.WriteFile(filepath.Join(codexSessionsDir, "session-019b892c-3a14-7773-bd76-6465a8a0b634.jsonl"), []byte(codexSession), 0644); err != nil {
 		t.Fatal(err)
 	}
@@ -1297,8 +1340,8 @@ func TestUnifiedSessionListing_OnlyCodexAvailable(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// Create Codex session
-	codexSession := `{"timestamp":"2026-01-05T09:00:00Z","type":"session_meta","payload":{"id":"019b892c-3a14-7773-bd76-6465a8a0b634"}}`
+	// Create Codex session (with cwd matching the project path)
+	codexSession := `{"timestamp":"2026-01-05T09:00:00Z","type":"session_meta","payload":{"id":"019b892c-3a14-7773-bd76-6465a8a0b634","cwd":"/test/project"}}`
 	if err := os.WriteFile(filepath.Join(codexSessionsDir, "session-019b892c-3a14-7773-bd76-6465a8a0b634.jsonl"), []byte(codexSession), 0644); err != nil {
 		t.Fatal(err)
 	}
@@ -1603,13 +1646,13 @@ func TestListCodexSessions_IgnoresEmptyFiles_Negative(t *testing.T) {
 
 	// Create valid file
 	validUUID := "019b892c-3a14-7773-bd76-6465a8a0b634"
-	validSession := `{"timestamp":"2026-01-05T00:22:15.725Z","type":"session_meta","payload":{"id":"019b892c-3a14-7773-bd76-6465a8a0b634"}}`
+	validSession := `{"timestamp":"2026-01-05T00:22:15.725Z","type":"session_meta","payload":{"id":"019b892c-3a14-7773-bd76-6465a8a0b634","cwd":"/test/project"}}`
 	validFile := filepath.Join(sessionsDir, "session-"+validUUID+".jsonl")
 	if err := os.WriteFile(validFile, []byte(validSession), 0644); err != nil {
 		t.Fatal(err)
 	}
 
-	sessions, err := listCodexSessions(tmpDir)
+	sessions, err := listCodexSessions(tmpDir, "/test/project")
 	if err != nil {
 		t.Fatalf("listCodexSessions failed: %v", err)
 	}
@@ -1900,9 +1943,9 @@ func TestIntegration_ListMixedSessions(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// Create Codex sessions with different timestamps
-	codexSession1 := `{"timestamp":"2026-01-05T08:00:00Z","type":"session_meta","payload":{"id":"019b892c-3a14-7773-bd76-6465a8a0b634"}}`
-	codexSession2 := `{"timestamp":"2026-01-05T12:00:00Z","type":"session_meta","payload":{"id":"abcd1234-5678-90ab-cdef-1234567890ab"}}`
+	// Create Codex sessions with different timestamps (cwd matching project path)
+	codexSession1 := `{"timestamp":"2026-01-05T08:00:00Z","type":"session_meta","payload":{"id":"019b892c-3a14-7773-bd76-6465a8a0b634","cwd":"/test/project"}}`
+	codexSession2 := `{"timestamp":"2026-01-05T12:00:00Z","type":"session_meta","payload":{"id":"abcd1234-5678-90ab-cdef-1234567890ab","cwd":"/test/project"}}`
 	if err := os.WriteFile(filepath.Join(codexSessionsDir, "session-019b892c-3a14-7773-bd76-6465a8a0b634.jsonl"), []byte(codexSession1), 0644); err != nil {
 		t.Fatal(err)
 	}
@@ -1985,7 +2028,8 @@ func TestIntegration_ListWithOnlyCodexSessions(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// Create multiple Codex sessions
+	// Create multiple Codex sessions (all with cwd matching the project)
+	projectPath := "/test/project"
 	sessions := []struct {
 		uuid      string
 		timestamp string
@@ -1996,7 +2040,7 @@ func TestIntegration_ListWithOnlyCodexSessions(t *testing.T) {
 	}
 
 	for _, s := range sessions {
-		content := fmt.Sprintf(`{"timestamp":"%s","type":"session_meta","payload":{"id":"%s"}}`, s.timestamp, s.uuid)
+		content := fmt.Sprintf(`{"timestamp":"%s","type":"session_meta","payload":{"id":"%s","cwd":"%s"}}`, s.timestamp, s.uuid, projectPath)
 		filename := filepath.Join(codexSessionsDir, "session-"+s.uuid+".jsonl")
 		if err := os.WriteFile(filename, []byte(content), 0644); err != nil {
 			t.Fatal(err)
@@ -2011,7 +2055,7 @@ func TestIntegration_ListWithOnlyCodexSessions(t *testing.T) {
 	defer func() { _ = os.Setenv("HOME", origHomeDir) }()
 
 	// List sessions
-	result, err := listAllSessions("/nonexistent/project")
+	result, err := listAllSessions(projectPath)
 	if err != nil {
 		t.Fatalf("listAllSessions failed: %v", err)
 	}
@@ -2043,12 +2087,12 @@ func TestIntegration_SessionOutputFormat(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// Create Codex session
+	// Create Codex session (with cwd matching the project path)
 	codexSessionsDir := filepath.Join(homeDir, ".codex", "sessions", "2026", "01", "05")
 	if err := os.MkdirAll(codexSessionsDir, 0755); err != nil {
 		t.Fatal(err)
 	}
-	codexSession := `{"timestamp":"2026-01-05T09:00:00Z","type":"session_meta","payload":{"id":"019b892c-3a14-7773-bd76-6465a8a0b634"}}`
+	codexSession := `{"timestamp":"2026-01-05T09:00:00Z","type":"session_meta","payload":{"id":"019b892c-3a14-7773-bd76-6465a8a0b634","cwd":"/test/project"}}`
 	if err := os.WriteFile(filepath.Join(codexSessionsDir, "session-019b892c-3a14-7773-bd76-6465a8a0b634.jsonl"), []byte(codexSession), 0644); err != nil {
 		t.Fatal(err)
 	}
