@@ -1673,3 +1673,61 @@ func TestExecutionOrder_SkipsUnconfigured(t *testing.T) {
 	// Verify agent was NOT called
 	agent.Recorder().AssertCallCount(t, 0)
 }
+
+func TestGetCostValue_PremiumRequests(t *testing.T) {
+	t.Parallel()
+
+	tests := map[string]struct {
+		result *agents.RunResult
+		want   float64
+	}{
+		"nil result": {
+			result: nil,
+			want:   0,
+		},
+		"nil cost": {
+			result: &agents.RunResult{},
+			want:   0,
+		},
+		"usd cost": {
+			result: &agents.RunResult{
+				Cost: &agents.CostMetrics{CostUSD: 1.50},
+			},
+			want: 1.50,
+		},
+		"credits cost": {
+			result: &agents.RunResult{
+				Cost: &agents.CostMetrics{Credits: 3.25},
+			},
+			want: 3.25,
+		},
+		"premium requests": {
+			result: &agents.RunResult{
+				Cost: &agents.CostMetrics{PremiumRequests: 42.5},
+			},
+			want: 42.5,
+		},
+		"usd takes precedence over credits": {
+			result: &agents.RunResult{
+				Cost: &agents.CostMetrics{CostUSD: 2.0, Credits: 5.0},
+			},
+			want: 2.0,
+		},
+		"usd takes precedence over premium requests": {
+			result: &agents.RunResult{
+				Cost: &agents.CostMetrics{CostUSD: 2.0, PremiumRequests: 10.0},
+			},
+			want: 2.0,
+		},
+	}
+
+	for name, tc := range tests {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			got := getCostValue(tc.result)
+			if got != tc.want {
+				t.Errorf("getCostValue() = %v, want %v", got, tc.want)
+			}
+		})
+	}
+}
