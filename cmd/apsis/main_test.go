@@ -2910,6 +2910,20 @@ func setupKiroIDEWorkspace(t *testing.T) (homeDir, workspaceDir, projectPath str
 	}
 	t.Cleanup(func() { _ = os.Setenv("HOME", origHome) })
 
+	// On Linux, os.UserConfigDir() prefers XDG_CONFIG_HOME over $HOME/.config.
+	// Unset it so the test directory structure (under $HOME/.config) is found.
+	if runtime.GOOS == "linux" {
+		origXDG := os.Getenv("XDG_CONFIG_HOME")
+		if err := os.Unsetenv("XDG_CONFIG_HOME"); err != nil {
+			t.Fatalf("unset XDG_CONFIG_HOME: %v", err)
+		}
+		t.Cleanup(func() {
+			if origXDG != "" {
+				_ = os.Setenv("XDG_CONFIG_HOME", origXDG)
+			}
+		})
+	}
+
 	return homeDir, workspaceDir, projectPath
 }
 
