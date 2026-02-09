@@ -7,8 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Render tool/action results in Kiro IDE transcripts by converting execution detail actions (readFiles, replace, create, append, runCommand, search) into tool_use/tool_result entry pairs that the existing renderer displays
+
 ### Fixed
 
+- Skip empty assistant sections in transcript rendering caused by whitespace-only text entries from Claude streaming chunks
+- Skip unknown JSONL entry types (e.g., `file-history-snapshot`) during format detection instead of failing with "unrecognized log format" error. When format detection fails, `Parse()` falls back to the Claude parser which gracefully returns 0 entries for unrecognized content.
 - Normalize session timestamps to local timezone in `apsis -l` CLI output to prevent mix of UTC and local times
 - Display session timestamps in the user's locale format in `apsis serve` web interface using client-side `Intl.DateTimeFormat`, with HTMX-aware re-formatting for dynamically loaded content
 - Remove misleading `TestHandleTranscriptOversized` that tested 404 instead of the 50MB size guard

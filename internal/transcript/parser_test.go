@@ -109,6 +109,70 @@ func TestParseJSONL_UnknownTypes(t *testing.T) {
 	}
 }
 
+func TestDetectFormat_SkipsUnknownTypesToFindFormat(t *testing.T) {
+	// Regression test: files starting with unknown types (like file-history-snapshot)
+	// should not fail format detection. Unknown types should be skipped until a
+	// recognized format-defining type is found.
+	input := `{"type":"file-history-snapshot","messageId":"test1","snapshot":{}}
+{"type":"file-history-snapshot","messageId":"test2","snapshot":{}}
+{"type":"user","timestamp":"2025-12-23T10:30:00+11:00","message":{"role":"user","content":[{"type":"text","text":"Hello"}]}}`
+
+	format, _, err := DetectFormat(strings.NewReader(input))
+	if err != nil {
+		t.Fatalf("DetectFormat should skip unknown types, got error: %v", err)
+	}
+	if format != FormatClaude {
+		t.Errorf("expected FormatClaude, got %v", format)
+	}
+}
+
+func TestDetectFormat_OnlyUnknownTypes(t *testing.T) {
+	// When a file contains only unknown types with no recognized format entries,
+	// return a clear error rather than a cryptic one.
+	input := `{"type":"file-history-snapshot","messageId":"test1","snapshot":{}}
+{"type":"file-history-snapshot","messageId":"test2","snapshot":{}}`
+
+	_, _, err := DetectFormat(strings.NewReader(input))
+	if err == nil {
+		t.Fatal("expected error when no recognized format entries exist")
+	}
+	if !strings.Contains(err.Error(), "no format-defining entries") {
+		t.Errorf("expected 'no format-defining entries' error, got %q", err.Error())
+	}
+}
+
+func TestParse_FileHistorySnapshotOnly(t *testing.T) {
+	// Regression test for session a9582b89: file with only file-history-snapshot entries.
+	// Should succeed with 0 entries rather than failing.
+	f, err := os.Open(filepath.Join("testdata", "file_history_snapshot.jsonl"))
+	if err != nil {
+		t.Fatalf("failed to open test file: %v", err)
+	}
+	defer func() { _ = f.Close() }()
+
+	result, err := Parse(f)
+	if err != nil {
+		t.Fatalf("Parse should not error on file with only unknown types, got: %v", err)
+	}
+	if len(result.Entries) != 0 {
+		t.Errorf("expected 0 entries for file with only unknown types, got %d", len(result.Entries))
+	}
+}
+
+func TestParseJSONL_SkipsUnknownTypesBeforeFormat(t *testing.T) {
+	// ParseJSONL should also skip unknown types during format detection
+	input := `{"type":"file-history-snapshot","messageId":"test","snapshot":{}}
+{"type":"user","timestamp":"2025-12-23T10:30:00+11:00","message":{"role":"user","content":[{"type":"text","text":"Hello"}]}}`
+
+	result, err := ParseJSONL(strings.NewReader(input))
+	if err != nil {
+		t.Fatalf("ParseJSONL should skip unknown types, got error: %v", err)
+	}
+	if len(result.Entries) != 1 {
+		t.Errorf("expected 1 entry, got %d", len(result.Entries))
+	}
+}
+
 func TestParseJSONL_BufferOverflow(t *testing.T) {
 	// Create a line that's near but under the 10MB limit
 	// This test verifies the buffer configuration works
@@ -872,24 +936,26 @@ func TestDetectFormat_InvalidJSON(t *testing.T) {
 }
 
 func TestDetectFormat_UnrecognizedType(t *testing.T) {
+	// Single unknown type with no recognized types — should error with "no format-defining entries"
 	input := `{"type":"unknown_type","timestamp":"2025-12-23T10:30:00+11:00"}`
 	_, _, err := DetectFormat(strings.NewReader(input))
 	if err == nil {
-		t.Fatal("expected error for unrecognized type")
+		t.Fatal("expected error when no recognized format entries exist")
 	}
-	if !strings.Contains(err.Error(), "unrecognized log format: type field value 'unknown_type'") {
-		t.Errorf("expected error containing 'unrecognized log format: type field value', got %q", err.Error())
+	if !strings.Contains(err.Error(), "no format-defining entries") {
+		t.Errorf("expected 'no format-defining entries' error, got %q", err.Error())
 	}
 }
 
 func TestDetectFormat_MissingTypeField(t *testing.T) {
+	// Entry with no type field — should be skipped, resulting in "no format-defining entries"
 	input := `{"timestamp":"2025-12-23T10:30:00+11:00","message":"hello"}`
 	_, _, err := DetectFormat(strings.NewReader(input))
 	if err == nil {
-		t.Fatal("expected error for missing type field")
+		t.Fatal("expected error when no recognized format entries exist")
 	}
-	if !strings.Contains(err.Error(), "unrecognized log format: type field value ''") {
-		t.Errorf("expected error about empty type field, got %q", err.Error())
+	if !strings.Contains(err.Error(), "no format-defining entries") {
+		t.Errorf("expected 'no format-defining entries' error, got %q", err.Error())
 	}
 }
 
@@ -1095,24 +1161,28 @@ func TestParseJSONL_WhitespaceOnlyError(t *testing.T) {
 }
 
 func TestParseJSONL_InvalidJSONError(t *testing.T) {
+	// Invalid JSON is skipped during format detection; if all lines are invalid,
+	// we get "no recognizable format entries found" since we hit EOF.
 	input := `{not valid json}`
 	_, err := ParseJSONL(strings.NewReader(input))
 	if err == nil {
 		t.Fatal("expected error for invalid JSON")
 	}
-	if !strings.Contains(err.Error(), "failed to parse first line as JSON") {
-		t.Errorf("expected error containing 'failed to parse first line as JSON', got %q", err.Error())
+	if !strings.Contains(err.Error(), "no recognizable format entries found") {
+		t.Errorf("expected 'no recognizable format entries found' error, got %q", err.Error())
 	}
 }
 
 func TestParseJSONL_UnrecognizedFormatError(t *testing.T) {
+	// Unknown types are now skipped; if only unknown types exist, error is about
+	// no recognizable format being found.
 	input := `{"type":"unknown_format_type","data":"test"}`
 	_, err := ParseJSONL(strings.NewReader(input))
 	if err == nil {
-		t.Fatal("expected error for unrecognized format")
+		t.Fatal("expected error when no recognized format entries exist")
 	}
-	if !strings.Contains(err.Error(), "unrecognized log format") {
-		t.Errorf("expected error containing 'unrecognized log format', got %q", err.Error())
+	if !strings.Contains(err.Error(), "no recognizable format entries found") {
+		t.Errorf("expected 'no recognizable format entries found' error, got %q", err.Error())
 	}
 }
 
@@ -1527,7 +1597,8 @@ func TestParseJSONL_WhitespaceOnlyError_Negative(t *testing.T) {
 }
 
 func TestParseJSONL_InvalidFirstLineJSONError_Negative(t *testing.T) {
-	// Test invalid JSON on first line returns proper error (req 1.4)
+	// Invalid JSON lines are skipped during format detection. When all lines are invalid,
+	// the parser reaches EOF and reports "no recognizable format entries found".
 	tests := []struct {
 		name  string
 		input string
@@ -1545,49 +1616,48 @@ func TestParseJSONL_InvalidFirstLineJSONError_Negative(t *testing.T) {
 			if err == nil {
 				t.Fatal("expected error for invalid JSON")
 			}
-			if !strings.Contains(err.Error(), "failed to parse first line as JSON") {
-				t.Errorf("expected error containing 'failed to parse first line as JSON', got %q", err.Error())
+			if !strings.Contains(err.Error(), "no recognizable format entries found") {
+				t.Errorf("expected 'no recognizable format entries found' error, got %q", err.Error())
 			}
 		})
 	}
 }
 
 func TestParseJSONL_UnknownFormatTypeError_Negative(t *testing.T) {
-	// Test unknown type field value returns proper error (req 1.5)
+	// Unknown types are skipped during format detection. When only unknown types
+	// exist, the parser reaches EOF and reports "no recognizable format entries found".
 	tests := []struct {
-		name         string
-		input        string
-		expectedType string
+		name  string
+		input string
 	}{
-		{"unknown_type", `{"type":"unknown_type"}`, "unknown_type"},
-		{"empty_type", `{"type":""}`, ""},
-		{"numeric_type", `{"type":"123"}`, "123"},
-		{"system_type", `{"type":"system"}`, "system"},
+		{"unknown_type", `{"type":"unknown_type"}`},
+		{"empty_type", `{"type":""}`},
+		{"numeric_type", `{"type":"123"}`},
+		{"system_type", `{"type":"system"}`},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			_, err := ParseJSONL(strings.NewReader(tt.input))
 			if err == nil {
-				t.Fatal("expected error for unrecognized format type")
+				t.Fatal("expected error when no recognized format entries exist")
 			}
-			expectedMsg := "unrecognized log format: type field value '" + tt.expectedType + "'"
-			if !strings.Contains(err.Error(), expectedMsg) {
-				t.Errorf("expected error containing %q, got %q", expectedMsg, err.Error())
+			if !strings.Contains(err.Error(), "no recognizable format entries found") {
+				t.Errorf("expected 'no recognizable format entries found' error, got %q", err.Error())
 			}
 		})
 	}
 }
 
 func TestParseJSONL_MissingTypeFieldError_Negative(t *testing.T) {
-	// Test missing type field returns proper error (req 1.5)
+	// Entries with missing type are skipped; with only such entries, we get EOF.
 	input := `{"timestamp":"2025-12-23T10:30:00+11:00","message":"hello"}`
 	_, err := ParseJSONL(strings.NewReader(input))
 	if err == nil {
-		t.Fatal("expected error for missing type field")
+		t.Fatal("expected error when no recognized format entries exist")
 	}
-	if !strings.Contains(err.Error(), "unrecognized log format: type field value ''") {
-		t.Errorf("expected error about empty type field, got %q", err.Error())
+	if !strings.Contains(err.Error(), "no recognizable format entries found") {
+		t.Errorf("expected 'no recognizable format entries found' error, got %q", err.Error())
 	}
 }
 
@@ -1698,13 +1768,13 @@ func TestDetectFormat_InvalidJSON_Negative(t *testing.T) {
 }
 
 func TestDetectFormat_UnknownType_Negative(t *testing.T) {
-	// Test DetectFormat on unknown type value
+	// Single unknown type with no recognized entries — reports "no format-defining entries"
 	_, _, err := DetectFormat(strings.NewReader(`{"type":"completely_unknown"}`))
 	if err == nil {
-		t.Fatal("expected error for unknown type")
+		t.Fatal("expected error when no recognized format entries exist")
 	}
-	if !strings.Contains(err.Error(), "unrecognized log format: type field value 'completely_unknown'") {
-		t.Errorf("expected specific error about unknown type, got %q", err.Error())
+	if !strings.Contains(err.Error(), "no format-defining entries") {
+		t.Errorf("expected 'no format-defining entries' error, got %q", err.Error())
 	}
 }
 

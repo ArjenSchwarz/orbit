@@ -25,3 +25,21 @@ Two functions read from session_meta:
 ## Session resolution by ID
 
 `resolveInput()` and `resolveFollowInput()` use `findCodexSession()` to locate a session by UUID. This scans all codex sessions without project filtering (intentional — user explicitly asked for a specific session).
+
+## Kiro IDE execution detail actions
+
+When a `costPath` (execution detail file path) is provided, the Kiro IDE parser reads the `actions` array from the execution detail file and converts them to `tool_use`/`tool_result` entry pairs. This produces much richer transcripts than the `.chat` file alone, which only has conversational messages.
+
+Action type → tool name mapping:
+- `readFiles` → Read, `replace`/`append` → Edit, `create` → Write, `runCommand` → Bash, `search` → Grep
+- `say` → assistant text entry, `taskStatus` → assistant text, `userInput` → user text
+- `model`, `steering`, `intentClassification`, `specAgent` → skipped (internal)
+
+Key details:
+- User messages come from the `.chat` file's `human` role messages (not from actions)
+- Actions are in the same execution detail file already used for cost extraction
+- `readKiroIDEExecutionDetail()` reads the file once for both cost and actions
+- Falls back to chat-based entries when no actions or no costPath available
+- Action states: Success, Accepted, Rejected, Error, Canceled, Running
+- `runCommand` actions have `output.output` (string) and `output.exitCode` (number)
+- File modification actions (`replace`, `create`, `append`) use `kiro-diff://` URIs — actual diff content is stored separately

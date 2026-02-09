@@ -49,8 +49,9 @@ var copilotTypes = map[string]bool{
 // infrastructureTypes are entry types that should be skipped during format detection.
 // These are internal Claude infrastructure entries, not part of the conversation.
 var infrastructureTypes = map[string]bool{
-	"queue-operation": true,
-	"progress":        true,
+	"queue-operation":       true,
+	"progress":              true,
+	"file-history-snapshot": true,
 }
 
 // DetectFormat examines file content to determine the log format.
@@ -174,10 +175,11 @@ func detectJSONLFormat(data []byte) (Format, []byte, error) {
 			return FormatCopilot, data, nil
 		}
 
-		return FormatUnknown, data, fmt.Errorf("unrecognized log format: type field value '%s'", obj.Type)
+		// Unknown type — skip and keep looking for a recognized format entry
+		continue
 	}
 
-	return FormatUnknown, nil, fmt.Errorf("no format-defining entries found in file")
+	return FormatUnknown, data, fmt.Errorf("no format-defining entries found in file")
 }
 
 // readFirstNonEmptyLineFromBufReader reads lines until finding a non-empty line.
@@ -267,11 +269,20 @@ type ParseWarning struct {
 
 // Parse reads a transcript file and automatically detects its format.
 // It handles all supported formats: Claude JSONL, Codex JSONL, Kiro CLI JSON, Kiro IDE JSON, and Copilot JSONL.
+// When format detection fails (e.g., file contains only unknown entry types), falls back to
+// Claude format parsing which gracefully skips unrecognized entries.
 // Use this function when the format is unknown; use ParseJSONLWithFormat when the format is known.
 func Parse(r io.Reader) (*ParseResult, error) {
 	// Use DetectFormat to identify the format (handles both JSON and JSONL)
 	format, chunk, err := DetectFormat(r)
 	if err != nil {
+		// When no recognized format is found (e.g., only unknown entry types),
+		// fall back to Claude parser which skips unknown types gracefully.
+		// This produces 0 entries rather than a hard error.
+		if chunk != nil {
+			combined := io.MultiReader(bytes.NewReader(chunk), r)
+			return parseClaudeJSONL(combined)
+		}
 		return nil, fmt.Errorf("failed to detect format: %w", err)
 	}
 
@@ -346,17 +357,8 @@ func ParseJSONL(r io.Reader) (*ParseResult, error) {
 			break
 		}
 
-		// Check if this is an infrastructure type we should skip
-		var obj struct {
-			Type string `json:"type"`
-		}
-		if json.Unmarshal(line, &obj) == nil && infrastructureTypes[obj.Type] {
-			// Skip infrastructure entries and keep looking
-			continue
-		}
-
-		// Unknown type that's not infrastructure - fail
-		return nil, formatErr
+		// Unknown or infrastructure type — skip and keep looking
+		continue
 	}
 
 	// Reconstruct collected lines for the parser

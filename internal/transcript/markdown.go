@@ -372,40 +372,49 @@ func formatSlashCommand(entry *Entry, skillDescriptions map[string]string) strin
 }
 
 // formatAssistantMessage formats an assistant message as Markdown.
+// Returns empty string if the entry has no renderable content (e.g., whitespace-only text).
 func formatAssistantMessage(entry *Entry, toolMeta map[string]toolMetadata, skillDescriptions map[string]string) string {
 	if entry.Message == nil {
 		return ""
 	}
 
-	var sb strings.Builder
-	sb.WriteString("## 🤖 Assistant\n\n")
+	// Render content into a buffer first to check if there's anything to show
+	var content strings.Builder
 
 	for _, item := range entry.Message.Content {
 		switch item.Type {
 		case "thinking":
 			if item.Thinking != "" {
-				sb.WriteString("<details>\n<summary>💭 Thinking</summary>\n\n")
-				sb.WriteString(item.Thinking)
-				sb.WriteString("\n\n</details>\n\n")
+				content.WriteString("<details>\n<summary>💭 Thinking</summary>\n\n")
+				content.WriteString(item.Thinking)
+				content.WriteString("\n\n</details>\n\n")
 			}
 
 		case "text":
-			if item.Text != "" {
-				sb.WriteString(item.Text)
-				sb.WriteString("\n\n")
+			if strings.TrimSpace(item.Text) != "" {
+				content.WriteString(item.Text)
+				content.WriteString("\n\n")
 			}
 
 		case "tool_use":
-			sb.WriteString(formatToolUse(&item, toolMeta, skillDescriptions))
+			content.WriteString(formatToolUse(&item, toolMeta, skillDescriptions))
 
 		case "tool_result":
 			// tool_result in assistant entries (legacy handling)
-			sb.WriteString(formatToolResult(&item, toolMeta))
+			content.WriteString(formatToolResult(&item, toolMeta))
 
 			// Unknown content types are skipped silently per requirement 4.8
 		}
 	}
 
+	// Skip empty assistant sections (e.g., streaming chunks with only whitespace)
+	if strings.TrimSpace(content.String()) == "" {
+		return ""
+	}
+
+	var sb strings.Builder
+	sb.WriteString("## 🤖 Assistant\n\n")
+	sb.WriteString(content.String())
 	sb.WriteString("---\n\n")
 	return sb.String()
 }

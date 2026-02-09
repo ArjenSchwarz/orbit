@@ -491,7 +491,7 @@ func formatAssistantMessageHTML(entry *Entry, toolMeta map[string]toolMetadata, 
 				hasContent = true
 			}
 		case "text":
-			if item.Text != "" {
+			if strings.TrimSpace(item.Text) != "" {
 				hasContent = true
 			}
 		case "tool_use":
