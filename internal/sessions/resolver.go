@@ -195,10 +195,11 @@ func (r *Resolver) resolveKiroIDE(sessionID string) (*ResolvedSession, error) {
 	return &ResolvedSession{
 		Reader: f,
 		Metadata: SessionMetadata{
-			Source:   SourceKiroIDE,
-			ID:       sessionID,
-			Size:     info.Size(),
-			CostPath: costPath,
+			Source:    SourceKiroIDE,
+			ID:        sessionID,
+			Size:      info.Size(),
+			CreatedAt: info.ModTime(),
+			CostPath:  costPath,
 		},
 	}, nil
 }
@@ -321,9 +322,10 @@ func (r *Resolver) openFileSession(path, source, sessionID string) (*ResolvedSes
 	return &ResolvedSession{
 		Reader: f,
 		Metadata: SessionMetadata{
-			Source: source,
-			ID:     sessionID,
-			Size:   info.Size(),
+			Source:    source,
+			ID:        sessionID,
+			Size:      info.Size(),
+			CreatedAt: info.ModTime(),
 		},
 	}, nil
 }

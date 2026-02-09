@@ -77,12 +77,17 @@ func (s *Server) handleTranscript(w http.ResponseWriter, r *http.Request) {
 	}
 	content := transcript.RenderHTMLFragment(result.Entries, opts)
 
+	var createdAt string
+	if !resolved.Metadata.CreatedAt.IsZero() {
+		createdAt = resolved.Metadata.CreatedAt.Format("Jan 2, 2006 3:04 PM")
+	}
+
 	data := TranscriptViewData{
 		TemplateData: TemplateData{Title: "Transcript", CSSVersion: CSSVersion},
 		SessionID:    id,
 		Source:       source,
 		Content:      template.HTML(content),
-		CreatedAt:    resolved.Metadata.CreatedAt.Format("Jan 2, 2006 3:04 PM"),
+		CreatedAt:    createdAt,
 		Size:         sessions.FormatSize(resolved.Metadata.Size),
 	}
 	s.renderTemplate(w, "transcript.html", data)

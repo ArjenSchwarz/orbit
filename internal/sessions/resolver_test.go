@@ -64,6 +64,9 @@ func TestResolveClaudeSession(t *testing.T) {
 	if resolved.Metadata.CostPath != "" {
 		t.Errorf("costPath should be empty for Claude, got %q", resolved.Metadata.CostPath)
 	}
+	if resolved.Metadata.CreatedAt.IsZero() {
+		t.Error("createdAt should be populated for file-backed sessions")
+	}
 
 	// Verify reader content
 	readData, err := io.ReadAll(resolved.Reader)
