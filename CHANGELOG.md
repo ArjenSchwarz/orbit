@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Add `apsis serve` subcommand to `cmd/apsis/main.go` with `--port`, `--bind`, `--project` flags, `APSIS_SERVE_PORT`/`APSIS_SERVE_BIND` env var fallback, signal handling (SIGINT/SIGTERM) with 5-second graceful shutdown, and network binding warning
 - Add `internal/apsisweb/` web server package for the `apsis serve` session browser
   - HTTP server with HTMX-powered session list, transcript viewer, and error pages
   - `ValidateSource` and `SanitizeSessionID` middleware for input validation and path traversal protection

@@ -15,6 +15,185 @@ import (
 	"github.com/arjenschwarz/orbit/internal/transcript"
 )
 
+// --- Serve Command Tests ---
+
+func TestResolveInt(t *testing.T) {
+	tests := []struct {
+		name       string
+		flagVal    int
+		envKey     string
+		envVal     string
+		defaultVal int
+		want       int
+	}{
+		{
+			name:       "flag value takes priority",
+			flagVal:    9000,
+			envKey:     "TEST_RESOLVE_INT_PORT",
+			envVal:     "3000",
+			defaultVal: 8081,
+			want:       9000,
+		},
+		{
+			name:       "env var used when flag is zero",
+			flagVal:    0,
+			envKey:     "TEST_RESOLVE_INT_PORT",
+			envVal:     "3000",
+			defaultVal: 8081,
+			want:       3000,
+		},
+		{
+			name:       "default used when both flag and env unset",
+			flagVal:    0,
+			envKey:     "TEST_RESOLVE_INT_PORT",
+			envVal:     "",
+			defaultVal: 8081,
+			want:       8081,
+		},
+		{
+			name:       "default used when env is invalid",
+			flagVal:    0,
+			envKey:     "TEST_RESOLVE_INT_PORT",
+			envVal:     "notanumber",
+			defaultVal: 8081,
+			want:       8081,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if tt.envVal != "" {
+				t.Setenv(tt.envKey, tt.envVal)
+			} else {
+				t.Setenv(tt.envKey, "")
+			}
+			got := resolveInt(tt.flagVal, tt.envKey, tt.defaultVal)
+			if got != tt.want {
+				t.Errorf("resolveInt(%d, %q, %d) = %d, want %d", tt.flagVal, tt.envKey, tt.defaultVal, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestResolveString(t *testing.T) {
+	tests := []struct {
+		name       string
+		flagVal    string
+		envKey     string
+		envVal     string
+		defaultVal string
+		want       string
+	}{
+		{
+			name:       "flag value takes priority",
+			flagVal:    "0.0.0.0",
+			envKey:     "TEST_RESOLVE_STR_BIND",
+			envVal:     "127.0.0.1",
+			defaultVal: "localhost",
+			want:       "0.0.0.0",
+		},
+		{
+			name:       "env var used when flag is empty",
+			flagVal:    "",
+			envKey:     "TEST_RESOLVE_STR_BIND",
+			envVal:     "127.0.0.1",
+			defaultVal: "localhost",
+			want:       "127.0.0.1",
+		},
+		{
+			name:       "default used when both flag and env unset",
+			flagVal:    "",
+			envKey:     "TEST_RESOLVE_STR_BIND",
+			envVal:     "",
+			defaultVal: "localhost",
+			want:       "localhost",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if tt.envVal != "" {
+				t.Setenv(tt.envKey, tt.envVal)
+			} else {
+				t.Setenv(tt.envKey, "")
+			}
+			got := resolveString(tt.flagVal, tt.envKey, tt.defaultVal)
+			if got != tt.want {
+				t.Errorf("resolveString(%q, %q, %q) = %q, want %q", tt.flagVal, tt.envKey, tt.defaultVal, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestResolveProjectPath(t *testing.T) {
+	t.Run("empty uses cwd", func(t *testing.T) {
+		got, err := resolveProjectPath("")
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		cwd, _ := os.Getwd()
+		if got != cwd {
+			t.Errorf("got %q, want %q", got, cwd)
+		}
+	})
+
+	t.Run("relative path resolved to absolute", func(t *testing.T) {
+		got, err := resolveProjectPath("relative/path")
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if !filepath.IsAbs(got) {
+			t.Errorf("expected absolute path, got %q", got)
+		}
+	})
+
+	t.Run("absolute path returned as-is", func(t *testing.T) {
+		got, err := resolveProjectPath("/absolute/path")
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if got != "/absolute/path" {
+			t.Errorf("got %q, want /absolute/path", got)
+		}
+	})
+}
+
+func TestServeCommand_VersionFlag(t *testing.T) {
+	// Capture stdout
+	oldStdout := os.Stdout
+	r, w, _ := os.Pipe()
+	os.Stdout = w
+
+	err := serveCommand([]string{"--version"})
+
+	_ = w.Close()
+	os.Stdout = oldStdout
+	var buf bytes.Buffer
+	_, _ = buf.ReadFrom(r)
+
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !strings.Contains(buf.String(), "apsis serve version") {
+		t.Errorf("expected version output, got: %s", buf.String())
+	}
+}
+
+func TestServeCommand_HelpFlag(t *testing.T) {
+	// --help with ContinueOnError returns flag.ErrHelp which serveCommand propagates
+	err := serveCommand([]string{"--help"})
+	if err != nil && err != flag.ErrHelp {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+func TestServeCommand_UnknownFlag(t *testing.T) {
+	err := serveCommand([]string{"--unknown-flag"})
+	if err == nil {
+		t.Fatal("expected error for unknown flag")
+	}
+}
+
 // --- Follow Mode Flag Parsing Tests ---
 
 func TestFollowFlagParsing(t *testing.T) {

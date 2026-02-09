@@ -190,7 +190,7 @@ references:
 
 ## CLI Integration
 
-- [ ] 18. Add serveCommand to cmd/apsis/main.go with flag parsing and signal handling <!-- id:99ijhil -->
+- [x] 18. Add serveCommand to cmd/apsis/main.go with flag parsing and signal handling <!-- id:99ijhil -->
   - Detect serve subcommand before flag.Parse()
   - Implement serveCommand() with separate flag.FlagSet
   - Add --port, --bind, --project flags with env var fallback

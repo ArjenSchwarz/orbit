@@ -13,10 +13,12 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"syscall"
 	"time"
 
+	"github.com/arjenschwarz/orbit/internal/apsisweb"
 	"github.com/arjenschwarz/orbit/internal/sessions"
 	"github.com/arjenschwarz/orbit/internal/transcript"
 )
@@ -38,6 +40,15 @@ type Config struct {
 }
 
 func main() {
+	// Detect serve subcommand before flag.Parse() (req. 2.8)
+	if len(os.Args) > 1 && os.Args[1] == "serve" {
+		if err := serveCommand(os.Args[2:]); err != nil {
+			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+			os.Exit(1)
+		}
+		return
+	}
+
 	cfg := parseFlags()
 	exitCode, err := run(cfg)
 	if err != nil {
@@ -47,6 +58,121 @@ func main() {
 	if exitCode != 0 {
 		os.Exit(exitCode)
 	}
+}
+
+// serveCommand handles the 'apsis serve' subcommand.
+func serveCommand(args []string) error {
+	fs := flag.NewFlagSet("apsis serve", flag.ContinueOnError)
+	port := fs.Int("port", 0, "Port to listen on (default 8081, or APSIS_SERVE_PORT)")
+	bind := fs.String("bind", "", "Address to bind to (default localhost, or APSIS_SERVE_BIND)")
+	project := fs.String("project", "", "Project directory (default: current directory)")
+	showVersion := fs.Bool("version", false, "Show version and exit")
+
+	fs.Usage = func() {
+		fmt.Fprintf(os.Stderr, "Usage: apsis serve [options]\n\n")
+		fmt.Fprintf(os.Stderr, "Start a web server to browse session transcripts.\n\n")
+		fmt.Fprintf(os.Stderr, "Options:\n")
+		fs.PrintDefaults()
+		fmt.Fprintf(os.Stderr, "\nEnvironment:\n")
+		fmt.Fprintf(os.Stderr, "  APSIS_SERVE_PORT    Port to listen on (default 8081)\n")
+		fmt.Fprintf(os.Stderr, "  APSIS_SERVE_BIND    Address to bind to (default localhost)\n")
+		fmt.Fprintf(os.Stderr, "\nExamples:\n")
+		fmt.Fprintf(os.Stderr, "  apsis serve                    Start with default settings\n")
+		fmt.Fprintf(os.Stderr, "  apsis serve --port 3000        Start on port 3000\n")
+		fmt.Fprintf(os.Stderr, "  apsis serve --bind 0.0.0.0     Listen on all interfaces\n")
+	}
+
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+
+	if *showVersion {
+		fmt.Printf("apsis serve version %s\n", version)
+		return nil
+	}
+
+	// Resolve defaults: CLI flag > env var > default
+	resolvedPort := resolveInt(*port, "APSIS_SERVE_PORT", 8081)
+	resolvedBind := resolveString(*bind, "APSIS_SERVE_BIND", "localhost")
+
+	// Network binding warning (req. 2.9)
+	if resolvedBind == "0.0.0.0" {
+		fmt.Fprintln(os.Stderr, "Warning: Server is accessible from the network. Session data may contain sensitive information.")
+	}
+
+	// Resolve project path
+	projectPath, err := resolveProjectPath(*project)
+	if err != nil {
+		return fmt.Errorf("resolve project path: %w", err)
+	}
+
+	// Create server
+	server, err := apsisweb.New(apsisweb.Config{
+		Port:        resolvedPort,
+		Bind:        resolvedBind,
+		ProjectPath: projectPath,
+	})
+	if err != nil {
+		return fmt.Errorf("create server: %w", err)
+	}
+
+	// Print URL (req. 2.6)
+	fmt.Fprintf(os.Stderr, "Listening on http://%s:%d\n", resolvedBind, resolvedPort)
+
+	// Signal handling (req. 2.7)
+	sigCh := make(chan os.Signal, 1)
+	signal.Notify(sigCh, os.Interrupt, syscall.SIGTERM)
+
+	errCh := make(chan error, 1)
+	go func() {
+		errCh <- server.Start()
+	}()
+
+	select {
+	case sig := <-sigCh:
+		fmt.Fprintf(os.Stderr, "\nReceived %v, shutting down...\n", sig)
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		return server.Shutdown(ctx)
+	case err := <-errCh:
+		return err
+	}
+}
+
+// resolveInt returns: flag value if non-zero, env var if set and valid, otherwise default.
+func resolveInt(flagVal int, envKey string, defaultVal int) int {
+	if flagVal != 0 {
+		return flagVal
+	}
+	if envStr := os.Getenv(envKey); envStr != "" {
+		if val, err := strconv.Atoi(envStr); err == nil {
+			return val
+		}
+	}
+	return defaultVal
+}
+
+// resolveString returns: flag value if non-empty, env var if set, otherwise default.
+func resolveString(flagVal, envKey, defaultVal string) string {
+	if flagVal != "" {
+		return flagVal
+	}
+	if envStr := os.Getenv(envKey); envStr != "" {
+		return envStr
+	}
+	return defaultVal
+}
+
+// resolveProjectPath returns the absolute path of the project directory.
+func resolveProjectPath(project string) (string, error) {
+	if project == "" {
+		cwd, err := os.Getwd()
+		if err != nil {
+			return "", fmt.Errorf("get working directory: %w", err)
+		}
+		return cwd, nil
+	}
+	return filepath.Abs(project)
 }
 
 func parseFlags() *Config {
@@ -85,7 +211,12 @@ func printUsage() {
 
 Usage:
   apsis [options] [session-id | file-path]
+  apsis serve [options]
   cat session.jsonl | apsis
+
+Subcommands:
+  serve                   Start a web server to browse session transcripts
+                          Run 'apsis serve --help' for serve-specific options
 
 Options:
   -l, --list              List available sessions for the project
@@ -113,6 +244,8 @@ Examples:
   apsis --list -p /path/to/project               List sessions for different project
   apsis -F session-id                            Follow session in real-time
   apsis --follow /path/to/session.jsonl          Follow file for new entries
+  apsis serve                                    Start web server on localhost:8081
+  apsis serve --port 3000 --bind 0.0.0.0         Start on custom port and address
 `)
 }
 
