@@ -64,6 +64,26 @@ func setupCodexSession(t *testing.T, homeDir, projectPath, sessionID string, cre
 	}
 }
 
+// setupCopilotSession creates a mock Copilot session directory.
+func setupCopilotSession(t *testing.T, homeDir, projectPath, sessionID string, createdAt time.Time) {
+	t.Helper()
+	sessionDir := filepath.Join(homeDir, ".copilot", "session-state", sessionID)
+	if err := os.MkdirAll(sessionDir, 0755); err != nil {
+		t.Fatalf("failed to create session dir: %v", err)
+	}
+
+	eventsData := `{"type":"event","data":"test"}` + "\n"
+	if err := os.WriteFile(filepath.Join(sessionDir, "events.jsonl"), []byte(eventsData), 0644); err != nil {
+		t.Fatalf("failed to write events file: %v", err)
+	}
+
+	yamlContent := fmt.Sprintf("id: %s\ncwd: %s\ngit_root: %s\ncreated_at: %s\n",
+		sessionID, projectPath, projectPath, createdAt.Format(time.RFC3339))
+	if err := os.WriteFile(filepath.Join(sessionDir, "workspace.yaml"), []byte(yamlContent), 0644); err != nil {
+		t.Fatalf("failed to write workspace file: %v", err)
+	}
+}
+
 func TestListAllNoSessions(t *testing.T) {
 	homeDir := t.TempDir()
 	projectPath := t.TempDir()
@@ -196,5 +216,150 @@ func TestSortSessionsByTimestampTieBreaking(t *testing.T) {
 	}
 	if sessions[2].Source != SourceCodex {
 		t.Errorf("expected codex third in tie, got %s", sessions[2].Source)
+	}
+}
+
+func TestListAllCopilotSessions(t *testing.T) {
+	homeDir := t.TempDir()
+	projectPath := t.TempDir()
+
+	t1 := time.Date(2025, 1, 15, 14, 30, 0, 0, time.UTC)
+	sessionID := "12345678-1234-1234-1234-123456789abc"
+
+	setupCopilotSession(t, homeDir, projectPath, sessionID, t1)
+
+	lister := newTestLister(homeDir)
+	sessions, _, err := lister.ListAll(projectPath)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	var copilotSessions []SessionInfo
+	for _, s := range sessions {
+		if s.Source == SourceCopilot {
+			copilotSessions = append(copilotSessions, s)
+		}
+	}
+
+	if len(copilotSessions) != 1 {
+		t.Fatalf("expected 1 Copilot session, got %d", len(copilotSessions))
+	}
+
+	if copilotSessions[0].ID != sessionID {
+		t.Errorf("session.ID = %q, want %q", copilotSessions[0].ID, sessionID)
+	}
+	if copilotSessions[0].Source != SourceCopilot {
+		t.Errorf("session.Source = %q, want %q", copilotSessions[0].Source, SourceCopilot)
+	}
+}
+
+func TestListAllCodexSessions(t *testing.T) {
+	homeDir := t.TempDir()
+	projectPath := t.TempDir()
+
+	t1 := time.Date(2025, 1, 15, 14, 30, 0, 0, time.UTC)
+	sessionID := "12345678-1234-1234-1234-123456789abc"
+
+	setupCodexSession(t, homeDir, projectPath, sessionID, t1)
+
+	lister := newTestLister(homeDir)
+	sessions, _, err := lister.ListAll(projectPath)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	var codexSessions []SessionInfo
+	for _, s := range sessions {
+		if s.Source == SourceCodex {
+			codexSessions = append(codexSessions, s)
+		}
+	}
+
+	if len(codexSessions) != 1 {
+		t.Fatalf("expected 1 Codex session, got %d", len(codexSessions))
+	}
+
+	if codexSessions[0].ID != sessionID {
+		t.Errorf("session.ID = %q, want %q", codexSessions[0].ID, sessionID)
+	}
+	if codexSessions[0].Source != SourceCodex {
+		t.Errorf("session.Source = %q, want %q", codexSessions[0].Source, SourceCodex)
+	}
+}
+
+func TestListAllSortOrder(t *testing.T) {
+	homeDir := t.TempDir()
+	projectPath := t.TempDir()
+
+	// Create sessions with different timestamps out of order
+	t3 := time.Date(2025, 1, 17, 10, 0, 0, 0, time.UTC) // Newest
+	t1 := time.Date(2025, 1, 15, 10, 0, 0, 0, time.UTC) // Oldest
+	t2 := time.Date(2025, 1, 16, 10, 0, 0, 0, time.UTC) // Middle
+
+	setupClaudeSession(t, homeDir, projectPath, "session-3", t3)
+	setupClaudeSession(t, homeDir, projectPath, "session-1", t1)
+	setupClaudeSession(t, homeDir, projectPath, "session-2", t2)
+
+	lister := newTestLister(homeDir)
+	sessions, _, err := lister.ListAll(projectPath)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	var claudeSessions []SessionInfo
+	for _, s := range sessions {
+		if s.Source == SourceClaude {
+			claudeSessions = append(claudeSessions, s)
+		}
+	}
+
+	if len(claudeSessions) != 3 {
+		t.Fatalf("expected 3 sessions, got %d", len(claudeSessions))
+	}
+
+	// Verify oldest-first order
+	if claudeSessions[0].ID != "session-1" {
+		t.Errorf("sessions[0].ID = %q, want session-1", claudeSessions[0].ID)
+	}
+	if claudeSessions[1].ID != "session-2" {
+		t.Errorf("sessions[1].ID = %q, want session-2", claudeSessions[1].ID)
+	}
+	if claudeSessions[2].ID != "session-3" {
+		t.Errorf("sessions[2].ID = %q, want session-3", claudeSessions[2].ID)
+	}
+}
+
+func TestListAllPartialFailure(t *testing.T) {
+	homeDir := t.TempDir()
+	projectPath := t.TempDir()
+
+	// Create a valid Claude session
+	t1 := time.Date(2025, 1, 15, 10, 0, 0, 0, time.UTC)
+	setupClaudeSession(t, homeDir, projectPath, "valid-session", t1)
+
+	lister := newTestLister(homeDir)
+	sessions, warnings, err := lister.ListAll(projectPath)
+
+	// Should not return fatal error even if some sources fail
+	if err != nil {
+		t.Fatalf("ListAll() returned fatal error: %v", err)
+	}
+
+	// Should have the Claude session
+	var claudeSessions []SessionInfo
+	for _, s := range sessions {
+		if s.Source == SourceClaude {
+			claudeSessions = append(claudeSessions, s)
+		}
+	}
+	if len(claudeSessions) != 1 {
+		t.Errorf("expected 1 Claude session, got %d", len(claudeSessions))
+	}
+
+	// Kiro sources may produce warnings (database not found), that's expected
+	for _, w := range warnings {
+		if w.Source == SourceClaude || w.Source == SourceCodex || w.Source == SourceCopilot {
+			t.Errorf("unexpected warning for %s: %v", w.Source, w.Err)
+		}
 	}
 }

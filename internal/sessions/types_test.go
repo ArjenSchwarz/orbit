@@ -77,7 +77,9 @@ func TestFormatSize(t *testing.T) {
 		{1024, "1.0 KB"},
 		{1536, "1.5 KB"},
 		{1048576, "1.0 MB"},
+		{2621440, "2.5 MB"},
 		{1073741824, "1.0 GB"},
+		{5368709120, "5.0 GB"},
 	}
 
 	for _, tt := range tests {
@@ -99,15 +101,26 @@ func TestFormatSizeProperty(t *testing.T) {
 		}
 
 		// Output always contains a size unit
-		hasUnit := strings.HasSuffix(result, " B") ||
-			strings.HasSuffix(result, "KB") ||
-			strings.HasSuffix(result, "MB") ||
-			strings.HasSuffix(result, "GB") ||
-			strings.HasSuffix(result, "TB") ||
-			strings.HasSuffix(result, "PB") ||
-			strings.HasSuffix(result, "EB")
+		validUnits := []string{" B", " KB", " MB", " GB", " TB", " PB", " EB"}
+		hasUnit := false
+		for _, unit := range validUnits {
+			if strings.HasSuffix(result, unit) {
+				hasUnit = true
+				break
+			}
+		}
 		if !hasUnit {
 			rt.Fatalf("FormatSize(%d) = %q, missing size unit", bytes, result)
+		}
+
+		// For bytes < 1024, result should use " B" unit
+		if bytes < 1024 && !strings.HasSuffix(result, " B") {
+			rt.Fatalf("FormatSize(%d) = %q, expected bytes unit", bytes, result)
+		}
+
+		// For bytes >= 1024, result should use larger unit
+		if bytes >= 1024 && strings.HasSuffix(result, " B") {
+			rt.Fatalf("FormatSize(%d) = %q, should use larger unit", bytes, result)
 		}
 	})
 }

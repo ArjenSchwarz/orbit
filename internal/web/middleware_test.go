@@ -181,6 +181,11 @@ func TestPathSanitizer(t *testing.T) {
 			expectCode: http.StatusNotFound, // URL is decoded before path check, so ".." is detected
 		},
 		{
+			name:       "path traversal - encoded dots",
+			path:       "/runs/%2e%2e/%2e%2e/etc/passwd",
+			expectCode: http.StatusNotFound,
+		},
+		{
 			name:       "path with dotdot in value",
 			path:       "/runs/foo..bar",
 			expectCode: http.StatusNotFound, // Contains ".."

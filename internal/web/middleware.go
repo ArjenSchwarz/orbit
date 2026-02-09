@@ -2,6 +2,7 @@ package web
 
 import (
 	"net/http"
+	"net/url"
 	"path/filepath"
 	"regexp"
 	"strings"
@@ -71,16 +72,33 @@ func ValidateUUID(paramName string) func(http.Handler) http.Handler {
 }
 
 // PathSanitizer rejects requests with path traversal attempts.
-// Returns 404 for paths containing ".." to prevent directory traversal.
+// Checks both raw and URL-decoded paths for ".." to prevent directory traversal.
 func PathSanitizer(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		// Check if the path contains ".."
-		if strings.Contains(r.URL.Path, "..") {
+		if containsDotDot(r.URL.Path) {
 			http.NotFound(w, r)
 			return
 		}
+		if decoded, err := url.PathUnescape(r.URL.Path); err == nil && containsDotDot(decoded) {
+			http.NotFound(w, r)
+			return
+		}
+		if r.URL.RawPath != "" {
+			if containsDotDot(r.URL.RawPath) {
+				http.NotFound(w, r)
+				return
+			}
+			if decoded, err := url.PathUnescape(r.URL.RawPath); err == nil && containsDotDot(decoded) {
+				http.NotFound(w, r)
+				return
+			}
+		}
 		next.ServeHTTP(w, r)
 	})
+}
+
+func containsDotDot(path string) bool {
+	return path != "" && strings.Contains(path, "..")
 }
 
 // IsPathWithinDir checks if path is within dir after resolving symlinks.
