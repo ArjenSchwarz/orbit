@@ -25,10 +25,27 @@ type KiroIDEMetadata struct {
 	EndTime       int64  `json:"endTime"`   // milliseconds since epoch
 }
 
-// KiroIDEExecutionDetail represents the execution detail file (for cost extraction).
+// KiroIDEAction represents a single action in the execution detail's actions array.
+// Actions encode tool calls (readFiles, replace, create, runCommand, search),
+// assistant messages (say), task updates (taskStatus), user interactions (userInput),
+// and internal operations (model, steering, intentClassification, specAgent).
+type KiroIDEAction struct {
+	ActionID     string         `json:"actionId"`
+	ActionType   string         `json:"actionType"`
+	ActionState  string         `json:"actionState"`
+	Input        map[string]any `json:"input,omitempty"`
+	Output       map[string]any `json:"output,omitempty"`
+	ErrorMessage string         `json:"errorMessage,omitempty"`
+	TaskID       string         `json:"taskId,omitempty"`
+	TaskStatus   string         `json:"taskStatus,omitempty"`
+	TaskListURI  string         `json:"taskListUri,omitempty"`
+}
+
+// KiroIDEExecutionDetail represents the execution detail file (for cost and action extraction).
 type KiroIDEExecutionDetail struct {
-	ExecutionID  string                 `json:"executionId"`
-	UsageSummary []KiroIDEUsageSummary  `json:"usageSummary"`
+	ExecutionID  string                `json:"executionId"`
+	UsageSummary []KiroIDEUsageSummary `json:"usageSummary"`
+	Actions      []KiroIDEAction       `json:"actions"`
 }
 
 // KiroIDEUsageSummary represents a single usage entry in the execution detail file.

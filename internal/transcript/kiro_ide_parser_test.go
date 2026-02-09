@@ -416,3 +416,481 @@ func TestParseKiroIDEWithoutCostHasNoMetadata(t *testing.T) {
 		t.Errorf("expected nil metadata for ParseKiroIDE without cost path, got %+v", result.Metadata)
 	}
 }
+
+func TestConvertKiroIDEActionsToEntries(t *testing.T) {
+	chatFile := &KiroIDEChatFile{
+		Chat: []KiroIDEMessage{
+			{Role: "human", Content: "<identity>system prompt</identity>"},
+			{Role: "human", Content: "Fix the bug"},
+		},
+	}
+
+	t.Run("say action becomes assistant text", func(t *testing.T) {
+		actions := []KiroIDEAction{
+			{ActionID: "a1", ActionType: "say", ActionState: "Success", Output: map[string]any{"message": "I'll fix that for you."}},
+		}
+		entries, warnings := convertKiroIDEActionsToEntries(actions, chatFile)
+		if len(warnings) != 0 {
+			t.Errorf("expected 0 warnings, got %d", len(warnings))
+		}
+		// 1 user message from chat + 1 say action
+		if len(entries) != 2 {
+			t.Fatalf("expected 2 entries, got %d", len(entries))
+		}
+		// First entry: user message from chat
+		if entries[0].Type != "user" {
+			t.Errorf("entry 0: type = %q, want %q", entries[0].Type, "user")
+		}
+		if entries[0].Message.Content[0].Text != "Fix the bug" {
+			t.Errorf("entry 0: text = %q, want %q", entries[0].Message.Content[0].Text, "Fix the bug")
+		}
+		// Second entry: say action
+		if entries[1].Type != "assistant" {
+			t.Errorf("entry 1: type = %q, want %q", entries[1].Type, "assistant")
+		}
+		if entries[1].Message.Content[0].Text != "I'll fix that for you." {
+			t.Errorf("entry 1: text = %q, want %q", entries[1].Message.Content[0].Text, "I'll fix that for you.")
+		}
+	})
+
+	t.Run("readFiles action produces tool_use and tool_result", func(t *testing.T) {
+		actions := []KiroIDEAction{
+			{
+				ActionID: "tool-1", ActionType: "readFiles", ActionState: "Accepted",
+				Input: map[string]any{
+					"files": []any{
+						map[string]any{"path": "main.go"},
+						map[string]any{"path": "go.mod"},
+					},
+				},
+			},
+		}
+		entries, _ := convertKiroIDEActionsToEntries(actions, chatFile)
+		// 1 user + 1 tool_use + 1 tool_result = 3
+		if len(entries) != 3 {
+			t.Fatalf("expected 3 entries, got %d", len(entries))
+		}
+		toolUse := entries[1]
+		if toolUse.Type != "assistant" {
+			t.Errorf("tool_use entry type = %q, want %q", toolUse.Type, "assistant")
+		}
+		if toolUse.Message.Content[0].Type != "tool_use" {
+			t.Errorf("content type = %q, want %q", toolUse.Message.Content[0].Type, "tool_use")
+		}
+		if toolUse.Message.Content[0].Name != "Read" {
+			t.Errorf("tool name = %q, want %q", toolUse.Message.Content[0].Name, "Read")
+		}
+		if toolUse.Message.Content[0].ID != "tool-1" {
+			t.Errorf("tool ID = %q, want %q", toolUse.Message.Content[0].ID, "tool-1")
+		}
+		toolResult := entries[2]
+		if toolResult.Message.Content[0].Type != "tool_result" {
+			t.Errorf("result type = %q, want %q", toolResult.Message.Content[0].Type, "tool_result")
+		}
+		if toolResult.Message.Content[0].ToolUseID != "tool-1" {
+			t.Errorf("tool_use_id = %q, want %q", toolResult.Message.Content[0].ToolUseID, "tool-1")
+		}
+		want := "Read 2 file(s): main.go, go.mod"
+		if toolResult.Message.Content[0].Content != want {
+			t.Errorf("result content = %q, want %q", toolResult.Message.Content[0].Content, want)
+		}
+	})
+
+	t.Run("runCommand with output and exit code", func(t *testing.T) {
+		actions := []KiroIDEAction{
+			{
+				ActionID: "cmd-1", ActionType: "runCommand", ActionState: "Success",
+				Input:  map[string]any{"command": "go test ./..."},
+				Output: map[string]any{"output": "PASS\nok  mypackage 0.1s\n", "exitCode": float64(0)},
+			},
+		}
+		entries, _ := convertKiroIDEActionsToEntries(actions, chatFile)
+		// 1 user + 1 tool_use + 1 tool_result = 3
+		if len(entries) != 3 {
+			t.Fatalf("expected 3 entries, got %d", len(entries))
+		}
+		toolUse := entries[1]
+		if toolUse.Message.Content[0].Name != "Bash" {
+			t.Errorf("tool name = %q, want %q", toolUse.Message.Content[0].Name, "Bash")
+		}
+		inputMap, ok := toolUse.Message.Content[0].Input.(map[string]any)
+		if !ok {
+			t.Fatal("expected input to be map[string]any")
+		}
+		if inputMap["command"] != "go test ./..." {
+			t.Errorf("command = %q, want %q", inputMap["command"], "go test ./...")
+		}
+		toolResult := entries[2]
+		if toolResult.Message.Content[0].Content != "PASS\nok  mypackage 0.1s\n" {
+			t.Errorf("result content = %q, want test output", toolResult.Message.Content[0].Content)
+		}
+		if toolResult.Message.Content[0].IsError {
+			t.Error("expected IsError = false for exit code 0")
+		}
+	})
+
+	t.Run("runCommand with non-zero exit code", func(t *testing.T) {
+		actions := []KiroIDEAction{
+			{
+				ActionID: "cmd-2", ActionType: "runCommand", ActionState: "Error",
+				Input:  map[string]any{"command": "go build ./..."},
+				Output: map[string]any{"output": "build failed\n", "exitCode": float64(1)},
+			},
+		}
+		entries, _ := convertKiroIDEActionsToEntries(actions, chatFile)
+		toolResult := entries[2]
+		if !toolResult.Message.Content[0].IsError {
+			t.Error("expected IsError = true for exit code 1")
+		}
+		got := toolResult.Message.Content[0].Content
+		if !strings.Contains(got, "build failed") {
+			t.Errorf("result content = %q, want to contain %q", got, "build failed")
+		}
+		if !strings.Contains(got, "Exit code: 1") {
+			t.Errorf("result content = %q, want to contain %q", got, "Exit code: 1")
+		}
+	})
+
+	t.Run("replace action maps to Edit with file path result", func(t *testing.T) {
+		actions := []KiroIDEAction{
+			{
+				ActionID: "edit-1", ActionType: "replace", ActionState: "Accepted",
+				Input: map[string]any{"file": "main.go"},
+			},
+		}
+		entries, _ := convertKiroIDEActionsToEntries(actions, chatFile)
+		toolUse := entries[1]
+		if toolUse.Message.Content[0].Name != "Edit" {
+			t.Errorf("tool name = %q, want %q", toolUse.Message.Content[0].Name, "Edit")
+		}
+		toolResult := entries[2]
+		if toolResult.Message.Content[0].Content != "main.go" {
+			t.Errorf("result content = %q, want %q", toolResult.Message.Content[0].Content, "main.go")
+		}
+	})
+
+	t.Run("create action maps to Write with file path result", func(t *testing.T) {
+		actions := []KiroIDEAction{
+			{
+				ActionID: "write-1", ActionType: "create", ActionState: "Accepted",
+				Input: map[string]any{"file": "new_file.go"},
+			},
+		}
+		entries, _ := convertKiroIDEActionsToEntries(actions, chatFile)
+		toolUse := entries[1]
+		if toolUse.Message.Content[0].Name != "Write" {
+			t.Errorf("tool name = %q, want %q", toolUse.Message.Content[0].Name, "Write")
+		}
+		toolResult := entries[2]
+		if toolResult.Message.Content[0].Content != "new_file.go" {
+			t.Errorf("result content = %q, want %q", toolResult.Message.Content[0].Content, "new_file.go")
+		}
+	})
+
+	t.Run("append action maps to Edit with file path result", func(t *testing.T) {
+		actions := []KiroIDEAction{
+			{
+				ActionID: "append-1", ActionType: "append", ActionState: "Accepted",
+				Input: map[string]any{"file": "main.go"},
+			},
+		}
+		entries, _ := convertKiroIDEActionsToEntries(actions, chatFile)
+		toolUse := entries[1]
+		if toolUse.Message.Content[0].Name != "Edit" {
+			t.Errorf("tool name = %q, want %q", toolUse.Message.Content[0].Name, "Edit")
+		}
+		toolResult := entries[2]
+		if toolResult.Message.Content[0].Content != "main.go" {
+			t.Errorf("result content = %q, want %q", toolResult.Message.Content[0].Content, "main.go")
+		}
+	})
+
+	t.Run("search action maps to Grep", func(t *testing.T) {
+		actions := []KiroIDEAction{
+			{
+				ActionID: "search-1", ActionType: "search", ActionState: "Accepted",
+				Input: map[string]any{"query": "func main", "why": "Find entry point"},
+			},
+		}
+		entries, _ := convertKiroIDEActionsToEntries(actions, chatFile)
+		toolUse := entries[1]
+		if toolUse.Message.Content[0].Name != "Grep" {
+			t.Errorf("tool name = %q, want %q", toolUse.Message.Content[0].Name, "Grep")
+		}
+		inputMap := toolUse.Message.Content[0].Input.(map[string]any)
+		if inputMap["query"] != "func main" {
+			t.Errorf("query = %q, want %q", inputMap["query"], "func main")
+		}
+		if inputMap["reason"] != "Find entry point" {
+			t.Errorf("reason = %q, want %q", inputMap["reason"], "Find entry point")
+		}
+		toolResult := entries[2]
+		if toolResult.Message.Content[0].Content != "func main" {
+			t.Errorf("result content = %q, want %q", toolResult.Message.Content[0].Content, "func main")
+		}
+	})
+
+	t.Run("taskStatus becomes assistant text", func(t *testing.T) {
+		actions := []KiroIDEAction{
+			{
+				ActionID: "ts-1", ActionType: "taskStatus", ActionState: "Success",
+				TaskID: "1.1 Setup", TaskStatus: "in_progress",
+			},
+		}
+		entries, _ := convertKiroIDEActionsToEntries(actions, chatFile)
+		// 1 user + 1 taskStatus text = 2
+		if len(entries) != 2 {
+			t.Fatalf("expected 2 entries, got %d", len(entries))
+		}
+		if entries[1].Type != "assistant" {
+			t.Errorf("type = %q, want %q", entries[1].Type, "assistant")
+		}
+		want := `Task "1.1 Setup": in_progress`
+		if entries[1].Message.Content[0].Text != want {
+			t.Errorf("text = %q, want %q", entries[1].Message.Content[0].Text, want)
+		}
+	})
+
+	t.Run("rejected action shows error result", func(t *testing.T) {
+		actions := []KiroIDEAction{
+			{
+				ActionID: "rej-1", ActionType: "runCommand", ActionState: "Rejected",
+				Input: map[string]any{"command": "rm -rf /"},
+			},
+		}
+		entries, _ := convertKiroIDEActionsToEntries(actions, chatFile)
+		toolResult := entries[2]
+		if !toolResult.Message.Content[0].IsError {
+			t.Error("expected IsError = true for rejected action")
+		}
+		if toolResult.Message.Content[0].Content != "Action rejected by user" {
+			t.Errorf("content = %q, want %q", toolResult.Message.Content[0].Content, "Action rejected by user")
+		}
+	})
+
+	t.Run("error with errorMessage", func(t *testing.T) {
+		actions := []KiroIDEAction{
+			{
+				ActionID: "err-1", ActionType: "replace", ActionState: "Error",
+				ErrorMessage: "String 'foo' not found in main.go",
+			},
+		}
+		entries, _ := convertKiroIDEActionsToEntries(actions, chatFile)
+		toolResult := entries[2]
+		if !toolResult.Message.Content[0].IsError {
+			t.Error("expected IsError = true for error action")
+		}
+		if toolResult.Message.Content[0].Content != "String 'foo' not found in main.go" {
+			t.Errorf("content = %q, want error message", toolResult.Message.Content[0].Content)
+		}
+	})
+
+	t.Run("skips internal actions", func(t *testing.T) {
+		actions := []KiroIDEAction{
+			{ActionID: "m1", ActionType: "model", ActionState: "Success"},
+			{ActionID: "s1", ActionType: "steering", ActionState: "Success"},
+			{ActionID: "i1", ActionType: "intentClassification", ActionState: "Success"},
+			{ActionID: "sp1", ActionType: "specAgent", ActionState: "Success"},
+			{ActionID: "say1", ActionType: "say", ActionState: "Success", Output: map[string]any{"message": "Done"}},
+		}
+		entries, _ := convertKiroIDEActionsToEntries(actions, chatFile)
+		// 1 user message + 1 say = 2 (skipping 4 internal actions)
+		if len(entries) != 2 {
+			t.Fatalf("expected 2 entries, got %d", len(entries))
+		}
+	})
+
+	t.Run("unknown action type produces warning", func(t *testing.T) {
+		actions := []KiroIDEAction{
+			{ActionID: "u1", ActionType: "newFeature", ActionState: "Success"},
+		}
+		_, warnings := convertKiroIDEActionsToEntries(actions, chatFile)
+		if len(warnings) != 1 {
+			t.Fatalf("expected 1 warning, got %d", len(warnings))
+		}
+		if !strings.Contains(warnings[0].Message, "newFeature") {
+			t.Errorf("warning = %q, want to mention action type", warnings[0].Message)
+		}
+	})
+
+	t.Run("userInput action becomes user entry", func(t *testing.T) {
+		actions := []KiroIDEAction{
+			{
+				ActionID: "ui-1", ActionType: "userInput", ActionState: "Success",
+				Output: map[string]any{
+					"questions": []any{
+						map[string]any{
+							"id":       "ui-1",
+							"question": "Ready to proceed?",
+							"response": map[string]any{"type": "next-phase"},
+						},
+					},
+				},
+			},
+		}
+		entries, _ := convertKiroIDEActionsToEntries(actions, chatFile)
+		// 1 user from chat + 1 userInput = 2
+		if len(entries) != 2 {
+			t.Fatalf("expected 2 entries, got %d", len(entries))
+		}
+		got := entries[1].Message.Content[0].Text
+		if !strings.Contains(got, "Ready to proceed?") {
+			t.Errorf("text = %q, want to contain question", got)
+		}
+		if !strings.Contains(got, "[Response: next-phase]") {
+			t.Errorf("text = %q, want to contain response type", got)
+		}
+	})
+
+	t.Run("mixed action sequence", func(t *testing.T) {
+		actions := []KiroIDEAction{
+			{ActionID: "m1", ActionType: "model", ActionState: "Success"},
+			{ActionID: "s1", ActionType: "say", ActionState: "Success", Output: map[string]any{"message": "Let me check the code."}},
+			{ActionID: "r1", ActionType: "readFiles", ActionState: "Accepted", Input: map[string]any{"files": []any{map[string]any{"path": "main.go"}}}},
+			{ActionID: "e1", ActionType: "replace", ActionState: "Accepted", Input: map[string]any{"file": "main.go"}},
+			{ActionID: "c1", ActionType: "runCommand", ActionState: "Success", Input: map[string]any{"command": "go test"}, Output: map[string]any{"output": "PASS\n", "exitCode": float64(0)}},
+			{ActionID: "s2", ActionType: "say", ActionState: "Success", Output: map[string]any{"message": "All done!"}},
+		}
+		entries, warnings := convertKiroIDEActionsToEntries(actions, chatFile)
+		if len(warnings) != 0 {
+			t.Errorf("expected 0 warnings, got %d", len(warnings))
+		}
+		// 1 user + 1 say + 2 readFiles + 2 replace + 2 runCommand + 1 say = 9
+		if len(entries) != 9 {
+			t.Fatalf("expected 9 entries, got %d", len(entries))
+		}
+		// Verify ordering: user, say, read(use), read(result), edit(use), edit(result), bash(use), bash(result), say
+		wantTypes := []string{"user", "assistant", "assistant", "user", "assistant", "user", "assistant", "user", "assistant"}
+		for i, wt := range wantTypes {
+			if entries[i].Type != wt {
+				t.Errorf("entry %d: type = %q, want %q", i, entries[i].Type, wt)
+			}
+		}
+	})
+}
+
+func TestParseKiroIDEWithActionsFromCostPath(t *testing.T) {
+	dir := t.TempDir()
+	costPath := filepath.Join(dir, "detail.json")
+	err := os.WriteFile(costPath, []byte(`{
+		"executionId": "exec-1",
+		"usageSummary": [
+			{"unit": "credit", "unitPlural": "credits", "usage": 0.05}
+		],
+		"actions": [
+			{
+				"type": "AgentExecutionAction",
+				"executionId": "exec-1",
+				"actionId": "s1",
+				"actionType": "say",
+				"actionState": "Success",
+				"output": {"message": "I'll help with that."}
+			},
+			{
+				"type": "AgentExecutionAction",
+				"executionId": "exec-1",
+				"actionId": "r1",
+				"actionType": "readFiles",
+				"actionState": "Accepted",
+				"input": {"files": [{"path": "main.go"}]}
+			},
+			{
+				"type": "AgentExecutionAction",
+				"executionId": "exec-1",
+				"actionId": "c1",
+				"actionType": "runCommand",
+				"actionState": "Success",
+				"input": {"command": "go test ./..."},
+				"output": {"output": "PASS\n", "exitCode": 0}
+			}
+		]
+	}`), 0o644)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	input := `{
+		"executionId": "exec-1",
+		"chat": [
+			{"role": "human", "content": "<identity>system</identity>"},
+			{"role": "human", "content": "Fix the tests"},
+			{"role": "bot", "content": "I'll help with that."},
+			{"role": "tool", "content": ""}
+		],
+		"metadata": {"modelId": "auto", "startTime": 1000, "endTime": 2000}
+	}`
+
+	result, err := ParseKiroIDEWithCostPath(strings.NewReader(input), costPath)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	// Should use action-based entries, not chat-based
+	// 1 user ("Fix the tests") + 1 say + 2 readFiles + 2 runCommand = 6
+	if len(result.Entries) != 6 {
+		t.Fatalf("expected 6 entries, got %d", len(result.Entries))
+	}
+
+	// First entry should be user message from chat
+	if result.Entries[0].Message.Content[0].Text != "Fix the tests" {
+		t.Errorf("first entry text = %q, want %q", result.Entries[0].Message.Content[0].Text, "Fix the tests")
+	}
+
+	// Second entry should be say action (assistant text)
+	if result.Entries[1].Type != "assistant" {
+		t.Errorf("entry 1 type = %q, want %q", result.Entries[1].Type, "assistant")
+	}
+
+	// Third entry should be readFiles tool_use
+	if result.Entries[2].Message.Content[0].Name != "Read" {
+		t.Errorf("entry 2 tool name = %q, want %q", result.Entries[2].Message.Content[0].Name, "Read")
+	}
+
+	// Cost metadata should still be present
+	if result.Metadata == nil || result.Metadata.TotalCost == nil {
+		t.Fatal("expected cost metadata")
+	}
+	if math.Abs(*result.Metadata.TotalCost-0.05) > 0.0001 {
+		t.Errorf("cost = %.4f, want 0.05", *result.Metadata.TotalCost)
+	}
+}
+
+func TestParseKiroIDEFallsBackToChatWhenNoActions(t *testing.T) {
+	dir := t.TempDir()
+	costPath := filepath.Join(dir, "detail.json")
+	err := os.WriteFile(costPath, []byte(`{
+		"executionId": "exec-1",
+		"usageSummary": [
+			{"unit": "credit", "unitPlural": "credits", "usage": 0.05}
+		],
+		"actions": []
+	}`), 0o644)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	input := `{
+		"executionId": "exec-1",
+		"chat": [
+			{"role": "human", "content": "Hello"},
+			{"role": "bot", "content": "Hi there"}
+		],
+		"metadata": {"modelId": "auto", "startTime": 1000, "endTime": 2000}
+	}`
+
+	result, err := ParseKiroIDEWithCostPath(strings.NewReader(input), costPath)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	// Should fall back to chat-based entries
+	if len(result.Entries) != 2 {
+		t.Fatalf("expected 2 entries (chat fallback), got %d", len(result.Entries))
+	}
+	if result.Entries[0].Type != "user" {
+		t.Errorf("entry 0 type = %q, want %q", result.Entries[0].Type, "user")
+	}
+	if result.Entries[1].Type != "assistant" {
+		t.Errorf("entry 1 type = %q, want %q", result.Entries[1].Type, "assistant")
+	}
+}
