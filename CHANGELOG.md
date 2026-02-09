@@ -9,6 +9,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Add `internal/apsisweb/` web server package for the `apsis serve` session browser
+  - HTTP server with HTMX-powered session list, transcript viewer, and error pages
+  - `ValidateSource` and `SanitizeSessionID` middleware for input validation and path traversal protection
+  - Embedded static assets (CSS, htmx.min.js) and HTML templates with dark mode support
+  - Agent source badges with colour-coded styling for all 5 agent types
+  - Responsive layout supporting viewports from 320px (iPhone SE) to desktop
+  - Client-side filtering by agent type and search by session ID
+  - HTMX polling (15s) for auto-refreshing session list with connection loss detection
+  - 50MB transcript size guard with CLI fallback suggestion
+  - Kiro IDE cost path threading through `ParseJSONLWithFormat`
+  - Security headers reused from `internal/web/` (SecurityHeaders, PathSanitizer, IsPathWithinDir)
 - Extract session discovery and resolution into `internal/sessions/` package
   - `sessions.Lister` with `ListAll()` for discovering sessions across all 5 agent types (Claude, Codex, Copilot, Kiro CLI, Kiro IDE)
   - `sessions.Resolver` with `Resolve()` and `ResolvePath()` for locating sessions by source and ID with path validation

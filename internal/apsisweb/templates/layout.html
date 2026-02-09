@@ -1,0 +1,53 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{.Title}} - Apsis</title>
+    <link rel="stylesheet" href="/static/style.css?v={{.CSSVersion}}">
+    <link rel="stylesheet" href="/static/transcript.css?v={{.CSSVersion}}">
+    <script src="/static/htmx.min.js"></script>
+</head>
+<body>
+    <header>
+        <div class="container">
+            <h1><a href="/">Apsis</a></h1>
+        </div>
+    </header>
+
+    <main class="container">
+        <noscript>
+            <div class="no-js-notice">
+                Filtering, search, and auto-refresh require JavaScript.
+            </div>
+        </noscript>
+
+        {{template "content" .}}
+    </main>
+
+    <!-- Connection status indicator for htmx -->
+    <div id="connection-status" class="connection-status">
+        Connection lost - retrying...
+    </div>
+
+    <script>
+        // Track consecutive AJAX failures for connection status
+        let consecutiveFailures = 0;
+        const maxFailures = 3;
+
+        document.body.addEventListener('htmx:sendError', function(evt) {
+            consecutiveFailures++;
+            if (consecutiveFailures >= maxFailures) {
+                document.getElementById('connection-status').classList.add('disconnected');
+            }
+        });
+
+        document.body.addEventListener('htmx:afterRequest', function(evt) {
+            if (evt.detail.successful) {
+                consecutiveFailures = 0;
+                document.getElementById('connection-status').classList.remove('disconnected');
+            }
+        });
+    </script>
+</body>
+</html>

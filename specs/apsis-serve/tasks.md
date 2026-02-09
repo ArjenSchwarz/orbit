@@ -100,7 +100,7 @@ references:
 
 ## Web Server
 
-- [ ] 9. Create internal/apsisweb/middleware.go with ValidateSource and SanitizeSessionID <!-- id:99ijhic -->
+- [x] 9. Create internal/apsisweb/middleware.go with ValidateSource and SanitizeSessionID <!-- id:99ijhic -->
   - Implement ValidateSource(paramName) func(http.Handler) http.Handler
   - Implement SanitizeSessionID(paramName) func(http.Handler) http.Handler
   - Follow same pattern as orbit ValidateUUID
@@ -109,7 +109,7 @@ references:
   - Requirements: [4.7](requirements.md#4.7), [4.8](requirements.md#4.8), [6.4](requirements.md#6.4)
   - References: internal/web/middleware.go, internal/sessions/types.go
 
-- [ ] 10. Write tests for apsisweb middleware <!-- id:99ijhid -->
+- [x] 10. Write tests for apsisweb middleware <!-- id:99ijhid -->
   - Create internal/apsisweb/middleware_test.go
   - Test ValidateSource with valid and invalid sources
   - Test SanitizeSessionID with clean IDs and path traversal attempts
@@ -119,7 +119,7 @@ references:
   - Requirements: [4.7](requirements.md#4.7), [4.8](requirements.md#4.8)
   - References: internal/apsisweb/middleware.go
 
-- [ ] 11. Create internal/apsisweb/static.go with embedded static file serving <!-- id:99ijhie -->
+- [x] 11. Create internal/apsisweb/static.go with embedded static file serving <!-- id:99ijhie -->
   - Create embed.FS for static/ directory
   - Implement newStaticHandler() and stripPrefix()
   - Set Cache-Control and Content-Type headers
@@ -127,7 +127,7 @@ references:
   - Requirements: [7.1](requirements.md#7.1), [7.3](requirements.md#7.3)
   - References: internal/web/static.go
 
-- [ ] 12. Create static assets: style.css and vendored htmx.min.js <!-- id:99ijhif -->
+- [x] 12. Create static assets: style.css and vendored htmx.min.js <!-- id:99ijhif -->
   - Create internal/apsisweb/static/ directory
   - Create style.css with CSS variables, dark mode, agent badges, responsive layout
   - Copy htmx.min.js from internal/web/static/htmx.min.js
@@ -135,7 +135,7 @@ references:
   - Requirements: [5.1](requirements.md#5.1), [5.2](requirements.md#5.2), [5.3](requirements.md#5.3), [5.4](requirements.md#5.4), [5.5](requirements.md#5.5), [5.6](requirements.md#5.6), [5.7](requirements.md#5.7), [7.6](requirements.md#7.6)
   - References: internal/web/static/style.css, internal/web/static/htmx.min.js
 
-- [ ] 13. Create HTML templates: layout.html, sessions.html, transcript.html, error.html <!-- id:99ijhig -->
+- [x] 13. Create HTML templates: layout.html, sessions.html, transcript.html, error.html <!-- id:99ijhig -->
   - Create internal/apsisweb/templates/ directory
   - layout.html with HTMX, CSS cache-busting, connection indicator, noscript notice
   - sessions.html with filter pills, HTMX polling, search, session cards
@@ -146,7 +146,7 @@ references:
   - Requirements: [3.1](requirements.md#3.1), [3.2](requirements.md#3.2), [3.3](requirements.md#3.3), [3.4](requirements.md#3.4), [3.5](requirements.md#3.5), [3.6](requirements.md#3.6), [3.7](requirements.md#3.7), [3.8](requirements.md#3.8), [3.9](requirements.md#3.9), [3.10](requirements.md#3.10), [3.11](requirements.md#3.11), [3.12](requirements.md#3.12), [4.1](requirements.md#4.1), [4.3](requirements.md#4.3), [4.4](requirements.md#4.4), [4.5](requirements.md#4.5), [7.2](requirements.md#7.2), [7.4](requirements.md#7.4), [8.1](requirements.md#8.1), [8.2](requirements.md#8.2), [8.3](requirements.md#8.3), [8.4](requirements.md#8.4)
   - References: internal/web/templates/layout.html, internal/web/templates/dashboard.html
 
-- [ ] 14. Create internal/apsisweb/server.go with Server, Config, routing, and lifecycle <!-- id:99ijhih -->
+- [x] 14. Create internal/apsisweb/server.go with Server, Config, routing, and lifecycle <!-- id:99ijhih -->
   - Define Config, template data types, Server struct
   - Implement New(), setupRoutes(), Start(), Shutdown()
   - Set HTTP timeouts: ReadHeader 10s, Write 120s, Idle 60s
@@ -157,7 +157,7 @@ references:
   - Requirements: [2.1](requirements.md#2.1), [2.10](requirements.md#2.10), [7.2](requirements.md#7.2)
   - References: internal/web/server.go, internal/web/handlers.go
 
-- [ ] 15. Create internal/apsisweb/handlers.go with session list, transcript, and error handlers <!-- id:99ijhii -->
+- [x] 15. Create internal/apsisweb/handlers.go with session list, transcript, and error handlers <!-- id:99ijhii -->
   - Implement handleSessionList, handleSessionListFragment
   - Implement handleTranscript with 50MB guard and Kiro IDE cost threading
   - Implement handleTranscriptCSS, renderError, handleNotFound
@@ -167,7 +167,7 @@ references:
   - Requirements: [3.1](requirements.md#3.1), [3.3](requirements.md#3.3), [3.7](requirements.md#3.7), [3.8](requirements.md#3.8), [3.9](requirements.md#3.9), [3.12](requirements.md#3.12), [4.1](requirements.md#4.1), [4.2](requirements.md#4.2), [4.6](requirements.md#4.6), [4.9](requirements.md#4.9), [7.5](requirements.md#7.5)
   - References: internal/web/handlers.go
 
-- [ ] 16. Write tests for apsisweb handlers <!-- id:99ijhij -->
+- [x] 16. Write tests for apsisweb handlers <!-- id:99ijhij -->
   - Create internal/apsisweb/handlers_test.go
   - Test session list rendering, empty state, warnings
   - Test transcript rendering, 404, 413 for oversized files
@@ -178,7 +178,7 @@ references:
   - Requirements: [3.1](requirements.md#3.1), [3.8](requirements.md#3.8), [3.9](requirements.md#3.9), [3.12](requirements.md#3.12), [4.1](requirements.md#4.1), [4.6](requirements.md#4.6), [4.9](requirements.md#4.9)
   - References: internal/apsisweb/handlers.go
 
-- [ ] 17. Write tests for apsisweb server lifecycle <!-- id:99ijhik -->
+- [x] 17. Write tests for apsisweb server lifecycle <!-- id:99ijhik -->
   - Create internal/apsisweb/server_test.go
   - Test New creates server with correct config and timeouts
   - Test server starts and responds on ephemeral port
