@@ -18,16 +18,9 @@
 </div>
 {{end}}
 
-{{if .Empty}}
-<div class="empty-state">
-    <h2>No sessions found</h2>
-    <p>No AI coding agent sessions were found for this project.</p>
-</div>
-{{else}}
 <div id="session-list" hx-get="/api/sessions" hx-trigger="every 15s" hx-swap="innerHTML">
     {{template "sessions_list" .}}
 </div>
-{{end}}
 
 <script>
 (function() {
@@ -74,6 +67,12 @@
 {{end}}
 
 {{define "sessions_list"}}
+{{if .Empty}}
+<div class="empty-state">
+    <h2>No sessions found</h2>
+    <p>No AI coding agent sessions were found for this project.</p>
+</div>
+{{else}}
 <div class="session-list">
     {{range .Sessions}}
     <a href="{{.URL}}" class="session-card" data-source="{{.Source}}" data-id="{{.ID}}">
@@ -84,4 +83,5 @@
     </a>
     {{end}}
 </div>
+{{end}}
 {{end}}
