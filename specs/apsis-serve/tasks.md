@@ -8,7 +8,7 @@ references:
 
 ## Pre-work
 
-- [ ] 1. Export isPathWithinDir in internal/web/middleware.go <!-- id:99ijhi4 -->
+- [x] 1. Export isPathWithinDir in internal/web/middleware.go <!-- id:99ijhi4 -->
   - Rename isPathWithinDir to IsPathWithinDir in internal/web/middleware.go
   - Update the single call site in internal/web/handlers.go (line ~483)
   - Run make test to verify orbit tests still pass
@@ -18,7 +18,7 @@ references:
 
 ## Session Extraction
 
-- [ ] 2. Create internal/sessions/types.go with data types and source constants <!-- id:99ijhi5 -->
+- [x] 2. Create internal/sessions/types.go with data types and source constants <!-- id:99ijhi5 -->
   - Create internal/sessions/ package directory
   - Define SessionInfo struct (ID, CreatedAt, Size, Source)
   - Define SessionMetadata, ResolvedSession, ListWarning structs
@@ -30,7 +30,7 @@ references:
   - Requirements: [1.1](requirements.md#1.1), [1.7](requirements.md#1.7), [1.8](requirements.md#1.8)
   - References: cmd/apsis/main.go
 
-- [ ] 3. Write property-based and unit tests for sessions types <!-- id:99ijhi6 -->
+- [x] 3. Write property-based and unit tests for sessions types <!-- id:99ijhi6 -->
   - Create internal/sessions/types_test.go
   - Property-based tests for FormatSize using pgregory.net/rapid
   - Unit tests for AllSources(), DisplayName(), IsValidSource()
@@ -39,7 +39,7 @@ references:
   - Requirements: [1.7](requirements.md#1.7), [1.8](requirements.md#1.8)
   - References: internal/sessions/types.go
 
-- [ ] 4. Create internal/sessions/lister.go — extract session listing logic <!-- id:99ijhi7 -->
+- [x] 4. Create internal/sessions/lister.go — extract session listing logic <!-- id:99ijhi7 -->
   - Create Lister struct with homeDir field
   - Implement NewLister() (*Lister, error)
   - Implement ListAll(projectPath) ([]SessionInfo, []ListWarning, error)
@@ -51,7 +51,7 @@ references:
   - Requirements: [1.1](requirements.md#1.1), [1.2](requirements.md#1.2), [1.5](requirements.md#1.5), [1.6](requirements.md#1.6)
   - References: cmd/apsis/main.go, internal/sessions/types.go
 
-- [ ] 5. Create internal/sessions/resolver.go — extract session resolution logic <!-- id:99ijhi8 -->
+- [x] 5. Create internal/sessions/resolver.go — extract session resolution logic <!-- id:99ijhi8 -->
   - Create Resolver struct with projectPath and homeDir fields
   - Implement NewResolver(projectPath string) (*Resolver, error)
   - Implement Resolve(source, sessionID string) (*ResolvedSession, error)
@@ -64,7 +64,7 @@ references:
   - Requirements: [1.1](requirements.md#1.1), [1.3](requirements.md#1.3), [6.5](requirements.md#6.5)
   - References: cmd/apsis/main.go, internal/sessions/types.go, internal/web/middleware.go
 
-- [ ] 6. Write tests for sessions Lister <!-- id:99ijhi9 -->
+- [x] 6. Write tests for sessions Lister <!-- id:99ijhi9 -->
   - Create internal/sessions/lister_test.go
   - Test ListAll with no sessions, single source, multiple sources
   - Test one source failing returns warning while others succeed
@@ -75,7 +75,7 @@ references:
   - Requirements: [1.2](requirements.md#1.2), [1.5](requirements.md#1.5), [1.6](requirements.md#1.6)
   - References: internal/sessions/lister.go
 
-- [ ] 7. Write tests for sessions Resolver <!-- id:99ijhia -->
+- [x] 7. Write tests for sessions Resolver <!-- id:99ijhia -->
   - Create internal/sessions/resolver_test.go
   - Test Resolve with Claude source using test fixture
   - Test unknown source and non-existent session return errors
@@ -86,7 +86,7 @@ references:
   - Requirements: [1.3](requirements.md#1.3), [6.5](requirements.md#6.5)
   - References: internal/sessions/resolver.go
 
-- [ ] 8. Wire cmd/apsis/main.go to use sessions package and remove extracted code <!-- id:99ijhib -->
+- [x] 8. Wire cmd/apsis/main.go to use sessions package and remove extracted code <!-- id:99ijhib -->
   - Replace listSessions() to use sessions.NewLister()
   - Replace resolveInput() to use sessions.NewResolver()
   - Use sessions.DisplayName() and sessions.FormatSize()

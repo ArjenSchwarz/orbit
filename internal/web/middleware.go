@@ -83,9 +83,9 @@ func PathSanitizer(next http.Handler) http.Handler {
 	})
 }
 
-// isPathWithinDir checks if path is within dir after resolving symlinks.
+// IsPathWithinDir checks if path is within dir after resolving symlinks.
 // Returns false if the path resolves to a location outside the allowed directory.
-func isPathWithinDir(path, dir string) bool {
+func IsPathWithinDir(path, dir string) bool {
 	// Resolve symlinks for both paths
 	resolved, err := filepath.EvalSymlinks(path)
 	if err != nil {

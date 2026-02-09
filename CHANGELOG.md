@@ -7,6 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Extract session discovery and resolution into `internal/sessions/` package
+  - `sessions.Lister` with `ListAll()` for discovering sessions across all 5 agent types (Claude, Codex, Copilot, Kiro CLI, Kiro IDE)
+  - `sessions.Resolver` with `Resolve()` and `ResolvePath()` for locating sessions by source and ID with path validation
+  - `sessions.SessionInfo`, `SessionMetadata`, `ResolvedSession`, `ListWarning` data types
+  - Source constants (`SourceClaude`, `SourceCodex`, `SourceCopilot`, `SourceKiroCLI`, `SourceKiroIDE`) with `AllSources()`, `DisplayName()`, `IsValidSource()`
+  - `FormatSize()` utility for human-readable file sizes
+  - Property-based tests for `FormatSize` using `pgregory.net/rapid`
+
+### Changed
+
+- Export `IsPathWithinDir` in `internal/web/middleware.go` for use by the apsis web package
+- Refactor `cmd/apsis/main.go` to use `internal/sessions/` package, removing ~800 lines of extracted code
+
 ### Fixed
 
 - Fix Copilot premium requests not appearing in multi-variant run metrics and comparison reports; `getCostUSD` (now `getCostValue`) was ignoring the `PremiumRequests` field, causing cost to always be 0 for Copilot variants

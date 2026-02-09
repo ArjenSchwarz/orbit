@@ -258,9 +258,9 @@ func TestIsPathWithinDir(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			result := isPathWithinDir(tt.path, tt.dir)
+			result := IsPathWithinDir(tt.path, tt.dir)
 			if result != tt.expected {
-				t.Errorf("isPathWithinDir(%q, %q) = %v, want %v", tt.path, tt.dir, result, tt.expected)
+				t.Errorf("IsPathWithinDir(%q, %q) = %v, want %v", tt.path, tt.dir, result, tt.expected)
 			}
 		})
 	}
@@ -292,7 +292,7 @@ func TestIsPathWithinDirSymlinks(t *testing.T) {
 	}
 
 	// Symlink should be detected as outside the allowed directory
-	if isPathWithinDir(symlinkPath, subDir) {
+	if IsPathWithinDir(symlinkPath, subDir) {
 		t.Error("symlink pointing outside should return false")
 	}
 
@@ -308,7 +308,7 @@ func TestIsPathWithinDirSymlinks(t *testing.T) {
 	}
 
 	// Internal symlink should be allowed
-	if !isPathWithinDir(internalLink, subDir) {
+	if !IsPathWithinDir(internalLink, subDir) {
 		t.Error("symlink pointing inside should return true")
 	}
 }
