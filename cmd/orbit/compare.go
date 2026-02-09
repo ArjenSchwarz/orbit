@@ -132,9 +132,7 @@ func compareCommand(args []string) error {
 		return fmt.Errorf("failed to get agent: %w", err)
 	}
 
-	// Disable tools — comparison has all data inline and shouldn't read files or run commands.
-	adapter := comparison.NewAgentAdapter(agent, comparisonCtx, workDir).
-		WithExtraArgs("--tools", "")
+	adapter := comparison.NewAgentAdapter(agent, comparisonCtx, workDir)
 	comparator := comparison.NewComparator(adapter, *compareCmd)
 
 	// Use the unified comparison method with summaries only (diffs excluded to save context)

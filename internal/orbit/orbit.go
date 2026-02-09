@@ -2378,14 +2378,11 @@ func (o *Orbit) runComparison(ctx context.Context) error {
 	// Read spec context for additional context
 	specContext := o.readSpecContext()
 
-	// Create comparator with timeout and restricted tools.
-	// Comparison has all data inline — tools are disabled to prevent unnecessary work
-	// and the timeout prevents indefinite hangs from stalled API connections.
+	// Create comparator with timeout to prevent indefinite hangs from stalled API connections.
 	comparisonCtx, cancel := context.WithTimeout(o.shutdownCtx, comparison.DefaultTimeout)
 	defer cancel()
 
-	adapter := comparison.NewAgentAdapter(o.agent, comparisonCtx, o.config.WorkingDir).
-		WithExtraArgs("--tools", "")
+	adapter := comparison.NewAgentAdapter(o.agent, comparisonCtx, o.config.WorkingDir)
 	comparator := comparison.NewComparator(adapter, o.config.CompareCommand)
 	result, err := comparator.CompareWithSummaries(ctx, o.config.BranchName, variantData, specContext)
 	if err != nil {
