@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Skip empty assistant sections in transcript rendering caused by whitespace-only text entries from Claude streaming chunks
 - Skip unknown JSONL entry types (e.g., `file-history-snapshot`) during format detection instead of failing with "unrecognized log format" error. When format detection fails, `Parse()` falls back to the Claude parser which gracefully returns 0 entries for unrecognized content.
 - Normalize session timestamps to local timezone in `apsis -l` CLI output to prevent mix of UTC and local times
 - Display session timestamps in the user's locale format in `apsis serve` web interface using client-side `Intl.DateTimeFormat`, with HTMX-aware re-formatting for dynamically loaded content

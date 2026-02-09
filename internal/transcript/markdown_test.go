@@ -56,6 +56,47 @@ func TestRenderMarkdown_AssistantMessage(t *testing.T) {
 	}
 }
 
+func TestRenderMarkdown_WhitespaceOnlyAssistantSkipped(t *testing.T) {
+	entries := []Entry{
+		{
+			Type: "user",
+			Message: &Message{
+				Role: "user",
+				Content: []ContentItem{
+					{Type: "text", Text: "Hello"},
+				},
+			},
+		},
+		{
+			Type: "assistant",
+			Message: &Message{
+				Role:    "assistant",
+				Content: []ContentItem{{Type: "text", Text: "\n\n"}},
+			},
+		},
+		{
+			Type: "assistant",
+			Message: &Message{
+				Role: "assistant",
+				Content: []ContentItem{
+					{Type: "text", Text: "Real response"},
+				},
+			},
+		},
+	}
+
+	result := RenderMarkdown(entries, RenderOptions{})
+
+	// Should have exactly 2 Assistant headings: none for the whitespace-only entry
+	count := strings.Count(result, "## 🤖 Assistant")
+	if count != 1 {
+		t.Errorf("expected 1 Assistant heading, got %d", count)
+	}
+	if !strings.Contains(result, "Real response") {
+		t.Error("expected real response content")
+	}
+}
+
 func TestRenderMarkdown_ThinkingBlock(t *testing.T) {
 	entries := []Entry{
 		{
