@@ -9,6 +9,45 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Normalize session timestamps to local timezone in `apsis -l` CLI output to prevent mix of UTC and local times
+- Display session timestamps in the user's locale format in `apsis serve` web interface using client-side `Intl.DateTimeFormat`, with HTMX-aware re-formatting for dynamically loaded content
+- Remove misleading `TestHandleTranscriptOversized` that tested 404 instead of the 50MB size guard
+- Add max length validation (256 chars) to `SanitizeSessionID` middleware to prevent oversized input
+
+### Added
+
+- Add `apsis serve` subcommand to `cmd/apsis/main.go` with `--port`, `--bind`, `--project` flags, `APSIS_SERVE_PORT`/`APSIS_SERVE_BIND` env var fallback, signal handling (SIGINT/SIGTERM) with 5-second graceful shutdown, and network binding warning
+- Add `internal/apsisweb/` web server package for the `apsis serve` session browser
+  - HTTP server with HTMX-powered session list, transcript viewer, and error pages
+  - `ValidateSource` and `SanitizeSessionID` middleware for input validation and path traversal protection
+  - Embedded static assets (CSS, htmx.min.js) and HTML templates with dark mode support
+  - Agent source badges with colour-coded styling for all 5 agent types
+  - Responsive layout supporting viewports from 320px (iPhone SE) to desktop
+  - Client-side filtering by agent type and search by session ID
+  - HTMX polling (15s) for auto-refreshing session list with connection loss detection
+  - 50MB transcript size guard with CLI fallback suggestion
+  - Kiro IDE cost path threading through `ParseJSONLWithFormat`
+  - Security headers reused from `internal/web/` (SecurityHeaders, PathSanitizer, IsPathWithinDir)
+  - End-to-end integration test covering session listing, transcript rendering, 404s, security headers, and server lifecycle
+- Extract session discovery and resolution into `internal/sessions/` package
+  - `sessions.Lister` with `ListAll()` for discovering sessions across all 5 agent types (Claude, Codex, Copilot, Kiro CLI, Kiro IDE)
+  - `sessions.Resolver` with `Resolve()` and `ResolvePath()` for locating sessions by source and ID with path validation
+  - `sessions.SessionInfo`, `SessionMetadata`, `ResolvedSession`, `ListWarning` data types
+  - Source constants (`SourceClaude`, `SourceCodex`, `SourceCopilot`, `SourceKiroCLI`, `SourceKiroIDE`) with `AllSources()`, `DisplayName()`, `IsValidSource()`
+  - `FormatSize()` utility for human-readable file sizes
+  - Property-based tests for `FormatSize` using `pgregory.net/rapid`
+
+### Changed
+
+- Export `IsPathWithinDir` in `internal/web/middleware.go` for use by the apsis web package
+- Refactor `cmd/apsis/main.go` to use `internal/sessions/` package, removing ~800 lines of extracted code
+
+### Fixed
+
+- Fix `orbit compare` and variant comparison hanging indefinitely when the Claude API streaming response stalls; add 10-minute timeout context to comparison sessions
+- Fix `--session-id ""` being passed to Claude CLI when the adapter has no session ID; omit the flag entirely to let Claude generate its own
+- Fix transcript view showing zero date ("Jan 1, 0001") by populating `CreatedAt` from file modification time in `Resolver.Resolve()`; gracefully handle zero time for Kiro CLI sessions
+- Fix session list empty state preventing HTMX auto-refresh; move empty state into the polling fragment so new sessions appear without manual page refresh
 - Fix Copilot premium requests not appearing in multi-variant run metrics and comparison reports; `getCostUSD` (now `getCostValue`) was ignoring the `PremiumRequests` field, causing cost to always be 0 for Copilot variants
 - Fix `apsis -l` not filtering Codex sessions by working directory; sessions from other projects were included in the listing
 

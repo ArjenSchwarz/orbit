@@ -309,6 +309,32 @@ func TestAgent_Version(t *testing.T) {
 	_, _ = agent.Version()
 }
 
+func TestAgent_BuildArgs_EmptySessionID(t *testing.T) {
+	agent := New(agents.AgentConfig{}).(*Agent)
+
+	args := agent.buildArgs(agents.RunOptions{
+		Prompt:    "Test prompt",
+		SessionID: "", // Empty session ID — should omit --session-id entirely
+	}, false)
+
+	// Should NOT contain --session-id when the ID is empty
+	if slices.Contains(args, "--session-id") {
+		t.Errorf("Empty session ID should omit --session-id flag, got %v", args)
+	}
+
+	// Prompt should still be present
+	foundPrompt := false
+	for i, arg := range args {
+		if arg == "-p" && i+1 < len(args) && args[i+1] == "Test prompt" {
+			foundPrompt = true
+			break
+		}
+	}
+	if !foundPrompt {
+		t.Errorf("Expected -p 'Test prompt' in args, got %v", args)
+	}
+}
+
 func TestAgent_ArgOrder(t *testing.T) {
 	agent := New(agents.AgentConfig{
 		AutoApprove: true,

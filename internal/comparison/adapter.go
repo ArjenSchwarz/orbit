@@ -13,9 +13,10 @@ import (
 // Create a new adapter for each operation rather than caching it across runs,
 // as the context may become stale or cancelled.
 type AgentAdapter struct {
-	agent   agents.Agent
-	ctx     context.Context
-	workDir string
+	agent     agents.Agent
+	ctx       context.Context
+	workDir   string
+	extraArgs []string
 }
 
 // NewAgentAdapter creates a new adapter wrapping the given agent.
@@ -38,13 +39,22 @@ func NewAgentAdapter(agent agents.Agent, ctx context.Context, workDir string) *A
 	}
 }
 
+// WithExtraArgs returns a copy of the adapter with additional CLI arguments.
+// These are passed through to the agent's ExtraArgs on each invocation.
+func (a *AgentAdapter) WithExtraArgs(args ...string) *AgentAdapter {
+	copy := *a
+	copy.extraArgs = args
+	return &copy
+}
+
 // RunCustomPrompt implements the promptRunner interface by delegating to agent.Run().
 // Note: AutoApprove is controlled by the agent's config, not RunOptions.
 // The agent passed to the adapter should already be configured with AutoApprove if needed.
 func (a *AgentAdapter) RunCustomPrompt(prompt string) (*agents.RunResult, error) {
 	opts := agents.RunOptions{
-		Prompt:  prompt,
-		WorkDir: a.workDir,
+		Prompt:    prompt,
+		WorkDir:   a.workDir,
+		ExtraArgs: a.extraArgs,
 	}
 	return a.agent.Run(a.ctx, opts)
 }

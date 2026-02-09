@@ -153,10 +153,11 @@ func (a *Agent) buildArgs(opts agents.RunOptions, resume bool) []string {
 
 	var args []string
 
-	// Session handling: --resume for continuing, --session-id for new sessions
+	// Session handling: --resume for continuing, --session-id for new sessions.
+	// Omit --session-id when empty to let Claude generate its own ID.
 	if resume {
 		args = append(args, "--resume", opts.SessionID)
-	} else {
+	} else if opts.SessionID != "" {
 		args = append(args, "--session-id", opts.SessionID)
 	}
 

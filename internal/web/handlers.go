@@ -480,7 +480,7 @@ func (s *Server) handleTranscript(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Validate path is within log directory
-	if !isPathWithinDir(transcriptPath, entry.LogDir) {
+	if !IsPathWithinDir(transcriptPath, entry.LogDir) {
 		s.handleNotFound(w, r)
 		return
 	}

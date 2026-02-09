@@ -1,0 +1,401 @@
+package sessions
+
+import (
+	"context"
+	"encoding/json"
+	"errors"
+	"fmt"
+	"io"
+	"io/fs"
+	"os"
+	"path/filepath"
+	"strings"
+	"time"
+
+	"github.com/arjenschwarz/orbit/internal/agents/claudecode"
+	"github.com/arjenschwarz/orbit/internal/agents/kiro/logs"
+	"github.com/arjenschwarz/orbit/internal/transcript"
+	"github.com/arjenschwarz/orbit/internal/web"
+)
+
+// Resolver finds and opens a specific session by source and ID.
+type Resolver struct {
+	projectPath string
+	homeDir     string
+}
+
+// NewResolver creates a Resolver for the given project.
+// Resolves os.UserHomeDir() once during construction.
+func NewResolver(projectPath string) (*Resolver, error) {
+	homeDir, err := os.UserHomeDir()
+	if err != nil {
+		return nil, fmt.Errorf("failed to get home directory: %w", err)
+	}
+	return &Resolver{projectPath: projectPath, homeDir: homeDir}, nil
+}
+
+// Resolve locates a session and returns a reader and metadata.
+// The caller is responsible for closing the reader.
+func (r *Resolver) Resolve(source, sessionID string) (*ResolvedSession, error) {
+	if !IsValidSource(source) {
+		return nil, fmt.Errorf("unknown source: %s", source)
+	}
+
+	switch source {
+	case SourceClaude:
+		return r.resolveClaude(sessionID)
+	case SourceCodex:
+		return r.resolveCodex(sessionID)
+	case SourceCopilot:
+		return r.resolveCopilot(sessionID)
+	case SourceKiroCLI:
+		return r.resolveKiroCLI(sessionID)
+	case SourceKiroIDE:
+		return r.resolveKiroIDE(sessionID)
+	default:
+		return nil, fmt.Errorf("unknown source: %s", source)
+	}
+}
+
+func (r *Resolver) resolveClaude(sessionID string) (*ResolvedSession, error) {
+	claudeProjectPath := claudecode.BuildProjectPath(r.projectPath)
+	baseDir := filepath.Join(r.homeDir, ".claude", "projects", claudeProjectPath)
+	sessionFile := filepath.Join(baseDir, sessionID+".jsonl")
+
+	if !web.IsPathWithinDir(sessionFile, baseDir) {
+		return nil, fmt.Errorf("session not found: %s", sessionID)
+	}
+
+	return r.openFileSession(sessionFile, SourceClaude, sessionID)
+}
+
+func (r *Resolver) resolveCodex(sessionID string) (*ResolvedSession, error) {
+	codexPath, err := findCodexSession(r.homeDir, sessionID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to search Codex sessions: %w", err)
+	}
+	if codexPath == "" {
+		return nil, fmt.Errorf("session not found: %s", sessionID)
+	}
+
+	baseDir := filepath.Join(r.homeDir, ".codex", "sessions")
+	if !web.IsPathWithinDir(codexPath, baseDir) {
+		return nil, fmt.Errorf("session not found: %s", sessionID)
+	}
+
+	return r.openFileSession(codexPath, SourceCodex, sessionID)
+}
+
+func (r *Resolver) resolveCopilot(sessionID string) (*ResolvedSession, error) {
+	copilotPath, err := findCopilotSession(r.homeDir, sessionID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to search Copilot sessions: %w", err)
+	}
+	if copilotPath == "" {
+		return nil, fmt.Errorf("session not found: %s", sessionID)
+	}
+
+	baseDir := filepath.Join(r.homeDir, ".copilot", "session-state")
+	if !web.IsPathWithinDir(copilotPath, baseDir) {
+		return nil, fmt.Errorf("session not found: %s", sessionID)
+	}
+
+	return r.openFileSession(copilotPath, SourceCopilot, sessionID)
+}
+
+func (r *Resolver) resolveKiroCLI(sessionID string) (*ResolvedSession, error) {
+	reader, err := logs.GetSession(context.Background(), sessionID, r.projectPath)
+	if err != nil {
+		if errors.Is(err, logs.ErrSessionNotFound) || errors.Is(err, logs.ErrDatabaseNotFound) {
+			return nil, fmt.Errorf("session not found: %s", sessionID)
+		}
+		return nil, fmt.Errorf("kiro lookup: %w", err)
+	}
+
+	return &ResolvedSession{
+		Reader: io.NopCloser(reader),
+		Metadata: SessionMetadata{
+			Source: SourceKiroCLI,
+			ID:     sessionID,
+			Size:   0, // SQLite-backed, size unknown
+		},
+	}, nil
+}
+
+func (r *Resolver) resolveKiroIDE(sessionID string) (*ResolvedSession, error) {
+	workspaceDir, err := transcript.KiroIDEWorkspaceDir(r.projectPath)
+	if err != nil {
+		return nil, fmt.Errorf("session not found: %s", sessionID)
+	}
+
+	entries, err := os.ReadDir(workspaceDir)
+	if err != nil {
+		return nil, fmt.Errorf("read kiro ide workspace: %w", err)
+	}
+
+	var bestPath string
+	var bestCount int
+	var bestMtime time.Time
+
+	for _, entry := range entries {
+		if entry.IsDir() || !strings.HasSuffix(entry.Name(), ".chat") {
+			continue
+		}
+
+		path := filepath.Join(workspaceDir, entry.Name())
+		data, err := os.ReadFile(path)
+		if err != nil {
+			continue
+		}
+
+		var header kiroIDEChatHeader
+		if err := json.Unmarshal(data, &header); err != nil {
+			continue
+		}
+
+		if header.ExecutionID != sessionID {
+			continue
+		}
+
+		info, err := entry.Info()
+		if err != nil {
+			continue
+		}
+
+		count := len(header.Chat)
+		mtime := info.ModTime()
+		if bestPath == "" || count > bestCount || (count == bestCount && mtime.After(bestMtime)) {
+			bestPath = path
+			bestCount = count
+			bestMtime = mtime
+		}
+	}
+
+	if bestPath == "" {
+		return nil, fmt.Errorf("session not found: %s", sessionID)
+	}
+
+	if !web.IsPathWithinDir(bestPath, workspaceDir) {
+		return nil, fmt.Errorf("session not found: %s", sessionID)
+	}
+
+	f, err := os.Open(bestPath)
+	if err != nil {
+		return nil, err
+	}
+
+	info, err := f.Stat()
+	if err != nil {
+		_ = f.Close()
+		return nil, err
+	}
+
+	costPath := transcript.KiroIDEExecutionDetailPath(workspaceDir, sessionID)
+
+	return &ResolvedSession{
+		Reader: f,
+		Metadata: SessionMetadata{
+			Source:    SourceKiroIDE,
+			ID:        sessionID,
+			Size:      info.Size(),
+			CreatedAt: info.ModTime(),
+			CostPath:  costPath,
+		},
+	}, nil
+}
+
+// ResolvePath returns the file path for a session, without opening it.
+// This is needed for follow mode which requires a path rather than a reader.
+// Returns an error for Kiro CLI sessions (SQLite-backed, no file path).
+func (r *Resolver) ResolvePath(source, sessionID string) (string, error) {
+	if !IsValidSource(source) {
+		return "", fmt.Errorf("unknown source: %s", source)
+	}
+
+	switch source {
+	case SourceClaude:
+		claudeProjectPath := claudecode.BuildProjectPath(r.projectPath)
+		baseDir := filepath.Join(r.homeDir, ".claude", "projects", claudeProjectPath)
+		sessionFile := filepath.Join(baseDir, sessionID+".jsonl")
+		if !web.IsPathWithinDir(sessionFile, baseDir) {
+			return "", fmt.Errorf("session not found: %s", sessionID)
+		}
+		if _, err := os.Stat(sessionFile); err != nil {
+			return "", fmt.Errorf("session not found: %s", sessionID)
+		}
+		return sessionFile, nil
+	case SourceCodex:
+		path, err := findCodexSession(r.homeDir, sessionID)
+		if err != nil {
+			return "", err
+		}
+		if path == "" {
+			return "", fmt.Errorf("session not found: %s", sessionID)
+		}
+		return path, nil
+	case SourceCopilot:
+		path, err := findCopilotSession(r.homeDir, sessionID)
+		if err != nil {
+			return "", err
+		}
+		if path == "" {
+			return "", fmt.Errorf("session not found: %s", sessionID)
+		}
+		return path, nil
+	case SourceKiroCLI:
+		return "", fmt.Errorf("kiro-cli sessions are SQLite-backed and have no file path")
+	case SourceKiroIDE:
+		// Resolve to find the best .chat file path
+		resolved, err := r.resolveKiroIDE(sessionID)
+		if err != nil {
+			return "", err
+		}
+		// We opened a file — close it, we just need the path
+		_ = resolved.Reader.Close()
+		// Re-derive the path (same logic as resolveKiroIDE)
+		workspaceDir, err := transcript.KiroIDEWorkspaceDir(r.projectPath)
+		if err != nil {
+			return "", err
+		}
+		return r.findKiroIDEPath(workspaceDir, sessionID)
+	default:
+		return "", fmt.Errorf("unknown source: %s", source)
+	}
+}
+
+// findKiroIDEPath finds the best .chat file path for a Kiro IDE session.
+func (r *Resolver) findKiroIDEPath(workspaceDir, sessionID string) (string, error) {
+	entries, err := os.ReadDir(workspaceDir)
+	if err != nil {
+		return "", err
+	}
+
+	var bestPath string
+	var bestCount int
+	var bestMtime time.Time
+
+	for _, entry := range entries {
+		if entry.IsDir() || !strings.HasSuffix(entry.Name(), ".chat") {
+			continue
+		}
+		path := filepath.Join(workspaceDir, entry.Name())
+		data, err := os.ReadFile(path)
+		if err != nil {
+			continue
+		}
+		var header kiroIDEChatHeader
+		if err := json.Unmarshal(data, &header); err != nil || header.ExecutionID != sessionID {
+			continue
+		}
+		info, err := entry.Info()
+		if err != nil {
+			continue
+		}
+		count := len(header.Chat)
+		mtime := info.ModTime()
+		if bestPath == "" || count > bestCount || (count == bestCount && mtime.After(bestMtime)) {
+			bestPath = path
+			bestCount = count
+			bestMtime = mtime
+		}
+	}
+
+	if bestPath == "" {
+		return "", fmt.Errorf("session not found: %s", sessionID)
+	}
+	return bestPath, nil
+}
+
+// openFileSession opens a file and returns a ResolvedSession with metadata from os.Stat.
+func (r *Resolver) openFileSession(path, source, sessionID string) (*ResolvedSession, error) {
+	f, err := os.Open(path)
+	if err != nil {
+		return nil, err
+	}
+
+	info, err := f.Stat()
+	if err != nil {
+		_ = f.Close()
+		return nil, err
+	}
+
+	return &ResolvedSession{
+		Reader: f,
+		Metadata: SessionMetadata{
+			Source:    source,
+			ID:        sessionID,
+			Size:      info.Size(),
+			CreatedAt: info.ModTime(),
+		},
+	}, nil
+}
+
+// findCodexSession searches ~/.codex/sessions/ for a session by UUID.
+func findCodexSession(homeDir, sessionID string) (string, error) {
+	if len(sessionID) != 36 || !uuidPattern.MatchString(sessionID) {
+		return "", nil
+	}
+
+	normalizedID := strings.ToLower(sessionID)
+	codexDir := filepath.Join(homeDir, ".codex", "sessions")
+
+	realDir, err := filepath.EvalSymlinks(codexDir)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return "", nil
+		}
+		return "", err
+	}
+
+	var foundPath string
+	err = walkDirFollowSymlinks(realDir, func(path string, d fs.DirEntry, err error) error {
+		if err != nil || d.IsDir() || !strings.HasSuffix(path, ".jsonl") {
+			return nil
+		}
+
+		filename := filepath.Base(path)
+		if match := uuidPattern.FindString(filename); strings.ToLower(match) == normalizedID {
+			foundPath = path
+			return filepath.SkipAll
+		}
+		return nil
+	})
+
+	return foundPath, err
+}
+
+// findCopilotSession searches ~/.copilot/session-state/ for a session by UUID.
+func findCopilotSession(homeDir, sessionID string) (string, error) {
+	if len(sessionID) != 36 || !uuidPattern.MatchString(sessionID) {
+		return "", nil
+	}
+
+	normalizedID := strings.ToLower(sessionID)
+	sessionDir := filepath.Join(homeDir, ".copilot", "session-state")
+
+	if _, err := os.Stat(sessionDir); os.IsNotExist(err) {
+		return "", nil
+	}
+
+	entries, err := os.ReadDir(sessionDir)
+	if err != nil {
+		return "", err
+	}
+
+	for _, entry := range entries {
+		if !entry.IsDir() {
+			continue
+		}
+
+		if strings.ToLower(entry.Name()) != normalizedID {
+			continue
+		}
+
+		eventsPath := filepath.Join(sessionDir, entry.Name(), "events.jsonl")
+		if _, err := os.Stat(eventsPath); err == nil {
+			return eventsPath, nil
+		}
+	}
+
+	return "", nil
+}

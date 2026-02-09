@@ -980,6 +980,8 @@ The web interface shows all registered runs, their status, and provides links to
 
 Apsis is a CLI tool for converting AI coding agent session transcripts to readable Markdown or HTML. It supports sessions from Claude Code (JSONL), OpenAI Codex (JSONL), GitHub Copilot (JSONL), AWS Kiro CLI (SQLite), and AWS Kiro IDE (JSON .chat files).
 
+Apsis also includes a web interface (`apsis serve`) for browsing and viewing session transcripts in your browser.
+
 ## Installation
 
 ```bash
@@ -987,6 +989,35 @@ go install github.com/arjenschwarz/orbit/cmd/apsis@latest
 ```
 
 ## Usage
+
+### Web Interface
+
+Start a local web server to browse and view session transcripts:
+
+```bash
+# Start server on default port (8081)
+apsis serve
+
+# Specify port and bind address
+apsis serve --port 8080 --bind 0.0.0.0
+
+# Serve sessions from a specific project
+apsis serve --project /path/to/project
+```
+
+The web interface provides:
+- Session list with filtering by agent type
+- Search sessions by ID
+- View transcripts with proper formatting
+- Auto-refresh every 15 seconds
+- Dark mode support
+- Mobile-responsive design
+
+Environment variables:
+- `APSIS_SERVE_PORT` - Default port (default: 8081)
+- `APSIS_SERVE_BIND` - Default bind address (default: localhost)
+
+### Command Line
 
 ```bash
 # Convert session by ID (looks in ~/.claude/projects)

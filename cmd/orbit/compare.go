@@ -118,8 +118,11 @@ func compareCommand(args []string) error {
 	// Read spec context for additional context
 	specContext := readSpecContext(specDir)
 
-	// Run comparison
+	// Run comparison with a timeout to prevent indefinite hangs
 	fmt.Println("\nRunning comparison analysis...")
+
+	comparisonCtx, cancel := context.WithTimeout(ctx, comparison.DefaultTimeout)
+	defer cancel()
 
 	// Get the default agent (claude-code) with AutoApprove for non-interactive use
 	agent, err := agents.Get("claude-code", agents.AgentConfig{
@@ -129,7 +132,7 @@ func compareCommand(args []string) error {
 		return fmt.Errorf("failed to get agent: %w", err)
 	}
 
-	adapter := comparison.NewAgentAdapter(agent, ctx, workDir)
+	adapter := comparison.NewAgentAdapter(agent, comparisonCtx, workDir)
 	comparator := comparison.NewComparator(adapter, *compareCmd)
 
 	// Use the unified comparison method with summaries only (diffs excluded to save context)

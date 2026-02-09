@@ -2378,8 +2378,11 @@ func (o *Orbit) runComparison(ctx context.Context) error {
 	// Read spec context for additional context
 	specContext := o.readSpecContext()
 
-	// Create comparator and run comparison using summaries only (diffs excluded to save context)
-	adapter := comparison.NewAgentAdapter(o.agent, o.shutdownCtx, o.config.WorkingDir)
+	// Create comparator with timeout to prevent indefinite hangs from stalled API connections.
+	comparisonCtx, cancel := context.WithTimeout(o.shutdownCtx, comparison.DefaultTimeout)
+	defer cancel()
+
+	adapter := comparison.NewAgentAdapter(o.agent, comparisonCtx, o.config.WorkingDir)
 	comparator := comparison.NewComparator(adapter, o.config.CompareCommand)
 	result, err := comparator.CompareWithSummaries(ctx, o.config.BranchName, variantData, specContext)
 	if err != nil {

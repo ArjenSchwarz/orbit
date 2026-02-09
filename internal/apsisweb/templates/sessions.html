@@ -1,0 +1,87 @@
+{{define "content"}}
+<h2>Sessions</h2>
+
+<input type="text" id="session-search" class="search-input" placeholder="Search by session ID...">
+
+<div class="filter-bar" id="filter-bar">
+    <button class="filter-pill active" data-source="all">All</button>
+    {{range .Sources}}
+    <button class="filter-pill" data-source="{{.}}">{{.}}</button>
+    {{end}}
+</div>
+
+{{if .Warnings}}
+<div id="warnings" class="warning-banner">
+    {{range .Warnings}}
+    <p>{{.}}</p>
+    {{end}}
+</div>
+{{end}}
+
+<div id="session-list" hx-get="/api/sessions" hx-trigger="every 15s" hx-swap="innerHTML">
+    {{template "sessions_list" .}}
+</div>
+
+<script>
+(function() {
+    let activeSource = 'all';
+    let searchQuery = '';
+
+    function applyFilters() {
+        const cards = document.querySelectorAll('.session-card');
+        cards.forEach(function(card) {
+            const source = card.getAttribute('data-source');
+            const id = card.getAttribute('data-id') || '';
+            const matchesSource = activeSource === 'all' || source === activeSource;
+            const matchesSearch = searchQuery === '' || id.toLowerCase().indexOf(searchQuery.toLowerCase()) !== -1;
+            card.style.display = (matchesSource && matchesSearch) ? '' : 'none';
+        });
+    }
+
+    // Filter pills
+    document.getElementById('filter-bar').addEventListener('click', function(evt) {
+        if (evt.target.classList.contains('filter-pill')) {
+            document.querySelectorAll('.filter-pill').forEach(function(pill) {
+                pill.classList.remove('active');
+            });
+            evt.target.classList.add('active');
+            activeSource = evt.target.getAttribute('data-source');
+            applyFilters();
+        }
+    });
+
+    // Search input
+    document.getElementById('session-search').addEventListener('input', function(evt) {
+        searchQuery = evt.target.value;
+        applyFilters();
+    });
+
+    // Reapply filters after HTMX poll refresh
+    document.body.addEventListener('htmx:afterSwap', function(evt) {
+        if (evt.detail.target.id === 'session-list') {
+            applyFilters();
+        }
+    });
+})();
+</script>
+{{end}}
+
+{{define "sessions_list"}}
+{{if .Empty}}
+<div class="empty-state">
+    <h2>No sessions found</h2>
+    <p>No AI coding agent sessions were found for this project.</p>
+</div>
+{{else}}
+<div class="session-list">
+    {{range .Sessions}}
+    <a href="{{.URL}}" class="session-card" data-source="{{.Source}}" data-id="{{.ID}}">
+        <span class="source-badge source-{{.Source}}">{{.Source}}</span>
+        <span class="session-id" title="{{.ID}}">{{.DisplayID}}</span>
+        <time class="session-date" datetime="{{.CreatedAt}}">{{.CreatedAt}}</time>
+        <span class="session-size">{{.Size}}</span>
+    </a>
+    {{end}}
+</div>
+{{end}}
+{{end}}
