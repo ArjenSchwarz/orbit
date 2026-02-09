@@ -37,6 +37,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Fix `orbit compare` and variant comparison hanging indefinitely when the Claude API streaming response stalls; add 10-minute timeout context and disable tool use (`--tools ""`) during comparison since all data is inline in the prompt
+- Fix `--session-id ""` being passed to Claude CLI when the adapter has no session ID; omit the flag entirely to let Claude generate its own
 - Fix transcript view showing zero date ("Jan 1, 0001") by populating `CreatedAt` from file modification time in `Resolver.Resolve()`; gracefully handle zero time for Kiro CLI sessions
 - Fix session list empty state preventing HTMX auto-refresh; move empty state into the polling fragment so new sessions appear without manual page refresh
 - Fix Copilot premium requests not appearing in multi-variant run metrics and comparison reports; `getCostUSD` (now `getCostValue`) was ignoring the `PremiumRequests` field, causing cost to always be 0 for Copilot variants

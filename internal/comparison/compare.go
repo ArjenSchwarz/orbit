@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"log"
 	"strings"
+	"time"
 
 	"github.com/arjenschwarz/orbit/internal/agents"
 )
@@ -33,6 +34,11 @@ func NewComparator(runner promptRunner, customCmd string) *Comparator {
 		maxRetries:   3,
 	}
 }
+
+// DefaultTimeout is the maximum duration for a comparison session.
+// Comparison prompts have all data inline and should complete quickly.
+// This prevents indefinite hangs from stalled API connections.
+const DefaultTimeout = 10 * time.Minute
 
 // MaxPromptTokens is the maximum estimated token count for comparison prompts.
 // Claude has ~200k token context, but we leave room for the response.

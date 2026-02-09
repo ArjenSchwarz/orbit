@@ -160,3 +160,51 @@ func TestAgentAdapter_CancelledContext(t *testing.T) {
 	// TestAgent will return the retryable error we configured
 	require.Error(t, err)
 }
+
+func TestAgentAdapter_WithExtraArgs(t *testing.T) {
+	scenario := testutil.NewScenario().
+		Success("session-1", 0.01).
+		Build()
+
+	agent := testutil.NewTestAgent(t, "mock", scenario)
+	t.Cleanup(func() { agent.AssertAllConsumed(t) })
+
+	adapter := NewAgentAdapter(agent, context.Background(), "/tmp/test").
+		WithExtraArgs("--tools", "")
+
+	_, err := adapter.RunCustomPrompt("test prompt")
+	require.NoError(t, err)
+
+	calls := agent.Recorder().Calls()
+	require.Len(t, calls, 1)
+	assert.Equal(t, []string{"--tools", ""}, calls[0].Options.ExtraArgs)
+}
+
+func TestAgentAdapter_WithExtraArgs_DoesNotMutateOriginal(t *testing.T) {
+	scenario := testutil.NewScenario().
+		Success("session-1", 0.01).
+		Success("session-2", 0.01).
+		Build()
+
+	agent := testutil.NewTestAgent(t, "mock", scenario)
+	t.Cleanup(func() { agent.AssertAllConsumed(t) })
+
+	original := NewAgentAdapter(agent, context.Background(), "/tmp/test")
+	withArgs := original.WithExtraArgs("--tools", "")
+
+	// Call original — should have no extra args
+	_, err := original.RunCustomPrompt("prompt1")
+	require.NoError(t, err)
+
+	calls := agent.Recorder().Calls()
+	require.Len(t, calls, 1)
+	assert.Empty(t, calls[0].Options.ExtraArgs)
+
+	// Call copy — should have extra args
+	_, err = withArgs.RunCustomPrompt("prompt2")
+	require.NoError(t, err)
+
+	calls = agent.Recorder().Calls()
+	require.Len(t, calls, 2)
+	assert.Equal(t, []string{"--tools", ""}, calls[1].Options.ExtraArgs)
+}
