@@ -3,6 +3,7 @@ package apsisweb
 import (
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 )
 
@@ -63,6 +64,8 @@ func TestSanitizeSessionID(t *testing.T) {
 		{"url-encoded dotdot", "%2e%2e", http.StatusNotFound},
 		{"url-encoded slash", "foo%2fbar", http.StatusNotFound},
 		{"url-encoded backslash", "foo%5cbar", http.StatusNotFound},
+		{"max length id", strings.Repeat("a", 256), http.StatusOK},
+		{"exceeds max length", strings.Repeat("a", 257), http.StatusNotFound},
 	}
 
 	for _, tt := range tests {

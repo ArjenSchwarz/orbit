@@ -11,6 +11,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Normalize session timestamps to local timezone in `apsis -l` CLI output to prevent mix of UTC and local times
 - Display session timestamps in the user's locale format in `apsis serve` web interface using client-side `Intl.DateTimeFormat`, with HTMX-aware re-formatting for dynamically loaded content
+- Remove misleading `TestHandleTranscriptOversized` that tested 404 instead of the 50MB size guard
+- Add max length validation (256 chars) to `SanitizeSessionID` middleware to prevent oversized input
 
 ### Added
 

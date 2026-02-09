@@ -25,12 +25,15 @@ func ValidateSource(paramName string) func(http.Handler) http.Handler {
 
 // SanitizeSessionID rejects session IDs containing path traversal characters.
 // Checks for "..", "/", and "\" after URL decoding.
+// Enforces a maximum length of 256 characters.
 // Returns 404 for invalid IDs.
 func SanitizeSessionID(paramName string) func(http.Handler) http.Handler {
+	const maxSessionIDLength = 256
+
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			id := r.PathValue(paramName)
-			if id == "" {
+			if id == "" || len(id) > maxSessionIDLength {
 				http.NotFound(w, r)
 				return
 			}

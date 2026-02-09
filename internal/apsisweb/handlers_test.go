@@ -158,28 +158,6 @@ func TestHandleStaticFiles(t *testing.T) {
 	}
 }
 
-func TestHandleTranscriptOversized(t *testing.T) {
-	// Create a mock project dir with a Claude session that we can control
-	// We can't easily test this without setting up the full Claude session structure,
-	// so we test the size guard logic via the renderError path.
-	// The 50MB guard relies on Metadata.Size from the Resolver.
-	// Since we can't easily inject a large session, we verify the error page renders.
-	s := newTestServer(t)
-
-	// Just verify the error page renders properly
-	req := httptest.NewRequest("GET", "/", nil)
-	rec := httptest.NewRecorder()
-	s.handleNotFound(rec, req)
-
-	if rec.Code != http.StatusNotFound {
-		t.Errorf("expected status 404, got %d", rec.Code)
-	}
-
-	body := rec.Body.String()
-	if !strings.Contains(body, "Page not found") {
-		t.Error("expected error message in response")
-	}
-}
 
 func TestBuildSessionListDataSortsNewestFirst(t *testing.T) {
 	// Create a temp project directory with Claude sessions to test sort order
