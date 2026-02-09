@@ -31,6 +31,24 @@
     </div>
 
     <script>
+        // Format <time> elements using the browser's locale
+        function formatLocalDates(root) {
+            var fmt = new Intl.DateTimeFormat(undefined, {
+                day: 'numeric', month: 'short', year: 'numeric',
+                hour: 'numeric', minute: '2-digit'
+            });
+            root.querySelectorAll('time[datetime]').forEach(function(el) {
+                var d = new Date(el.getAttribute('datetime'));
+                if (!isNaN(d)) el.textContent = fmt.format(d);
+            });
+        }
+        formatLocalDates(document);
+        document.body.addEventListener('htmx:afterSwap', function(evt) {
+            formatLocalDates(evt.detail.target);
+        });
+    </script>
+
+    <script>
         // Track consecutive AJAX failures for connection status
         let consecutiveFailures = 0;
         const maxFailures = 3;

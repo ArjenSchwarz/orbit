@@ -78,7 +78,7 @@
     <a href="{{.URL}}" class="session-card" data-source="{{.Source}}" data-id="{{.ID}}">
         <span class="source-badge source-{{.Source}}">{{.Source}}</span>
         <span class="session-id" title="{{.ID}}">{{.DisplayID}}</span>
-        <span class="session-date">{{.CreatedAt}}</span>
+        <time class="session-date" datetime="{{.CreatedAt}}">{{.CreatedAt}}</time>
         <span class="session-size">{{.Size}}</span>
     </a>
     {{end}}

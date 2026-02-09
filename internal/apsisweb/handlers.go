@@ -5,6 +5,7 @@ import (
 	"html/template"
 	"net/http"
 	"slices"
+	"time"
 
 	"github.com/arjenschwarz/orbit/internal/sessions"
 	"github.com/arjenschwarz/orbit/internal/transcript"
@@ -79,7 +80,7 @@ func (s *Server) handleTranscript(w http.ResponseWriter, r *http.Request) {
 
 	var createdAt string
 	if !resolved.Metadata.CreatedAt.IsZero() {
-		createdAt = resolved.Metadata.CreatedAt.Format("Jan 2, 2006 3:04 PM")
+		createdAt = resolved.Metadata.CreatedAt.UTC().Format(time.RFC3339)
 	}
 
 	data := TranscriptViewData{
@@ -127,7 +128,7 @@ func (s *Server) buildSessionListData() (SessionListData, error) {
 			DisplayID:   displayID,
 			Source:      si.Source,
 			SourceClass: "source-" + si.Source,
-			CreatedAt:   si.CreatedAt.Format("Jan 2, 2006 3:04 PM"),
+			CreatedAt:   si.CreatedAt.UTC().Format(time.RFC3339),
 			Size:        sessions.FormatSize(si.Size),
 			URL:         fmt.Sprintf("/sessions/%s/%s", si.Source, si.ID),
 		})

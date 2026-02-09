@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- Normalize session timestamps to local timezone in `apsis -l` CLI output to prevent mix of UTC and local times
+- Display session timestamps in the user's locale format in `apsis serve` web interface using client-side `Intl.DateTimeFormat`, with HTMX-aware re-formatting for dynamically loaded content
+
 ### Added
 
 - Add `apsis serve` subcommand to `cmd/apsis/main.go` with `--port`, `--bind`, `--project` flags, `APSIS_SERVE_PORT`/`APSIS_SERVE_BIND` env var fallback, signal handling (SIGINT/SIGTERM) with 5-second graceful shutdown, and network binding warning

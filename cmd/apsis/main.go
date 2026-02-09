@@ -440,7 +440,7 @@ func listSessions(projectPath string) error {
 		fmt.Printf("[%s]\t%s\t%s\t%s\n",
 			sessions.DisplayName(s.Source),
 			s.ID,
-			s.CreatedAt.Format(time.RFC3339),
+			s.CreatedAt.Local().Format(time.RFC3339),
 			sessions.FormatSize(s.Size))
 	}
 
