@@ -866,29 +866,31 @@ func TestConvert_EmptyFile_Negative(t *testing.T) {
 }
 
 func TestConvert_InvalidJSONFile_Negative(t *testing.T) {
-	// Test convert on invalid JSON returns proper error
+	// Invalid JSON lines are skipped during detection and parsing.
+	// Falls back to Claude parser which emits a warning and returns 0 entries.
 	var output bytes.Buffer
 	err := convert(strings.NewReader("{invalid json}"), &output, "test-session", "md", "", "")
 
-	if err == nil {
-		t.Fatal("expected error for invalid JSON")
+	if err != nil {
+		t.Fatalf("convert should not error for invalid JSON content, got: %v", err)
 	}
-	// Invalid JSON is skipped during detection, resulting in no format found
-	if !strings.Contains(err.Error(), "no format-defining entries found") {
-		t.Errorf("expected error about no format-defining entries, got: %v", err)
+	if output.Len() != 0 {
+		t.Errorf("expected no output for invalid JSON, got %d bytes", output.Len())
 	}
 }
 
 func TestConvert_UnknownFormatType_Negative(t *testing.T) {
-	// Test convert on unknown format type returns proper error
+	// Unknown types are skipped during format detection and parsing.
+	// When only unknown types exist, Parse falls back to Claude format
+	// which returns 0 entries — convert then prints "Session contains no entries".
 	var output bytes.Buffer
 	err := convert(strings.NewReader(`{"type":"unknown_format"}`), &output, "test-session", "md", "", "")
 
-	if err == nil {
-		t.Fatal("expected error for unknown format type")
+	if err != nil {
+		t.Fatalf("convert should not error for unknown types, got: %v", err)
 	}
-	if !strings.Contains(err.Error(), "unrecognized log format") {
-		t.Errorf("expected error about unrecognized format, got: %v", err)
+	if output.Len() != 0 {
+		t.Errorf("expected no output for unknown format types, got %d bytes", output.Len())
 	}
 }
 
