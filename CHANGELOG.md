@@ -21,6 +21,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - 50MB transcript size guard with CLI fallback suggestion
   - Kiro IDE cost path threading through `ParseJSONLWithFormat`
   - Security headers reused from `internal/web/` (SecurityHeaders, PathSanitizer, IsPathWithinDir)
+  - End-to-end integration test covering session listing, transcript rendering, 404s, security headers, and server lifecycle
 - Extract session discovery and resolution into `internal/sessions/` package
   - `sessions.Lister` with `ListAll()` for discovering sessions across all 5 agent types (Claude, Codex, Copilot, Kiro CLI, Kiro IDE)
   - `sessions.Resolver` with `Resolve()` and `ResolvePath()` for locating sessions by source and ID with path validation

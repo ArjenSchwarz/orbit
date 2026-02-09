@@ -25,6 +25,12 @@ Tests use `newTestServer(t)` helper which creates a real Server with temp projec
 
 Server lifecycle tests use ephemeral ports via `findAvailablePort()`.
 
+### Integration Test
+
+`integration_test.go` uses `t.Setenv("HOME", tmpDir)` to redirect the Lister/Resolver to find mock sessions in a controlled temp directory. This avoids needing dependency injection while testing the full HTTP flow.
+
+Mock Claude sessions must use `"type": "user"` and `"type": "assistant"` (not `"system"` or `"human"`) — the transcript parser's format detection relies on these exact type values. The `message` field must be an object with `role` and `content` array, not a plain string.
+
 ## File Layout
 
 ```

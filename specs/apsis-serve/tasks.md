@@ -204,7 +204,7 @@ references:
 
 ## Integration
 
-- [ ] 19. Write integration test for end-to-end serve flow <!-- id:99ijhim -->
+- [x] 19. Write integration test for end-to-end serve flow <!-- id:99ijhim -->
   - Create internal/apsisweb/integration_test.go
   - Test with temp dir containing mock Claude .jsonl session
   - Verify session list, transcript rendering, 404s, security headers
@@ -214,7 +214,7 @@ references:
   - Requirements: [3.1](requirements.md#3.1), [4.1](requirements.md#4.1), [4.6](requirements.md#4.6), [6.2](requirements.md#6.2)
   - References: internal/apsisweb/server.go, internal/apsisweb/handlers.go
 
-- [ ] 20. Run final verification: make test, make lint, make build <!-- id:99ijhin -->
+- [x] 20. Run final verification: make test, make lint, make build <!-- id:99ijhin -->
   - Run make test — all tests pass
   - Run make lint — no lint errors
   - Run make build — both binaries build
