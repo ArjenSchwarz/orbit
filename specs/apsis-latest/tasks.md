@@ -16,9 +16,9 @@ references:
 
 ## Follow Mode Support
 
-- [ ] 5. Handle latest in follow mode path — resolve session, validate source is file-backed, error for Kiro CLI
+- [x] 5. Handle latest in follow mode path — resolve session, validate source is file-backed, error for Kiro CLI
 
-- [ ] 6. Verify apsis latest -F works for file-backed sessions and errors for non-file-backed sessions
+- [x] 6. Verify apsis latest -F works for file-backed sessions and errors for non-file-backed sessions
 
 ## Polish
 
