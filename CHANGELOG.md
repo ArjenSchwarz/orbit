@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Add spec for `apsis latest` feature: view the most recent session without manually selecting an ID (`apsis latest`)
 - Render tool/action results in Kiro IDE transcripts by converting execution detail actions (readFiles, replace, create, append, runCommand, search) into tool_use/tool_result entry pairs that the existing renderer displays
 
 ### Fixed
