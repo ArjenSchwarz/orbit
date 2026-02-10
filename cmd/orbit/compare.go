@@ -24,6 +24,7 @@ func compareCommand(args []string) error {
 	fs := flag.NewFlagSet("compare", flag.ExitOnError)
 
 	compareCmd := fs.String("compare-command", "", "Custom comparison command (not yet supported)")
+	fromFile := fs.String("from-file", "", "Read comparison result from a JSON file instead of running the agent")
 
 	fs.Usage = func() {
 		fmt.Fprintf(os.Stderr, "Usage: orbit compare <spec-name> [options]\n\n")
@@ -33,6 +34,7 @@ func compareCommand(args []string) error {
 		fs.PrintDefaults()
 		fmt.Fprintf(os.Stderr, "\nExamples:\n")
 		fmt.Fprintf(os.Stderr, "  orbit compare my-feature\n")
+		fmt.Fprintf(os.Stderr, "  orbit compare my-feature --from-file specs/my-feature/.orbit/comparison.json\n")
 	}
 
 	if err := fs.Parse(args); err != nil {
@@ -45,10 +47,12 @@ func compareCommand(args []string) error {
 		return fmt.Errorf("failed to get working directory: %w", err)
 	}
 
-	// Load and validate configuration (required for AI comparison)
-	appConfig := config.Load(workDir)
-	if err := appConfig.RequireConfigFile(); err != nil {
-		return err
+	// Load and validate configuration (required for AI comparison, not for --from-file)
+	if *fromFile == "" {
+		appConfig := config.Load(workDir)
+		if err := appConfig.RequireConfigFile(); err != nil {
+			return err
+		}
 	}
 
 	// Get spec name from args or auto-detect from branch
@@ -115,37 +119,51 @@ func compareCommand(args []string) error {
 		return fmt.Errorf("failed to gather variant data: %w", err)
 	}
 
-	// Read spec context for additional context
-	specContext := readSpecContext(specDir)
+	var result *comparison.Result
 
-	// Run comparison with a timeout to prevent indefinite hangs
-	fmt.Println("\nRunning comparison analysis...")
+	if *fromFile != "" {
+		// Load comparison result from an existing JSON file
+		fmt.Printf("Loading comparison from file: %s\n", *fromFile)
+		result, err = comparison.LoadResultFromFile(*fromFile)
+		if err != nil {
+			return fmt.Errorf("failed to load comparison from file: %w", err)
+		}
+		fmt.Printf("Loaded comparison result (recommendation: variant %d)\n", result.Recommendation)
+	} else {
+		// Read spec context for additional context
+		specContext := readSpecContext(specDir)
 
-	comparisonCtx, cancel := context.WithTimeout(ctx, comparison.DefaultTimeout)
-	defer cancel()
+		// Run comparison with a timeout to prevent indefinite hangs
+		fmt.Println("\nRunning comparison analysis...")
 
-	// Get the default agent (claude-code) with AutoApprove for non-interactive use
-	agent, err := agents.Get("claude-code", agents.AgentConfig{
-		AutoApprove: true, // Comparison runs non-interactively
-	})
-	if err != nil {
-		return fmt.Errorf("failed to get agent: %w", err)
-	}
+		comparisonCtx, cancel := context.WithTimeout(ctx, comparison.DefaultTimeout)
+		defer cancel()
 
-	adapter := comparison.NewAgentAdapter(agent, comparisonCtx, workDir)
-	comparator := comparison.NewComparator(adapter, *compareCmd)
+		// Get the default agent (claude-code) with AutoApprove for non-interactive use
+		agent, err := agents.Get("claude-code", agents.AgentConfig{
+			AutoApprove: true, // Comparison runs non-interactively
+		})
+		if err != nil {
+			return fmt.Errorf("failed to get agent: %w", err)
+		}
 
-	// Use the unified comparison method with summaries only (diffs excluded to save context)
-	comparisonInput := comparison.ComparisonInput{
-		SpecName:    specName,
-		SpecContext: specContext,
-		Variants:    variantData,
-		IncludeDiff: false, // Diffs excluded - they use too much context
-	}
+		adapter := comparison.NewAgentAdapter(agent, comparisonCtx, workDir)
+		comparator := comparison.NewComparator(adapter, *compareCmd)
 
-	result, err := comparator.CompareUnified(ctx, comparisonInput)
-	if err != nil {
-		return fmt.Errorf("comparison failed: %w", err)
+		// Use the unified comparison method with summaries only (diffs excluded to save context)
+		comparisonJSONPath := filepath.Join(specDir, ".orbit", "comparison.json")
+		comparisonInput := comparison.ComparisonInput{
+			SpecName:    specName,
+			SpecContext: specContext,
+			Variants:    variantData,
+			IncludeDiff: false, // Diffs excluded - they use too much context
+			OutputPath:  comparisonJSONPath,
+		}
+
+		result, err = comparator.CompareUnified(ctx, comparisonInput)
+		if err != nil {
+			return fmt.Errorf("comparison failed: %w", err)
+		}
 	}
 
 	// Generate report

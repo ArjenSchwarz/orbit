@@ -6,7 +6,7 @@ Comparison runs through two code paths:
 1. `cmd/orbit/compare.go` — standalone `orbit compare` subcommand
 2. `internal/orbit/orbit.go:runComparison()` — called during `orbit run --variants`
 
-Both create a `comparison.AgentAdapter` wrapping the Claude Code agent, then call `comparator.CompareUnified()` or `comparator.CompareWithSummaries()`.
+Both create a `comparison.AgentAdapter` wrapping the Claude Code agent, then call `comparator.CompareUnified()`.
 
 ## Key Design Decisions
 
@@ -17,9 +17,22 @@ Comparison prompts include all data inline (diffs, stats, changelogs, spec conte
 - File reading (unnecessary, data is inline)
 - Command execution (running tests/lint is not the comparison's job)
 
-### Timeout on comparison context (2026-02-09)
+### Timeout on comparison context (2026-02-10)
 
-A 10-minute timeout (`comparison.DefaultTimeout`) is applied to prevent indefinite hangs from API stalls. The timeout is applied via `context.WithTimeout()` on the context passed to `NewAgentAdapter`.
+A 30-minute timeout (`comparison.DefaultTimeout`) is applied to prevent indefinite hangs from API stalls. The timeout is applied via `context.WithTimeout()` on the context passed to `NewAgentAdapter`.
+
+### Agent writes comparison JSON to file (2026-02-10)
+
+The comparison prompt instructs the agent to write the JSON result to `specs/<name>/.orbit/comparison.json` before outputting it. This ensures the result is persisted even if the agent session hangs after producing output. The file path is passed via `ComparisonInput.OutputPath`.
+
+### --from-file flag for orbit compare (2026-02-10)
+
+`orbit compare <spec> --from-file <path>` loads a pre-existing comparison JSON file and generates the report without invoking the agent. Useful when:
+- The agent wrote `comparison.json` but the session hung before orbit could parse stdout
+- You want to re-generate the report from a saved result
+- Testing report generation with known data
+
+Uses `comparison.LoadResultFromFile()` which handles raw JSON and markdown-wrapped JSON.
 
 ### Session ID handling (2026-02-09)
 

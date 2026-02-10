@@ -59,7 +59,8 @@ type ComparisonInput struct {
 	SpecName    string
 	SpecContext string // Content from requirements.md, design.md, etc.
 	Variants    []VariantData
-	IncludeDiff bool // Whether full diffs are included (false if too large)
+	IncludeDiff bool   // Whether full diffs are included (false if too large)
+	OutputPath  string // If set, the agent is instructed to write the JSON to this file path
 }
 
 // buildComparisonPrompt constructs a comprehensive comparison prompt.
@@ -235,6 +236,12 @@ func buildComparisonPrompt(input ComparisonInput) string {
 	sb.WriteString(jsonSchema)
 	sb.WriteString("\n```\n\n")
 	sb.WriteString("IMPORTANT: Output ONLY valid JSON. Do not include any text before or after the JSON.\n")
+
+	if input.OutputPath != "" {
+		sb.WriteString(fmt.Sprintf("\nADDITIONALLY: Write the JSON result to the file `%s`. "+
+			"This is critical — write the file BEFORE outputting the JSON to stdout. "+
+			"The file must contain only the valid JSON object, nothing else.\n", input.OutputPath))
+	}
 
 	return sb.String()
 }

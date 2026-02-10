@@ -2384,7 +2384,16 @@ func (o *Orbit) runComparison(ctx context.Context) error {
 
 	adapter := comparison.NewAgentAdapter(o.agent, comparisonCtx, o.config.WorkingDir)
 	comparator := comparison.NewComparator(adapter, o.config.CompareCommand)
-	result, err := comparator.CompareWithSummaries(ctx, o.config.BranchName, variantData, specContext)
+
+	comparisonJSONPath := filepath.Join(o.config.SpecDir, ".orbit", "comparison.json")
+	comparisonInput := comparison.ComparisonInput{
+		SpecName:    o.config.BranchName,
+		SpecContext: specContext,
+		Variants:    variantData,
+		IncludeDiff: false,
+		OutputPath:  comparisonJSONPath,
+	}
+	result, err := comparator.CompareUnified(ctx, comparisonInput)
 	if err != nil {
 		return fmt.Errorf("compare variants: %w", err)
 	}

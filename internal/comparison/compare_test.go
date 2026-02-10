@@ -2,11 +2,183 @@ package comparison
 
 import (
 	"context"
+	"os"
 	"testing"
 	"time"
 
 	"github.com/arjenschwarz/orbit/internal/agents"
 )
+
+// Tests for LoadResultFromFile
+
+func TestLoadResultFromFile_ValidJSON(t *testing.T) {
+	dir := t.TempDir()
+	path := dir + "/comparison.json"
+
+	content := `{
+		"recommendation": 2,
+		"confidence": "high",
+		"summary": "Variant 2 is better.",
+		"file_analyses": [{"path": "main.go", "variants": {"1": "ok", "2": "great"}, "preference": 2}],
+		"observations": ["Variant 2 has cleaner code"],
+		"cross_variant_improvements": [{"source_variant_id": 1, "description": "Better tests", "rationale": "More coverage", "priority": "medium"}]
+	}`
+	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	result, err := LoadResultFromFile(path)
+	if err != nil {
+		t.Fatalf("LoadResultFromFile failed: %v", err)
+	}
+
+	if result.Recommendation != 2 {
+		t.Errorf("expected recommendation 2, got %d", result.Recommendation)
+	}
+	if result.Confidence != "high" {
+		t.Errorf("expected confidence 'high', got %q", result.Confidence)
+	}
+	if result.Summary != "Variant 2 is better." {
+		t.Errorf("unexpected summary: %q", result.Summary)
+	}
+	if len(result.FileAnalyses) != 1 {
+		t.Errorf("expected 1 file analysis, got %d", len(result.FileAnalyses))
+	}
+	if len(result.CrossVariantImprovements) != 1 {
+		t.Errorf("expected 1 cross-variant improvement, got %d", len(result.CrossVariantImprovements))
+	}
+}
+
+func TestLoadResultFromFile_MarkdownWrappedJSON(t *testing.T) {
+	dir := t.TempDir()
+	path := dir + "/comparison.json"
+
+	content := "```json\n" + `{"recommendation": 1, "confidence": "medium", "summary": "Variant 1 wins.", "file_analyses": [], "observations": []}` + "\n```\n"
+	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	result, err := LoadResultFromFile(path)
+	if err != nil {
+		t.Fatalf("LoadResultFromFile failed: %v", err)
+	}
+
+	if result.Recommendation != 1 {
+		t.Errorf("expected recommendation 1, got %d", result.Recommendation)
+	}
+}
+
+func TestLoadResultFromFile_EmptyFile(t *testing.T) {
+	dir := t.TempDir()
+	path := dir + "/comparison.json"
+
+	if err := os.WriteFile(path, []byte(""), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	_, err := LoadResultFromFile(path)
+	if err == nil {
+		t.Fatal("expected error for empty file")
+	}
+	if !containsString(err.Error(), "empty") {
+		t.Errorf("expected error about empty file, got: %v", err)
+	}
+}
+
+func TestLoadResultFromFile_FileNotFound(t *testing.T) {
+	_, err := LoadResultFromFile("/nonexistent/path/comparison.json")
+	if err == nil {
+		t.Fatal("expected error for missing file")
+	}
+}
+
+func TestLoadResultFromFile_InvalidJSON(t *testing.T) {
+	dir := t.TempDir()
+	path := dir + "/comparison.json"
+
+	if err := os.WriteFile(path, []byte("not json at all"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	_, err := LoadResultFromFile(path)
+	if err == nil {
+		t.Fatal("expected error for invalid JSON")
+	}
+}
+
+func TestLoadResultFromFile_MissingRequiredFields(t *testing.T) {
+	tests := map[string]struct {
+		json    string
+		wantErr string
+	}{
+		"missing recommendation": {
+			json:    `{"recommendation": 0, "confidence": "high", "summary": "test"}`,
+			wantErr: "missing recommendation",
+		},
+		"missing confidence": {
+			json:    `{"recommendation": 1, "confidence": "", "summary": "test"}`,
+			wantErr: "missing confidence",
+		},
+		"missing summary": {
+			json:    `{"recommendation": 1, "confidence": "high", "summary": ""}`,
+			wantErr: "missing summary",
+		},
+	}
+
+	for name, tc := range tests {
+		t.Run(name, func(t *testing.T) {
+			dir := t.TempDir()
+			path := dir + "/comparison.json"
+
+			if err := os.WriteFile(path, []byte(tc.json), 0o644); err != nil {
+				t.Fatal(err)
+			}
+
+			_, err := LoadResultFromFile(path)
+			if err == nil {
+				t.Fatal("expected error for missing required field")
+			}
+			if !containsString(err.Error(), tc.wantErr) {
+				t.Errorf("expected error containing %q, got: %v", tc.wantErr, err)
+			}
+		})
+	}
+}
+
+func TestLoadResultFromFile_WithLearnings(t *testing.T) {
+	dir := t.TempDir()
+	path := dir + "/comparison.json"
+
+	content := `{
+		"recommendation": 1,
+		"confidence": "high",
+		"summary": "Test with learnings.",
+		"file_analyses": [],
+		"observations": [],
+		"learnings": [
+			{
+				"variant_id": 1,
+				"category": "code-pattern",
+				"title": "Table-driven tests",
+				"description": "Uses map for test cases",
+				"rationale": "Unique names",
+				"file_references": ["test.go:42"]
+			}
+		]
+	}`
+	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	result, err := LoadResultFromFile(path)
+	if err != nil {
+		t.Fatalf("LoadResultFromFile failed: %v", err)
+	}
+
+	if len(result.Learnings) != 1 {
+		t.Errorf("expected 1 learning, got %d", len(result.Learnings))
+	}
+}
 
 func TestBuildPrompt_IncludesAllVariants(t *testing.T) {
 	variants := []VariantData{

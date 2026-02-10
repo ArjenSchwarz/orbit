@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"os"
 	"strings"
 	"time"
 
@@ -36,9 +37,8 @@ func NewComparator(runner promptRunner, customCmd string) *Comparator {
 }
 
 // DefaultTimeout is the maximum duration for a comparison session.
-// Comparison prompts have all data inline and should complete quickly.
 // This prevents indefinite hangs from stalled API connections.
-const DefaultTimeout = 10 * time.Minute
+const DefaultTimeout = 30 * time.Minute
 
 // MaxPromptTokens is the maximum estimated token count for comparison prompts.
 // Claude has ~200k token context, but we leave room for the response.
@@ -366,6 +366,45 @@ func validateLearnings(learnings []VariantLearning, numVariants int) []VariantLe
 		return nil
 	}
 	return valid
+}
+
+// LoadResultFromFile reads a comparison result JSON file and parses it into a Result.
+// This allows recovering comparison results when the agent wrote the file but the session hung.
+func LoadResultFromFile(path string) (*Result, error) {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return nil, fmt.Errorf("read comparison file: %w", err)
+	}
+
+	content := strings.TrimSpace(string(data))
+	if content == "" {
+		return nil, errors.New("comparison file is empty")
+	}
+
+	// The file may contain raw JSON or JSON wrapped in markdown code blocks
+	// (if the agent wrote it with extra formatting). Use the same extraction logic.
+	jsonStr, err := extractJSON(content)
+	if err != nil {
+		return nil, fmt.Errorf("extract JSON from file: %w", err)
+	}
+
+	var result Result
+	if err := json.Unmarshal([]byte(jsonStr), &result); err != nil {
+		return nil, fmt.Errorf("parse comparison JSON: %w", err)
+	}
+
+	// Basic validation
+	if result.Recommendation < 1 {
+		return nil, errors.New("invalid comparison result: missing recommendation")
+	}
+	if result.Confidence == "" {
+		return nil, errors.New("invalid comparison result: missing confidence")
+	}
+	if result.Summary == "" {
+		return nil, errors.New("invalid comparison result: missing summary")
+	}
+
+	return &result, nil
 }
 
 // extractJSONObject extracts a JSON object starting at the beginning of the string.
