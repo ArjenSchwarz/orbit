@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"context"
 	"flag"
-	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -1829,19 +1828,3 @@ func TestRunLatest_NormalMode(t *testing.T) {
 	}
 }
 
-func TestRunLatest_FollowModeNonFileBacked(t *testing.T) {
-	// Verify that follow mode with a non-file-backed source returns an error.
-	// We can't easily create a Kiro CLI session in tests, so we test the
-	// fileBackedSources check directly via runLatest with a mock scenario.
-	//
-	// Instead, test the error message format by constructing the error ourselves.
-	// The actual integration is covered by the runLatest function.
-	source := "kiro-cli"
-	expected := fmt.Sprintf("latest session is a %s session which cannot be followed (not file-backed)", sessions.DisplayName(source))
-	if !strings.Contains(expected, "kiro-cli") {
-		t.Errorf("expected error message to mention kiro-cli, got: %s", expected)
-	}
-	if !strings.Contains(expected, "not file-backed") {
-		t.Errorf("expected error message to mention 'not file-backed', got: %s", expected)
-	}
-}

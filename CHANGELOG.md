@@ -16,6 +16,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Exclude Kiro IDE from `apsis latest -F` follow mode eligibility since `.chat` files use JSON, not JSONL, which `transcript.NewFollower` requires. Aligns with existing `resolveFollowInput` behavior that already excluded Kiro IDE.
+- Remove non-functional `TestRunLatest_FollowModeNonFileBacked` test that only verified a locally-constructed string without exercising production code
 - Skip empty assistant sections in transcript rendering caused by whitespace-only text entries from Claude streaming chunks
 - Skip unknown JSONL entry types (e.g., `file-history-snapshot`) during format detection instead of failing with "unrecognized log format" error. When format detection fails, `Parse()` falls back to the Claude parser which gracefully returns 0 entries for unrecognized content.
 - Normalize session timestamps to local timezone in `apsis -l` CLI output to prevent mix of UTC and local times

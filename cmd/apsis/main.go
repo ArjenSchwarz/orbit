@@ -496,12 +496,13 @@ func runLatest(cfg *Config, projectPath string) (int, error) {
 
 	// Handle follow mode
 	if cfg.Follow {
-		// File-backed sources that support follow mode
+		// Sources that support follow mode (must be JSONL file-backed).
+		// Kiro IDE is file-backed (.chat) but uses JSON, not JSONL,
+		// so it cannot be followed by transcript.NewFollower.
 		fileBackedSources := map[string]bool{
 			sessions.SourceClaude:  true,
 			sessions.SourceCodex:   true,
 			sessions.SourceCopilot: true,
-			sessions.SourceKiroIDE: true,
 		}
 		if !fileBackedSources[latest.Source] {
 			return 0, fmt.Errorf("latest session is a %s session which cannot be followed (not file-backed)", sessions.DisplayName(latest.Source))
