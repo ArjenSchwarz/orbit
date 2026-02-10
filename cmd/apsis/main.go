@@ -232,6 +232,9 @@ Options:
   -h, --help              Show this help
 
 Examples:
+  apsis latest                                   Convert the most recent session
+  apsis latest -f html -o out.html               Save latest session as HTML
+  apsis latest -F                                Follow the most recent session
   apsis 550e8400-e29b-41d4-a716-446655440000     Convert session by ID
   apsis -p /path/to/project session-id           Convert session from different project
   apsis /path/to/session.jsonl                   Convert from file path
@@ -244,9 +247,6 @@ Examples:
   apsis --list -p /path/to/project               List sessions for different project
   apsis -F session-id                            Follow session in real-time
   apsis --follow /path/to/session.jsonl          Follow file for new entries
-  apsis latest                                   Convert the most recent session
-  apsis latest -F                                Follow the most recent session
-  apsis latest -f html -o out.html               Save latest session as HTML
   apsis serve                                    Start web server on localhost:8081
   apsis serve --port 3000 --bind 0.0.0.0         Start on custom port and address
 `)
@@ -462,9 +462,13 @@ func resolveLatestSession(projectPath string) (*sessions.SessionInfo, error) {
 		return nil, err
 	}
 
-	sessionList, _, err := lister.ListAll(projectPath)
+	sessionList, warnings, err := lister.ListAll(projectPath)
 	if err != nil {
 		return nil, err
+	}
+
+	for _, w := range warnings {
+		fmt.Fprintf(os.Stderr, "Warning: could not list %s sessions: %v\n", sessions.DisplayName(w.Source), w.Err)
 	}
 
 	if len(sessionList) == 0 {

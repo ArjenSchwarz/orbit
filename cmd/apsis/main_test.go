@@ -1828,3 +1828,154 @@ func TestRunLatest_NormalMode(t *testing.T) {
 	}
 }
 
+// createDummySession creates a minimal valid JSONL session file with a controlled
+// modification time. This enables deterministic ordering in tests that depend on
+// "newest first" session resolution.
+func createDummySession(t *testing.T, path string, modTime time.Time) {
+	t.Helper()
+	content := `{"type":"user","timestamp":"2026-01-05T10:00:00Z","message":{"role":"user","content":[{"type":"text","text":"test"}]}}`
+	if err := os.WriteFile(path, []byte(content), 0644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chtimes(path, modTime, modTime); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestRunLatest_HTMLFormat(t *testing.T) {
+	tmpDir := t.TempDir()
+	homeDir := filepath.Join(tmpDir, "home")
+
+	claudeProjectDir := filepath.Join(homeDir, ".claude", "projects", "-test-project")
+	if err := os.MkdirAll(claudeProjectDir, 0755); err != nil {
+		t.Fatal(err)
+	}
+	createDummySession(t, filepath.Join(claudeProjectDir, "test-session.jsonl"), time.Now())
+
+	origHomeDir := os.Getenv("HOME")
+	t.Setenv("HOME", homeDir)
+	defer func() { _ = os.Setenv("HOME", origHomeDir) }()
+
+	// Capture stdout, suppress stderr
+	oldStdout := os.Stdout
+	rStdout, wStdout, _ := os.Pipe()
+	os.Stdout = wStdout
+	oldStderr := os.Stderr
+	_, wStderr, _ := os.Pipe()
+	os.Stderr = wStderr
+
+	cfg := &Config{Input: "latest", Format: "html", Project: "/test/project"}
+	exitCode, err := run(cfg)
+
+	_ = wStdout.Close()
+	_ = wStderr.Close()
+	os.Stdout = oldStdout
+	os.Stderr = oldStderr
+
+	var stdoutBuf bytes.Buffer
+	_, _ = stdoutBuf.ReadFrom(rStdout)
+
+	if err != nil {
+		t.Fatalf("run() with latest + html failed: %v", err)
+	}
+	if exitCode != 0 {
+		t.Errorf("expected exit code 0, got %d", exitCode)
+	}
+
+	output := stdoutBuf.String()
+	if !strings.Contains(output, "<!DOCTYPE html>") {
+		t.Error("output should contain DOCTYPE for HTML format")
+	}
+	if !strings.Contains(output, "<title>Session Transcript</title>") {
+		t.Error("output should contain HTML title")
+	}
+}
+
+func TestRunLatest_JSONFormat(t *testing.T) {
+	tmpDir := t.TempDir()
+	homeDir := filepath.Join(tmpDir, "home")
+
+	claudeProjectDir := filepath.Join(homeDir, ".claude", "projects", "-test-project")
+	if err := os.MkdirAll(claudeProjectDir, 0755); err != nil {
+		t.Fatal(err)
+	}
+	createDummySession(t, filepath.Join(claudeProjectDir, "test-session.jsonl"), time.Now())
+
+	origHomeDir := os.Getenv("HOME")
+	t.Setenv("HOME", homeDir)
+	defer func() { _ = os.Setenv("HOME", origHomeDir) }()
+
+	// Capture stdout, suppress stderr
+	oldStdout := os.Stdout
+	rStdout, wStdout, _ := os.Pipe()
+	os.Stdout = wStdout
+	oldStderr := os.Stderr
+	_, wStderr, _ := os.Pipe()
+	os.Stderr = wStderr
+
+	cfg := &Config{Input: "latest", Format: "json", Project: "/test/project"}
+	exitCode, err := run(cfg)
+
+	_ = wStdout.Close()
+	_ = wStderr.Close()
+	os.Stdout = oldStdout
+	os.Stderr = oldStderr
+
+	var stdoutBuf bytes.Buffer
+	_, _ = stdoutBuf.ReadFrom(rStdout)
+
+	if err != nil {
+		t.Fatalf("run() with latest + json failed: %v", err)
+	}
+	if exitCode != 0 {
+		t.Errorf("expected exit code 0, got %d", exitCode)
+	}
+
+	output := stdoutBuf.String()
+	if !strings.HasPrefix(output, "[") {
+		t.Error("JSON output should start with '[' (JSON array)")
+	}
+}
+
+func TestRunLatest_WithOutputFile(t *testing.T) {
+	tmpDir := t.TempDir()
+	homeDir := filepath.Join(tmpDir, "home")
+
+	claudeProjectDir := filepath.Join(homeDir, ".claude", "projects", "-test-project")
+	if err := os.MkdirAll(claudeProjectDir, 0755); err != nil {
+		t.Fatal(err)
+	}
+	createDummySession(t, filepath.Join(claudeProjectDir, "test-session.jsonl"), time.Now())
+
+	origHomeDir := os.Getenv("HOME")
+	t.Setenv("HOME", homeDir)
+	defer func() { _ = os.Setenv("HOME", origHomeDir) }()
+
+	// Suppress stderr
+	oldStderr := os.Stderr
+	_, wStderr, _ := os.Pipe()
+	os.Stderr = wStderr
+
+	outputFile := filepath.Join(tmpDir, "output.md")
+	cfg := &Config{Input: "latest", Format: "md", Output: outputFile, Project: "/test/project"}
+	exitCode, err := run(cfg)
+
+	_ = wStderr.Close()
+	os.Stderr = oldStderr
+
+	if err != nil {
+		t.Fatalf("run() with latest + output file failed: %v", err)
+	}
+	if exitCode != 0 {
+		t.Errorf("expected exit code 0, got %d", exitCode)
+	}
+
+	data, err := os.ReadFile(outputFile)
+	if err != nil {
+		t.Fatalf("failed to read output file: %v", err)
+	}
+	if !strings.Contains(string(data), "# Session Transcript") {
+		t.Error("output file should contain Session Transcript header")
+	}
+}
+
