@@ -5,6 +5,41 @@ import (
 	"testing"
 )
 
+func TestBuildComparisonPrompt_OutputPathInstruction(t *testing.T) {
+	t.Run("includes instruction when OutputPath is set", func(t *testing.T) {
+		input := ComparisonInput{
+			SpecName:   "test-spec",
+			Variants:   []VariantData{{ID: 1}, {ID: 2}},
+			OutputPath: "/tmp/specs/my-feature/.orbit/comparison.json",
+		}
+
+		prompt := buildComparisonPrompt(input)
+
+		if !strings.Contains(prompt, "ADDITIONALLY") {
+			t.Error("prompt should contain ADDITIONALLY instruction when OutputPath is set")
+		}
+		if !strings.Contains(prompt, "/tmp/specs/my-feature/.orbit/comparison.json") {
+			t.Error("prompt should contain the exact OutputPath")
+		}
+		if !strings.Contains(prompt, "Write the JSON result to the file") {
+			t.Error("prompt should instruct agent to write JSON to file")
+		}
+	})
+
+	t.Run("no instruction when OutputPath is empty", func(t *testing.T) {
+		input := ComparisonInput{
+			SpecName: "test-spec",
+			Variants: []VariantData{{ID: 1}, {ID: 2}},
+		}
+
+		prompt := buildComparisonPrompt(input)
+
+		if strings.Contains(prompt, "ADDITIONALLY") {
+			t.Error("prompt should not contain ADDITIONALLY instruction when OutputPath is empty")
+		}
+	})
+}
+
 func TestBuildComparisonPrompt_IncludesLearningsInstructions(t *testing.T) {
 	input := ComparisonInput{
 		SpecName: "test-spec",

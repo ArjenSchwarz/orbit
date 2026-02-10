@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"os"
 	"strings"
 	"time"
 
@@ -36,9 +37,8 @@ func NewComparator(runner promptRunner, customCmd string) *Comparator {
 }
 
 // DefaultTimeout is the maximum duration for a comparison session.
-// Comparison prompts have all data inline and should complete quickly.
 // This prevents indefinite hangs from stalled API connections.
-const DefaultTimeout = 10 * time.Minute
+const DefaultTimeout = 30 * time.Minute
 
 // MaxPromptTokens is the maximum estimated token count for comparison prompts.
 // Claude has ~200k token context, but we leave room for the response.
@@ -366,6 +366,72 @@ func validateLearnings(learnings []VariantLearning, numVariants int) []VariantLe
 		return nil
 	}
 	return valid
+}
+
+// LoadResultFromFile reads a comparison result JSON file and parses it into a Result.
+// This allows recovering comparison results when the agent wrote the file but the session hung.
+//
+// Uses tolerant parsing identical to the live comparison path: malformed optional
+// sections (e.g. learnings with wrong types) are discarded rather than failing the
+// entire load. This is intentional — when recovering from a hung session, maximizing
+// tolerance for the saved data is more important than strict validation.
+func LoadResultFromFile(path string) (*Result, error) {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return nil, fmt.Errorf("read comparison file: %w", err)
+	}
+
+	content := strings.TrimSpace(string(data))
+	if content == "" {
+		return nil, errors.New("comparison file is empty")
+	}
+
+	// The file may contain raw JSON or JSON wrapped in markdown code blocks
+	// (if the agent wrote it with extra formatting). Use the same extraction logic.
+	jsonStr, err := extractJSON(content)
+	if err != nil {
+		return nil, fmt.Errorf("extract JSON from file: %w", err)
+	}
+
+	// Use tolerant parsing: unmarshal into resultRaw so malformed learnings
+	// don't fail the entire load (same approach as parseAndValidate).
+	var raw resultRaw
+	if err := json.Unmarshal([]byte(jsonStr), &raw); err != nil {
+		return nil, fmt.Errorf("parse comparison JSON: %w", err)
+	}
+
+	result := &Result{
+		Recommendation:           raw.Recommendation,
+		Confidence:               raw.Confidence,
+		Summary:                  raw.Summary,
+		FileAnalyses:             raw.FileAnalyses,
+		Observations:             raw.Observations,
+		DocumentationAssessment:  raw.DocumentationAssessment,
+		CrossVariantImprovements: raw.CrossVariantImprovements,
+	}
+
+	// Parse learnings tolerantly — type mismatches are discarded, not fatal.
+	if len(raw.Learnings) > 0 && string(raw.Learnings) != "null" {
+		var learnings []VariantLearning
+		if err := json.Unmarshal(raw.Learnings, &learnings); err != nil {
+			log.Printf("Warning: failed to parse learnings from file (non-fatal): %v", err)
+		} else {
+			result.Learnings = learnings
+		}
+	}
+
+	// Basic validation
+	if result.Recommendation < 1 {
+		return nil, errors.New("invalid comparison result: missing recommendation")
+	}
+	if result.Confidence == "" {
+		return nil, errors.New("invalid comparison result: missing confidence")
+	}
+	if result.Summary == "" {
+		return nil, errors.New("invalid comparison result: missing summary")
+	}
+
+	return result, nil
 }
 
 // extractJSONObject extracts a JSON object starting at the beginning of the string.
