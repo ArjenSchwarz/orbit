@@ -22,6 +22,6 @@ references:
 
 ## Polish
 
-- [ ] 7. Update printUsage() help text and examples to include apsis latest
+- [x] 7. Update printUsage() help text and examples to include apsis latest
 
-- [ ] 8. Add tests for latest keyword resolution, empty session list error, and isFilePath shadowing protection
+- [x] 8. Add tests for latest keyword resolution, empty session list error, and isFilePath shadowing protection
