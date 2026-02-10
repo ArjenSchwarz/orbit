@@ -1020,6 +1020,15 @@ Environment variables:
 ### Command Line
 
 ```bash
+# View the most recent session
+apsis latest
+
+# Follow the most recent session (live updates)
+apsis latest -F
+
+# Save latest session as HTML
+apsis latest -f html -o transcript.html
+
 # Convert session by ID (looks in ~/.claude/projects)
 apsis 550e8400-e29b-41d4-a716-446655440000
 
