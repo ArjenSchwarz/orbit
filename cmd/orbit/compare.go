@@ -47,7 +47,7 @@ func compareCommand(args []string) error {
 		return fmt.Errorf("failed to get working directory: %w", err)
 	}
 
-	// Load and validate configuration (required for AI comparison, not for --from-file)
+	// Config only needed for AI agent invocation, not for loading saved results
 	if *fromFile == "" {
 		appConfig := config.Load(workDir)
 		if err := appConfig.RequireConfigFile(); err != nil {
@@ -128,6 +128,19 @@ func compareCommand(args []string) error {
 		if err != nil {
 			return fmt.Errorf("failed to load comparison from file: %w", err)
 		}
+
+		// Validate that the recommendation refers to an existing completed variant
+		validVariant := false
+		for _, v := range completedVariants {
+			if v.ID == result.Recommendation {
+				validVariant = true
+				break
+			}
+		}
+		if !validVariant {
+			return fmt.Errorf("loaded recommendation (variant %d) does not match any completed variant", result.Recommendation)
+		}
+
 		fmt.Printf("Loaded comparison result (recommendation: variant %d)\n", result.Recommendation)
 	} else {
 		// Read spec context for additional context
@@ -163,6 +176,11 @@ func compareCommand(args []string) error {
 		result, err = comparator.CompareUnified(ctx, comparisonInput)
 		if err != nil {
 			return fmt.Errorf("comparison failed: %w", err)
+		}
+
+		// Check if agent wrote the JSON file as instructed
+		if _, statErr := os.Stat(comparisonJSONPath); os.IsNotExist(statErr) {
+			fmt.Printf("Warning: agent did not write comparison JSON to %s\n", comparisonJSONPath)
 		}
 	}
 

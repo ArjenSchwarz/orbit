@@ -370,6 +370,11 @@ func validateLearnings(learnings []VariantLearning, numVariants int) []VariantLe
 
 // LoadResultFromFile reads a comparison result JSON file and parses it into a Result.
 // This allows recovering comparison results when the agent wrote the file but the session hung.
+//
+// Uses tolerant parsing identical to the live comparison path: malformed optional
+// sections (e.g. learnings with wrong types) are discarded rather than failing the
+// entire load. This is intentional — when recovering from a hung session, maximizing
+// tolerance for the saved data is more important than strict validation.
 func LoadResultFromFile(path string) (*Result, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {
@@ -388,9 +393,31 @@ func LoadResultFromFile(path string) (*Result, error) {
 		return nil, fmt.Errorf("extract JSON from file: %w", err)
 	}
 
-	var result Result
-	if err := json.Unmarshal([]byte(jsonStr), &result); err != nil {
+	// Use tolerant parsing: unmarshal into resultRaw so malformed learnings
+	// don't fail the entire load (same approach as parseAndValidate).
+	var raw resultRaw
+	if err := json.Unmarshal([]byte(jsonStr), &raw); err != nil {
 		return nil, fmt.Errorf("parse comparison JSON: %w", err)
+	}
+
+	result := &Result{
+		Recommendation:           raw.Recommendation,
+		Confidence:               raw.Confidence,
+		Summary:                  raw.Summary,
+		FileAnalyses:             raw.FileAnalyses,
+		Observations:             raw.Observations,
+		DocumentationAssessment:  raw.DocumentationAssessment,
+		CrossVariantImprovements: raw.CrossVariantImprovements,
+	}
+
+	// Parse learnings tolerantly — type mismatches are discarded, not fatal.
+	if len(raw.Learnings) > 0 && string(raw.Learnings) != "null" {
+		var learnings []VariantLearning
+		if err := json.Unmarshal(raw.Learnings, &learnings); err != nil {
+			log.Printf("Warning: failed to parse learnings from file (non-fatal): %v", err)
+		} else {
+			result.Learnings = learnings
+		}
 	}
 
 	// Basic validation
@@ -404,7 +431,7 @@ func LoadResultFromFile(path string) (*Result, error) {
 		return nil, errors.New("invalid comparison result: missing summary")
 	}
 
-	return &result, nil
+	return result, nil
 }
 
 // extractJSONObject extracts a JSON object starting at the beginning of the string.

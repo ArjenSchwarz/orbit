@@ -2398,6 +2398,11 @@ func (o *Orbit) runComparison(ctx context.Context) error {
 		return fmt.Errorf("compare variants: %w", err)
 	}
 
+	// Check if agent wrote the JSON file as instructed
+	if _, statErr := os.Stat(comparisonJSONPath); os.IsNotExist(statErr) {
+		log.Printf("Warning: agent did not write comparison JSON to %s", comparisonJSONPath)
+	}
+
 	log.Printf("Comparison complete: recommends variant %d (confidence: %s)",
 		result.Recommendation, result.Confidence)
 	log.Printf("Summary: %s", result.Summary)

@@ -180,6 +180,49 @@ func TestLoadResultFromFile_WithLearnings(t *testing.T) {
 	}
 }
 
+func TestLoadResultFromFile_MalformedLearningsTolerated(t *testing.T) {
+	dir := t.TempDir()
+	path := dir + "/comparison.json"
+
+	// Learnings with variant_id as string instead of int — should be tolerated
+	content := `{
+		"recommendation": 1,
+		"confidence": "high",
+		"summary": "Test tolerant parsing.",
+		"file_analyses": [],
+		"observations": ["obs1"],
+		"learnings": [
+			{
+				"variant_id": "1",
+				"category": "code-pattern",
+				"title": "Good pattern",
+				"rationale": "Why it matters",
+				"file_references": ["file.go:10"]
+			}
+		]
+	}`
+	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	result, err := LoadResultFromFile(path)
+	if err != nil {
+		t.Fatalf("LoadResultFromFile should not fail on malformed learnings: %v", err)
+	}
+
+	// Core fields should be intact
+	if result.Recommendation != 1 {
+		t.Errorf("expected recommendation 1, got %d", result.Recommendation)
+	}
+	if result.Confidence != "high" {
+		t.Errorf("expected confidence 'high', got %q", result.Confidence)
+	}
+	if len(result.Observations) != 1 {
+		t.Errorf("expected 1 observation, got %d", len(result.Observations))
+	}
+	// Malformed learnings are discarded gracefully
+}
+
 func TestBuildPrompt_IncludesAllVariants(t *testing.T) {
 	variants := []VariantData{
 		{ID: 1, Diff: "diff for variant 1"},
