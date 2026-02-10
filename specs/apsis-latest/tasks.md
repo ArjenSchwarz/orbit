@@ -6,13 +6,13 @@ references:
 
 ## Core Implementation
 
-- [ ] 1. Add resolveLatestSession() that uses Lister.ListAll() and picks the newest session
+- [x] 1. Add resolveLatestSession() that uses Lister.ListAll() and picks the newest session
 
-- [ ] 2. Integrate latest keyword into run() — check cfg.Input == "latest" before isFilePath() and route to resolveLatestSession()
+- [x] 2. Integrate latest keyword into run() — check cfg.Input == "latest" before isFilePath() and route to resolveLatestSession()
 
-- [ ] 3. Print resolved session info (source, ID, timestamp) to stderr
+- [x] 3. Print resolved session info (source, ID, timestamp) to stderr
 
-- [ ] 4. Verify latest resolves correctly with all output formats (-f md, html, json) and -o flag
+- [x] 4. Verify latest resolves correctly with all output formats (-f md, html, json) and -o flag
 
 ## Follow Mode Support
 

@@ -210,7 +210,7 @@ func printUsage() {
 	fmt.Fprintf(os.Stderr, `apsis - Convert AI agent session transcripts to Markdown or HTML
 
 Usage:
-  apsis [options] [session-id | file-path]
+  apsis [options] [session-id | file-path | latest]
   apsis serve [options]
   cat session.jsonl | apsis
 
@@ -244,6 +244,9 @@ Examples:
   apsis --list -p /path/to/project               List sessions for different project
   apsis -F session-id                            Follow session in real-time
   apsis --follow /path/to/session.jsonl          Follow file for new entries
+  apsis latest                                   Convert the most recent session
+  apsis latest -F                                Follow the most recent session
+  apsis latest -f html -o out.html               Save latest session as HTML
   apsis serve                                    Start web server on localhost:8081
   apsis serve --port 3000 --bind 0.0.0.0         Start on custom port and address
 `)
@@ -290,6 +293,11 @@ func run(cfg *Config) (int, error) {
 	// Validate follow mode early (requirement 5.2-5.6)
 	if err := validateFollowMode(cfg); err != nil {
 		return 0, err
+	}
+
+	// Handle "latest" keyword before isFilePath() so a file named "latest" doesn't shadow it
+	if cfg.Input == "latest" {
+		return runLatest(cfg, absProjectPath)
 	}
 
 	// Check for input source (follow mode doesn't support stdin)
@@ -445,6 +453,90 @@ func listSessions(projectPath string) error {
 	}
 
 	return nil
+}
+
+// resolveLatestSession returns the newest session for the project.
+func resolveLatestSession(projectPath string) (*sessions.SessionInfo, error) {
+	lister, err := sessions.NewLister()
+	if err != nil {
+		return nil, err
+	}
+
+	sessionList, _, err := lister.ListAll(projectPath)
+	if err != nil {
+		return nil, err
+	}
+
+	if len(sessionList) == 0 {
+		return nil, fmt.Errorf("no sessions found for project")
+	}
+
+	// ListAll sorts oldest-first, so the last element is the newest
+	latest := &sessionList[len(sessionList)-1]
+	return latest, nil
+}
+
+// runLatest handles the "latest" keyword by resolving the newest session and routing
+// to the appropriate output path (follow mode or normal conversion).
+func runLatest(cfg *Config, projectPath string) (int, error) {
+	latest, err := resolveLatestSession(projectPath)
+	if err != nil {
+		return 0, err
+	}
+
+	fmt.Fprintf(os.Stderr, "Using %s session %s from %s\n",
+		sessions.DisplayName(latest.Source),
+		latest.ID,
+		latest.CreatedAt.Local().Format(time.RFC3339))
+
+	resolver, err := sessions.NewResolver(projectPath)
+	if err != nil {
+		return 0, err
+	}
+
+	// Handle follow mode
+	if cfg.Follow {
+		// File-backed sources that support follow mode
+		fileBackedSources := map[string]bool{
+			sessions.SourceClaude:  true,
+			sessions.SourceCodex:   true,
+			sessions.SourceCopilot: true,
+			sessions.SourceKiroIDE: true,
+		}
+		if !fileBackedSources[latest.Source] {
+			return 0, fmt.Errorf("latest session is a %s session which cannot be followed (not file-backed)", sessions.DisplayName(latest.Source))
+		}
+
+		filePath, err := resolver.ResolvePath(latest.Source, latest.ID)
+		if err != nil {
+			return 0, err
+		}
+
+		opts := transcript.RenderOptions{
+			Title: "Session Transcript",
+		}
+		return runFollow(filePath, opts), nil
+	}
+
+	// Normal mode: resolve to reader
+	resolved, err := resolver.Resolve(latest.Source, latest.ID)
+	if err != nil {
+		return 0, err
+	}
+	defer func() { _ = resolved.Reader.Close() }()
+
+	// Determine output destination
+	var output io.Writer = os.Stdout
+	if cfg.Output != "" {
+		f, err := os.Create(cfg.Output)
+		if err != nil {
+			return 0, fmt.Errorf("failed to create output file: %w", err)
+		}
+		defer func() { _ = f.Close() }()
+		output = f
+	}
+
+	return 0, convert(resolved.Reader, output, latest.ID, cfg.Format, cfg.Agent, resolved.Metadata.CostPath)
 }
 
 // deriveChatFileCostPath extracts the executionId from a .chat file and derives
