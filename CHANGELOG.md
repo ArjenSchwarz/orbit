@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- Fix Copilot premium request parsing when count is exactly 1: Copilot CLI outputs "Premium request" (singular) but the regex only matched "Premium requests" (plural), causing all single-request runs to report 0 cost
+
 ### Added
 
 - Add `apsis latest` command to view the most recent session without manually looking up a session ID. Supports all output formats (`-f md`, `-f html`, `-f json`), output file (`-o`), and follow mode (`-F`) for file-backed sessions. Prints resolved session info (source, ID, timestamp) to stderr.

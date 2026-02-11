@@ -151,6 +151,23 @@ Total session time:     48.964s`,
 				CachedTokens: 50000,
 			},
 		},
+		"singular premium request": {
+			stderr: `Total usage est:        1 Premium request
+API time spent:         7m 8.228s
+Total session time:     118h 26m 1.468s
+Total code changes:     +380 -21
+Breakdown by AI model:
+ gemini-3-pro-preview    3.0m in, 7.6k out, 2.8m cached (Est. 1 Premium request)`,
+			expected: &UsageInfo{
+				PremiumRequests: 1,
+				APIDuration:     durPtr(7*time.Minute + 8228*time.Millisecond),
+				LinesAdded:      intPtr(380),
+				LinesRemoved:    intPtr(21),
+				InputTokens:     3000000,
+				OutputTokens:    7600,
+				CachedTokens:    2800000,
+			},
+		},
 		"whitespace variations": {
 			stdout: `Total  usage   est:    0.5   Premium    requests`,
 			expected: &UsageInfo{

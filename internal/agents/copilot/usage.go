@@ -29,7 +29,7 @@ var (
 	numericPattern = `\d+(?:\.\d+)?`
 
 	// Case-insensitive patterns with flexible whitespace
-	premiumRequestsRe = regexp.MustCompile(`(?i)total\s+usage\s+est:\s+(` + numericPattern + `)\s+premium\s+requests`)
+	premiumRequestsRe = regexp.MustCompile(`(?i)total\s+usage\s+est:\s+(` + numericPattern + `)\s+premium\s+requests?`)
 
 	// Duration patterns: allow optional space after minutes (handles "1m 36s" and "1m36s")
 	apiTimeRe     = regexp.MustCompile(`(?i)api\s+time\s+spent:\s+(?:(\d+)m\s*)?(` + numericPattern + `)s`)
