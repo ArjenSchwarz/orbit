@@ -31,6 +31,17 @@ jobs:
         with:
           fetch-depth: 1
 
+      - name: Set up Go
+        uses: actions/setup-go@v6
+        with:
+          go-version: "1.25.4"
+
+      - name: Install golangci-lint
+        uses: golangci/golangci-lint-action@v8
+        with:
+          version: v2.7.2
+          args: --help
+
       - name: Run Claude Code Review
         id: claude-review
         uses: anthropics/claude-code-action@v1
