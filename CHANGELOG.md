@@ -16,6 +16,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Fix variant session resume failure by using the `isResume` return value from `StartPhase()` to only set `continueSessionID` when actually resuming an existing session (e.g., continuing an interrupted run), not when generating a fresh session ID for tracking. Prevents spurious "session resume failed" warnings during multi-variant runs without pre-prompt.
 - Exclude Kiro IDE from `apsis latest -F` follow mode eligibility since `.chat` files use JSON, not JSONL, which `transcript.NewFollower` requires. Aligns with existing `resolveFollowInput` behavior that already excluded Kiro IDE.
 - Remove non-functional `TestRunLatest_FollowModeNonFileBacked` test that only verified a locally-constructed string without exercising production code
 - Skip empty assistant sections in transcript rendering caused by whitespace-only text entries from Claude streaming chunks

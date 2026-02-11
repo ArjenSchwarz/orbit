@@ -2013,11 +2013,11 @@ func (o *Orbit) runVariant(ctx context.Context, v *variants.Variant) error {
 		// Start phase in log manager to track session ID for status display
 		// This populates CurrentPhase in summary.json so orbit status can show live activity
 		if variantLogManager != nil {
-			sessionID, _, err := variantLogManager.StartPhase(phaseNum, o.config.ContinueSession, continueSessionID)
+			sessionID, isResumeFromManager, err := variantLogManager.StartPhase(phaseNum, o.config.ContinueSession, continueSessionID)
 			if err != nil {
 				o.debug.Log("Variant %d: failed to start phase in log manager: %v", v.ID, err)
-			} else if continueSessionID == "" {
-				// If we didn't have a pre-prompt session to continue, use the generated session ID
+			} else if continueSessionID == "" && isResumeFromManager {
+				// Only set continueSessionID if we're resuming an existing session (continue interrupted run)
 				continueSessionID = sessionID
 			}
 		}
