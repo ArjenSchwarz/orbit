@@ -9,10 +9,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Add `apsis latest` command to view the most recent session without manually looking up a session ID. Supports all output formats (`-f md`, `-f html`, `-f json`), output file (`-o`), and follow mode (`-F`) for file-backed sessions. Prints resolved session info (source, ID, timestamp) to stderr.
+- Add tests for `apsis latest`: keyword resolution selects newest session, empty session list returns clear error, and `latest` keyword takes precedence over a file named "latest" in the working directory
+- Add spec for `apsis latest` feature: view the most recent session without manually selecting an ID (`apsis latest`)
 - Render tool/action results in Kiro IDE transcripts by converting execution detail actions (readFiles, replace, create, append, runCommand, search) into tool_use/tool_result entry pairs that the existing renderer displays
 
 ### Fixed
 
+- Exclude Kiro IDE from `apsis latest -F` follow mode eligibility since `.chat` files use JSON, not JSONL, which `transcript.NewFollower` requires. Aligns with existing `resolveFollowInput` behavior that already excluded Kiro IDE.
+- Remove non-functional `TestRunLatest_FollowModeNonFileBacked` test that only verified a locally-constructed string without exercising production code
 - Skip empty assistant sections in transcript rendering caused by whitespace-only text entries from Claude streaming chunks
 - Skip unknown JSONL entry types (e.g., `file-history-snapshot`) during format detection instead of failing with "unrecognized log format" error. When format detection fails, `Parse()` falls back to the Claude parser which gracefully returns 0 entries for unrecognized content.
 - Normalize session timestamps to local timezone in `apsis -l` CLI output to prevent mix of UTC and local times

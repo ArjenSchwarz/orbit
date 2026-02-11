@@ -210,7 +210,7 @@ func printUsage() {
 	fmt.Fprintf(os.Stderr, `apsis - Convert AI agent session transcripts to Markdown or HTML
 
 Usage:
-  apsis [options] [session-id | file-path]
+  apsis [options] [session-id | file-path | latest]
   apsis serve [options]
   cat session.jsonl | apsis
 
@@ -232,6 +232,9 @@ Options:
   -h, --help              Show this help
 
 Examples:
+  apsis latest                                   Convert the most recent session
+  apsis latest -f html -o out.html               Save latest session as HTML
+  apsis latest -F                                Follow the most recent session
   apsis 550e8400-e29b-41d4-a716-446655440000     Convert session by ID
   apsis -p /path/to/project session-id           Convert session from different project
   apsis /path/to/session.jsonl                   Convert from file path
@@ -290,6 +293,11 @@ func run(cfg *Config) (int, error) {
 	// Validate follow mode early (requirement 5.2-5.6)
 	if err := validateFollowMode(cfg); err != nil {
 		return 0, err
+	}
+
+	// Handle "latest" keyword before isFilePath() so a file named "latest" doesn't shadow it
+	if cfg.Input == "latest" {
+		return runLatest(cfg, absProjectPath)
 	}
 
 	// Check for input source (follow mode doesn't support stdin)
@@ -445,6 +453,95 @@ func listSessions(projectPath string) error {
 	}
 
 	return nil
+}
+
+// resolveLatestSession returns the newest session for the project.
+func resolveLatestSession(projectPath string) (*sessions.SessionInfo, error) {
+	lister, err := sessions.NewLister()
+	if err != nil {
+		return nil, err
+	}
+
+	sessionList, warnings, err := lister.ListAll(projectPath)
+	if err != nil {
+		return nil, err
+	}
+
+	for _, w := range warnings {
+		fmt.Fprintf(os.Stderr, "Warning: could not list %s sessions: %v\n", sessions.DisplayName(w.Source), w.Err)
+	}
+
+	if len(sessionList) == 0 {
+		return nil, fmt.Errorf("no sessions found for project")
+	}
+
+	// ListAll sorts oldest-first, so the last element is the newest
+	latest := &sessionList[len(sessionList)-1]
+	return latest, nil
+}
+
+// runLatest handles the "latest" keyword by resolving the newest session and routing
+// to the appropriate output path (follow mode or normal conversion).
+func runLatest(cfg *Config, projectPath string) (int, error) {
+	latest, err := resolveLatestSession(projectPath)
+	if err != nil {
+		return 0, err
+	}
+
+	fmt.Fprintf(os.Stderr, "Using %s session %s from %s\n",
+		sessions.DisplayName(latest.Source),
+		latest.ID,
+		latest.CreatedAt.Local().Format(time.RFC3339))
+
+	resolver, err := sessions.NewResolver(projectPath)
+	if err != nil {
+		return 0, err
+	}
+
+	// Handle follow mode
+	if cfg.Follow {
+		// Sources that support follow mode (must be JSONL file-backed).
+		// Kiro IDE is file-backed (.chat) but uses JSON, not JSONL,
+		// so it cannot be followed by transcript.NewFollower.
+		fileBackedSources := map[string]bool{
+			sessions.SourceClaude:  true,
+			sessions.SourceCodex:   true,
+			sessions.SourceCopilot: true,
+		}
+		if !fileBackedSources[latest.Source] {
+			return 0, fmt.Errorf("latest session is a %s session which cannot be followed (not file-backed)", sessions.DisplayName(latest.Source))
+		}
+
+		filePath, err := resolver.ResolvePath(latest.Source, latest.ID)
+		if err != nil {
+			return 0, err
+		}
+
+		opts := transcript.RenderOptions{
+			Title: "Session Transcript",
+		}
+		return runFollow(filePath, opts), nil
+	}
+
+	// Normal mode: resolve to reader
+	resolved, err := resolver.Resolve(latest.Source, latest.ID)
+	if err != nil {
+		return 0, err
+	}
+	defer func() { _ = resolved.Reader.Close() }()
+
+	// Determine output destination
+	var output io.Writer = os.Stdout
+	if cfg.Output != "" {
+		f, err := os.Create(cfg.Output)
+		if err != nil {
+			return 0, fmt.Errorf("failed to create output file: %w", err)
+		}
+		defer func() { _ = f.Close() }()
+		output = f
+	}
+
+	return 0, convert(resolved.Reader, output, latest.ID, cfg.Format, cfg.Agent, resolved.Metadata.CostPath)
 }
 
 // deriveChatFileCostPath extracts the executionId from a .chat file and derives
