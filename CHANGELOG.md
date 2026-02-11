@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- Add Go and golangci-lint setup to Claude Code GitHub Actions workflows so the agent has access to the Go toolchain and linter during CI runs
+
 ### Fixed
 
 - Fix Copilot premium request parsing when count is exactly 1: Copilot CLI outputs "Premium request" (singular) but the regex only matched "Premium requests" (plural), causing all single-request runs to report 0 cost
