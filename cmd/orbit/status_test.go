@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/json"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -417,6 +418,133 @@ func TestExtractSpecName(t *testing.T) {
 				t.Errorf("extractSpecName(%q) = %q, want %q", tt.branch, got, tt.want)
 			}
 		})
+	}
+}
+
+// TestStatusCommand_TimestampLocalTimezone verifies that the "Started" timestamp
+// in status output is displayed in local timezone, not UTC (regression test for T-64).
+func TestStatusCommand_TimestampLocalTimezone(t *testing.T) {
+	tmpDir := t.TempDir()
+	originalWd, err := os.Getwd()
+	if err != nil {
+		t.Fatalf("failed to get working directory: %v", err)
+	}
+	t.Cleanup(func() {
+		_ = os.Chdir(originalWd)
+	})
+
+	// Set up git repo with initial commit
+	for _, args := range [][]string{
+		{"init"},
+		{"config", "user.email", "test@test.com"},
+		{"config", "user.name", "Test"},
+	} {
+		cmd := exec.Command("git", args...)
+		cmd.Dir = tmpDir
+		if out, err := cmd.CombinedOutput(); err != nil {
+			t.Fatalf("git %v failed: %v\n%s", args, err, out)
+		}
+	}
+
+	if err := os.WriteFile(filepath.Join(tmpDir, "README.md"), []byte("x"), 0644); err != nil {
+		t.Fatalf("failed to create README: %v", err)
+	}
+
+	cmd := exec.Command("git", "add", ".")
+	cmd.Dir = tmpDir
+	if out, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("git add failed: %v\n%s", err, out)
+	}
+
+	cmd = exec.Command("git", "commit", "-m", "init")
+	cmd.Dir = tmpDir
+	if out, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("git commit failed: %v\n%s", err, out)
+	}
+
+	cmd = exec.Command("git", "rev-parse", "HEAD")
+	cmd.Dir = tmpDir
+	out, err := cmd.Output()
+	if err != nil {
+		t.Fatalf("failed to get HEAD: %v", err)
+	}
+	baseCommit := strings.TrimSpace(string(out))
+
+	// Use a specific UTC time — this is how StartedAt is stored (see manager.go:237)
+	utcTime := time.Date(2026, 2, 14, 6, 52, 3, 0, time.UTC)
+
+	specOrbitDir := filepath.Join(tmpDir, "specs", "tz-test", ".orbit")
+	if err := os.MkdirAll(specOrbitDir, 0755); err != nil {
+		t.Fatalf("failed to create directory: %v", err)
+	}
+
+	metadata := variants.VariantsMetadata{
+		RunID:          "tz-test",
+		BaseCommit:     baseCommit,
+		OriginalBranch: "main",
+		StartedAt:      utcTime,
+		Variants: []*variants.Variant{
+			{
+				ID:        1,
+				Branch:    "impl-1",
+				Status:    variants.StatusCompleted,
+				AgentType: "codex",
+			},
+		},
+	}
+
+	variantsData, err := json.MarshalIndent(metadata, "", "  ")
+	if err != nil {
+		t.Fatalf("failed to marshal variants.json: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(specOrbitDir, "variants.json"), variantsData, 0644); err != nil {
+		t.Fatalf("failed to write variants.json: %v", err)
+	}
+
+	if err := os.Chdir(tmpDir); err != nil {
+		t.Fatalf("failed to chdir: %v", err)
+	}
+
+	// Capture JSON output by redirecting stdout
+	oldStdout := os.Stdout
+	r, w, err := os.Pipe()
+	if err != nil {
+		t.Fatalf("failed to create pipe: %v", err)
+	}
+	os.Stdout = w
+
+	cmdErr := statusCommand([]string{"--format", "json", "tz-test"})
+
+	_ = w.Close()
+	os.Stdout = oldStdout
+
+	captured, err := io.ReadAll(r)
+	if err != nil {
+		t.Fatalf("failed to read captured output: %v", err)
+	}
+
+	if cmdErr != nil {
+		t.Fatalf("status command failed: %v", cmdErr)
+	}
+
+	var result status.StatusOutput
+	if err := json.Unmarshal(captured, &result); err != nil {
+		t.Fatalf("failed to parse JSON output: %v\nraw: %s", err, captured)
+	}
+
+	// The timestamp should be in local timezone, not UTC
+	wantLocal := utcTime.Local().Format("2006-01-02 15:04:05")
+	if result.StartedAt != wantLocal {
+		t.Errorf("StartedAt = %q, want %q (local timezone)", result.StartedAt, wantLocal)
+	}
+
+	// If we're not in UTC, also verify it's NOT the raw UTC representation
+	_, offset := time.Now().Zone()
+	if offset != 0 {
+		utcFormatted := utcTime.Format("2006-01-02 15:04:05")
+		if result.StartedAt == utcFormatted {
+			t.Errorf("StartedAt should be local time, but got UTC: %q", result.StartedAt)
+		}
 	}
 }
 
