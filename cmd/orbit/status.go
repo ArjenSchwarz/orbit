@@ -86,7 +86,7 @@ func statusCommand(args []string) error {
 	infos := gatherer.GatherAllVariants(ctx, metadata.Variants)
 
 	// Build structured output
-	startedAt := metadata.StartedAt.Format("2006-01-02 15:04:05")
+	startedAt := metadata.StartedAt.Local().Format("2006-01-02 15:04:05")
 	statusData := status.BuildStatusOutput(specName, metadata.BaseCommit, metadata.OriginalBranch, startedAt, infos)
 
 	// Render based on format
