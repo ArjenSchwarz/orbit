@@ -2,6 +2,7 @@ package comparison
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"testing"
 	"time"
@@ -1489,6 +1490,268 @@ func TestIntegration_GracefulDegradation_MalformedLearnings(t *testing.T) {
 
 // TestIntegration_GracefulDegradation_WhitespaceOnlyFields tests that learnings
 // with whitespace-only required fields are rejected.
+// Tests for CompareUnified fallback to comparison file
+
+func TestCompareUnified_FallbackToFile_WhenAgentFails(t *testing.T) {
+	dir := t.TempDir()
+	outputPath := dir + "/comparison.json"
+
+	// Agent writes the comparison file during execution, then fails
+	validJSON := `{
+		"recommendation": 1,
+		"confidence": "high",
+		"summary": "Variant 1 is better.",
+		"file_analyses": [],
+		"observations": ["Good code"]
+	}`
+	runner := &fileWritingMockRunner{
+		outputPath:  outputPath,
+		fileContent: validJSON,
+		err:         fmt.Errorf("agent execution failed"),
+	}
+	comp := NewComparator(runner, "")
+
+	ctx := context.Background()
+	input := ComparisonInput{
+		SpecName:   "test-spec",
+		Variants:   []VariantData{{ID: 1, CommitMessages: []string{"c1"}}, {ID: 2, CommitMessages: []string{"c2"}}},
+		OutputPath: outputPath,
+	}
+
+	result, err := comp.CompareUnified(ctx, input)
+	if err != nil {
+		t.Fatalf("expected fallback to succeed, got error: %v", err)
+	}
+	if result.Recommendation != 1 {
+		t.Errorf("expected recommendation 1, got %d", result.Recommendation)
+	}
+	if result.Confidence != "high" {
+		t.Errorf("expected confidence 'high', got %q", result.Confidence)
+	}
+	if result.Summary != "Variant 1 is better." {
+		t.Errorf("unexpected summary: %q", result.Summary)
+	}
+}
+
+func TestCompareUnified_FallbackToFile_WhenJSONValidationFails(t *testing.T) {
+	dir := t.TempDir()
+	outputPath := dir + "/comparison.json"
+
+	// Agent returns garbled response that fails JSON validation, but writes
+	// a valid file to disk during execution
+	validJSON := `{
+		"recommendation": 2,
+		"confidence": "medium",
+		"summary": "Variant 2 wins.",
+		"file_analyses": [],
+		"observations": []
+	}`
+	runner := &fileWritingMockRunner{
+		outputPath:  outputPath,
+		fileContent: validJSON,
+		// Return garbled response (not an error, but invalid JSON)
+		response: "not valid json at all",
+	}
+	comp := NewComparator(runner, "")
+
+	ctx := context.Background()
+	input := ComparisonInput{
+		SpecName:   "test-spec",
+		Variants:   []VariantData{{ID: 1, CommitMessages: []string{"c1"}}, {ID: 2, CommitMessages: []string{"c2"}}},
+		OutputPath: outputPath,
+	}
+
+	result, err := comp.CompareUnified(ctx, input)
+	if err != nil {
+		t.Fatalf("expected fallback to succeed, got error: %v", err)
+	}
+	if result.Recommendation != 2 {
+		t.Errorf("expected recommendation 2, got %d", result.Recommendation)
+	}
+}
+
+func TestCompareUnified_NoFallback_WhenFileNotWritten(t *testing.T) {
+	dir := t.TempDir()
+	outputPath := dir + "/comparison.json"
+	// Do NOT write the file - it doesn't exist
+
+	runner := &mockPromptRunner{err: fmt.Errorf("agent execution failed")}
+	comp := NewComparator(runner, "")
+
+	ctx := context.Background()
+	input := ComparisonInput{
+		SpecName:   "test-spec",
+		Variants:   []VariantData{{ID: 1, CommitMessages: []string{"c1"}}, {ID: 2, CommitMessages: []string{"c2"}}},
+		OutputPath: outputPath,
+	}
+
+	_, err := comp.CompareUnified(ctx, input)
+	if err == nil {
+		t.Fatal("expected error when no fallback file exists")
+	}
+	if !containsString(err.Error(), "agent execution failed") {
+		t.Errorf("expected original error, got: %v", err)
+	}
+}
+
+func TestCompareUnified_NoFallback_WhenNoOutputPath(t *testing.T) {
+	runner := &mockPromptRunner{err: fmt.Errorf("agent execution failed")}
+	comp := NewComparator(runner, "")
+
+	ctx := context.Background()
+	input := ComparisonInput{
+		SpecName:   "test-spec",
+		Variants:   []VariantData{{ID: 1, CommitMessages: []string{"c1"}}, {ID: 2, CommitMessages: []string{"c2"}}},
+		OutputPath: "", // No output path
+	}
+
+	_, err := comp.CompareUnified(ctx, input)
+	if err == nil {
+		t.Fatal("expected error when no output path set")
+	}
+}
+
+func TestCompareUnified_NoFallback_WhenFileIsStale(t *testing.T) {
+	dir := t.TempDir()
+	outputPath := dir + "/comparison.json"
+
+	// Write a file BEFORE comparison starts (simulating a pre-existing stale file)
+	staleJSON := `{
+		"recommendation": 1,
+		"confidence": "low",
+		"summary": "Old stale result.",
+		"file_analyses": [],
+		"observations": []
+	}`
+	if err := os.WriteFile(outputPath, []byte(staleJSON), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	// Sleep briefly to ensure mod time difference is detectable
+	time.Sleep(10 * time.Millisecond)
+
+	// Use a multi-call runner that:
+	// 1. Doesn't update the file (simulates agent NOT writing a new file)
+	// 2. Returns an error
+	runner := &mockPromptRunner{err: fmt.Errorf("agent execution failed")}
+	comp := NewComparator(runner, "")
+
+	ctx := context.Background()
+	input := ComparisonInput{
+		SpecName:   "test-spec",
+		Variants:   []VariantData{{ID: 1, CommitMessages: []string{"c1"}}, {ID: 2, CommitMessages: []string{"c2"}}},
+		OutputPath: outputPath,
+	}
+
+	_, err := comp.CompareUnified(ctx, input)
+	if err == nil {
+		t.Fatal("expected error when file is stale (not updated during comparison)")
+	}
+	if !containsString(err.Error(), "agent execution failed") {
+		t.Errorf("expected original error, got: %v", err)
+	}
+}
+
+func TestCompareUnified_FallbackToFile_WhenFileUpdatedDuringComparison(t *testing.T) {
+	dir := t.TempDir()
+	outputPath := dir + "/comparison.json"
+
+	// Write an initial stale file
+	staleJSON := `{
+		"recommendation": 1,
+		"confidence": "low",
+		"summary": "Old result.",
+		"file_analyses": [],
+		"observations": []
+	}`
+	if err := os.WriteFile(outputPath, []byte(staleJSON), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	// Sleep to ensure time difference
+	time.Sleep(10 * time.Millisecond)
+
+	// Use a runner that updates the file during execution then fails
+	newJSON := `{
+		"recommendation": 2,
+		"confidence": "high",
+		"summary": "Updated result.",
+		"file_analyses": [],
+		"observations": ["Fresh observation"]
+	}`
+	runner := &fileWritingMockRunner{
+		outputPath: outputPath,
+		fileContent: newJSON,
+		err:        fmt.Errorf("session timed out"),
+	}
+	comp := NewComparator(runner, "")
+
+	ctx := context.Background()
+	input := ComparisonInput{
+		SpecName:   "test-spec",
+		Variants:   []VariantData{{ID: 1, CommitMessages: []string{"c1"}}, {ID: 2, CommitMessages: []string{"c2"}}},
+		OutputPath: outputPath,
+	}
+
+	result, err := comp.CompareUnified(ctx, input)
+	if err != nil {
+		t.Fatalf("expected fallback to succeed, got error: %v", err)
+	}
+	if result.Recommendation != 2 {
+		t.Errorf("expected recommendation 2 (from updated file), got %d", result.Recommendation)
+	}
+	if result.Summary != "Updated result." {
+		t.Errorf("expected updated summary, got %q", result.Summary)
+	}
+}
+
+func TestCompareUnified_NoFallback_WhenFileIsInvalid(t *testing.T) {
+	dir := t.TempDir()
+	outputPath := dir + "/comparison.json"
+
+	// Agent fails
+	runner := &mockPromptRunner{err: fmt.Errorf("agent execution failed")}
+	comp := NewComparator(runner, "")
+
+	// Write an invalid comparison file
+	if err := os.WriteFile(outputPath, []byte("not valid json"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	ctx := context.Background()
+	input := ComparisonInput{
+		SpecName:   "test-spec",
+		Variants:   []VariantData{{ID: 1, CommitMessages: []string{"c1"}}, {ID: 2, CommitMessages: []string{"c2"}}},
+		OutputPath: outputPath,
+	}
+
+	_, err := comp.CompareUnified(ctx, input)
+	if err == nil {
+		t.Fatal("expected error when fallback file is invalid")
+	}
+}
+
+// fileWritingMockRunner is a mock that writes a file during RunCustomPrompt
+// then returns an error or a garbled response, simulating an agent that writes
+// comparison.json but the session fails afterward.
+type fileWritingMockRunner struct {
+	outputPath  string
+	fileContent string
+	response    string // If set, return this as output (may be invalid JSON)
+	err         error  // If set, return this error
+}
+
+func (m *fileWritingMockRunner) RunCustomPrompt(prompt string) (*agents.RunResult, error) {
+	// Simulate the agent writing the comparison file before the error
+	if err := os.WriteFile(m.outputPath, []byte(m.fileContent), 0o644); err != nil {
+		return nil, fmt.Errorf("mock: failed to write file: %w", err)
+	}
+	if m.err != nil {
+		return nil, m.err
+	}
+	return &agents.RunResult{Output: m.response}, nil
+}
+
 func TestIntegration_GracefulDegradation_WhitespaceOnlyFields(t *testing.T) {
 	aiResponse := `{
 		"recommendation": 1,

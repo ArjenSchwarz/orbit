@@ -95,6 +95,10 @@ func (c *Comparator) CompareWithSummaries(ctx context.Context, specName string, 
 
 // CompareUnified performs comparison with full control over what data is included.
 // This is the recommended method - it always includes summaries and optionally includes diffs.
+//
+// If the agent execution or JSON validation fails but the agent managed to write
+// the comparison JSON to OutputPath, the file is loaded as a fallback instead of
+// returning an error.
 func (c *Comparator) CompareUnified(ctx context.Context, input ComparisonInput) (*Result, error) {
 	if len(input.Variants) < 2 {
 		return nil, errors.New("at least 2 variants required for comparison")
@@ -127,7 +131,42 @@ func (c *Comparator) CompareUnified(ctx context.Context, input ComparisonInput) 
 		}
 	}
 
-	return c.runComparison(originalPrompt, len(input.Variants))
+	// Record file state before comparison so we can detect if the agent wrote it
+	var fileModTimeBefore time.Time
+	if input.OutputPath != "" {
+		if info, err := os.Stat(input.OutputPath); err == nil {
+			fileModTimeBefore = info.ModTime()
+		}
+	}
+
+	result, err := c.runComparison(originalPrompt, len(input.Variants))
+	if err != nil && input.OutputPath != "" {
+		// The agent may have written the comparison file before the session
+		// failed (e.g., timeout, malformed response). Check for it.
+		if fallback, loadErr := c.loadFallbackResult(input.OutputPath, fileModTimeBefore); loadErr == nil {
+			log.Printf("Comparison failed (%v) but found written comparison file; using as fallback", err)
+			return fallback, nil
+		}
+	}
+
+	return result, err
+}
+
+// loadFallbackResult attempts to load a comparison result from a file that was
+// written or updated after modTimeBefore. If modTimeBefore is zero (file didn't
+// exist before), any existing file is accepted.
+func (c *Comparator) loadFallbackResult(path string, modTimeBefore time.Time) (*Result, error) {
+	info, err := os.Stat(path)
+	if err != nil {
+		return nil, fmt.Errorf("comparison file not found: %w", err)
+	}
+
+	// Only use the file if it was written/modified after we started the comparison
+	if !modTimeBefore.IsZero() && !info.ModTime().After(modTimeBefore) {
+		return nil, fmt.Errorf("comparison file was not updated during this run")
+	}
+
+	return LoadResultFromFile(path)
 }
 
 // runComparison executes the comparison prompt with retry logic.

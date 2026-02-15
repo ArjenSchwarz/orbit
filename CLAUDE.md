@@ -365,6 +365,10 @@ Supported timezones: IANA names (e.g., `Australia/Melbourne`, `America/New_York`
 
 This feature is currently implemented for Claude Code only, as other agents (Codex, Kiro, Copilot, OpenCode) use standard rate limiting with retry-after headers rather than time-based usage limits. The infrastructure (`ErrorClassRateLimitWait`) is available for other agents to use if they implement similar patterns.
 
+### Comparison Failure Recovery
+
+When variant comparison fails (agent timeout, garbled response, JSON validation failure), `CompareUnified()` automatically checks if the agent wrote the comparison JSON file (`specs/<name>/.orbit/comparison.json`) before failing. If the file was created or updated during the comparison, it is loaded as a fallback result instead of propagating the error. A pre-existing file from a previous run is not used unless its mod-time shows it was updated during the current comparison. Both `orbit run --variants` and `orbit compare` benefit from this fallback.
+
 ## Log Structure (Orbit)
 
 Sessions are saved to `.orbit/` next to the tasks file (e.g., `specs/my-feature/.orbit/`):
