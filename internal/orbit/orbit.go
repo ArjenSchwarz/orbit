@@ -1605,15 +1605,17 @@ func (o *Orbit) runWithVariants(ctx context.Context) error {
 	successCount := o.variantManager.CountByStatus(variants.StatusCompleted)
 	failedCount := o.variantManager.CountByStatus(variants.StatusFailed)
 	canceledCount := o.variantManager.CountByStatus(variants.StatusCanceled)
+	pendingCount := o.variantManager.CountByStatus(variants.StatusPending)
 
-	log.Printf("Variant execution complete: %d succeeded, %d failed, %d canceled",
-		successCount, failedCount, canceledCount)
+	log.Printf("Variant execution complete: %d succeeded, %d failed, %d canceled, %d pending",
+		successCount, failedCount, canceledCount, pendingCount)
 
 	// Log all variants completed to parent logger (Req 1.6)
 	o.debug.LogStructured("info", "All variants completed", map[string]any{
 		"succeeded": successCount,
 		"failed":    failedCount,
 		"canceled":  canceledCount,
+		"pending":   pendingCount,
 	})
 
 	// Generate report based on outcomes
@@ -1689,7 +1691,8 @@ func (o *Orbit) runVariantsSequential(ctx context.Context, variantList []*varian
 	for _, v := range variantList {
 		select {
 		case <-ctx.Done():
-			_ = o.variantManager.UpdateStatus(v.ID, variants.StatusCanceled, nil)
+			// Leave pending variants in their current state so they can be
+			// picked up on a subsequent "continue" run.
 			continue
 		default:
 		}
@@ -1725,7 +1728,8 @@ func (o *Orbit) runVariantsParallel(ctx context.Context, variantList []*variants
 			// Check for cancellation before acquiring semaphore
 			select {
 			case <-ctx.Done():
-				_ = o.variantManager.UpdateStatus(variant.ID, variants.StatusCanceled, nil)
+				// Leave pending variants in their current state so they can be
+				// picked up on a subsequent "continue" run.
 				return
 			default:
 			}
@@ -1737,7 +1741,8 @@ func (o *Orbit) runVariantsParallel(ctx context.Context, variantList []*variants
 			// Check again after acquiring semaphore
 			select {
 			case <-ctx.Done():
-				_ = o.variantManager.UpdateStatus(variant.ID, variants.StatusCanceled, nil)
+				// Leave pending variants in their current state so they can be
+				// picked up on a subsequent "continue" run.
 				return
 			default:
 			}

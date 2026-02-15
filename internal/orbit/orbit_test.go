@@ -17,6 +17,7 @@ import (
 	"github.com/arjenschwarz/orbit/internal/registry"
 	"github.com/arjenschwarz/orbit/internal/rune"
 	"github.com/arjenschwarz/orbit/internal/testutil"
+	"github.com/arjenschwarz/orbit/internal/variants"
 )
 
 func TestConfig_Struct(t *testing.T) {
@@ -1729,5 +1730,137 @@ func TestGetCostValue_PremiumRequests(t *testing.T) {
 				t.Errorf("getCostValue() = %v, want %v", got, tc.want)
 			}
 		})
+	}
+}
+
+func TestRunVariantsSequential_CancelPreservesPending(t *testing.T) {
+	t.Parallel()
+
+	dbg, _ := debug.NewLogger(debug.LoggerConfig{})
+	defer dbg.Close()
+
+	o := &Orbit{
+		config: Config{MaxParallel: 1},
+		debug:  dbg,
+	}
+
+	// Pre-cancelled context
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	variantList := []*variants.Variant{
+		{ID: 1, Status: variants.StatusPending},
+		{ID: 2, Status: variants.StatusPending},
+		{ID: 3, Status: variants.StatusPending},
+	}
+
+	o.runVariantsSequential(ctx, variantList)
+
+	for _, v := range variantList {
+		if v.Status != variants.StatusPending {
+			t.Errorf("variant %d: status = %q, want %q", v.ID, v.Status, variants.StatusPending)
+		}
+	}
+}
+
+func TestRunVariantsParallel_CancelPreservesPending(t *testing.T) {
+	t.Parallel()
+
+	dbg, _ := debug.NewLogger(debug.LoggerConfig{})
+	defer dbg.Close()
+
+	o := &Orbit{
+		config: Config{MaxParallel: 2},
+		debug:  dbg,
+	}
+
+	// Pre-cancelled context
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	variantList := []*variants.Variant{
+		{ID: 1, Status: variants.StatusPending},
+		{ID: 2, Status: variants.StatusPending},
+		{ID: 3, Status: variants.StatusPending},
+	}
+
+	o.runVariantsParallel(ctx, variantList)
+
+	for _, v := range variantList {
+		if v.Status != variants.StatusPending {
+			t.Errorf("variant %d: status = %q, want %q", v.ID, v.Status, variants.StatusPending)
+		}
+	}
+}
+
+func TestRunVariantsSequential_CancelPreservesMixedStatuses(t *testing.T) {
+	t.Parallel()
+
+	dbg, _ := debug.NewLogger(debug.LoggerConfig{})
+	defer dbg.Close()
+
+	o := &Orbit{
+		config: Config{MaxParallel: 1},
+		debug:  dbg,
+	}
+
+	// Pre-cancelled context
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	// Simulate a partially-completed run: one completed, two still pending
+	variantList := []*variants.Variant{
+		{ID: 1, Status: variants.StatusCompleted},
+		{ID: 2, Status: variants.StatusPending},
+		{ID: 3, Status: variants.StatusPending},
+	}
+
+	o.runVariantsSequential(ctx, variantList)
+
+	// Completed variants must stay completed
+	if variantList[0].Status != variants.StatusCompleted {
+		t.Errorf("variant 1: status = %q, want %q", variantList[0].Status, variants.StatusCompleted)
+	}
+	// Pending variants must stay pending (not cancelled)
+	for _, v := range variantList[1:] {
+		if v.Status != variants.StatusPending {
+			t.Errorf("variant %d: status = %q, want %q", v.ID, v.Status, variants.StatusPending)
+		}
+	}
+}
+
+func TestRunVariantsParallel_CancelPreservesMixedStatuses(t *testing.T) {
+	t.Parallel()
+
+	dbg, _ := debug.NewLogger(debug.LoggerConfig{})
+	defer dbg.Close()
+
+	o := &Orbit{
+		config: Config{MaxParallel: 2},
+		debug:  dbg,
+	}
+
+	// Pre-cancelled context
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	// Simulate a partially-completed run: one completed, two still pending
+	variantList := []*variants.Variant{
+		{ID: 1, Status: variants.StatusCompleted},
+		{ID: 2, Status: variants.StatusPending},
+		{ID: 3, Status: variants.StatusPending},
+	}
+
+	o.runVariantsParallel(ctx, variantList)
+
+	// Completed variants must stay completed
+	if variantList[0].Status != variants.StatusCompleted {
+		t.Errorf("variant 1: status = %q, want %q", variantList[0].Status, variants.StatusCompleted)
+	}
+	// Pending variants must stay pending (not cancelled)
+	for _, v := range variantList[1:] {
+		if v.Status != variants.StatusPending {
+			t.Errorf("variant %d: status = %q, want %q", v.ID, v.Status, variants.StatusPending)
+		}
 	}
 }

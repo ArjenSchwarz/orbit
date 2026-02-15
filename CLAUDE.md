@@ -436,6 +436,13 @@ When re-running `orbit run --variants` with an existing variant run, you're prom
 
 This allows recovering from partial failures without losing completed work.
 
+When a run is interrupted (e.g., Ctrl+C), variant status is preserved as follows:
+- **Running variants**: Marked as "canceled" (they were mid-execution)
+- **Pending variants**: Remain "pending" (never started, can be picked up by "continue")
+- **Completed variants**: Unchanged
+
+This means interrupting a run and choosing "continue" will naturally re-execute any variants that hadn't started yet, without requiring a full "new run".
+
 Consolidation allows merging good ideas from non-chosen variants:
 - Reads cross-variant improvements from comparison report
 - Agent applies beneficial changes to chosen variant
