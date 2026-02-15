@@ -17,6 +17,7 @@ import (
 	"github.com/arjenschwarz/orbit/internal/registry"
 	"github.com/arjenschwarz/orbit/internal/rune"
 	"github.com/arjenschwarz/orbit/internal/testutil"
+	"github.com/arjenschwarz/orbit/internal/variants"
 )
 
 func TestConfig_Struct(t *testing.T) {
@@ -1729,5 +1730,65 @@ func TestGetCostValue_PremiumRequests(t *testing.T) {
 				t.Errorf("getCostValue() = %v, want %v", got, tc.want)
 			}
 		})
+	}
+}
+
+func TestRunVariantsSequential_CancelPreservesPending(t *testing.T) {
+	t.Parallel()
+
+	dbg, _ := debug.NewLogger(debug.LoggerConfig{})
+	defer dbg.Close()
+
+	o := &Orbit{
+		config: Config{MaxParallel: 1},
+		debug:  dbg,
+	}
+
+	// Pre-cancelled context
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	variantList := []*variants.Variant{
+		{ID: 1, Status: variants.StatusPending},
+		{ID: 2, Status: variants.StatusPending},
+		{ID: 3, Status: variants.StatusPending},
+	}
+
+	o.runVariantsSequential(ctx, variantList)
+
+	for _, v := range variantList {
+		if v.Status != variants.StatusPending {
+			t.Errorf("variant %d: status = %q, want %q", v.ID, v.Status, variants.StatusPending)
+		}
+	}
+}
+
+func TestRunVariantsParallel_CancelPreservesPending(t *testing.T) {
+	t.Parallel()
+
+	dbg, _ := debug.NewLogger(debug.LoggerConfig{})
+	defer dbg.Close()
+
+	o := &Orbit{
+		config: Config{MaxParallel: 2},
+		debug:  dbg,
+	}
+
+	// Pre-cancelled context
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	variantList := []*variants.Variant{
+		{ID: 1, Status: variants.StatusPending},
+		{ID: 2, Status: variants.StatusPending},
+		{ID: 3, Status: variants.StatusPending},
+	}
+
+	o.runVariantsParallel(ctx, variantList)
+
+	for _, v := range variantList {
+		if v.Status != variants.StatusPending {
+			t.Errorf("variant %d: status = %q, want %q", v.ID, v.Status, variants.StatusPending)
+		}
 	}
 }
