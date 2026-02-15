@@ -1255,6 +1255,81 @@ func TestSanitizeSpecName(t *testing.T) {
 }
 
 // contains is a helper for checking substring presence.
+// TestSetup_ContinuePreservesPendingVariants verifies that choosing "continue"
+// after an interrupted run preserves pending variants so they can be executed.
+// This tests the recovery flow: run is interrupted, pending variants stay pending,
+// user re-runs with "continue", and pending variants are picked up.
+func TestSetup_ContinuePreservesPendingVariants(t *testing.T) {
+	tmpDir := t.TempDir()
+	specDir := filepath.Join(tmpDir, "specs", "test-spec")
+	git := newMockGitClient()
+
+	cfg := Config{Count: 3, BranchPrefix: "orbit-impl"}
+	mgr, err := NewManager(cfg, "test-spec", specDir, tmpDir, git)
+	if err != nil {
+		t.Fatalf("NewManager: %v", err)
+	}
+
+	// Simulate state after an interrupted run:
+	// - Variant 1: completed (finished before interrupt)
+	// - Variant 2: canceled (was running when interrupted)
+	// - Variant 3: pending (never started, interrupt preserved its status)
+	mgr.metadata = &VariantsMetadata{
+		RunID:          "interrupted-run",
+		BaseCommit:     "abc123",
+		OriginalBranch: "feature/test-spec",
+		StartedAt:      time.Now(),
+		Variants: []*Variant{
+			{ID: 1, Branch: "orbit-impl-1/test-spec", WorktreePath: "/tmp/wt1", Status: StatusCompleted},
+			{ID: 2, Branch: "orbit-impl-2/test-spec", WorktreePath: "/tmp/wt2", Status: StatusCanceled},
+			{ID: 3, Branch: "orbit-impl-3/test-spec", WorktreePath: "/tmp/wt3", Status: StatusPending},
+		},
+	}
+
+	// Create metadata file
+	orbitDir := filepath.Join(specDir, ".orbit")
+	if err := os.MkdirAll(orbitDir, 0755); err != nil {
+		t.Fatalf("create orbit dir: %v", err)
+	}
+	metadataBytes, _ := json.Marshal(mgr.metadata)
+	if err := os.WriteFile(filepath.Join(orbitDir, "variants.json"), metadataBytes, 0644); err != nil {
+		t.Fatalf("create variants.json: %v", err)
+	}
+
+	// Continue the existing run (continueExisting=true)
+	ctx := context.Background()
+	if err := mgr.Setup(ctx, true); err != nil {
+		t.Fatalf("Setup with continue: %v", err)
+	}
+
+	// All variants should be preserved as-is
+	variants := mgr.GetVariantsSnapshot()
+	if len(variants) != 3 {
+		t.Fatalf("expected 3 variants, got %d", len(variants))
+	}
+
+	// Completed stays completed
+	if v := mgr.GetVariant(1); v.Status != StatusCompleted {
+		t.Errorf("variant 1: status = %q, want %q", v.Status, StatusCompleted)
+	}
+	// Canceled stays canceled (was already running when interrupted)
+	if v := mgr.GetVariant(2); v.Status != StatusCanceled {
+		t.Errorf("variant 2: status = %q, want %q", v.Status, StatusCanceled)
+	}
+	// Pending stays pending (can be executed on this continue run)
+	if v := mgr.GetVariant(3); v.Status != StatusPending {
+		t.Errorf("variant 3: status = %q, want %q", v.Status, StatusPending)
+	}
+
+	// No worktrees should have been removed or created (continue mode skips setup)
+	if len(git.removedWorktrees) != 0 {
+		t.Errorf("expected 0 removed worktrees in continue mode, got %d", len(git.removedWorktrees))
+	}
+	if len(git.createdBranches) != 0 {
+		t.Errorf("expected 0 created branches in continue mode, got %d", len(git.createdBranches))
+	}
+}
+
 func contains(s, substr string) bool {
 	return len(s) >= len(substr) && (s == substr || len(substr) == 0 ||
 		(len(s) > 0 && len(substr) > 0 && searchString(s, substr)))
