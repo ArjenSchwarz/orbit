@@ -34,6 +34,12 @@ The comparison prompt instructs the agent to write the JSON result to `specs/<na
 
 Uses `comparison.LoadResultFromFile()` which handles raw JSON and markdown-wrapped JSON.
 
+### Auto-fallback to comparison file on failure (2026-02-15)
+
+`CompareUnified()` automatically checks whether the agent wrote `comparison.json` to `OutputPath` when the comparison fails (e.g., timeout, garbled response, JSON validation failure after retries). If the file was created or updated during the comparison run, it is loaded via `LoadResultFromFile()` and used as the result instead of propagating the error.
+
+This handles the common scenario where the agent successfully writes the file to disk but the session then hangs or the streamed response is malformed. The mod-time of the file is recorded before `runComparison()` starts; on failure, the file is only accepted if its mod-time is newer (preventing stale pre-existing files from being used). Both code paths (`orbit run --variants` and `orbit compare`) benefit automatically since they both call `CompareUnified()`.
+
 ### Session ID handling (2026-02-09)
 
 The adapter doesn't set a `SessionID` in `RunOptions`. The Claude agent now correctly omits `--session-id` when the value is empty, letting Claude generate its own.

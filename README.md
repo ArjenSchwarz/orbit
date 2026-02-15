@@ -682,6 +682,12 @@ flowchart TD
     J --> M[comparison-report/variant-N.diff]
 ```
 
+**Comparison resilience:** The comparison agent writes its result to `specs/{spec}/.orbit/comparison.json` during analysis. If the comparison session fails afterward (e.g., timeout or garbled response), the written file is automatically loaded as a fallback. You can also regenerate the report from a saved file manually:
+
+```bash
+orbit compare my-feature --from-file specs/my-feature/.orbit/comparison.json
+```
+
 ---
 
 ### Step 4: Consolidate Improvements (Optional)
