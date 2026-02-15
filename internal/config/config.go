@@ -321,8 +321,7 @@ func Load(workingDir string) *Config {
 		envUsed = true
 	}
 	if envCentralizedLog, exists := os.LookupEnv("ORBIT_CENTRALIZED_LOG"); exists {
-		// Disable if explicitly set to "false" or "0", otherwise keep enabled
-		centralizedLog = envCentralizedLog != "false" && envCentralizedLog != "0"
+		centralizedLog = envCentralizedLog == "true" || envCentralizedLog == "1"
 		envUsed = true
 	}
 	// Variant environment variable overrides

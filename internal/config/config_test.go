@@ -1779,8 +1779,8 @@ func TestLoad_CentralizedLog_EnvOneEnables(t *testing.T) {
 	}
 }
 
-func TestLoad_CentralizedLog_EnvEmptyEnables(t *testing.T) {
-	// Empty string (not "false" or "0") should enable logging
+func TestLoad_CentralizedLog_EnvEmptyDisables(t *testing.T) {
+	// Empty string should disable logging, consistent with other boolean env vars
 	tmpDir := t.TempDir()
 	homeDir := t.TempDir()
 	t.Setenv("HOME", homeDir)
@@ -1788,8 +1788,8 @@ func TestLoad_CentralizedLog_EnvEmptyEnables(t *testing.T) {
 
 	cfg := Load(tmpDir)
 
-	if !cfg.CentralizedLog {
-		t.Error("expected CentralizedLog to be true when ORBIT_CENTRALIZED_LOG is empty string")
+	if cfg.CentralizedLog {
+		t.Error("expected CentralizedLog to be false when ORBIT_CENTRALIZED_LOG is empty string")
 	}
 }
 
