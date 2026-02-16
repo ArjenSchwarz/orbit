@@ -1829,6 +1829,126 @@ func TestRunVariantsSequential_CancelPreservesMixedStatuses(t *testing.T) {
 	}
 }
 
+// nilResultAgent is a minimal agent mock that returns (nil, error) from Run,
+// reproducing the scenario where an agent fails before producing any result.
+type nilResultAgent struct {
+	callCount int
+	maxNils   int // How many nil results to return before succeeding
+}
+
+func (a *nilResultAgent) Name() string                          { return "nil-result-mock" }
+func (a *nilResultAgent) CLICommand() string                    { return "mock" }
+func (a *nilResultAgent) IsInstalled() bool                     { return true }
+func (a *nilResultAgent) Version() (string, error)              { return "1.0.0", nil }
+func (a *nilResultAgent) DefaultSessionDir() string             { return "" }
+func (a *nilResultAgent) DiscoverSessions(_ context.Context, _ string) ([]agents.SessionInfo, error) {
+	return nil, nil
+}
+func (a *nilResultAgent) Run(_ context.Context, _ agents.RunOptions) (*agents.RunResult, error) {
+	a.callCount++
+	if a.callCount <= a.maxNils {
+		return nil, errors.New("agent binary not found")
+	}
+	return &agents.RunResult{SessionID: "recovered-session"}, nil
+}
+func (a *nilResultAgent) Resume(_ context.Context, _ string, opts agents.RunOptions) (*agents.RunResult, error) {
+	return a.Run(context.Background(), opts)
+}
+
+// TestVariantPhaseRetry_NilRunResult verifies that runVariantPhaseWithRetry
+// does not panic when the agent returns (nil, error). This is a regression test
+// for T-78: the classifier.Classify call would dereference nil result fields.
+func TestVariantPhaseRetry_NilRunResult(t *testing.T) {
+	agent := &nilResultAgent{maxNils: 1}
+
+	o := &Orbit{
+		config: Config{},
+		debug:  debug.New(false, ""),
+	}
+
+	v := &variants.Variant{
+		ID:           1,
+		WorktreePath: t.TempDir(),
+	}
+
+	// This should NOT panic. Before the fix, it would panic on nil dereference
+	// at classifier.Classify(1, result.Stderr, result.Output, result.Errors).
+	// The default classifier returns ErrorClassUnknown (non-retryable), so it
+	// returns the ClassifiedError immediately without retrying.
+	result, err := o.runVariantPhaseWithRetry(context.Background(), v, agent, "test prompt", "")
+	if err == nil {
+		t.Fatal("expected ClassifiedError, got nil")
+	}
+
+	classified, ok := err.(*agents.ClassifiedError)
+	if !ok {
+		t.Fatalf("expected *agents.ClassifiedError, got %T: %v", err, err)
+	}
+	// The error message from the nil-result agent should be passed through to the classifier
+	if classified.Message != "agent binary not found" {
+		t.Errorf("classified message = %q, want %q", classified.Message, "agent binary not found")
+	}
+	// result is nil because the agent returned nil
+	if result != nil {
+		t.Errorf("expected nil result from nil-returning agent, got %+v", result)
+	}
+}
+
+// TestVariantPhaseRetry_NilRunResult_AllFail verifies that runVariantPhaseWithRetry
+// returns an error (not a panic) when all attempts return nil results.
+func TestVariantPhaseRetry_NilRunResult_AllFail(t *testing.T) {
+	agent := &nilResultAgent{maxNils: maxRetries + 1} // All attempts return nil
+
+	o := &Orbit{
+		config: Config{},
+		debug:  debug.New(false, ""),
+	}
+
+	v := &variants.Variant{
+		ID:           1,
+		WorktreePath: t.TempDir(),
+	}
+
+	// Should not panic, should return a ClassifiedError on first attempt
+	// (default classifier marks unknown errors as non-retryable)
+	_, err := o.runVariantPhaseWithRetry(context.Background(), v, agent, "test prompt", "")
+	if err == nil {
+		t.Fatal("expected error when all attempts fail, got nil")
+	}
+	if agent.callCount != 1 {
+		t.Errorf("call count = %d, want 1 (non-retryable stops immediately)", agent.callCount)
+	}
+}
+
+// TestVariantPostCompletion_NilRunResult verifies that runVariantPostCompletion
+// does not panic when the agent returns (nil, error).
+func TestVariantPostCompletion_NilRunResult(t *testing.T) {
+	agent := &nilResultAgent{maxNils: 1}
+
+	o := &Orbit{
+		config: Config{
+			PostPrompt: "review implementation",
+		},
+		debug: debug.New(false, ""),
+	}
+
+	v := &variants.Variant{
+		ID:           1,
+		WorktreePath: t.TempDir(),
+	}
+
+	// This should NOT panic. Before the fix, it would panic on nil dereference.
+	// Like runVariantPhaseWithRetry, the default classifier returns non-retryable.
+	_, err := o.runVariantPostCompletion(context.Background(), v, agent)
+	if err == nil {
+		t.Fatal("expected ClassifiedError, got nil")
+	}
+	_, ok := err.(*agents.ClassifiedError)
+	if !ok {
+		t.Fatalf("expected *agents.ClassifiedError, got %T: %v", err, err)
+	}
+}
+
 func TestRunVariantsParallel_CancelPreservesMixedStatuses(t *testing.T) {
 	t.Parallel()
 
