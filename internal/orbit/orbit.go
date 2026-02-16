@@ -847,10 +847,22 @@ func (o *Orbit) runPhase(phase int) error {
 			_ = o.logManager.SaveSession(phase, result, startTime)
 		}
 
-		// Classify using agent-specific classifier
+		// Classify using agent-specific classifier.
+		// Guard against nil result: when the agent returns (nil, error), use the
+		// error message for classification instead of dereferencing nil fields.
+		var stderr, output string
+		var errMsgs []string
+		if result != nil {
+			stderr = result.Stderr
+			output = result.Output
+			errMsgs = result.Errors
+		} else {
+			stderr = err.Error()
+			errMsgs = []string{err.Error()}
+		}
 		o.debug.Log("Classifying error from stderr=%d bytes, output=%d bytes, errors=%v",
-			len(result.Stderr), len(result.Output), result.Errors)
-		classified := o.errorClassifier.Classify(1, result.Stderr, result.Output, result.Errors)
+			len(stderr), len(output), errMsgs)
+		classified := o.errorClassifier.Classify(1, stderr, output, errMsgs)
 		o.debug.LogError(classified.Class.String(), classified.Message, classified.Class.IsRetryable())
 		return classified
 	}
@@ -2252,9 +2264,21 @@ func (o *Orbit) runVariantPhaseWithRetry(ctx context.Context, v *variants.Varian
 			lastErr = fmt.Errorf("agent reported error")
 		}
 
-		// Classify the error using agent-specific classifier
+		// Classify the error using agent-specific classifier.
+		// Guard against nil result: when the agent returns (nil, error), use the
+		// error message for classification instead of dereferencing nil fields.
 		classifier := agents.GetClassifier(agent.Name())
-		classified := classifier.Classify(1, result.Stderr, result.Output, result.Errors)
+		var stderr, output string
+		var errMsgs []string
+		if result != nil {
+			stderr = result.Stderr
+			output = result.Output
+			errMsgs = result.Errors
+		} else if lastErr != nil {
+			stderr = lastErr.Error()
+			errMsgs = []string{lastErr.Error()}
+		}
+		classified := classifier.Classify(1, stderr, output, errMsgs)
 		if !classified.Class.IsRetryable() {
 			return result, classified
 		}
@@ -2319,9 +2343,21 @@ func (o *Orbit) runVariantPostCompletion(ctx context.Context, v *variants.Varian
 			lastErr = fmt.Errorf("agent reported error in post-completion")
 		}
 
-		// Classify the error using agent-specific classifier
+		// Classify the error using agent-specific classifier.
+		// Guard against nil result: when the agent returns (nil, error), use the
+		// error message for classification instead of dereferencing nil fields.
 		classifier := agents.GetClassifier(agent.Name())
-		classified := classifier.Classify(1, result.Stderr, result.Output, result.Errors)
+		var stderr, output string
+		var errMsgs []string
+		if result != nil {
+			stderr = result.Stderr
+			output = result.Output
+			errMsgs = result.Errors
+		} else if lastErr != nil {
+			stderr = lastErr.Error()
+			errMsgs = []string{lastErr.Error()}
+		}
+		classified := classifier.Classify(1, stderr, output, errMsgs)
 		if !classified.Class.IsRetryable() {
 			return result, classified
 		}
