@@ -7,6 +7,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/stretchr/testify/assert"
 )
 
 // setupTestRepo creates a temporary git repository for testing.
@@ -116,9 +118,7 @@ func TestCreateBranch(t *testing.T) {
 
 	// Verify branch exists
 	branches := runGit(t, dir, "branch", "--list", "test-branch")
-	if !strings.Contains(branches, "test-branch") {
-		t.Error("branch was not created")
-	}
+	assert.Contains(t, branches, "test-branch", "branch was not created")
 }
 
 func TestCreateBranch_AlreadyExists(t *testing.T) {
@@ -214,9 +214,7 @@ func TestCreateWorktree(t *testing.T) {
 
 	// Verify worktree is listed
 	worktrees := runGit(t, dir, "worktree", "list")
-	if !strings.Contains(worktrees, worktreePath) {
-		t.Error("worktree not listed")
-	}
+	assert.Contains(t, worktrees, worktreePath, "worktree not listed")
 }
 
 func TestRemoveWorktree(t *testing.T) {
@@ -240,9 +238,7 @@ func TestRemoveWorktree(t *testing.T) {
 
 	// Verify worktree is gone
 	worktrees := runGit(t, dir, "worktree", "list")
-	if strings.Contains(worktrees, worktreePath) {
-		t.Error("worktree still listed after removal")
-	}
+	assert.NotContains(t, worktrees, worktreePath, "worktree still listed after removal")
 }
 
 func TestDeleteBranch(t *testing.T) {
@@ -261,9 +257,7 @@ func TestDeleteBranch(t *testing.T) {
 
 	// Verify branch is gone
 	branches := runGit(t, dir, "branch", "--list")
-	if strings.Contains(branches, "delete-me") {
-		t.Error("branch still exists after deletion")
-	}
+	assert.NotContains(t, branches, "delete-me", "branch still exists after deletion")
 }
 
 func TestGetDiff(t *testing.T) {
@@ -297,12 +291,8 @@ func TestGetDiff(t *testing.T) {
 	}
 
 	// Verify diff contains expected content
-	if !strings.Contains(diff, "new-file.txt") {
-		t.Error("diff does not contain expected file")
-	}
-	if !strings.Contains(diff, "new content") {
-		t.Error("diff does not contain expected content")
-	}
+	assert.Contains(t, diff, "new-file.txt", "diff does not contain expected file")
+	assert.Contains(t, diff, "new content", "diff does not contain expected content")
 }
 
 func TestGetDiff_NoChanges(t *testing.T) {
@@ -507,9 +497,7 @@ func TestRebase_FailsWhenDiverged(t *testing.T) {
 	}
 
 	// Verify error message mentions merge failure
-	if !strings.Contains(err.Error(), "merge") {
-		t.Errorf("error should mention merge, got: %v", err)
-	}
+	assert.Contains(t, err.Error(), "merge", "error should mention merge, got: %v", err)
 }
 
 func TestHasUncommittedChangesInPath(t *testing.T) {
@@ -687,8 +675,6 @@ func TestGetRecentCommits(t *testing.T) {
 		if err == nil {
 			t.Error("expected error for cancelled context")
 		}
-		if !strings.Contains(err.Error(), "cancel") {
-			t.Errorf("expected cancellation error, got: %v", err)
-		}
+		assert.Contains(t, err.Error(), "cancel", "expected cancellation error, got: %v", err)
 	})
 }

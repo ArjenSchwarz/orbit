@@ -3,8 +3,9 @@ package opencode
 import (
 	"context"
 	"slices"
-	"strings"
 	"testing"
+
+	"github.com/stretchr/testify/assert"
 
 	"github.com/arjenschwarz/orbit/internal/agents"
 )
@@ -322,16 +323,16 @@ func TestIsValidJSON(t *testing.T) {
 		input []byte
 		want  bool
 	}{
-		"empty":                 {input: nil, want: false},
-		"empty string":          {input: []byte(""), want: false},
-		"whitespace only":       {input: []byte("   "), want: false},
-		"valid object":          {input: []byte(`{"key": "value"}`), want: true},
-		"valid array":           {input: []byte(`[1, 2, 3]`), want: true},
-		"valid string":          {input: []byte(`"hello"`), want: true},
-		"valid number":          {input: []byte(`123`), want: true},
-		"plaintext":             {input: []byte("some error text"), want: false},
-		"stack trace":           {input: []byte("Error: something went wrong\n  at func()"), want: false},
-		"json with whitespace":  {input: []byte(`  {"key": "value"}  `), want: true},
+		"empty":                {input: nil, want: false},
+		"empty string":         {input: []byte(""), want: false},
+		"whitespace only":      {input: []byte("   "), want: false},
+		"valid object":         {input: []byte(`{"key": "value"}`), want: true},
+		"valid array":          {input: []byte(`[1, 2, 3]`), want: true},
+		"valid string":         {input: []byte(`"hello"`), want: true},
+		"valid number":         {input: []byte(`123`), want: true},
+		"plaintext":            {input: []byte("some error text"), want: false},
+		"stack trace":          {input: []byte("Error: something went wrong\n  at func()"), want: false},
+		"json with whitespace": {input: []byte(`  {"key": "value"}  `), want: true},
 	}
 
 	for name, tt := range tests {
@@ -413,8 +414,8 @@ func TestErrorDetection_EmptyOutput(t *testing.T) {
 			if isError != tt.wantIsError {
 				t.Errorf("isError = %v, want %v", isError, tt.wantIsError)
 			}
-			if tt.wantMsgPart != "" && !strings.Contains(errMsg, tt.wantMsgPart) {
-				t.Errorf("errMsg = %q, want to contain %q", errMsg, tt.wantMsgPart)
+			if tt.wantMsgPart != "" {
+				assert.Contains(t, errMsg, tt.wantMsgPart)
 			}
 		})
 	}

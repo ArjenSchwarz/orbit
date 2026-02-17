@@ -9,6 +9,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/assert"
+
 	"github.com/arjenschwarz/orbit/internal/registry"
 )
 
@@ -46,12 +48,8 @@ func TestHandleDashboard(t *testing.T) {
 	}
 
 	body := rec.Body.String()
-	if !strings.Contains(body, "test-run") {
-		t.Error("expected response to contain run name")
-	}
-	if !strings.Contains(body, "owner/repo") {
-		t.Error("expected response to contain repository")
-	}
+	assert.Contains(t, body, "test-run", "expected response to contain run name")
+	assert.Contains(t, body, "owner/repo", "expected response to contain repository")
 }
 
 func TestHandleDashboardEmpty(t *testing.T) {
@@ -76,9 +74,7 @@ func TestHandleDashboardEmpty(t *testing.T) {
 	}
 
 	body := rec.Body.String()
-	if !strings.Contains(body, "No runs registered") {
-		t.Error("expected empty state message")
-	}
+	assert.Contains(t, body, "No runs registered", "expected empty state message")
 }
 
 func TestHandleRunDetail(t *testing.T) {
@@ -126,15 +122,9 @@ func TestHandleRunDetail(t *testing.T) {
 	}
 
 	body := rec.Body.String()
-	if !strings.Contains(body, "test-run") {
-		t.Error("expected response to contain run name")
-	}
-	if !strings.Contains(body, "feature/test") {
-		t.Error("expected response to contain branch")
-	}
-	if !strings.Contains(body, "Phase 1") {
-		t.Error("expected response to contain Phase 1")
-	}
+	assert.Contains(t, body, "test-run", "expected response to contain run name")
+	assert.Contains(t, body, "feature/test", "expected response to contain branch")
+	assert.Contains(t, body, "Phase 1", "expected response to contain Phase 1")
 }
 
 func TestHandleRunDetailNotFound(t *testing.T) {
@@ -197,9 +187,7 @@ func TestHandleRunDetailMissingLogDir(t *testing.T) {
 	}
 
 	body := rec.Body.String()
-	if !strings.Contains(body, "no longer exists") {
-		t.Error("expected missing log directory message")
-	}
+	assert.Contains(t, body, "no longer exists", "expected missing log directory message")
 }
 
 func TestHandleTranscript(t *testing.T) {
@@ -251,9 +239,7 @@ func TestHandleTranscript(t *testing.T) {
 	}
 
 	body := rec.Body.String()
-	if !strings.Contains(body, "Phase 1") {
-		t.Error("expected response to contain phase number")
-	}
+	assert.Contains(t, body, "Phase 1", "expected response to contain phase number")
 }
 
 func TestHandleTranscriptNotFound(t *testing.T) {

@@ -13,11 +13,11 @@ type mockAgent struct {
 	installed  bool
 }
 
-func (m *mockAgent) Name() string                     { return m.name }
-func (m *mockAgent) CLICommand() string               { return m.cliCommand }
-func (m *mockAgent) IsInstalled() bool                { return m.installed }
-func (m *mockAgent) Version() (string, error)         { return "1.0.0", nil }
-func (m *mockAgent) DefaultSessionDir() string        { return "/tmp/sessions" }
+func (m *mockAgent) Name() string              { return m.name }
+func (m *mockAgent) CLICommand() string        { return m.cliCommand }
+func (m *mockAgent) IsInstalled() bool         { return m.installed }
+func (m *mockAgent) Version() (string, error)  { return "1.0.0", nil }
+func (m *mockAgent) DefaultSessionDir() string { return "/tmp/sessions" }
 func (m *mockAgent) DiscoverSessions(ctx context.Context, projectDir string) ([]SessionInfo, error) {
 	return nil, nil
 }

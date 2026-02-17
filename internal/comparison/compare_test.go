@@ -1217,9 +1217,9 @@ func TestIntegration_ComparisonWithLearningsGroupedByVariant(t *testing.T) {
 // are filtered or omitted [Req 6.2, 6.4].
 func TestIntegration_GracefulDegradation_MalformedLearnings(t *testing.T) {
 	tests := map[string]struct {
-		response        string
-		wantLearnings   int
-		wantRecommend   int
+		response      string
+		wantLearnings int
+		wantRecommend int
 	}{
 		"all learnings missing required fields": {
 			response: `{
@@ -1549,9 +1549,9 @@ func TestCompareUnified_FallbackToFile_WhenFileUpdatedDuringComparison(t *testin
 		"observations": ["Fresh observation"]
 	}`
 	runner := &fileWritingMockRunner{
-		outputPath: outputPath,
+		outputPath:  outputPath,
 		fileContent: newJSON,
-		err:        fmt.Errorf("session timed out"),
+		err:         fmt.Errorf("session timed out"),
 	}
 	comp := NewComparator(runner, "")
 

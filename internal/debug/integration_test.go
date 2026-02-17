@@ -9,6 +9,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/assert"
+
 	"github.com/arjenschwarz/orbit/internal/debug"
 )
 
@@ -215,24 +217,18 @@ func TestVariantModeCreatesCorrectFiles(t *testing.T) {
 
 	// Verify main log file exists and has correct name pattern
 	mainFilename := filepath.Base(mainPath)
-	if !strings.Contains(mainFilename, runID) {
-		t.Errorf("main log filename %q does not contain runID %q", mainFilename, runID)
-	}
+	assert.Contains(t, mainFilename, runID, "main log filename %q does not contain runID %q", mainFilename, runID)
 	// Main file should not have "variant-N" pattern (where N is a digit)
-	if strings.Contains(mainFilename, "variant-1") || strings.Contains(mainFilename, "variant-2") || strings.Contains(mainFilename, "variant-3") {
-		t.Errorf("main log filename %q should not contain variant-N pattern", mainFilename)
-	}
+	assert.NotContains(t, mainFilename, "variant-1", "main log filename %q should not contain variant-N pattern", mainFilename)
+	assert.NotContains(t, mainFilename, "variant-2", "main log filename %q should not contain variant-N pattern", mainFilename)
+	assert.NotContains(t, mainFilename, "variant-3", "main log filename %q should not contain variant-N pattern", mainFilename)
 
 	// Verify variant log files exist and have correct name pattern (Req 1.5)
 	for i, vp := range variantPaths {
 		variantFilename := filepath.Base(vp)
-		if !strings.Contains(variantFilename, runID) {
-			t.Errorf("variant %d log filename %q does not contain runID %q", i+1, variantFilename, runID)
-		}
+		assert.Contains(t, variantFilename, runID, "variant %d log filename %q does not contain runID %q", i+1, variantFilename, runID)
 		expectedPattern := "variant-" + string(rune('1'+i))
-		if !strings.Contains(variantFilename, expectedPattern) {
-			t.Errorf("variant %d log filename %q does not contain %q", i+1, variantFilename, expectedPattern)
-		}
+		assert.Contains(t, variantFilename, expectedPattern, "variant %d log filename %q does not contain %q", i+1, variantFilename, expectedPattern)
 	}
 
 	// Verify we have N+1 files (1 main + N variants)
@@ -543,9 +539,7 @@ func TestDisabledLoggingCreatesNoFiles(t *testing.T) {
 	}
 
 	for _, entry := range entries {
-		if strings.Contains(entry.Name(), runID) {
-			t.Errorf("found unexpected log file %q when logging was disabled (Req 6.5)", entry.Name())
-		}
+		assert.NotContains(t, entry.Name(), runID, "found unexpected log file %q when logging was disabled (Req 6.5)", entry.Name())
 	}
 }
 
@@ -672,9 +666,7 @@ func TestLogPathDiscoverability(t *testing.T) {
 	}
 
 	// Path should contain runID
-	if !strings.Contains(path, runID) {
-		t.Errorf("Path() %q does not contain runID %q", path, runID)
-	}
+	assert.Contains(t, path, runID, "Path() %q does not contain runID %q", path, runID)
 }
 
 // TestVariantLoggerCreation verifies that each variant gets a separate Logger
@@ -707,14 +699,10 @@ func TestVariantLoggerCreation(t *testing.T) {
 
 			// Path should contain variant number
 			expectedPattern := "variant-" + string(rune('0'+variantNum))
-			if !strings.Contains(path, expectedPattern) {
-				t.Errorf("variant %d path %q does not contain %q", variantNum, path, expectedPattern)
-			}
+			assert.Contains(t, path, expectedPattern, "variant %d path %q does not contain %q", variantNum, path, expectedPattern)
 
 			// Path should contain runID
-			if !strings.Contains(path, runID) {
-				t.Errorf("variant %d path %q does not contain runID %q", variantNum, path, runID)
-			}
+			assert.Contains(t, path, runID, "variant %d path %q does not contain runID %q", variantNum, path, runID)
 
 			// Write and verify entries
 			l.LogStartup(debug.StartupConfig{

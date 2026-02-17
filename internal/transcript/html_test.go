@@ -5,6 +5,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/stretchr/testify/assert"
 )
 
 func TestRenderHTML_BasicStructure(t *testing.T) {
@@ -12,39 +14,21 @@ func TestRenderHTML_BasicStructure(t *testing.T) {
 	result := RenderHTML(entries, RenderOptions{})
 
 	// Check for valid HTML structure
-	if !strings.Contains(result, "<!DOCTYPE html>") {
-		t.Error("expected DOCTYPE declaration")
-	}
-	if !strings.Contains(result, "<html lang=\"en\">") {
-		t.Error("expected html tag with lang attribute")
-	}
-	if !strings.Contains(result, "<head>") {
-		t.Error("expected head tag")
-	}
-	if !strings.Contains(result, "<body>") {
-		t.Error("expected body tag")
-	}
-	if !strings.Contains(result, "</html>") {
-		t.Error("expected closing html tag")
-	}
+	assert.Contains(t, result, "<!DOCTYPE html>", "expected DOCTYPE declaration")
+	assert.Contains(t, result, "<html lang=\"en\">", "expected html tag with lang attribute")
+	assert.Contains(t, result, "<head>", "expected head tag")
+	assert.Contains(t, result, "<body>", "expected body tag")
+	assert.Contains(t, result, "</html>", "expected closing html tag")
 }
 
 func TestRenderHTML_EmbeddedCSS(t *testing.T) {
 	entries := []Entry{}
 	result := RenderHTML(entries, RenderOptions{})
 
-	if !strings.Contains(result, "<style>") {
-		t.Error("expected embedded style tag")
-	}
-	if !strings.Contains(result, ".message") {
-		t.Error("expected message class in CSS")
-	}
-	if !strings.Contains(result, ".user") {
-		t.Error("expected user class in CSS")
-	}
-	if !strings.Contains(result, ".assistant") {
-		t.Error("expected assistant class in CSS")
-	}
+	assert.Contains(t, result, "<style>", "expected embedded style tag")
+	assert.Contains(t, result, ".message", "expected message class in CSS")
+	assert.Contains(t, result, ".user", "expected user class in CSS")
+	assert.Contains(t, result, ".assistant", "expected assistant class in CSS")
 }
 
 func TestRenderHTML_UserMessage(t *testing.T) {
@@ -62,15 +46,9 @@ func TestRenderHTML_UserMessage(t *testing.T) {
 
 	result := RenderHTML(entries, RenderOptions{})
 
-	if !strings.Contains(result, `class="message user"`) {
-		t.Error("expected user message class")
-	}
-	if !strings.Contains(result, "👤") {
-		t.Error("expected user icon")
-	}
-	if !strings.Contains(result, "Hello, Claude!") {
-		t.Error("expected message content")
-	}
+	assert.Contains(t, result, `class="message user"`, "expected user message class")
+	assert.Contains(t, result, "👤", "expected user icon")
+	assert.Contains(t, result, "Hello, Claude!", "expected message content")
 }
 
 func TestRenderHTML_AssistantMessage(t *testing.T) {
@@ -88,15 +66,9 @@ func TestRenderHTML_AssistantMessage(t *testing.T) {
 
 	result := RenderHTML(entries, RenderOptions{})
 
-	if !strings.Contains(result, `class="message assistant"`) {
-		t.Error("expected assistant message class")
-	}
-	if !strings.Contains(result, "🤖") {
-		t.Error("expected assistant icon")
-	}
-	if !strings.Contains(result, "Hello! How can I help?") {
-		t.Error("expected message content")
-	}
+	assert.Contains(t, result, `class="message assistant"`, "expected assistant message class")
+	assert.Contains(t, result, "🤖", "expected assistant icon")
+	assert.Contains(t, result, "Hello! How can I help?", "expected message content")
 }
 
 func TestRenderHTML_ThinkingBlock(t *testing.T) {
@@ -115,18 +87,10 @@ func TestRenderHTML_ThinkingBlock(t *testing.T) {
 
 	result := RenderHTML(entries, RenderOptions{})
 
-	if !strings.Contains(result, `<div class="thinking-block">`) {
-		t.Error("expected thinking block div")
-	}
-	if !strings.Contains(result, `<div class="thinking-header">💭 Thinking</div>`) {
-		t.Error("expected thinking header")
-	}
-	if !strings.Contains(result, "Let me think about this...") {
-		t.Error("expected thinking content")
-	}
-	if !strings.Contains(result, `<div class="thinking-content markdown-content">`) {
-		t.Error("expected thinking content div with markdown class")
-	}
+	assert.Contains(t, result, `<div class="thinking-block">`, "expected thinking block div")
+	assert.Contains(t, result, `<div class="thinking-header">💭 Thinking</div>`, "expected thinking header")
+	assert.Contains(t, result, "Let me think about this...", "expected thinking content")
+	assert.Contains(t, result, `<div class="thinking-content markdown-content">`, "expected thinking content div with markdown class")
 }
 
 func TestRenderHTML_ToolUse(t *testing.T) {
@@ -166,21 +130,11 @@ func TestRenderHTML_ToolUse(t *testing.T) {
 	result := RenderHTML(entries, RenderOptions{})
 
 	// Combined tool call + result should be in a collapsible block
-	if !strings.Contains(result, `<details class="tool-collapsible">`) {
-		t.Error("expected combined tool block to use details.tool-collapsible")
-	}
-	if !strings.Contains(result, "🔧") {
-		t.Error("expected tool icon")
-	}
-	if !strings.Contains(result, "Bash: Print hello") {
-		t.Error("expected tool name and description in summary")
-	}
-	if !strings.Contains(result, "Command:") {
-		t.Error("expected Command input section")
-	}
-	if !strings.Contains(result, "Result:") {
-		t.Error("expected Result section")
-	}
+	assert.Contains(t, result, `<details class="tool-collapsible">`, "expected combined tool block to use details.tool-collapsible")
+	assert.Contains(t, result, "🔧", "expected tool icon")
+	assert.Contains(t, result, "Bash: Print hello", "expected tool name and description in summary")
+	assert.Contains(t, result, "Command:", "expected Command input section")
+	assert.Contains(t, result, "Result:", "expected Result section")
 }
 
 func TestRenderHTML_ToolResultSuccess(t *testing.T) {
@@ -200,18 +154,10 @@ func TestRenderHTML_ToolResultSuccess(t *testing.T) {
 	result := RenderHTML(entries, RenderOptions{})
 
 	// Unmatched results render in collapsible blocks
-	if !strings.Contains(result, `<details class="tool-collapsible">`) {
-		t.Error("expected unmatched tool_result to use details.tool-collapsible")
-	}
-	if !strings.Contains(result, "✅") {
-		t.Error("expected success icon")
-	}
-	if !strings.Contains(result, "Tool Result") {
-		t.Error("expected Tool Result summary")
-	}
-	if !strings.Contains(result, "File contents here") {
-		t.Error("expected result content")
-	}
+	assert.Contains(t, result, `<details class="tool-collapsible">`, "expected unmatched tool_result to use details.tool-collapsible")
+	assert.Contains(t, result, "✅", "expected success icon")
+	assert.Contains(t, result, "Tool Result", "expected Tool Result summary")
+	assert.Contains(t, result, "File contents here", "expected result content")
 }
 
 func TestRenderHTML_ToolResultError(t *testing.T) {
@@ -231,18 +177,10 @@ func TestRenderHTML_ToolResultError(t *testing.T) {
 	result := RenderHTML(entries, RenderOptions{})
 
 	// Error results have error class on the collapsible
-	if !strings.Contains(result, `<details class="tool-collapsible error">`) {
-		t.Error("expected error class on collapsible")
-	}
-	if !strings.Contains(result, "❌") {
-		t.Error("expected error icon")
-	}
-	if !strings.Contains(result, "Tool Error") {
-		t.Error("expected Tool Error summary")
-	}
-	if !strings.Contains(result, "Error: file not found") {
-		t.Error("expected error content")
-	}
+	assert.Contains(t, result, `<details class="tool-collapsible error">`, "expected error class on collapsible")
+	assert.Contains(t, result, "❌", "expected error icon")
+	assert.Contains(t, result, "Tool Error", "expected Tool Error summary")
+	assert.Contains(t, result, "Error: file not found", "expected error content")
 }
 
 func TestRenderHTML_TitleCustomization(t *testing.T) {
@@ -255,24 +193,16 @@ func TestRenderHTML_TitleCustomization(t *testing.T) {
 
 	result := RenderHTML(entries, opts)
 
-	if !strings.Contains(result, "<title>Phase 1 Session Transcript</title>") {
-		t.Error("expected custom title in head")
-	}
-	if !strings.Contains(result, "<h1>Phase 1 Session Transcript</h1>") {
-		t.Error("expected custom title in header")
-	}
-	if !strings.Contains(result, `<code>test-session-123</code>`) {
-		t.Error("expected session ID in code tag")
-	}
+	assert.Contains(t, result, "<title>Phase 1 Session Transcript</title>", "expected custom title in head")
+	assert.Contains(t, result, "<h1>Phase 1 Session Transcript</h1>", "expected custom title in header")
+	assert.Contains(t, result, `<code>test-session-123</code>`, "expected session ID in code tag")
 }
 
 func TestRenderHTML_DefaultTitle(t *testing.T) {
 	entries := []Entry{}
 	result := RenderHTML(entries, RenderOptions{})
 
-	if !strings.Contains(result, "<title>Session Transcript</title>") {
-		t.Error("expected default title")
-	}
+	assert.Contains(t, result, "<title>Session Transcript</title>", "expected default title")
 }
 
 func TestRenderHTML_CostDisplay(t *testing.T) {
@@ -340,18 +270,12 @@ func TestRenderHTML_CostDisplay(t *testing.T) {
 			result := RenderHTML(entries, opts)
 
 			if tc.wantCost {
-				if !strings.Contains(result, tc.expected) {
-					t.Errorf("expected %q in output, got:\n%s", tc.expected, result)
-				}
+				assert.Contains(t, result, tc.expected, "expected %q in output, got:\n%s", tc.expected, result)
 				// Verify cost is displayed with proper HTML element
-				if !strings.Contains(result, `<p class="session-cost">`) {
-					t.Error("expected session-cost paragraph in output")
-				}
+				assert.Contains(t, result, `<p class="session-cost">`, "expected session-cost paragraph in output")
 			} else {
 				// Check that no actual cost paragraph is rendered (CSS has .session-cost class definition)
-				if strings.Contains(result, `<p class="session-cost">`) {
-					t.Errorf("expected no cost paragraph in output, got:\n%s", result)
-				}
+				assert.NotContains(t, result, `<p class="session-cost">`, "expected no cost paragraph in output, got:\n%s", result)
 			}
 		})
 	}
@@ -378,12 +302,8 @@ func TestRenderHTML_HTMLEscaping(t *testing.T) {
 	result := RenderHTML(entries, RenderOptions{})
 
 	// Should escape HTML entities
-	if strings.Contains(result, "<script>") {
-		t.Error("script tag should be escaped")
-	}
-	if !strings.Contains(result, "&lt;script&gt;") {
-		t.Error("expected escaped script tag")
-	}
+	assert.NotContains(t, result, "<script>", "script tag should be escaped")
+	assert.Contains(t, result, "&lt;script&gt;", "expected escaped script tag")
 }
 
 func TestRenderHTML_SpecialCharactersInTitle(t *testing.T) {
@@ -396,12 +316,8 @@ func TestRenderHTML_SpecialCharactersInTitle(t *testing.T) {
 
 	result := RenderHTML(entries, opts)
 
-	if strings.Contains(result, "<Title>") {
-		t.Error("title should be escaped")
-	}
-	if !strings.Contains(result, "&lt;Title&gt;") {
-		t.Error("expected escaped title")
-	}
+	assert.NotContains(t, result, "<Title>", "title should be escaped")
+	assert.Contains(t, result, "&lt;Title&gt;", "expected escaped title")
 }
 
 func TestRenderHTML_UnknownContentTypes(t *testing.T) {
@@ -420,12 +336,8 @@ func TestRenderHTML_UnknownContentTypes(t *testing.T) {
 
 	result := RenderHTML(entries, RenderOptions{})
 
-	if strings.Contains(result, "Should be skipped") {
-		t.Error("unknown content type should be skipped")
-	}
-	if !strings.Contains(result, "Should be visible") {
-		t.Error("known content type should be visible")
-	}
+	assert.NotContains(t, result, "Should be skipped", "unknown content type should be skipped")
+	assert.Contains(t, result, "Should be visible", "known content type should be visible")
 }
 
 func TestRenderHTML_UnknownEntryTypes(t *testing.T) {
@@ -448,12 +360,8 @@ func TestRenderHTML_UnknownEntryTypes(t *testing.T) {
 
 	result := RenderHTML(entries, RenderOptions{})
 
-	if strings.Contains(result, "queue-operation") {
-		t.Error("unknown entry type should be skipped")
-	}
-	if !strings.Contains(result, "Should be visible") {
-		t.Error("known entry type should be visible")
-	}
+	assert.NotContains(t, result, "queue-operation", "unknown entry type should be skipped")
+	assert.Contains(t, result, "Should be visible", "known entry type should be visible")
 }
 
 func TestRenderHTML_EmptyUserMessage(t *testing.T) {
@@ -470,9 +378,7 @@ func TestRenderHTML_EmptyUserMessage(t *testing.T) {
 	result := RenderHTML(entries, RenderOptions{})
 
 	// Should not render empty user message section
-	if strings.Contains(result, `class="message user"`) {
-		t.Error("empty user message should not be rendered")
-	}
+	assert.NotContains(t, result, `class="message user"`, "empty user message should not be rendered")
 }
 
 func TestRenderHTML_NilMessage(t *testing.T) {
@@ -486,36 +392,28 @@ func TestRenderHTML_NilMessage(t *testing.T) {
 	result := RenderHTML(entries, RenderOptions{})
 
 	// Should not panic and should not render message section
-	if strings.Contains(result, `class="message user"`) {
-		t.Error("nil message should not be rendered")
-	}
+	assert.NotContains(t, result, `class="message user"`, "nil message should not be rendered")
 }
 
 func TestRenderHTML_DarkModeSupport(t *testing.T) {
 	entries := []Entry{}
 	result := RenderHTML(entries, RenderOptions{})
 
-	if !strings.Contains(result, "@media (prefers-color-scheme: dark)") {
-		t.Error("expected dark mode media query")
-	}
+	assert.Contains(t, result, "@media (prefers-color-scheme: dark)", "expected dark mode media query")
 }
 
 func TestRenderHTML_ResponsiveViewport(t *testing.T) {
 	entries := []Entry{}
 	result := RenderHTML(entries, RenderOptions{})
 
-	if !strings.Contains(result, `<meta name="viewport"`) {
-		t.Error("expected viewport meta tag")
-	}
+	assert.Contains(t, result, `<meta name="viewport"`, "expected viewport meta tag")
 }
 
 func TestRenderHTML_UTF8Charset(t *testing.T) {
 	entries := []Entry{}
 	result := RenderHTML(entries, RenderOptions{})
 
-	if !strings.Contains(result, `<meta charset="UTF-8">`) {
-		t.Error("expected UTF-8 charset")
-	}
+	assert.Contains(t, result, `<meta charset="UTF-8">`, "expected UTF-8 charset")
 }
 
 func TestRenderHTML_TruncationRuneBoundary(t *testing.T) {
@@ -535,9 +433,8 @@ func TestRenderHTML_TruncationRuneBoundary(t *testing.T) {
 
 	// The output should be valid UTF-8 (no broken characters)
 	// Check for common emoji that should be preserved
-	if !strings.Contains(htmlResult, "🤖") && !strings.Contains(htmlResult, "✅") {
-		t.Error("expected valid emoji in output")
-	}
+	hasEmoji := strings.Contains(htmlResult, "🤖") || strings.Contains(htmlResult, "✅")
+	assert.True(t, hasEmoji, "expected valid emoji in output")
 }
 
 func TestRenderHTML_MultipleMessages(t *testing.T) {
@@ -618,21 +515,11 @@ func TestRenderHTML_TaskToolCollapses(t *testing.T) {
 
 	result := RenderHTML(entries, RenderOptions{})
 
-	if !strings.Contains(result, `<details class="tool-collapsible">`) {
-		t.Error("expected subagent Task tool to use details.tool-collapsible")
-	}
-	if !strings.Contains(result, "Explore: Search for config files") {
-		t.Error("expected summary to contain subagent_type and description")
-	}
-	if !strings.Contains(result, "🤖🔧") {
-		t.Error("expected robot and tool icons in summary for subagent")
-	}
-	if !strings.Contains(result, "<strong>Prompt:</strong>") {
-		t.Error("expected Prompt section in subagent block")
-	}
-	if !strings.Contains(result, "<strong>Result:</strong>") {
-		t.Error("expected Result section in subagent block")
-	}
+	assert.Contains(t, result, `<details class="tool-collapsible">`, "expected subagent Task tool to use details.tool-collapsible")
+	assert.Contains(t, result, "Explore: Search for config files", "expected summary to contain subagent_type and description")
+	assert.Contains(t, result, "🤖🔧", "expected robot and tool icons in summary for subagent")
+	assert.Contains(t, result, "<strong>Prompt:</strong>", "expected Prompt section in subagent block")
+	assert.Contains(t, result, "<strong>Result:</strong>", "expected Result section in subagent block")
 }
 
 func TestRenderHTML_SkillToolRendersSimple(t *testing.T) {
@@ -656,16 +543,10 @@ func TestRenderHTML_SkillToolRendersSimple(t *testing.T) {
 	result := RenderHTML(entries, RenderOptions{})
 
 	// Skill should render as a simple div, not a collapsible details
-	if !strings.Contains(result, `<div class="tool-use">`) {
-		t.Error("expected Skill tool to use div.tool-use")
-	}
-	if !strings.Contains(result, "Skill: next-task") {
-		t.Error("expected content to contain skill name")
-	}
+	assert.Contains(t, result, `<div class="tool-use">`, "expected Skill tool to use div.tool-use")
+	assert.Contains(t, result, "Skill: next-task", "expected content to contain skill name")
 	// Should NOT have collapsible details
-	if strings.Contains(result, `<details class="tool-collapsible">`) {
-		t.Error("Skill tool should not use collapsible details")
-	}
+	assert.NotContains(t, result, `<details class="tool-collapsible">`, "Skill tool should not use collapsible details")
 }
 
 func TestRenderHTML_SkillToolWithDescription(t *testing.T) {
@@ -707,15 +588,9 @@ func TestRenderHTML_SkillToolWithDescription(t *testing.T) {
 	result := RenderHTML(entries, RenderOptions{})
 
 	// Skill with description should be collapsible
-	if !strings.Contains(result, `<details class="tool-collapsible">`) {
-		t.Error("expected Skill with description to be wrapped in details")
-	}
-	if !strings.Contains(result, "Skill: permission-analyzer") {
-		t.Error("expected Skill tool to show skill name in summary")
-	}
-	if !strings.Contains(result, "This skill analyzes permissions") {
-		t.Error("expected skill description to be rendered")
-	}
+	assert.Contains(t, result, `<details class="tool-collapsible">`, "expected Skill with description to be wrapped in details")
+	assert.Contains(t, result, "Skill: permission-analyzer", "expected Skill tool to show skill name in summary")
+	assert.Contains(t, result, "This skill analyzes permissions", "expected skill description to be rendered")
 }
 
 func TestRenderHTML_ShortToolNoCollapse(t *testing.T) {
@@ -755,12 +630,8 @@ func TestRenderHTML_ShortToolNoCollapse(t *testing.T) {
 	result := RenderHTML(entries, RenderOptions{})
 
 	// Combined tool call + result always uses collapsible block
-	if !strings.Contains(result, `<details class="tool-collapsible">`) {
-		t.Error("expected combined tool block to use details.tool-collapsible")
-	}
-	if !strings.Contains(result, "Bash") {
-		t.Error("expected tool name in summary")
-	}
+	assert.Contains(t, result, `<details class="tool-collapsible">`, "expected combined tool block to use details.tool-collapsible")
+	assert.Contains(t, result, "Bash", "expected tool name in summary")
 }
 
 func TestRenderHTML_LongToolCollapses(t *testing.T) {
@@ -799,27 +670,17 @@ func TestRenderHTML_LongToolCollapses(t *testing.T) {
 
 	result := RenderHTML(entries, RenderOptions{})
 
-	if !strings.Contains(result, `<details class="tool-collapsible">`) {
-		t.Error("combined tool block should use details.tool-collapsible")
-	}
-	if !strings.Contains(result, "Write") {
-		t.Error("expected summary to contain tool name")
-	}
+	assert.Contains(t, result, `<details class="tool-collapsible">`, "combined tool block should use details.tool-collapsible")
+	assert.Contains(t, result, "Write", "expected summary to contain tool name")
 }
 
 func TestRenderHTML_CSSIncluded(t *testing.T) {
 	entries := []Entry{}
 	result := RenderHTML(entries, RenderOptions{})
 
-	if !strings.Contains(result, "details.tool-collapsible") {
-		t.Error("expected CSS for details.tool-collapsible")
-	}
-	if !strings.Contains(result, ".tool-content") {
-		t.Error("expected CSS for .tool-content")
-	}
-	if !strings.Contains(result, "details.tool-collapsible.error") {
-		t.Error("expected CSS for .error variant")
-	}
+	assert.Contains(t, result, "details.tool-collapsible", "expected CSS for details.tool-collapsible")
+	assert.Contains(t, result, ".tool-content", "expected CSS for .tool-content")
+	assert.Contains(t, result, "details.tool-collapsible.error", "expected CSS for .error variant")
 }
 
 func TestRenderHTML_ResultCollapses(t *testing.T) {
@@ -866,12 +727,8 @@ func TestRenderHTML_ResultCollapses(t *testing.T) {
 	if detailsCount != 1 {
 		t.Errorf("expected 1 combined collapsible block for subagent, got %d", detailsCount)
 	}
-	if !strings.Contains(result, "✅") {
-		t.Error("expected success icon in result")
-	}
-	if !strings.Contains(result, "🤖🔧") {
-		t.Error("expected robot and tool icons for subagent")
-	}
+	assert.Contains(t, result, "✅", "expected success icon in result")
+	assert.Contains(t, result, "🤖🔧", "expected robot and tool icons for subagent")
 }
 
 func TestRenderHTML_ShortResultNoCollapse(t *testing.T) {
@@ -911,9 +768,7 @@ func TestRenderHTML_ShortResultNoCollapse(t *testing.T) {
 	result := RenderHTML(entries, RenderOptions{})
 
 	// Combined tool call + result uses collapsible block
-	if !strings.Contains(result, `<details class="tool-collapsible">`) {
-		t.Error("expected combined tool block to use details.tool-collapsible")
-	}
+	assert.Contains(t, result, `<details class="tool-collapsible">`, "expected combined tool block to use details.tool-collapsible")
 	// Should have exactly 1 collapsible block (the combined tool call + result)
 	detailsCount := strings.Count(result, `<details class="tool-collapsible">`)
 	if detailsCount != 1 {
@@ -960,16 +815,10 @@ func TestRenderHTML_CrossEntryToolMatching(t *testing.T) {
 	result := RenderHTML(entries, RenderOptions{})
 
 	// Skill should render as simple div with skill name
-	if !strings.Contains(result, "Skill: commit") {
-		t.Error("expected Skill summary in tool_use")
-	}
-	if !strings.Contains(result, `<div class="tool-use">`) {
-		t.Error("expected Skill to use div.tool-use")
-	}
+	assert.Contains(t, result, "Skill: commit", "expected Skill summary in tool_use")
+	assert.Contains(t, result, `<div class="tool-use">`, "expected Skill to use div.tool-use")
 	// Skill result should be skipped (not rendered)
-	if strings.Contains(result, "Launching skill: commit") {
-		t.Error("Skill result should not be rendered")
-	}
+	assert.NotContains(t, result, "Launching skill: commit", "Skill result should not be rendered")
 }
 
 func TestRenderHTML_ResultErrorWithCollapse(t *testing.T) {
@@ -1011,12 +860,8 @@ func TestRenderHTML_ResultErrorWithCollapse(t *testing.T) {
 	result := RenderHTML(entries, RenderOptions{})
 
 	// Error result should have error class
-	if !strings.Contains(result, `<details class="tool-collapsible error">`) {
-		t.Error("expected error class on collapsible result")
-	}
-	if !strings.Contains(result, "❌") {
-		t.Error("expected error icon in result")
-	}
+	assert.Contains(t, result, `<details class="tool-collapsible error">`, "expected error class on collapsible result")
+	assert.Contains(t, result, "❌", "expected error icon in result")
 }
 
 // Golden file integration tests for collapsible blocks (HTML)
@@ -1083,9 +928,7 @@ func testGoldenCollapsibleHTML(t *testing.T, name string, expectedPatterns []str
 
 	// Verify expected patterns are present
 	for _, pattern := range expectedPatterns {
-		if !strings.Contains(result, pattern) {
-			t.Errorf("expected pattern not found: %q\nIn output:\n%s", pattern, result)
-		}
+		assert.Contains(t, result, pattern, "expected pattern not found: %q\nIn output:\n%s", pattern, result)
 	}
 }
 
@@ -1130,15 +973,9 @@ func TestBackwardCompat_NoIDFields_HTML(t *testing.T) {
 
 	// With no matching IDs, tool_use stores metadata but doesn't render
 	// tool_result renders as standalone collapsible with "Tool Result" summary
-	if !strings.Contains(result, `<details class="tool-collapsible">`) {
-		t.Error("expected unmatched tool_result to use details.tool-collapsible")
-	}
-	if !strings.Contains(result, "Tool Result") {
-		t.Error("expected unmatched tool_result to have 'Tool Result' summary")
-	}
-	if !strings.Contains(result, "hello") {
-		t.Error("expected tool result content to be rendered")
-	}
+	assert.Contains(t, result, `<details class="tool-collapsible">`, "expected unmatched tool_result to use details.tool-collapsible")
+	assert.Contains(t, result, "Tool Result", "expected unmatched tool_result to have 'Tool Result' summary")
+	assert.Contains(t, result, "hello", "expected tool result content to be rendered")
 }
 
 func TestBackwardCompat_TruncationPreserved_HTML(t *testing.T) {
@@ -1180,19 +1017,13 @@ func TestBackwardCompat_TruncationPreserved_HTML(t *testing.T) {
 	result := RenderHTML(entries, RenderOptions{})
 
 	// Should be collapsed
-	if !strings.Contains(result, `<details class="tool-collapsible">`) {
-		t.Error("long tool should be collapsed")
-	}
+	assert.Contains(t, result, `<details class="tool-collapsible">`, "long tool should be collapsed")
 
 	// Should NOT be truncated (no truncation marker)
-	if strings.Contains(result, "... (truncated)") {
-		t.Error("content should not be truncated with <details> blocks")
-	}
+	assert.NotContains(t, result, "... (truncated)", "content should not be truncated with <details> blocks")
 
 	// Verify the FULL result content IS present (no truncation)
-	if !strings.Contains(result, longResult) {
-		t.Error("full result should be present, not truncated")
-	}
+	assert.Contains(t, result, longResult, "full result should be present, not truncated")
 }
 
 func TestBackwardCompat_PreTruncationDecision_HTML(t *testing.T) {
@@ -1219,14 +1050,10 @@ func TestBackwardCompat_PreTruncationDecision_HTML(t *testing.T) {
 	result := RenderHTML(entries, RenderOptions{})
 
 	// Should be collapsed because original content exceeds threshold
-	if !strings.Contains(result, `<details class="tool-collapsible">`) {
-		t.Error("result exceeding threshold should be collapsed")
-	}
+	assert.Contains(t, result, `<details class="tool-collapsible">`, "result exceeding threshold should be collapsed")
 
 	// Content should NOT be truncated (it's under MaxToolResultRunes)
-	if strings.Contains(result, "... (truncated)") {
-		t.Error("content under MaxToolResultRunes should not be truncated")
-	}
+	assert.NotContains(t, result, "... (truncated)", "content under MaxToolResultRunes should not be truncated")
 }
 
 // Navigation tests for RenderHTMLFragment
@@ -1245,26 +1072,14 @@ func TestRenderHTMLFragment_BasicStructure(t *testing.T) {
 	result := RenderHTMLFragment(entries, RenderOptions{})
 
 	// Should NOT contain document wrapper elements
-	if strings.Contains(result, "<!DOCTYPE html>") {
-		t.Error("fragment should not contain DOCTYPE")
-	}
-	if strings.Contains(result, "<html") {
-		t.Error("fragment should not contain html tag")
-	}
-	if strings.Contains(result, "<head>") {
-		t.Error("fragment should not contain head tag")
-	}
-	if strings.Contains(result, "<body>") {
-		t.Error("fragment should not contain body tag")
-	}
+	assert.NotContains(t, result, "<!DOCTYPE html>", "fragment should not contain DOCTYPE")
+	assert.NotContains(t, result, "<html", "fragment should not contain html tag")
+	assert.NotContains(t, result, "<head>", "fragment should not contain head tag")
+	assert.NotContains(t, result, "<body>", "fragment should not contain body tag")
 
 	// Should contain the message content
-	if !strings.Contains(result, "Hello") {
-		t.Error("fragment should contain message content")
-	}
-	if !strings.Contains(result, `class="message user"`) {
-		t.Error("fragment should contain user message section")
-	}
+	assert.Contains(t, result, "Hello", "fragment should contain message content")
+	assert.Contains(t, result, `class="message user"`, "fragment should contain user message section")
 }
 
 func TestRenderHTMLFragment_WithNavigation(t *testing.T) {
@@ -1296,28 +1111,16 @@ func TestRenderHTMLFragment_WithNavigation(t *testing.T) {
 	}
 
 	// Should contain prev link
-	if !strings.Contains(result, `href="/runs/abc/transcript/1"`) {
-		t.Error("expected prev link")
-	}
-	if !strings.Contains(result, "Phase 1") {
-		t.Error("expected prev text")
-	}
+	assert.Contains(t, result, `href="/runs/abc/transcript/1"`, "expected prev link")
+	assert.Contains(t, result, "Phase 1", "expected prev text")
 
 	// Should contain next link
-	if !strings.Contains(result, `href="/runs/abc/transcript/3"`) {
-		t.Error("expected next link")
-	}
-	if !strings.Contains(result, "Phase 3") {
-		t.Error("expected next text")
-	}
+	assert.Contains(t, result, `href="/runs/abc/transcript/3"`, "expected next link")
+	assert.Contains(t, result, "Phase 3", "expected next text")
 
 	// Should contain back link
-	if !strings.Contains(result, `href="/runs/abc"`) {
-		t.Error("expected back link")
-	}
-	if !strings.Contains(result, "Back to Run") {
-		t.Error("expected back text")
-	}
+	assert.Contains(t, result, `href="/runs/abc"`, "expected back link")
+	assert.Contains(t, result, "Back to Run", "expected back text")
 }
 
 func TestRenderHTMLFragment_NavigationPrevOnly(t *testing.T) {
@@ -1333,14 +1136,10 @@ func TestRenderHTMLFragment_NavigationPrevOnly(t *testing.T) {
 	result := RenderHTMLFragment(entries, RenderOptions{Navigation: nav})
 
 	// Should contain prev link
-	if !strings.Contains(result, `href="/runs/abc/transcript/1"`) {
-		t.Error("expected prev link")
-	}
+	assert.Contains(t, result, `href="/runs/abc/transcript/1"`, "expected prev link")
 
 	// Should NOT contain next link (empty NextURL)
-	if strings.Contains(result, "nav-next") {
-		t.Error("should not contain next link element when NextURL is empty")
-	}
+	assert.NotContains(t, result, "nav-next", "should not contain next link element when NextURL is empty")
 }
 
 func TestRenderHTMLFragment_NavigationNextOnly(t *testing.T) {
@@ -1356,14 +1155,10 @@ func TestRenderHTMLFragment_NavigationNextOnly(t *testing.T) {
 	result := RenderHTMLFragment(entries, RenderOptions{Navigation: nav})
 
 	// Should NOT contain prev link (empty PrevURL)
-	if strings.Contains(result, "nav-prev") {
-		t.Error("should not contain prev link element when PrevURL is empty")
-	}
+	assert.NotContains(t, result, "nav-prev", "should not contain prev link element when PrevURL is empty")
 
 	// Should contain next link
-	if !strings.Contains(result, `href="/runs/abc/transcript/2"`) {
-		t.Error("expected next link")
-	}
+	assert.Contains(t, result, `href="/runs/abc/transcript/2"`, "expected next link")
 }
 
 func TestRenderHTMLFragment_NoNavigation(t *testing.T) {
@@ -1380,9 +1175,7 @@ func TestRenderHTMLFragment_NoNavigation(t *testing.T) {
 	result := RenderHTMLFragment(entries, RenderOptions{})
 
 	// Should NOT contain navigation
-	if strings.Contains(result, `class="transcript-nav"`) {
-		t.Error("should not contain navigation when Navigation is nil")
-	}
+	assert.NotContains(t, result, `class="transcript-nav"`, "should not contain navigation when Navigation is nil")
 }
 
 func TestRenderHTML_WithNavigation(t *testing.T) {
@@ -1408,9 +1201,7 @@ func TestRenderHTML_WithNavigation(t *testing.T) {
 	result := RenderHTML(entries, RenderOptions{Navigation: nav})
 
 	// Should contain document wrapper
-	if !strings.Contains(result, "<!DOCTYPE html>") {
-		t.Error("expected DOCTYPE in full HTML")
-	}
+	assert.Contains(t, result, "<!DOCTYPE html>", "expected DOCTYPE in full HTML")
 
 	// Should contain navigation
 	navCount := strings.Count(result, `class="transcript-nav"`)
@@ -1419,9 +1210,7 @@ func TestRenderHTML_WithNavigation(t *testing.T) {
 	}
 
 	// Navigation should be between header and main content
-	if !strings.Contains(result, "</header>") {
-		t.Error("expected header in full HTML")
-	}
+	assert.Contains(t, result, "</header>", "expected header in full HTML")
 }
 
 func TestRenderNavigationHTML_HTMLEscaping(t *testing.T) {
@@ -1440,13 +1229,8 @@ func TestRenderNavigationHTML_HTMLEscaping(t *testing.T) {
 	result := RenderHTMLFragment(entries, RenderOptions{Navigation: nav})
 
 	// Should escape HTML entities
-	if strings.Contains(result, "<script>") {
-		t.Error("URL should be escaped")
-	}
-	if strings.Contains(result, "Phase <1>") {
-		t.Error("text should be escaped")
-	}
-	if !strings.Contains(result, "&amp;") || !strings.Contains(result, "&lt;") {
-		t.Error("expected escaped HTML entities")
-	}
+	assert.NotContains(t, result, "<script>", "URL should be escaped")
+	assert.NotContains(t, result, "Phase <1>", "text should be escaped")
+	assert.Contains(t, result, "&amp;", "expected escaped HTML entities")
+	assert.Contains(t, result, "&lt;", "expected escaped HTML entities")
 }

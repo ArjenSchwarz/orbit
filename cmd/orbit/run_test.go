@@ -50,39 +50,39 @@ func TestAutoConsolidate_WithVariantsIsValid(t *testing.T) {
 // TestAutoConsolidate_FlagResolution tests the flag resolution logic
 func TestAutoConsolidate_FlagResolution(t *testing.T) {
 	tests := []struct {
-		name              string
-		configValue       bool
-		autoConsolidateFlag bool
+		name                  string
+		configValue           bool
+		autoConsolidateFlag   bool
 		noAutoConsolidateFlag bool
-		want              bool
+		want                  bool
 	}{
 		{
-			name:              "default from config true, no flags",
-			configValue:       true,
-			autoConsolidateFlag: false,
+			name:                  "default from config true, no flags",
+			configValue:           true,
+			autoConsolidateFlag:   false,
 			noAutoConsolidateFlag: false,
-			want:              true,
+			want:                  true,
 		},
 		{
-			name:              "default from config false, no flags",
-			configValue:       false,
-			autoConsolidateFlag: false,
+			name:                  "default from config false, no flags",
+			configValue:           false,
+			autoConsolidateFlag:   false,
 			noAutoConsolidateFlag: false,
-			want:              false,
+			want:                  false,
 		},
 		{
-			name:              "config false, --auto-consolidate enables",
-			configValue:       false,
-			autoConsolidateFlag: true,
+			name:                  "config false, --auto-consolidate enables",
+			configValue:           false,
+			autoConsolidateFlag:   true,
 			noAutoConsolidateFlag: false,
-			want:              true,
+			want:                  true,
 		},
 		{
-			name:              "config true, --no-auto-consolidate disables",
-			configValue:       true,
-			autoConsolidateFlag: false,
+			name:                  "config true, --no-auto-consolidate disables",
+			configValue:           true,
+			autoConsolidateFlag:   false,
 			noAutoConsolidateFlag: true,
-			want:              false,
+			want:                  false,
 		},
 		{
 			name:                  "--no-auto-consolidate takes precedence when both flags set",
@@ -192,9 +192,9 @@ func TestDeprecatedPostCommandFlag(t *testing.T) {
 
 func TestBuildAgentConfig(t *testing.T) {
 	tests := []struct {
-		name          string
-		resolved      config.ResolvedAgent
-		wantModel     string
+		name           string
+		resolved       config.ResolvedAgent
+		wantModel      string
 		wantOptionsNil bool
 	}{
 		{

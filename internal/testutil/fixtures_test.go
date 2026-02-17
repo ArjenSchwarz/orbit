@@ -3,8 +3,9 @@ package testutil
 import (
 	"os"
 	"path/filepath"
-	"strings"
 	"testing"
+
+	"github.com/stretchr/testify/assert"
 
 	"github.com/arjenschwarz/orbit/internal/agents"
 )
@@ -44,23 +45,17 @@ func TestCreateTasksFile(t *testing.T) {
 			}
 
 			// Verify header is present
-			if !strings.Contains(string(content), "# Test Tasks") {
-				t.Error("CreateTasksFile: missing header")
-			}
+			assert.Contains(t, string(content), "# Test Tasks", "CreateTasksFile: missing header")
 
 			// Verify correct number of phases
 			for i := 1; i <= tc.phases; i++ {
 				phaseHeader := "## Phase " + string(rune('0'+i))
-				if !strings.Contains(string(content), phaseHeader) {
-					t.Errorf("CreateTasksFile: missing phase %d header", i)
-				}
+				assert.Contains(t, string(content), phaseHeader, "CreateTasksFile: missing phase %d header", i)
 			}
 
 			// Verify no extra phases exist
 			extraPhase := "## Phase " + string(rune('0'+tc.phases+1))
-			if strings.Contains(string(content), extraPhase) {
-				t.Errorf("CreateTasksFile: found unexpected phase %d", tc.phases+1)
-			}
+			assert.NotContains(t, string(content), extraPhase, "CreateTasksFile: found unexpected phase %d", tc.phases+1)
 		})
 	}
 }
@@ -94,9 +89,7 @@ func TestCreateConfig(t *testing.T) {
 			t.Fatalf("CreateConfig: failed to read file: %v", err)
 		}
 
-		if !strings.Contains(string(content), "agent: test-agent") {
-			t.Error("CreateConfig: missing agent configuration")
-		}
+		assert.Contains(t, string(content), "agent: test-agent", "CreateConfig: missing agent configuration")
 	})
 
 	t.Run("with prompts", func(t *testing.T) {
@@ -112,12 +105,8 @@ func TestCreateConfig(t *testing.T) {
 			t.Fatalf("CreateConfig: failed to read file: %v", err)
 		}
 
-		if !strings.Contains(string(content), "pre-prompt:") {
-			t.Error("CreateConfig: missing pre-prompt configuration")
-		}
-		if !strings.Contains(string(content), "post-prompt:") {
-			t.Error("CreateConfig: missing post-prompt configuration")
-		}
+		assert.Contains(t, string(content), "pre-prompt:", "CreateConfig: missing pre-prompt configuration")
+		assert.Contains(t, string(content), "post-prompt:", "CreateConfig: missing post-prompt configuration")
 	})
 }
 
@@ -153,9 +142,7 @@ func TestTestAgentResolver(t *testing.T) {
 			t.Fatal("GetAgent: expected error for missing agent")
 		}
 
-		if !strings.Contains(err.Error(), "not registered") {
-			t.Errorf("GetAgent: expected 'not registered' error, got: %v", err)
-		}
+		assert.Contains(t, err.Error(), "not registered", "GetAgent: expected 'not registered' error, got: %v", err)
 	})
 }
 

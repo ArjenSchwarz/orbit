@@ -10,6 +10,8 @@ import (
 	"sync"
 	"testing"
 	"time"
+
+	"github.com/stretchr/testify/assert"
 )
 
 // syncBuffer is a thread-safe buffer for concurrent read/write in tests.
@@ -285,9 +287,7 @@ this is not valid JSON at all
 	}
 
 	// Should have warning for corrupt mid-file line
-	if !strings.Contains(warnBuf.String(), "line 2") {
-		t.Errorf("expected warning about line 2, got: %s", warnBuf.String())
-	}
+	assert.Contains(t, warnBuf.String(), "line 2", "expected warning about line 2, got: %s", warnBuf.String())
 }
 
 func TestReadAndHashLines_EmptyFile(t *testing.T) {
@@ -570,12 +570,8 @@ func TestFollower_ProcessFile(t *testing.T) {
 
 	// Should have output
 	output := buf.String()
-	if !strings.Contains(output, "Session Transcript") {
-		t.Error("output should contain header")
-	}
-	if !strings.Contains(output, "Hello") {
-		t.Error("output should contain entry content")
-	}
+	assert.Contains(t, output, "Session Transcript", "output should contain header")
+	assert.Contains(t, output, "Hello", "output should contain entry content")
 	if !f.initialRenderDone {
 		t.Error("initialRenderDone should be true after first render")
 	}
@@ -606,9 +602,7 @@ func TestFollower_ProcessFile_Incremental(t *testing.T) {
 	}
 
 	initialOutput := buf.String()
-	if !strings.Contains(initialOutput, "Session Transcript") {
-		t.Error("initial output should contain header")
-	}
+	assert.Contains(t, initialOutput, "Session Transcript", "initial output should contain header")
 
 	// Append new entry
 	fh, err := os.OpenFile(tmpFile, os.O_APPEND|os.O_WRONLY, 0644)
@@ -629,12 +623,8 @@ func TestFollower_ProcessFile_Incremental(t *testing.T) {
 
 	incrementalOutput := buf.String()
 	// Incremental output should NOT contain header again
-	if strings.Contains(incrementalOutput, "Session Transcript") {
-		t.Error("incremental output should not contain header")
-	}
-	if !strings.Contains(incrementalOutput, "Second") {
-		t.Error("incremental output should contain new entry")
-	}
+	assert.NotContains(t, incrementalOutput, "Session Transcript", "incremental output should not contain header")
+	assert.Contains(t, incrementalOutput, "Second", "incremental output should contain new entry")
 	if len(f.seenHashes) != 2 {
 		t.Errorf("seenHashes should have 2 entries, got %d", len(f.seenHashes))
 	}
@@ -707,9 +697,7 @@ func TestFollower_Run_WithCancellation(t *testing.T) {
 		time.Sleep(10 * time.Millisecond)
 	}
 
-	if !strings.Contains(buf.String(), "Hello") {
-		t.Error("expected initial content to be rendered")
-	}
+	assert.Contains(t, buf.String(), "Hello", "expected initial content to be rendered")
 
 	// Cancel and wait for clean shutdown
 	cancel()
@@ -818,9 +806,7 @@ func TestFollowerIntegration_BasicFollowWithAppend(t *testing.T) {
 	}
 
 	// Verify header is present in initial render (markdown header format: "# Session Transcript")
-	if !strings.Contains(buf.String(), "# Session Transcript") {
-		t.Error("expected header in initial render")
-	}
+	assert.Contains(t, buf.String(), "# Session Transcript", "expected header in initial render")
 
 	initialOutputLen := buf.Len()
 
@@ -839,9 +825,7 @@ func TestFollowerIntegration_BasicFollowWithAppend(t *testing.T) {
 
 	// Verify incremental output doesn't contain header again
 	incrementalOutput := buf.String()[initialOutputLen:]
-	if strings.Contains(incrementalOutput, "# Session Transcript") {
-		t.Error("incremental output should not contain header")
-	}
+	assert.NotContains(t, incrementalOutput, "# Session Transcript", "incremental output should not contain header")
 
 	cancel()
 	<-done
@@ -1023,9 +1007,7 @@ func TestFollowerIntegration_IncompleteJSONHandling(t *testing.T) {
 	time.Sleep(600 * time.Millisecond)
 
 	// Partial entry should NOT appear yet
-	if strings.Contains(buf.String(), "Partial") {
-		t.Error("partial JSON should not be rendered")
-	}
+	assert.NotContains(t, buf.String(), "Partial", "partial JSON should not be rendered")
 
 	// Complete the JSON
 	fh, err = os.OpenFile(tmpFile, os.O_APPEND|os.O_WRONLY, 0644)

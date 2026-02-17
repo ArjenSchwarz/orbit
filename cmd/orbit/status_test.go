@@ -10,6 +10,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/assert"
+
 	"github.com/arjenschwarz/orbit/internal/logs"
 	"github.com/arjenschwarz/orbit/internal/status"
 	"github.com/arjenschwarz/orbit/internal/variants"
@@ -51,9 +53,7 @@ func TestStatusCommand_NoVariantsJSON(t *testing.T) {
 	}
 
 	// Verify error message mentions the missing variants.json
-	if !strings.Contains(err.Error(), "variants.json") {
-		t.Errorf("expected error to mention variants.json, got: %v", err)
-	}
+	assert.Contains(t, err.Error(), "variants.json", "expected error to mention variants.json, got: %v", err)
 }
 
 // TestStatusCommand_Integration tests the complete status command flow
@@ -393,9 +393,7 @@ func TestStatusCommand_AutoDetectSpec(t *testing.T) {
 	}
 
 	// The extracted spec name should be "my-spec" from branch "feature/my-spec"
-	if !strings.Contains(err.Error(), "variants.json") {
-		t.Errorf("error should mention variants.json, got: %v", err)
-	}
+	assert.Contains(t, err.Error(), "variants.json", "error should mention variants.json, got: %v", err)
 }
 
 // TestExtractSpecName tests the spec name extraction function.

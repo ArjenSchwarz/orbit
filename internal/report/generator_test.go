@@ -7,6 +7,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/assert"
+
 	"github.com/arjenschwarz/orbit/internal/comparison"
 	"github.com/arjenschwarz/orbit/internal/cost"
 )
@@ -90,9 +92,7 @@ func TestGenerate_CreatesIndexHTML(t *testing.T) {
 		"main.go",
 	}
 	for _, check := range checks {
-		if !strings.Contains(string(content), check) {
-			t.Errorf("index.html missing expected content: %q", check)
-		}
+		assert.Contains(t, string(content), check, "index.html missing expected content: %q", check)
 	}
 }
 
@@ -145,9 +145,7 @@ func TestGenerate_EscapesContent(t *testing.T) {
 		"<a href='bad'>", // User-injected link
 	}
 	for _, d := range dangerous {
-		if strings.Contains(contentStr, d) {
-			t.Errorf("index.html contains unescaped dangerous content: %q", d)
-		}
+		assert.NotContains(t, contentStr, d, "index.html contains unescaped dangerous content: %q", d)
 	}
 
 	// Ensure escaped versions are present (content is displayed, not executed)
@@ -157,9 +155,7 @@ func TestGenerate_EscapesContent(t *testing.T) {
 		"&lt;img",         // Escaped img tag
 	}
 	for _, e := range escaped {
-		if !strings.Contains(contentStr, e) {
-			t.Errorf("index.html missing escaped content: %q", e)
-		}
+		assert.Contains(t, contentStr, e, "index.html missing escaped content: %q", e)
 	}
 }
 
@@ -208,9 +204,7 @@ func TestGenerate_SplitsLargeDiffs(t *testing.T) {
 		t.Fatalf("failed to read index.html: %v", err)
 	}
 
-	if !strings.Contains(string(indexContent), "diffs/variant-1.html") {
-		t.Errorf("index.html does not link to separate diff file")
-	}
+	assert.Contains(t, string(indexContent), "diffs/variant-1.html", "index.html does not link to separate diff file")
 
 	// Verify diff content is in the separate file, not inline
 	diffContent, err := os.ReadFile(diffPath)
@@ -268,15 +262,9 @@ func TestGenerate_IncludesFailedVariants(t *testing.T) {
 	}
 
 	// Verify failed variant is included
-	if !strings.Contains(string(content), "failed-branch") {
-		t.Errorf("index.html missing failed variant branch")
-	}
-	if !strings.Contains(string(content), "Rate limit exceeded") {
-		t.Errorf("index.html missing failed variant error message")
-	}
-	if !strings.Contains(string(content), "status-failed") {
-		t.Errorf("index.html missing failed status class")
-	}
+	assert.Contains(t, string(content), "failed-branch", "index.html missing failed variant branch")
+	assert.Contains(t, string(content), "Rate limit exceeded", "index.html missing failed variant error message")
+	assert.Contains(t, string(content), "status-failed", "index.html missing failed status class")
 }
 
 func TestGenerate_NoComparison(t *testing.T) {
@@ -311,12 +299,8 @@ func TestGenerate_NoComparison(t *testing.T) {
 	}
 
 	// Should still render without errors
-	if !strings.Contains(string(content), "no-comparison") {
-		t.Errorf("index.html missing spec name")
-	}
-	if !strings.Contains(string(content), "only-branch") {
-		t.Errorf("index.html missing variant")
-	}
+	assert.Contains(t, string(content), "no-comparison", "index.html missing spec name")
+	assert.Contains(t, string(content), "only-branch", "index.html missing variant")
 }
 
 func TestCountLines(t *testing.T) {
@@ -453,33 +437,17 @@ func TestGenerate_CreatesMarkdownReport(t *testing.T) {
 		"```diff",                   // diff code fence
 	}
 	for _, check := range checks {
-		if !strings.Contains(contentStr, check) {
-			t.Errorf("report.md missing expected content: %q", check)
-		}
+		assert.Contains(t, contentStr, check, "report.md missing expected content: %q", check)
 	}
 
 	// Verify front matter is present with all required fields [Req 1.7]
-	if !strings.Contains(contentStr, "---") {
-		t.Errorf("report.md missing YAML front matter")
-	}
-	if !strings.Contains(contentStr, "title:") {
-		t.Errorf("report.md missing title in front matter")
-	}
-	if !strings.Contains(contentStr, "generated_at:") {
-		t.Errorf("report.md missing generated_at in front matter")
-	}
-	if !strings.Contains(contentStr, "base_commit: abc123def456") {
-		t.Errorf("report.md missing base_commit in front matter")
-	}
-	if !strings.Contains(contentStr, "variant_commits:") {
-		t.Errorf("report.md missing variant_commits in front matter")
-	}
-	if !strings.Contains(contentStr, "1: commit1abc") {
-		t.Errorf("report.md missing variant 1 commit in front matter")
-	}
-	if !strings.Contains(contentStr, "2: commit2def") {
-		t.Errorf("report.md missing variant 2 commit in front matter")
-	}
+	assert.Contains(t, contentStr, "---", "report.md missing YAML front matter")
+	assert.Contains(t, contentStr, "title:", "report.md missing title in front matter")
+	assert.Contains(t, contentStr, "generated_at:", "report.md missing generated_at in front matter")
+	assert.Contains(t, contentStr, "base_commit: abc123def456", "report.md missing base_commit in front matter")
+	assert.Contains(t, contentStr, "variant_commits:", "report.md missing variant_commits in front matter")
+	assert.Contains(t, contentStr, "1: commit1abc", "report.md missing variant 1 commit in front matter")
+	assert.Contains(t, contentStr, "2: commit2def", "report.md missing variant 2 commit in front matter")
 }
 
 func TestGenerate_MarkdownLinksToLargeDiffs(t *testing.T) {
@@ -525,15 +493,9 @@ func TestGenerate_MarkdownLinksToLargeDiffs(t *testing.T) {
 
 	// Should contain markdown link to diff file
 	// The link format may vary slightly based on path separators
-	if !strings.Contains(contentStr, "View full diff") {
-		t.Errorf("report.md missing 'View full diff' text")
-	}
-	if !strings.Contains(contentStr, "variant-1.html") {
-		t.Errorf("report.md missing link to diff file variant-1.html")
-	}
-	if !strings.Contains(string(mdContent), ">500 lines") {
-		t.Errorf("report.md missing large diff threshold message")
-	}
+	assert.Contains(t, contentStr, "View full diff", "report.md missing 'View full diff' text")
+	assert.Contains(t, contentStr, "variant-1.html", "report.md missing link to diff file variant-1.html")
+	assert.Contains(t, string(mdContent), ">500 lines", "report.md missing large diff threshold message")
 }
 
 func TestGenerate_MarkdownNoComparison(t *testing.T) {
@@ -568,16 +530,10 @@ func TestGenerate_MarkdownNoComparison(t *testing.T) {
 	}
 
 	// Should still render without errors
-	if !strings.Contains(string(content), "no-comparison") {
-		t.Errorf("report.md missing spec name")
-	}
-	if !strings.Contains(string(content), "only-branch") {
-		t.Errorf("report.md missing variant branch")
-	}
+	assert.Contains(t, string(content), "no-comparison", "report.md missing spec name")
+	assert.Contains(t, string(content), "only-branch", "report.md missing variant branch")
 	// Should NOT contain Recommendation section
-	if strings.Contains(string(content), "Recommendation") {
-		t.Errorf("report.md should not contain Recommendation section when there's no comparison")
-	}
+	assert.NotContains(t, string(content), "Recommendation", "report.md should not contain Recommendation section when there's no comparison")
 }
 
 func TestBoolToCheck(t *testing.T) {
@@ -660,17 +616,11 @@ func TestGenerate_MarkdownLearningsSection(t *testing.T) {
 
 	// Verify Learnings section is present [Req 3.1]
 	// go-output uses # for top-level sections
-	if !strings.Contains(contentStr, "# Learnings") {
-		t.Errorf("report.md missing Learnings section header")
-	}
+	assert.Contains(t, contentStr, "# Learnings", "report.md missing Learnings section header")
 
 	// Verify learnings are grouped by variant [Req 3.2]
-	if !strings.Contains(contentStr, "### Variant 1") {
-		t.Errorf("report.md missing Variant 1 heading in Learnings")
-	}
-	if !strings.Contains(contentStr, "### Variant 2") {
-		t.Errorf("report.md missing Variant 2 heading in Learnings")
-	}
+	assert.Contains(t, contentStr, "### Variant 1", "report.md missing Variant 1 heading in Learnings")
+	assert.Contains(t, contentStr, "### Variant 2", "report.md missing Variant 2 heading in Learnings")
 
 	// Verify learning content is present [Req 3.3]
 	checks := []string{
@@ -686,24 +636,16 @@ func TestGenerate_MarkdownLearningsSection(t *testing.T) {
 		"Clean separation",       // variant 2 learning title
 	}
 	for _, check := range checks {
-		if !strings.Contains(contentStr, check) {
-			t.Errorf("report.md missing expected learnings content: %q", check)
-		}
+		assert.Contains(t, contentStr, check, "report.md missing expected learnings content: %q", check)
 	}
 
 	// Verify file references are rendered as relative paths [Req 3.4]
 	// They should be in backticks, not as clickable links
-	if strings.Contains(contentStr, "[foo_test.go:42]") {
-		t.Errorf("file references should not be markdown links")
-	}
+	assert.NotContains(t, contentStr, "[foo_test.go:42]", "file references should not be markdown links")
 
 	// Verify stale reference disclaimer is present [Req 3.6]
-	if !strings.Contains(contentStr, "File references are a snapshot") {
-		t.Errorf("report.md missing stale reference disclaimer")
-	}
-	if !strings.Contains(contentStr, "may become outdated if code changes") {
-		t.Errorf("report.md missing full disclaimer text")
-	}
+	assert.Contains(t, contentStr, "File references are a snapshot", "report.md missing stale reference disclaimer")
+	assert.Contains(t, contentStr, "may become outdated if code changes", "report.md missing full disclaimer text")
 }
 
 func TestGenerate_MarkdownNoLearnings(t *testing.T) {
@@ -745,9 +687,7 @@ func TestGenerate_MarkdownNoLearnings(t *testing.T) {
 	contentStr := string(content)
 
 	// Verify Learnings section is NOT present when no learnings [Req 3.5]
-	if strings.Contains(contentStr, "# Learnings") {
-		t.Errorf("report.md should not contain Learnings section when there are no learnings")
-	}
+	assert.NotContains(t, contentStr, "# Learnings", "report.md should not contain Learnings section when there are no learnings")
 }
 
 func TestGenerate_MarkdownEmptyLearnings(t *testing.T) {
@@ -789,9 +729,7 @@ func TestGenerate_MarkdownEmptyLearnings(t *testing.T) {
 	contentStr := string(content)
 
 	// Verify Learnings section is NOT present when learnings slice is empty [Req 3.5]
-	if strings.Contains(contentStr, "# Learnings") {
-		t.Errorf("report.md should not contain Learnings section when learnings slice is empty")
-	}
+	assert.NotContains(t, contentStr, "# Learnings", "report.md should not contain Learnings section when learnings slice is empty")
 }
 
 func TestGenerate_MarkdownLearningsAfterImprovements(t *testing.T) {
@@ -931,9 +869,7 @@ func TestGenerate_HTMLLearningsXSSEscaping(t *testing.T) {
 		"<path>",        // File reference HTML
 	}
 	for _, d := range dangerous {
-		if strings.Contains(contentStr, d) {
-			t.Errorf("index.html contains unescaped dangerous learnings content: %q", d)
-		}
+		assert.NotContains(t, contentStr, d, "index.html contains unescaped dangerous learnings content: %q", d)
 	}
 
 	// Verify escaped versions are present
@@ -944,9 +880,7 @@ func TestGenerate_HTMLLearningsXSSEscaping(t *testing.T) {
 		"&lt;path&gt;",   // Escaped path tag in file reference
 	}
 	for _, e := range escaped {
-		if !strings.Contains(contentStr, e) {
-			t.Errorf("index.html missing escaped learnings content: %q", e)
-		}
+		assert.Contains(t, contentStr, e, "index.html missing escaped learnings content: %q", e)
 	}
 }
 
@@ -1012,30 +946,18 @@ func TestGenerate_HTMLLearningsSection(t *testing.T) {
 	contentStr := string(content)
 
 	// Verify Learnings section is present [Req 4.1]
-	if !strings.Contains(contentStr, `class="learnings"`) {
-		t.Errorf("index.html missing learnings section")
-	}
-	if !strings.Contains(contentStr, "<h2>Learnings</h2>") {
-		t.Errorf("index.html missing Learnings heading")
-	}
+	assert.Contains(t, contentStr, `class="learnings"`, "index.html missing learnings section")
+	assert.Contains(t, contentStr, "<h2>Learnings</h2>", "index.html missing Learnings heading")
 
 	// Verify category badges are present [Req 4.2]
-	if !strings.Contains(contentStr, `class="category-badge category-code-pattern"`) {
-		t.Errorf("index.html missing code-pattern category badge class")
-	}
-	if !strings.Contains(contentStr, `class="category-badge category-architecture"`) {
-		t.Errorf("index.html missing architecture category badge class")
-	}
+	assert.Contains(t, contentStr, `class="category-badge category-code-pattern"`, "index.html missing code-pattern category badge class")
+	assert.Contains(t, contentStr, `class="category-badge category-architecture"`, "index.html missing architecture category badge class")
 
 	// Verify learnings are grouped by variant [Req 4.3]
-	if !strings.Contains(contentStr, `class="variant-learnings"`) {
-		t.Errorf("index.html missing variant-learnings class")
-	}
+	assert.Contains(t, contentStr, `class="variant-learnings"`, "index.html missing variant-learnings class")
 
 	// Verify file references are in monospace (code tags) [Req 4.4]
-	if !strings.Contains(contentStr, "<code>foo_test.go:42</code>") {
-		t.Errorf("index.html missing file reference in code tag")
-	}
+	assert.Contains(t, contentStr, "<code>foo_test.go:42</code>", "index.html missing file reference in code tag")
 
 	// Verify learning content
 	checks := []string{
@@ -1046,15 +968,11 @@ func TestGenerate_HTMLLearningsSection(t *testing.T) {
 		"service.go:1",
 	}
 	for _, check := range checks {
-		if !strings.Contains(contentStr, check) {
-			t.Errorf("index.html missing learnings content: %q", check)
-		}
+		assert.Contains(t, contentStr, check, "index.html missing learnings content: %q", check)
 	}
 
 	// Verify stale reference disclaimer is present
-	if !strings.Contains(contentStr, "File references are a snapshot") {
-		t.Errorf("index.html missing stale reference disclaimer")
-	}
+	assert.Contains(t, contentStr, "File references are a snapshot", "index.html missing stale reference disclaimer")
 }
 
 func TestGenerate_HTMLNoLearnings(t *testing.T) {
@@ -1096,10 +1014,6 @@ func TestGenerate_HTMLNoLearnings(t *testing.T) {
 	contentStr := string(content)
 
 	// Verify Learnings section is NOT present when no learnings [Req 4.5]
-	if strings.Contains(contentStr, `class="learnings"`) {
-		t.Errorf("index.html should not contain learnings section when there are no learnings")
-	}
-	if strings.Contains(contentStr, "<h2>Learnings</h2>") {
-		t.Errorf("index.html should not contain Learnings heading when there are no learnings")
-	}
+	assert.NotContains(t, contentStr, `class="learnings"`, "index.html should not contain learnings section when there are no learnings")
+	assert.NotContains(t, contentStr, "<h2>Learnings</h2>", "index.html should not contain Learnings heading when there are no learnings")
 }

@@ -11,8 +11,8 @@ func TestNewStaticHandler_ContentType(t *testing.T) {
 	t.Parallel()
 
 	fs := fstest.MapFS{
-		"app.js":    {Data: []byte("console.log('hello')")},
-		"style.css": {Data: []byte("body { margin: 0 }")},
+		"app.js":     {Data: []byte("console.log('hello')")},
+		"style.css":  {Data: []byte("body { margin: 0 }")},
 		"index.html": {Data: []byte("<html></html>")},
 	}
 

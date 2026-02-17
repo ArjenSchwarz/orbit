@@ -60,12 +60,12 @@ func TestFormatCodeChanges(t *testing.T) {
 		removed  *int
 		expected string
 	}{
-		"both nil":           {nil, nil, "-"},
-		"both zero":          {intPtr(0), intPtr(0), "+0/-0 lines"},
-		"positive values":    {intPtr(10), intPtr(5), "+10/-5 lines"},
-		"added only":         {intPtr(10), nil, "+10/-0 lines"},
-		"removed only":       {nil, intPtr(5), "+0/-5 lines"},
-		"large numbers":      {intPtr(1000), intPtr(500), "+1000/-500 lines"},
+		"both nil":            {nil, nil, "-"},
+		"both zero":           {intPtr(0), intPtr(0), "+0/-0 lines"},
+		"positive values":     {intPtr(10), intPtr(5), "+10/-5 lines"},
+		"added only":          {intPtr(10), nil, "+10/-0 lines"},
+		"removed only":        {nil, intPtr(5), "+0/-5 lines"},
+		"large numbers":       {intPtr(1000), intPtr(500), "+1000/-500 lines"},
 		"added nil removed 0": {nil, intPtr(0), "+0/-0 lines"},
 	}
 

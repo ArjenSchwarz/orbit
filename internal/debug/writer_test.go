@@ -10,6 +10,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/assert"
+
 	"github.com/google/go-cmp/cmp"
 )
 
@@ -61,9 +63,7 @@ func TestNewFileWriter(t *testing.T) {
 				if !strings.HasSuffix(filename, ".jsonl") {
 					t.Errorf("filename %q does not end with .jsonl", filename)
 				}
-				if !strings.Contains(filename, tc.runID) {
-					t.Errorf("filename %q does not contain runID %q", filename, tc.runID)
-				}
+				assert.Contains(t, filename, tc.runID, "filename %q does not contain runID %q", filename, tc.runID)
 
 				// Verify directory is ~/.orbit/logs/
 				homeDir, _ := os.UserHomeDir()
@@ -132,9 +132,7 @@ func TestNewVariantFileWriter(t *testing.T) {
 
 				// Verify filename format includes variant number
 				filename := filepath.Base(w.Path())
-				if !strings.Contains(filename, "variant-1") {
-					t.Errorf("filename %q does not contain 'variant-1'", filename)
-				}
+				assert.Contains(t, filename, "variant-1", "filename %q does not contain 'variant-1'", filename)
 			}
 		})
 	}

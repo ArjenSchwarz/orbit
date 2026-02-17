@@ -11,6 +11,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/assert"
+
 	"github.com/arjenschwarz/orbit/internal/agents"
 	_ "github.com/arjenschwarz/orbit/internal/agents/claudecode" // Register claude-code agent
 	_ "github.com/arjenschwarz/orbit/internal/agents/codex"      // Register codex agent
@@ -1317,9 +1319,9 @@ func TestDeprecationBlocksRun(t *testing.T) {
 			wantContains:  "post-command",
 		},
 		"ORBIT_POST_COMMAND env var": {
-			envVarName:  "ORBIT_POST_COMMAND",
-			envVarValue: "echo deprecated",
-			wantError:   true,
+			envVarName:   "ORBIT_POST_COMMAND",
+			envVarValue:  "echo deprecated",
+			wantError:    true,
 			wantContains: "ORBIT_POST_COMMAND",
 		},
 		"agent-level post-command is allowed": {
@@ -1355,8 +1357,8 @@ func TestDeprecationBlocksRun(t *testing.T) {
 				if err == nil {
 					t.Fatal("expected error for deprecated config, got nil")
 				}
-				if tc.wantContains != "" && !strings.Contains(err.Error(), tc.wantContains) {
-					t.Errorf("error should contain %q, got: %v", tc.wantContains, err)
+				if tc.wantContains != "" {
+					assert.Contains(t, err.Error(), tc.wantContains)
 				}
 			} else {
 				if err != nil {
@@ -1555,9 +1557,7 @@ func TestCommandTimeoutConfigurable(t *testing.T) {
 				if err == nil {
 					t.Fatal("expected timeout error, got nil")
 				}
-				if !strings.Contains(err.Error(), "timed out") {
-					t.Errorf("expected timeout error, got: %v", err)
-				}
+				assert.Contains(t, err.Error(), "timed out", "expected timeout error, got: %v", err)
 			} else {
 				if err != nil {
 					t.Errorf("unexpected error: %v", err)
@@ -1610,9 +1610,9 @@ func TestSignalDuringShellCommand(t *testing.T) {
 	}
 
 	// Error should indicate shutdown/cancellation
-	if !strings.Contains(err.Error(), "shutdown") && !strings.Contains(err.Error(), "context canceled") {
-		t.Errorf("expected shutdown/canceled error, got: %v", err)
-	}
+	errMsg := err.Error()
+	shutdownOrCanceled := strings.Contains(errMsg, "shutdown") || strings.Contains(errMsg, "context canceled")
+	assert.True(t, shutdownOrCanceled, "expected shutdown/canceled error, got: %v", err)
 }
 
 // TestSignalDuringPrePrompt verifies graceful shutdown during pre-prompt execution.
@@ -1670,7 +1670,7 @@ func TestSignalDuringPrePrompt(t *testing.T) {
 
 	// Cancel the context after a short delay to simulate interrupt
 	go func() {
-		<-agentCalled                    // Wait for agent to start
+		<-agentCalled                     // Wait for agent to start
 		time.Sleep(50 * time.Millisecond) // Small delay
 		cancel()
 	}()
@@ -1682,9 +1682,9 @@ func TestSignalDuringPrePrompt(t *testing.T) {
 	}
 
 	// Error should indicate pre-prompt failure
-	if !strings.Contains(err.Error(), "pre-prompt failed") && !strings.Contains(err.Error(), "context canceled") {
-		t.Errorf("expected pre-prompt failure error, got: %v", err)
-	}
+	errMsg2 := err.Error()
+	prePromptOrCanceled := strings.Contains(errMsg2, "pre-prompt failed") || strings.Contains(errMsg2, "context canceled")
+	assert.True(t, prePromptOrCanceled, "expected pre-prompt failure error, got: %v", err)
 }
 
 // --- Auto-consolidate integration tests ---
@@ -1862,7 +1862,7 @@ func TestNew_AgentAliasResolvesType(t *testing.T) {
 	cfg := Config{
 		TasksFile:     tasksFile,
 		LogDir:        logDir,
-		Agent:         "copilot-sonnet", // alias name
+		Agent:         "copilot-sonnet",                    // alias name
 		AgentConfig:   agents.AgentConfig{Type: "copilot"}, // base type
 		AgentResolver: resolver,
 		WorkingDir:    filepath.Dir(tasksFile),
@@ -1918,4 +1918,3 @@ func TestNew_AgentAliasWithoutType_FallsBackToName(t *testing.T) {
 		t.Errorf("expected agent name %q, got %q", "claude-code", o.agent.Name())
 	}
 }
-

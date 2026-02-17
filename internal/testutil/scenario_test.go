@@ -276,7 +276,7 @@ func TestScenarioBuilder_ComplexSequence(t *testing.T) {
 	scenario := NewScenario().
 		RetryableError("connection timeout").
 		RetryableError("connection timeout").
-		Success("session-1", 0.05).WithDelay(50 * time.Millisecond).
+		Success("session-1", 0.05).WithDelay(50*time.Millisecond).
 		Success("session-1", 0.03).
 		Build()
 
