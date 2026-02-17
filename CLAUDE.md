@@ -7,7 +7,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 This repository contains two related CLI tools for working with AI coding agents:
 
 - **Orbit** - Orchestrates AI coding agent sessions to implement spec phases sequentially. Supports Claude Code, OpenAI Codex, AWS Kiro, GitHub Copilot, and OpenCode. Handles session lifecycle, error recovery, log management, and multi-variant comparison runs. Includes a web interface for viewing runs and transcripts.
-- **Apsis** - Converts AI coding agent session transcripts to readable Markdown or HTML. Supports Claude Code (JSONL), OpenAI Codex (JSONL), GitHub Copilot (JSONL), and AWS Kiro (SQLite) sessions.
+- **Apsis** - Converts AI coding agent session transcripts to readable Markdown or HTML. Supports Claude Code (JSONL), OpenAI Codex (JSONL), GitHub Copilot (JSONL), AWS Kiro CLI (SQLite), and Kiro IDE sessions. Includes a web interface (`apsis serve`) for browsing sessions.
 
 ## Build and Development Commands
 
@@ -102,18 +102,22 @@ The codebase follows a clean internal package structure:
 ```
 cmd/
   orbit/main.go      - Orbit CLI entry point, subcommand routing (run, serve, register, init, demo, status, cleanup, finalize, compare, consolidate)
-  apsis/main.go      - Apsis CLI entry point, session listing and conversion
+  apsis/main.go      - Apsis CLI entry point, session listing, conversion, and web server
 internal/
   agents/            - Agent abstraction layer
     agent.go         - Agent interface definition (Run, Resume, IsInstalled, etc.)
     registry.go      - Agent factory and lookup
-    errors.go        - Error classification types
+    errors.go        - Shared error classification (ErrorClass types, ParseRetryAfter, classifier registry)
+    executor.go      - Common agent execution (build command, capture stdout/stderr, extract exit code)
+    retry.go         - Shared retry executor (RunWithRetry with backoff, rate-limit handling, context-aware sleep)
     claudecode/      - Claude Code agent implementation
     codex/           - OpenAI Codex agent implementation
-    kiro/            - AWS Kiro agent implementation
+    kiro/            - AWS Kiro agent implementation (includes kiro/logs/ for SQLite session discovery)
     copilot/         - GitHub Copilot agent implementation
     opencode/        - OpenCode agent implementation
-  orbit/orbit.go     - Main orchestration loop with retry logic
+  orbit/             - Main orchestration loop
+    orbit.go         - Orchestration loop with retry logic
+    shell.go         - Shell command execution (pre/post-command hooks)
   variants/          - Multi-variant comparison support
     types.go         - Variant struct and status types
     manager.go       - Variant lifecycle (create, run, finalize, cleanup)
@@ -125,36 +129,61 @@ internal/
   comparison/        - Variant comparison logic
     compare.go       - Comparator for analyzing variant diffs
     adapter.go       - AgentAdapter wrapping agents.Agent for Comparator
+    diff.go          - DiffGatherer for collecting variant diffs
+    learnings.go     - Learning extraction from variant implementations
+    prompt.go        - Comparison prompt generation
+    types.go         - Result, VariantData, VariantLearning, CrossVariantImprovement types
   consolidation/     - Variant consolidation support
     consolidator.go  - Applies improvements from non-chosen variants
+    git.go           - GitOps interface and implementation for git operations
     prompt.go        - AI prompt generation for consolidation
     recovery.go      - Rollback support for failed consolidations
     logger.go        - Consolidation logging and history
     types.go         - Config, result, and report types
   report/            - Comparison report generation
   cost/              - Cost formatting utilities for multi-unit cost display (USD, credits, premium requests)
+  sessions/          - Unified session listing and resolution across all agents
+    types.go         - SessionInfo, SessionMetadata, ResolvedSession types
+    lister.go        - Session discovery across Claude, Codex, Copilot, Kiro CLI, Kiro IDE
+    resolver.go      - Session resolution (ID or file path to parsed transcript)
+  apsisweb/          - Apsis web interface (apsis serve)
+    server.go        - HTTP server with middleware
+    handlers.go      - Request handlers for session listing and viewing
+    templates/       - HTML templates
+    static/          - Static assets (CSS, JS)
   rune/client.go     - Wrapper for rune CLI task management
   logs/manager.go    - Session log storage and summary management
   config/config.go   - Configuration loading via Viper (files, env vars, defaults)
-  debug/debug.go     - Debug logging utilities
+  debug/             - Debug logging utilities
+    debug.go         - Debug flag and Printf
+    entry.go         - Structured log entries
+    writer.go        - Log file writer
   display/           - Terminal display utilities
     spinner.go       - Progress spinner for long operations
     hyperlink.go     - Terminal hyperlink support (OSC 8)
   transcript/        - JSONL parsing and Markdown/HTML rendering for apsis and web
     last_entry.go    - Efficient last entry extraction from live transcripts
+    follow.go        - File following for live transcript updates
   registry/          - Run registry for tracking orbit runs across repositories
-  web/               - HTTP server, handlers, templates for web interface
+  web/               - HTTP server, handlers, templates for Orbit web interface
+  testutil/          - Test framework with mock agents and helpers
+    scenario.go      - ScenarioBuilder fluent API for defining agent behavior
+    agent.go         - TestAgent implementing agents.Agent
+    clock.go         - FakeClock for deterministic time testing
+    recorder.go      - Call tracking and assertions
+    generators.go    - Property-based testing generators (rapid)
+    orbithelpers/    - Orbit construction helpers (avoids import cycles)
 ```
 
 ### Orbit Flow
 
-`main.go` parses flags and detects tasks file from git branch → resolves agent (claude-code, codex, kiro, copilot, opencode) → `Orbit.Run()` loops through phases → `agent.Run()` executes the configured agent with `/next-task --phase` → agent-specific errors are classified and retried or propagated → logs are saved per phase.
+`main.go` parses flags and detects tasks file from git branch → resolves agent (claude-code, codex, kiro, copilot, opencode) → `Orbit.Run()` loops through phases → `agent.Run()` executes the configured agent with `/next-task --phase` (agents use shared `executor.Execute()` for CLI invocation) → errors are classified and retried via `agents.RunWithRetry()` → logs are saved per phase.
 
 For multi-variant runs: `main.go` creates a `variants.Manager` → creates worktrees for each variant → runs orchestration in each worktree (optionally in parallel) → collects diffs and runs comparison → generates comparison report.
 
 ### Apsis Flow
 
-Resolves input (session ID, file path, or stdin) → parses JSONL via `transcript.ParseJSONL()` → renders to Markdown via `transcript.RenderMarkdown()` → outputs to stdout or file.
+Resolves input (session ID, file path, or stdin) → uses `sessions.Resolver` to locate and parse the transcript → renders to Markdown or HTML via `transcript.RenderMarkdown()` / `transcript.RenderHTML()` → outputs to stdout or file. The `apsis serve` subcommand starts a web interface via `apsisweb.Server` for browsing sessions across all supported agents.
 
 ## Tasks File Auto-Detection (Orbit)
 
@@ -339,17 +368,17 @@ Orbit requires:
   - **GitHub Copilot** (`copilot`)
   - **OpenCode** (`opencode`) - open-source agent supporting multiple LLM providers
 
-Apsis has no external dependencies beyond access to `~/.claude/projects/`.
+Apsis has no external dependencies beyond access to agent session directories (`~/.claude/projects/`, `~/.codex/sessions/`, etc.).
 
 ## Error Handling (Orbit)
 
-Each agent has its own error classifier in `internal/agents/{agent}/errors.go`. Errors are classified into:
+Error classification is shared across all agents via `internal/agents/errors.go`, with agent-specific classifiers in `internal/agents/{agent}/errors.go`. Errors are classified into:
 - `ErrorClassRetryable` - transient errors (rate limits, connection issues) - exponential backoff
 - `ErrorClassFatal` - permanent errors (auth failures, invalid config) - stops immediately
 - `ErrorClassSessionInvalid` - session expired or not found - retries with fresh session
 - `ErrorClassRateLimitWait` - usage limits that reset at a specific time - waits until reset, then continues
 
-The orchestrator uses these classifications for retry decisions with exponential backoff (1s, 2s, 4s, 8s, 16s for connection errors). Non-retryable errors stop orchestration and preserve state for manual intervention.
+Retry logic is centralized in `internal/agents/retry.go` via `RunWithRetry()`, which handles exponential backoff, rate-limit wait resets (capped at 5), and context-aware interruptible sleep. Non-retryable errors stop orchestration and preserve state for manual intervention.
 
 ### Usage Limit Handling (Claude Code)
 

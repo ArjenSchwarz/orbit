@@ -1,43 +1,51 @@
 {
   "permissions": {
     "allow": [
-      "Read(**)",
-      "Write(**)",
+      "Bash(./apsis:*)",
+      "Bash(./bin/apsis:*)",
+      "Bash(./orbit:*)",
+      "Bash(cat:*)",
+      "Bash(claude:*)",
+      "Bash(echo:*)",
+      "Bash(file:*)",
+      "Bash(find:*)",
+      "Bash(gh:*)",
+      "Bash(git:*)",
+      "Bash(go:*)",
+      "Bash(golangci-lint:*)",
+      "Bash(govulncheck:*)",
+      "Bash(grep:*)",
+      "Bash(head:*)",
+      "Bash(ls:*)",
+      "Bash(make:*)",
+      "Bash(mkdir:*)",
+      "Bash(rm:*)",
+      "Bash(rune:*)",
+      "Bash(sed:*)",
+      "Bash(sleep:*)",
+      "Bash(staticcheck:*)",
+      "Bash(tail:*)",
+      "Bash(timeout:*)",
+      "Bash(wc:*)",
       "Edit(**)",
-
+      "Read(**)",
       "Read(~/.claude/**)",
       "Read(~/.golangci.yaml)",
       "Read(~/.golangci.yml)",
-
-      "Bash(make:*)",
-      "Bash(go:*)",
-      "Bash(git:*)",
-      "Bash(gh:*)",
-      "Bash(golangci-lint:*)",
-
-      "Bash(rune:*)",
-      "Bash(claude:*)",
-
-      "Bash(ls:*)",
-      "Bash(find:*)",
-      "Bash(grep:*)",
-      "Bash(head:*)",
-      "Bash(tail:*)",
-      "Bash(cat:*)",
-      "Bash(wc:*)",
-      "Bash(file:*)",
-      "Bash(sed:*)",
-
-      "Bash(mkdir:*)",
-      "Bash(rm:*)",
-
-      "Bash(echo:*)",
-      "Bash(sleep:*)",
-      "Bash(timeout:*)",
-
-      "Bash(./orbit:*)",
-      "Bash(./apsis:*)",
-      "Bash(./bin/apsis:*)"
+      "Write(**)"
+    ]
+  },
+  "hooks": {
+    "SessionStart": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash -c 'curl -fsSL https://raw.githubusercontent.com/ArjenSchwarz/agentic-coding/main/scripts/claude-remote.sh | bash'"
+          }
+        ]
+      }
     ]
   }
 }

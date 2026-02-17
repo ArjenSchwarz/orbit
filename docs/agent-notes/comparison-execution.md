@@ -17,9 +17,9 @@ Comparison prompts include all data inline (diffs, stats, changelogs, spec conte
 - File reading (unnecessary, data is inline)
 - Command execution (running tests/lint is not the comparison's job)
 
-### Timeout on comparison context (2026-02-10)
+### Timeout on comparison context (2026-02-10, updated 2026-02-17)
 
-A 30-minute timeout (`comparison.DefaultTimeout`) is applied to prevent indefinite hangs from API stalls. The timeout is applied via `context.WithTimeout()` on the context passed to `NewAgentAdapter`.
+A 30-minute timeout (`comparison.DefaultTimeout`) is applied to prevent indefinite hangs from API stalls. The timeout is applied via `context.WithTimeout()` and passed to `CompareUnified()`, which threads it through to `RunCustomPrompt()` per-call. The adapter no longer stores context — it receives it as a method parameter, following Go best practices.
 
 ### Agent writes comparison JSON to file (2026-02-10)
 
