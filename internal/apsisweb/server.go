@@ -72,7 +72,7 @@ func New(config Config) (*Server, error) {
 
 // setupRoutes configures the HTTP routes.
 func (s *Server) setupRoutes() {
-	static := stripPrefix("/static/", newStaticHandler())
+	static := http.StripPrefix("/static/", newStaticHandler())
 
 	// Static assets
 	s.router.Handle("GET /static/", web.SecurityHeaders(static))
