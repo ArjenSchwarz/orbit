@@ -20,6 +20,3 @@ func newStaticHandler() http.Handler {
 
 	return webutil.NewStaticHandler(subFS)
 }
-
-// stripPrefix removes a prefix from the request URL path for the static handler.
-var stripPrefix = webutil.StripPrefix

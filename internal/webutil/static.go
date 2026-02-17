@@ -4,9 +4,7 @@ package webutil
 import (
 	"io/fs"
 	"net/http"
-	"net/url"
 	"path"
-	"strings"
 )
 
 // staticHandler serves static files with correct content types and cache headers.
@@ -38,20 +36,3 @@ func (h *staticHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	h.fs.ServeHTTP(w, r)
 }
 
-// StripPrefix removes a prefix from the request URL path before passing to the handler.
-// If the path doesn't have the prefix, it returns 404.
-func StripPrefix(prefix string, h http.Handler) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		p := strings.TrimPrefix(r.URL.Path, prefix)
-		if len(p) < len(r.URL.Path) {
-			r2 := new(http.Request)
-			*r2 = *r
-			r2.URL = new(url.URL)
-			*r2.URL = *r.URL
-			r2.URL.Path = p
-			h.ServeHTTP(w, r2)
-		} else {
-			http.NotFound(w, r)
-		}
-	})
-}

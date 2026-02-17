@@ -58,7 +58,7 @@ func (s *Server) setupRoutes() {
 	// Note: Go 1.22+ ServeMux handles path parameters with {name} syntax
 
 	// Static files
-	staticHandler := stripPrefix("/static/", newStaticHandler())
+	staticHandler := http.StripPrefix("/static/", newStaticHandler())
 	s.router.Handle("GET /static/", SecurityHeaders(staticHandler))
 
 	// Transcript CSS (served from transcript package to avoid duplication)
