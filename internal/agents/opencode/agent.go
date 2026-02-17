@@ -299,7 +299,7 @@ func (a *Agent) execute(ctx context.Context, opts agents.RunOptions, resume bool
 		Duration:  execResult.Duration,
 		ExitCode:  execResult.ExitCode,
 		Output:    string(raw),
-		Stderr:    execResult.Stderr,
+		Stderr:    string(execResult.Stderr),
 		RawJSON:   raw,
 	}
 

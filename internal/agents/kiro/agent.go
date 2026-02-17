@@ -180,7 +180,7 @@ func (a *Agent) execute(ctx context.Context, opts agents.RunOptions, resume bool
 		Duration:  execResult.Duration,
 		ExitCode:  execResult.ExitCode,
 		Output:    string(execResult.Stdout),
-		Stderr:    execResult.Stderr,
+		Stderr:    string(execResult.Stderr),
 	}
 
 	if execResult.Err != nil {

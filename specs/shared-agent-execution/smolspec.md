@@ -46,7 +46,7 @@ type ExecuteResult struct {
     Stderr   []byte
     ExitCode int
     Duration time.Duration
-    Error    error
+    Err      error
 }
 
 func Execute(ctx context.Context, cfg ExecuteConfig) *ExecuteResult {

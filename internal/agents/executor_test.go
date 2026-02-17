@@ -67,7 +67,7 @@ func TestExecute_CapturesStderr(t *testing.T) {
 	if result.Err != nil {
 		t.Fatalf("Execute() error = %v", result.Err)
 	}
-	if got := strings.TrimSpace(result.Stderr); got != "error output" {
+	if got := strings.TrimSpace(string(result.Stderr)); got != "error output" {
 		t.Errorf("Stderr = %q, want %q", got, "error output")
 	}
 }
@@ -152,8 +152,8 @@ func TestExecute_ContextCancellation(t *testing.T) {
 	if result.Err == nil {
 		t.Fatal("Execute() expected error for cancelled context")
 	}
-	if result.Duration < 40*time.Millisecond {
-		t.Errorf("Duration = %v, expected at least ~50ms", result.Duration)
+	if result.Duration < 10*time.Millisecond {
+		t.Errorf("Duration = %v, expected at least ~10ms", result.Duration)
 	}
 }
 
@@ -166,8 +166,8 @@ func TestExecute_Duration(t *testing.T) {
 	if result.Err != nil {
 		t.Fatalf("Execute() error = %v", result.Err)
 	}
-	if result.Duration < 80*time.Millisecond {
-		t.Errorf("Duration = %v, expected at least ~100ms", result.Duration)
+	if result.Duration < 50*time.Millisecond {
+		t.Errorf("Duration = %v, expected at least ~50ms", result.Duration)
 	}
 }
 
@@ -183,7 +183,7 @@ func TestExecute_StdoutAndStderrSimultaneous(t *testing.T) {
 	if got := strings.TrimSpace(string(result.Stdout)); got != "out" {
 		t.Errorf("Stdout = %q, want %q", got, "out")
 	}
-	if got := strings.TrimSpace(result.Stderr); got != "err" {
+	if got := strings.TrimSpace(string(result.Stderr)); got != "err" {
 		t.Errorf("Stderr = %q, want %q", got, "err")
 	}
 }

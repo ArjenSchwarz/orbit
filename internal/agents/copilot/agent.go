@@ -178,7 +178,7 @@ func (a *Agent) execute(ctx context.Context, opts agents.RunOptions, resume bool
 		Duration:  execResult.Duration,
 		ExitCode:  execResult.ExitCode,
 		Output:    stdoutStr,
-		Stderr:    execResult.Stderr,
+		Stderr:    string(execResult.Stderr),
 	}
 
 	if execResult.Err != nil {
@@ -186,7 +186,7 @@ func (a *Agent) execute(ctx context.Context, opts agents.RunOptions, resume bool
 	}
 
 	// Extract usage metrics from CLI output
-	if usage := ParseUsage(stdoutStr, execResult.Stderr); usage != nil {
+	if usage := ParseUsage(stdoutStr, string(execResult.Stderr)); usage != nil {
 		result.Cost = &agents.CostMetrics{
 			PremiumRequests: usage.PremiumRequests,
 			InputTokens:     usage.InputTokens,

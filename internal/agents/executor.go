@@ -3,6 +3,7 @@ package agents
 import (
 	"bytes"
 	"context"
+	"errors"
 	"os"
 	"os/exec"
 	"time"
@@ -26,7 +27,7 @@ type ExecuteResult struct {
 	// Stdout is the captured standard output.
 	Stdout []byte
 	// Stderr is the captured standard error.
-	Stderr string
+	Stderr []byte
 	// ExitCode is the process exit code: 0 for success, -1 if the exit code
 	// could not be determined (e.g. the command was not found).
 	ExitCode int
@@ -58,7 +59,7 @@ func Execute(ctx context.Context, cfg ExecuteConfig) *ExecuteResult {
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout = &stdout
 	cmd.Stderr = &stderr
-	cmd.Stdin = nil
+	cmd.Stdin = nil // Prevent agents from blocking on interactive input
 
 	startTime := time.Now()
 	err := cmd.Run()
@@ -66,13 +67,14 @@ func Execute(ctx context.Context, cfg ExecuteConfig) *ExecuteResult {
 
 	result := &ExecuteResult{
 		Stdout:   stdout.Bytes(),
-		Stderr:   stderr.String(),
+		Stderr:   stderr.Bytes(),
 		Duration: duration,
 		Err:      err,
 	}
 
 	if err != nil {
-		if exitErr, ok := err.(*exec.ExitError); ok {
+		var exitErr *exec.ExitError
+		if errors.As(err, &exitErr) {
 			result.ExitCode = exitErr.ExitCode()
 		} else {
 			result.ExitCode = -1
