@@ -8,6 +8,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/assert"
+
 	"github.com/arjenschwarz/orbit/internal/debug"
 	"github.com/arjenschwarz/orbit/internal/logs"
 	"github.com/arjenschwarz/orbit/internal/rune"
@@ -56,9 +58,7 @@ func TestExecuteShellCommand_Success(t *testing.T) {
 	if result.ExitCode != 0 {
 		t.Errorf("ExitCode = %d, want 0", result.ExitCode)
 	}
-	if !strings.Contains(result.Stdout, "hello") {
-		t.Errorf("Stdout = %q, want to contain 'hello'", result.Stdout)
-	}
+	assert.Contains(t, result.Stdout, "hello", "Stdout = %q, want to contain 'hello'", result.Stdout)
 	if result.Duration <= 0 {
 		t.Error("Duration should be positive")
 	}
@@ -94,9 +94,7 @@ func TestExecuteShellCommand_Timeout(t *testing.T) {
 		t.Fatal("expected timeout error")
 	}
 
-	if !strings.Contains(err.Error(), "timed out") {
-		t.Errorf("expected timeout error, got: %v", err)
-	}
+	assert.Contains(t, err.Error(), "timed out", "expected timeout error, got: %v", err)
 
 	// Exit code should be -1 or negative for killed process
 	if result.ExitCode >= 0 && result.ExitCode != 137 { // 137 = 128 + SIGKILL(9)
@@ -121,9 +119,7 @@ func TestExecuteShellCommand_WorkingDir(t *testing.T) {
 		t.Fatalf("executeShellCommand() returned error: %v", err)
 	}
 
-	if !strings.Contains(result.Stdout, testFile) {
-		t.Errorf("Command should find file in working directory. Stdout = %q", result.Stdout)
-	}
+	assert.Contains(t, result.Stdout, testFile, "Command should find file in working directory. Stdout = %q", result.Stdout)
 }
 
 func TestExecuteShellCommand_EnvVars(t *testing.T) {
@@ -151,15 +147,11 @@ func TestExecuteShellCommand_EnvVars(t *testing.T) {
 	}
 
 	// Check that ORBIT_AGENT is set to the mock agent name
-	if !strings.Contains(result.Stdout, "AGENT=test-agent") {
-		t.Errorf("Expected ORBIT_AGENT=test-agent in output. Stdout = %q", result.Stdout)
-	}
+	assert.Contains(t, result.Stdout, "AGENT=test-agent", "Expected ORBIT_AGENT=test-agent in output. Stdout = %q", result.Stdout)
 
 	// ORBIT_PHASE_COUNT should be set (may be 0 if rune client can't parse the file,
 	// but the env var should still be present)
-	if !strings.Contains(result.Stdout, "PHASE=") {
-		t.Errorf("Expected ORBIT_PHASE_COUNT in output. Stdout = %q", result.Stdout)
-	}
+	assert.Contains(t, result.Stdout, "PHASE=", "Expected ORBIT_PHASE_COUNT in output. Stdout = %q", result.Stdout)
 }
 
 func TestExecuteShellCommand_CapturesOutput(t *testing.T) {
@@ -172,12 +164,8 @@ func TestExecuteShellCommand_CapturesOutput(t *testing.T) {
 		t.Fatalf("executeShellCommand() returned error: %v", err)
 	}
 
-	if !strings.Contains(result.Stdout, "stdout-message") {
-		t.Errorf("Expected 'stdout-message' in Stdout. Got: %q", result.Stdout)
-	}
-	if !strings.Contains(result.Stderr, "stderr-message") {
-		t.Errorf("Expected 'stderr-message' in Stderr. Got: %q", result.Stderr)
-	}
+	assert.Contains(t, result.Stdout, "stdout-message", "Expected 'stdout-message' in Stdout. Got: %q", result.Stdout)
+	assert.Contains(t, result.Stderr, "stderr-message", "Expected 'stderr-message' in Stderr. Got: %q", result.Stderr)
 }
 
 func TestSaveShellCommandLog(t *testing.T) {
@@ -223,18 +211,10 @@ func TestSaveShellCommandLog(t *testing.T) {
 
 	// Verify log content
 	logContent := string(content)
-	if !strings.Contains(logContent, "echo test-output") {
-		t.Errorf("Log should contain the command. Got: %s", logContent)
-	}
-	if !strings.Contains(logContent, "Exit Code: 0") {
-		t.Errorf("Log should contain exit code. Got: %s", logContent)
-	}
-	if !strings.Contains(logContent, "test-output") {
-		t.Errorf("Log should contain stdout. Got: %s", logContent)
-	}
-	if !strings.Contains(logContent, "Duration:") {
-		t.Errorf("Log should contain duration. Got: %s", logContent)
-	}
+	assert.Contains(t, logContent, "echo test-output", "Log should contain the command. Got: %s", logContent)
+	assert.Contains(t, logContent, "Exit Code: 0", "Log should contain exit code. Got: %s", logContent)
+	assert.Contains(t, logContent, "test-output", "Log should contain stdout. Got: %s", logContent)
+	assert.Contains(t, logContent, "Duration:", "Log should contain duration. Got: %s", logContent)
 
 	// Verify result is correct
 	if result.Command != "echo test-output" {
@@ -278,9 +258,9 @@ func TestExecuteShellCommand_ShutdownInterrupt(t *testing.T) {
 		t.Fatal("expected error due to shutdown")
 	}
 
-	if !strings.Contains(err.Error(), "shutdown") && !strings.Contains(err.Error(), "context canceled") {
-		t.Errorf("expected shutdown/canceled error, got: %v", err)
-	}
+	errMsg := err.Error()
+	shutdownOrCanceled := strings.Contains(errMsg, "shutdown") || strings.Contains(errMsg, "context canceled")
+	assert.True(t, shutdownOrCanceled, "expected shutdown/canceled error, got: %v", err)
 }
 
 func TestShellCommandResult_Struct(t *testing.T) {

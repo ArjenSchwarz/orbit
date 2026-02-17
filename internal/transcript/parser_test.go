@@ -6,6 +6,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/stretchr/testify/assert"
 )
 
 func TestParseJSONL_ValidInput(t *testing.T) {
@@ -136,9 +138,7 @@ func TestDetectFormat_OnlyUnknownTypes(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected error when no recognized format entries exist")
 	}
-	if !strings.Contains(err.Error(), "no format-defining entries") {
-		t.Errorf("expected 'no format-defining entries' error, got %q", err.Error())
-	}
+	assert.Contains(t, err.Error(), "no format-defining entries", "expected 'no format-defining entries' error, got %q", err.Error())
 }
 
 func TestParse_FileHistorySnapshotOnly(t *testing.T) {
@@ -316,9 +316,7 @@ func TestParseJSONL_ToolResultArrayContent(t *testing.T) {
 	}
 
 	// Verify the content contains our expected text
-	if !strings.Contains(content.Content, "Result item 1") {
-		t.Errorf("expected content to contain 'Result item 1', got %q", content.Content)
-	}
+	assert.Contains(t, content.Content, "Result item 1", "expected content to contain 'Result item 1', got %q", content.Content)
 }
 
 func TestParseJSONL_MixedContentFormats(t *testing.T) {
@@ -584,9 +582,7 @@ func TestParseJSONL_KeepsCommandNameEntriesWithoutMeta(t *testing.T) {
 		t.Fatalf("expected 2 entries (command not filtered), got %d", len(result.Entries))
 	}
 
-	if !strings.Contains(result.Entries[0].Message.Content[0].Text, "<command-name>") {
-		t.Errorf("expected command entry to be kept, got %q", result.Entries[0].Message.Content[0].Text)
-	}
+	assert.Contains(t, result.Entries[0].Message.Content[0].Text, "<command-name>", "expected command entry to be kept, got %q", result.Entries[0].Message.Content[0].Text)
 }
 
 func TestParseJSONL_FiltersLocalCommandStdoutAfterCommand(t *testing.T) {
@@ -918,9 +914,7 @@ func TestDetectFormat_WhitespaceOnly(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected error for whitespace-only file")
 	}
-	if !strings.Contains(err.Error(), "no format-defining entries found") {
-		t.Errorf("expected error about no format-defining entries, got %q", err.Error())
-	}
+	assert.Contains(t, err.Error(), "no format-defining entries found", "expected error about no format-defining entries, got %q", err.Error())
 }
 
 func TestDetectFormat_InvalidJSON(t *testing.T) {
@@ -930,9 +924,7 @@ func TestDetectFormat_InvalidJSON(t *testing.T) {
 		t.Fatal("expected error for invalid JSON")
 	}
 	// Invalid JSON is skipped during detection, resulting in no format found
-	if !strings.Contains(err.Error(), "no format-defining entries found") {
-		t.Errorf("expected error about no format-defining entries, got %q", err.Error())
-	}
+	assert.Contains(t, err.Error(), "no format-defining entries found", "expected error about no format-defining entries, got %q", err.Error())
 }
 
 func TestDetectFormat_UnrecognizedType(t *testing.T) {
@@ -942,9 +934,7 @@ func TestDetectFormat_UnrecognizedType(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected error when no recognized format entries exist")
 	}
-	if !strings.Contains(err.Error(), "no format-defining entries") {
-		t.Errorf("expected 'no format-defining entries' error, got %q", err.Error())
-	}
+	assert.Contains(t, err.Error(), "no format-defining entries", "expected 'no format-defining entries' error, got %q", err.Error())
 }
 
 func TestDetectFormat_MissingTypeField(t *testing.T) {
@@ -954,9 +944,7 @@ func TestDetectFormat_MissingTypeField(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected error when no recognized format entries exist")
 	}
-	if !strings.Contains(err.Error(), "no format-defining entries") {
-		t.Errorf("expected 'no format-defining entries' error, got %q", err.Error())
-	}
+	assert.Contains(t, err.Error(), "no format-defining entries", "expected 'no format-defining entries' error, got %q", err.Error())
 }
 
 func TestDetectFormat_BOMHandling(t *testing.T) {
@@ -1168,9 +1156,7 @@ func TestParseJSONL_InvalidJSONError(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected error for invalid JSON")
 	}
-	if !strings.Contains(err.Error(), "no recognizable format entries found") {
-		t.Errorf("expected 'no recognizable format entries found' error, got %q", err.Error())
-	}
+	assert.Contains(t, err.Error(), "no recognizable format entries found", "expected 'no recognizable format entries found' error, got %q", err.Error())
 }
 
 func TestParseJSONL_UnrecognizedFormatError(t *testing.T) {
@@ -1181,9 +1167,7 @@ func TestParseJSONL_UnrecognizedFormatError(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected error when no recognized format entries exist")
 	}
-	if !strings.Contains(err.Error(), "no recognizable format entries found") {
-		t.Errorf("expected 'no recognizable format entries found' error, got %q", err.Error())
-	}
+	assert.Contains(t, err.Error(), "no recognizable format entries found", "expected 'no recognizable format entries found' error, got %q", err.Error())
 }
 
 func TestParseJSONL_BOMHandledCorrectly(t *testing.T) {
@@ -1226,9 +1210,7 @@ invalid json line 2`
 	if err == nil {
 		t.Fatal("expected error when no valid entries found")
 	}
-	if !strings.Contains(err.Error(), "no valid entries found") {
-		t.Errorf("expected error containing 'no valid entries found', got %q", err.Error())
-	}
+	assert.Contains(t, err.Error(), "no valid entries found", "expected error containing 'no valid entries found', got %q", err.Error())
 }
 
 func TestParseJSONL_CodexValidFile(t *testing.T) {
@@ -1302,32 +1284,20 @@ func TestCodexToMarkdown_FullPipeline(t *testing.T) {
 	md := RenderMarkdown(result.Entries, opts)
 
 	// Verify basic structure
-	if !strings.Contains(md, "# Codex Session") {
-		t.Error("expected title in markdown output")
-	}
-	if !strings.Contains(md, "**Session ID:** `test-session`") {
-		t.Error("expected session ID in markdown output")
-	}
+	assert.Contains(t, md, "# Codex Session", "expected title in markdown output")
+	assert.Contains(t, md, "**Session ID:** `test-session`", "expected session ID in markdown output")
 
 	// Verify user message is present
-	if !strings.Contains(md, "## 👤 User") {
-		t.Error("expected user message header in markdown output")
-	}
+	assert.Contains(t, md, "## 👤 User", "expected user message header in markdown output")
 
 	// Verify assistant message is present
-	if !strings.Contains(md, "## 🤖 Assistant") {
-		t.Error("expected assistant message header in markdown output")
-	}
+	assert.Contains(t, md, "## 🤖 Assistant", "expected assistant message header in markdown output")
 
 	// Verify tool call is present (shell_command)
-	if !strings.Contains(md, "shell_command") {
-		t.Error("expected shell_command tool in markdown output")
-	}
+	assert.Contains(t, md, "shell_command", "expected shell_command tool in markdown output")
 
 	// Verify thinking block is present (from reasoning)
-	if !strings.Contains(md, "💭 Thinking") {
-		t.Error("expected thinking block in markdown output")
-	}
+	assert.Contains(t, md, "💭 Thinking", "expected thinking block in markdown output")
 }
 
 func TestCodexToHTML_FullPipeline(t *testing.T) {
@@ -1351,30 +1321,18 @@ func TestCodexToHTML_FullPipeline(t *testing.T) {
 	html := RenderHTML(result.Entries, opts)
 
 	// Verify HTML document structure
-	if !strings.Contains(html, "<!DOCTYPE html>") {
-		t.Error("expected HTML doctype")
-	}
-	if !strings.Contains(html, "<html lang=\"en\">") {
-		t.Error("expected html tag")
-	}
-	if !strings.Contains(html, "<title>Codex Session</title>") {
-		t.Error("expected title tag")
-	}
+	assert.Contains(t, html, "<!DOCTYPE html>", "expected HTML doctype")
+	assert.Contains(t, html, "<html lang=\"en\">", "expected html tag")
+	assert.Contains(t, html, "<title>Codex Session</title>", "expected title tag")
 
 	// Verify user message is present
-	if !strings.Contains(html, "class=\"message user\"") {
-		t.Error("expected user message section in HTML output")
-	}
+	assert.Contains(t, html, "class=\"message user\"", "expected user message section in HTML output")
 
 	// Verify assistant message is present
-	if !strings.Contains(html, "class=\"message assistant\"") {
-		t.Error("expected assistant message section in HTML output")
-	}
+	assert.Contains(t, html, "class=\"message assistant\"", "expected assistant message section in HTML output")
 
 	// Verify tool call is present
-	if !strings.Contains(html, "shell_command") {
-		t.Error("expected shell_command tool in HTML output")
-	}
+	assert.Contains(t, html, "shell_command", "expected shell_command tool in HTML output")
 }
 
 func TestCodexToHTMLFragment_FullPipeline(t *testing.T) {
@@ -1398,20 +1356,12 @@ func TestCodexToHTMLFragment_FullPipeline(t *testing.T) {
 	fragment := RenderHTMLFragment(result.Entries, opts)
 
 	// Verify NO document structure
-	if strings.Contains(fragment, "<!DOCTYPE html>") {
-		t.Error("fragment should not contain HTML doctype")
-	}
-	if strings.Contains(fragment, "<html") {
-		t.Error("fragment should not contain html tag")
-	}
+	assert.NotContains(t, fragment, "<!DOCTYPE html>", "fragment should not contain HTML doctype")
+	assert.NotContains(t, fragment, "<html", "fragment should not contain html tag")
 
 	// Verify content is present
-	if !strings.Contains(fragment, "class=\"message user\"") {
-		t.Error("expected user message section in HTML fragment")
-	}
-	if !strings.Contains(fragment, "class=\"message assistant\"") {
-		t.Error("expected assistant message section in HTML fragment")
-	}
+	assert.Contains(t, fragment, "class=\"message user\"", "expected user message section in HTML fragment")
+	assert.Contains(t, fragment, "class=\"message assistant\"", "expected assistant message section in HTML fragment")
 }
 
 func TestCodexToMarkdown_ToolCalls(t *testing.T) {
@@ -1428,14 +1378,10 @@ func TestCodexToMarkdown_ToolCalls(t *testing.T) {
 	md := RenderMarkdown(result.Entries, RenderOptions{})
 
 	// Verify tool call name is present
-	if !strings.Contains(md, "shell_command") {
-		t.Error("expected shell_command in markdown output")
-	}
+	assert.Contains(t, md, "shell_command", "expected shell_command in markdown output")
 
 	// Verify tool result is present
-	if !strings.Contains(md, "file1.txt") {
-		t.Error("expected tool output in markdown")
-	}
+	assert.Contains(t, md, "file1.txt", "expected tool output in markdown")
 }
 
 func TestCodexToMarkdown_Reasoning(t *testing.T) {
@@ -1451,19 +1397,14 @@ func TestCodexToMarkdown_Reasoning(t *testing.T) {
 	md := RenderMarkdown(result.Entries, RenderOptions{})
 
 	// Verify thinking block is present
-	if !strings.Contains(md, "💭 Thinking") {
-		t.Error("expected thinking block in markdown output")
-	}
+	assert.Contains(t, md, "💭 Thinking", "expected thinking block in markdown output")
 
 	// Verify reasoning text is present
-	if !strings.Contains(md, "Analyzing the problem") {
-		t.Error("expected reasoning text in markdown output")
-	}
+	assert.Contains(t, md, "Analyzing the problem", "expected reasoning text in markdown output")
 
 	// Verify encrypted content is NOT present
-	if strings.Contains(md, "encrypted_content") || strings.Contains(md, "encrypted_data") {
-		t.Error("encrypted content should not appear in output")
-	}
+	assert.NotContains(t, md, "encrypted_content", "encrypted content should not appear in output")
+	assert.NotContains(t, md, "encrypted_data", "encrypted content should not appear in output")
 }
 
 func TestCodexToMarkdown_AgentReasoning(t *testing.T) {
@@ -1479,14 +1420,10 @@ func TestCodexToMarkdown_AgentReasoning(t *testing.T) {
 	md := RenderMarkdown(result.Entries, RenderOptions{})
 
 	// Verify thinking block is present
-	if !strings.Contains(md, "💭 Thinking") {
-		t.Error("expected thinking block in markdown output")
-	}
+	assert.Contains(t, md, "💭 Thinking", "expected thinking block in markdown output")
 
 	// Verify agent reasoning text is present
-	if !strings.Contains(md, "Planning the approach") {
-		t.Error("expected agent reasoning text in markdown output")
-	}
+	assert.Contains(t, md, "Planning the approach", "expected agent reasoning text in markdown output")
 }
 
 func TestCodexToMarkdown_AgentMessage(t *testing.T) {
@@ -1502,9 +1439,7 @@ func TestCodexToMarkdown_AgentMessage(t *testing.T) {
 	md := RenderMarkdown(result.Entries, RenderOptions{})
 
 	// Verify message text is present
-	if !strings.Contains(md, "I found 2 files") {
-		t.Error("expected agent message text in markdown output")
-	}
+	assert.Contains(t, md, "I found 2 files", "expected agent message text in markdown output")
 }
 
 func TestCodexToMarkdown_MultipleToolOutputs(t *testing.T) {
@@ -1523,15 +1458,9 @@ func TestCodexToMarkdown_MultipleToolOutputs(t *testing.T) {
 	md := RenderMarkdown(result.Entries, RenderOptions{})
 
 	// Verify all chunks are present
-	if !strings.Contains(md, "First chunk") {
-		t.Error("expected first chunk in markdown output")
-	}
-	if !strings.Contains(md, "Second chunk") {
-		t.Error("expected second chunk in markdown output")
-	}
-	if !strings.Contains(md, "Third chunk") {
-		t.Error("expected third chunk in markdown output")
-	}
+	assert.Contains(t, md, "First chunk", "expected first chunk in markdown output")
+	assert.Contains(t, md, "Second chunk", "expected second chunk in markdown output")
+	assert.Contains(t, md, "Third chunk", "expected third chunk in markdown output")
 }
 
 func TestCodexToHTML_ThinkingBlock(t *testing.T) {
@@ -1547,14 +1476,10 @@ func TestCodexToHTML_ThinkingBlock(t *testing.T) {
 	html := RenderHTML(result.Entries, RenderOptions{})
 
 	// Verify thinking block class is present
-	if !strings.Contains(html, "thinking-block") {
-		t.Error("expected thinking-block class in HTML output")
-	}
+	assert.Contains(t, html, "thinking-block", "expected thinking-block class in HTML output")
 
 	// Verify thinking content is present
-	if !strings.Contains(html, "Thinking about this") {
-		t.Error("expected thinking content in HTML output")
-	}
+	assert.Contains(t, html, "Thinking about this", "expected thinking content in HTML output")
 }
 
 // --- Phase 5: Error Handling and Negative Tests ---
@@ -1616,9 +1541,7 @@ func TestParseJSONL_InvalidFirstLineJSONError_Negative(t *testing.T) {
 			if err == nil {
 				t.Fatal("expected error for invalid JSON")
 			}
-			if !strings.Contains(err.Error(), "no recognizable format entries found") {
-				t.Errorf("expected 'no recognizable format entries found' error, got %q", err.Error())
-			}
+			assert.Contains(t, err.Error(), "no recognizable format entries found", "expected 'no recognizable format entries found' error, got %q", err.Error())
 		})
 	}
 }
@@ -1642,9 +1565,7 @@ func TestParseJSONL_UnknownFormatTypeError_Negative(t *testing.T) {
 			if err == nil {
 				t.Fatal("expected error when no recognized format entries exist")
 			}
-			if !strings.Contains(err.Error(), "no recognizable format entries found") {
-				t.Errorf("expected 'no recognizable format entries found' error, got %q", err.Error())
-			}
+			assert.Contains(t, err.Error(), "no recognizable format entries found", "expected 'no recognizable format entries found' error, got %q", err.Error())
 		})
 	}
 }
@@ -1656,9 +1577,7 @@ func TestParseJSONL_MissingTypeFieldError_Negative(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected error when no recognized format entries exist")
 	}
-	if !strings.Contains(err.Error(), "no recognizable format entries found") {
-		t.Errorf("expected 'no recognizable format entries found' error, got %q", err.Error())
-	}
+	assert.Contains(t, err.Error(), "no recognizable format entries found", "expected 'no recognizable format entries found' error, got %q", err.Error())
 }
 
 func TestParseJSONL_MalformedMiddleLineWarning_Negative(t *testing.T) {
@@ -1688,9 +1607,7 @@ func TestParseJSONL_MalformedMiddleLineWarning_Negative(t *testing.T) {
 	}
 
 	// Warning message should describe the issue
-	if !strings.Contains(result.Warnings[0].Message, "failed to parse JSON") {
-		t.Errorf("expected warning about JSON parsing, got %q", result.Warnings[0].Message)
-	}
+	assert.Contains(t, result.Warnings[0].Message, "failed to parse JSON", "expected warning about JSON parsing, got %q", result.Warnings[0].Message)
 }
 
 func TestParseJSONL_CodexAllLinesMalformedError_Negative(t *testing.T) {
@@ -1705,9 +1622,7 @@ still not valid json line 3`
 	if err == nil {
 		t.Fatal("expected error when no valid entries found")
 	}
-	if !strings.Contains(err.Error(), "no valid entries found") {
-		t.Errorf("expected error containing 'no valid entries found', got %q", err.Error())
-	}
+	assert.Contains(t, err.Error(), "no valid entries found", "expected error containing 'no valid entries found', got %q", err.Error())
 }
 
 func TestParseJSONL_TruncatedLastLineWarning_Negative(t *testing.T) {
@@ -1750,9 +1665,7 @@ func TestDetectFormat_WhitespaceOnly_Negative(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected error for whitespace-only file")
 	}
-	if !strings.Contains(err.Error(), "no format-defining entries found") {
-		t.Errorf("expected error about no format-defining entries, got %q", err.Error())
-	}
+	assert.Contains(t, err.Error(), "no format-defining entries found", "expected error about no format-defining entries, got %q", err.Error())
 }
 
 func TestDetectFormat_InvalidJSON_Negative(t *testing.T) {
@@ -1762,9 +1675,7 @@ func TestDetectFormat_InvalidJSON_Negative(t *testing.T) {
 		t.Fatal("expected error for invalid JSON")
 	}
 	// Invalid JSON is skipped during detection, resulting in no format found
-	if !strings.Contains(err.Error(), "no format-defining entries found") {
-		t.Errorf("expected error about no format-defining entries, got %q", err.Error())
-	}
+	assert.Contains(t, err.Error(), "no format-defining entries found", "expected error about no format-defining entries, got %q", err.Error())
 }
 
 func TestDetectFormat_UnknownType_Negative(t *testing.T) {
@@ -1773,9 +1684,7 @@ func TestDetectFormat_UnknownType_Negative(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected error when no recognized format entries exist")
 	}
-	if !strings.Contains(err.Error(), "no format-defining entries") {
-		t.Errorf("expected 'no format-defining entries' error, got %q", err.Error())
-	}
+	assert.Contains(t, err.Error(), "no format-defining entries", "expected 'no format-defining entries' error, got %q", err.Error())
 }
 
 // --- Kiro and Copilot Format Detection Tests ---

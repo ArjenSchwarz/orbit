@@ -3,9 +3,10 @@ package report
 import (
 	"os"
 	"path/filepath"
-	"strings"
 	"testing"
 	"time"
+
+	"github.com/stretchr/testify/assert"
 
 	"github.com/arjenschwarz/orbit/internal/comparison"
 )
@@ -62,25 +63,15 @@ func TestGenerateMarkdownReport_IncludesLearnings(t *testing.T) {
 	content := string(contentBytes)
 
 	// Verify learnings section exists
-	if !strings.Contains(content, "# Learnings") {
-		t.Errorf("Report should contain 'Learnings' section")
-	}
+	assert.Contains(t, content, "# Learnings", "Report should contain 'Learnings' section")
 
 	// Verify disclaimer
-	if !strings.Contains(content, "snapshot from the time of analysis") {
-		t.Error("Report should contain staleness disclaimer")
-	}
+	assert.Contains(t, content, "snapshot from the time of analysis", "Report should contain staleness disclaimer")
 
 	// Verify learning content
-	if !strings.Contains(content, "Use sync.Pool") {
-		t.Error("Report should contain learning title")
-	}
-	if !strings.Contains(content, "Performance optimization") {
-		t.Error("Report should contain learning rationale")
-	}
-	if !strings.Contains(content, "`pool.go:42`") {
-		t.Error("Report should contain file reference")
-	}
+	assert.Contains(t, content, "Use sync.Pool", "Report should contain learning title")
+	assert.Contains(t, content, "Performance optimization", "Report should contain learning rationale")
+	assert.Contains(t, content, "`pool.go:42`", "Report should contain file reference")
 }
 
 func TestGenerateMarkdownReport_OmitsEmptyLearnings(t *testing.T) {
@@ -126,9 +117,7 @@ func TestGenerateMarkdownReport_OmitsEmptyLearnings(t *testing.T) {
 	content := string(contentBytes)
 
 	// Verify learnings section does NOT exist
-	if strings.Contains(content, "## Learnings") {
-		t.Error("Report should NOT contain 'Learnings' section when no learnings exist")
-	}
+	assert.NotContains(t, content, "## Learnings", "Report should NOT contain 'Learnings' section when no learnings exist")
 }
 
 func TestGenerateMarkdownReport_GroupsLearningsByVariant(t *testing.T) {
@@ -190,22 +179,14 @@ func TestGenerateMarkdownReport_GroupsLearningsByVariant(t *testing.T) {
 	content := string(contentBytes)
 
 	// Verify both variant sections exist
-	if !strings.Contains(content, "### Variant 1") {
-		t.Error("Report should contain 'Variant 1' section")
-	}
-	if !strings.Contains(content, "### Variant 2") {
-		t.Error("Report should contain 'Variant 2' section")
-	}
+	assert.Contains(t, content, "### Variant 1", "Report should contain 'Variant 1' section")
+	assert.Contains(t, content, "### Variant 2", "Report should contain 'Variant 2' section")
 
 	// Verify variant 1 content
-	if !strings.Contains(content, "V1 Pattern") {
-		t.Error("Report should contain V1 Pattern learning")
-	}
+	assert.Contains(t, content, "V1 Pattern", "Report should contain V1 Pattern learning")
 
 	// Verify variant 2 content
-	if !strings.Contains(content, "V2 Testing") {
-		t.Error("Report should contain V2 Testing learning")
-	}
+	assert.Contains(t, content, "V2 Testing", "Report should contain V2 Testing learning")
 }
 
 func TestGenerateMarkdownReport_IncludesCategoryBadges(t *testing.T) {
@@ -259,7 +240,5 @@ func TestGenerateMarkdownReport_IncludesCategoryBadges(t *testing.T) {
 	content := string(contentBytes)
 
 	// Verify category badge format
-	if !strings.Contains(content, "[architecture]") {
-		t.Error("Report should contain [architecture] category badge")
-	}
+	assert.Contains(t, content, "[architecture]", "Report should contain [architecture] category badge")
 }

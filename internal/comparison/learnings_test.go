@@ -6,9 +6,9 @@ import (
 
 func TestGroupLearningsByVariant(t *testing.T) {
 	tests := map[string]struct {
-		input       []VariantLearning
-		wantGroups  int
-		wantCounts  map[int]int
+		input      []VariantLearning
+		wantGroups int
+		wantCounts map[int]int
 	}{
 		"empty input": {
 			input:      []VariantLearning{},

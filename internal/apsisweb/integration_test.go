@@ -8,9 +8,10 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
-	"strings"
 	"testing"
 	"time"
+
+	"github.com/stretchr/testify/assert"
 
 	"github.com/arjenschwarz/orbit/internal/agents/claudecode"
 )
@@ -78,12 +79,8 @@ func TestIntegrationEndToEnd(t *testing.T) {
 		}
 
 		body := readBody(t, resp)
-		if !strings.Contains(body, sessionID) {
-			t.Error("session list should contain mock session ID")
-		}
-		if !strings.Contains(body, "claude") {
-			t.Error("session list should show claude source")
-		}
+		assert.Contains(t, body, sessionID, "session list should contain mock session ID")
+		assert.Contains(t, body, "claude", "session list should show claude source")
 	})
 
 	t.Run("transcript renders successfully", func(t *testing.T) {
@@ -98,12 +95,8 @@ func TestIntegrationEndToEnd(t *testing.T) {
 		}
 
 		body := readBody(t, resp)
-		if !strings.Contains(body, sessionID) {
-			t.Error("transcript page should contain session ID")
-		}
-		if !strings.Contains(body, "Hello from integration test") {
-			t.Error("transcript page should contain message content")
-		}
+		assert.Contains(t, body, sessionID, "transcript page should contain session ID")
+		assert.Contains(t, body, "Hello from integration test", "transcript page should contain message content")
 	})
 
 	t.Run("nonexistent session returns 404", func(t *testing.T) {
@@ -139,8 +132,8 @@ func TestIntegrationEndToEnd(t *testing.T) {
 
 		checks := map[string]string{
 			"X-Content-Type-Options": "nosniff",
-			"X-Frame-Options":       "DENY",
-			"Referrer-Policy":       "no-referrer",
+			"X-Frame-Options":        "DENY",
+			"Referrer-Policy":        "no-referrer",
 		}
 		for header, want := range checks {
 			if got := resp.Header.Get(header); got != want {
@@ -161,12 +154,8 @@ func TestIntegrationEndToEnd(t *testing.T) {
 		}
 
 		body := readBody(t, resp)
-		if strings.Contains(body, "<!DOCTYPE html>") {
-			t.Error("fragment should not contain full HTML layout")
-		}
-		if !strings.Contains(body, sessionID) {
-			t.Error("fragment should contain session ID")
-		}
+		assert.NotContains(t, body, "<!DOCTYPE html>", "fragment should not contain full HTML layout")
+		assert.Contains(t, body, sessionID, "fragment should contain session ID")
 	})
 
 	// Clean shutdown

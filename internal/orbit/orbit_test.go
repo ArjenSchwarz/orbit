@@ -5,9 +5,10 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
-	"strings"
 	"testing"
 	"time"
+
+	"github.com/stretchr/testify/assert"
 
 	"github.com/arjenschwarz/orbit/internal/agents"
 	configPkg "github.com/arjenschwarz/orbit/internal/config"
@@ -244,9 +245,7 @@ func TestRunPostPromptWithRetry_MaxRetriesExceeded(t *testing.T) {
 	// Verify maxRetries (5) calls were made
 	agent.Recorder().AssertCallCount(t, maxRetries)
 
-	if !strings.Contains(err.Error(), "max retries exceeded") {
-		t.Errorf("expected 'max retries exceeded' in error message, got: %v", err)
-	}
+	assert.Contains(t, err.Error(), "max retries exceeded", "expected 'max retries exceeded' in error message, got: %v", err)
 
 	// Verify error is wrapped as ClassifiedError from agents package
 	var classified *agents.ClassifiedError
@@ -1060,14 +1059,10 @@ func TestIntegration_RunWithoutConfig(t *testing.T) {
 	}
 
 	// Verify error message mentions orbit init
-	if !strings.Contains(err.Error(), "orbit init") {
-		t.Errorf("expected error to mention 'orbit init', got: %v", err)
-	}
+	assert.Contains(t, err.Error(), "orbit init", "expected error to mention 'orbit init', got: %v", err)
 
 	// Verify error message mentions .orbit.yaml
-	if !strings.Contains(err.Error(), ".orbit.yaml") {
-		t.Errorf("expected error to mention '.orbit.yaml', got: %v", err)
-	}
+	assert.Contains(t, err.Error(), ".orbit.yaml", "expected error to mention '.orbit.yaml', got: %v", err)
 }
 
 func TestIntegration_VariantRunWithDifferentModels(t *testing.T) {
@@ -1252,9 +1247,7 @@ func TestRunAgentPreCommand_FailureAbortsRun(t *testing.T) {
 	if err == nil {
 		t.Error("runAgentPreCommand() should return error when command fails")
 	}
-	if !strings.Contains(err.Error(), "pre-command failed") {
-		t.Errorf("expected 'pre-command failed' in error message, got: %v", err)
-	}
+	assert.Contains(t, err.Error(), "pre-command failed", "expected 'pre-command failed' in error message, got: %v", err)
 }
 
 func TestRunAgentPostCommand_Success(t *testing.T) {
@@ -1441,9 +1434,7 @@ func TestRunPrePrompt_FailureAbortsRun(t *testing.T) {
 	if err == nil {
 		t.Error("runPrePrompt() should return error when agent fails")
 	}
-	if !strings.Contains(err.Error(), "pre-prompt failed") {
-		t.Errorf("expected 'pre-prompt failed' in error message, got: %v", err)
-	}
+	assert.Contains(t, err.Error(), "pre-prompt failed", "expected 'pre-prompt failed' in error message, got: %v", err)
 
 	// Verify agent was called exactly once
 	agent.Recorder().AssertCallCount(t, 1)
@@ -1834,11 +1825,11 @@ type nilResultAgent struct {
 	maxNils   int // How many nil results to return before succeeding
 }
 
-func (a *nilResultAgent) Name() string                          { return "nil-result-mock" }
-func (a *nilResultAgent) CLICommand() string                    { return "mock" }
-func (a *nilResultAgent) IsInstalled() bool                     { return true }
-func (a *nilResultAgent) Version() (string, error)              { return "1.0.0", nil }
-func (a *nilResultAgent) DefaultSessionDir() string             { return "" }
+func (a *nilResultAgent) Name() string              { return "nil-result-mock" }
+func (a *nilResultAgent) CLICommand() string        { return "mock" }
+func (a *nilResultAgent) IsInstalled() bool         { return true }
+func (a *nilResultAgent) Version() (string, error)  { return "1.0.0", nil }
+func (a *nilResultAgent) DefaultSessionDir() string { return "" }
 func (a *nilResultAgent) DiscoverSessions(_ context.Context, _ string) ([]agents.SessionInfo, error) {
 	return nil, nil
 }

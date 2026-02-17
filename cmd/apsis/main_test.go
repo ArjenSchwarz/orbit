@@ -10,6 +10,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/assert"
+
 	"github.com/arjenschwarz/orbit/internal/agents/claudecode"
 	"github.com/arjenschwarz/orbit/internal/sessions"
 	"github.com/arjenschwarz/orbit/internal/transcript"
@@ -174,9 +176,7 @@ func TestServeCommand_VersionFlag(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if !strings.Contains(buf.String(), "apsis serve version") {
-		t.Errorf("expected version output, got: %s", buf.String())
-	}
+	assert.Contains(t, buf.String(), "apsis serve version", "expected version output, got: %s", buf.String())
 }
 
 func TestServeCommand_HelpFlag(t *testing.T) {
@@ -292,9 +292,7 @@ func TestResolveFollowInput_StdinRejected(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected error for stdin input")
 	}
-	if !strings.Contains(err.Error(), "cannot follow stdin input") {
-		t.Errorf("expected error containing 'cannot follow stdin input', got: %v", err)
-	}
+	assert.Contains(t, err.Error(), "cannot follow stdin input", "expected error containing 'cannot follow stdin input', got: %v", err)
 }
 
 func TestResolveFollowInput_FilePath(t *testing.T) {
@@ -367,9 +365,7 @@ func TestResolveFollowInput_NotFound(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected error for non-existent session")
 	}
-	if !strings.Contains(err.Error(), "session not found") {
-		t.Errorf("expected 'session not found' error, got: %v", err)
-	}
+	assert.Contains(t, err.Error(), "session not found", "expected 'session not found' error, got: %v", err)
 }
 
 func TestValidateFollowMode(t *testing.T) {
@@ -426,9 +422,7 @@ func TestValidateFollowMode(t *testing.T) {
 				if err == nil {
 					t.Fatal("expected error but got nil")
 				}
-				if !strings.Contains(err.Error(), tt.errMsg) {
-					t.Errorf("expected error containing %q, got %q", tt.errMsg, err.Error())
-				}
+				assert.Contains(t, err.Error(), tt.errMsg, "expected error containing %q, got %q", tt.errMsg, err.Error())
 			} else {
 				if err != nil {
 					t.Errorf("unexpected error: %v", err)
@@ -582,30 +576,18 @@ func TestConvert(t *testing.T) {
 	result := output.String()
 
 	// Check header
-	if !strings.Contains(result, "# Session Transcript") {
-		t.Error("output should contain Session Transcript header")
-	}
+	assert.Contains(t, result, "# Session Transcript", "output should contain Session Transcript header")
 
 	// Check session ID
-	if !strings.Contains(result, "`test-session-id`") {
-		t.Error("output should contain session ID")
-	}
+	assert.Contains(t, result, "`test-session-id`", "output should contain session ID")
 
 	// Check user message
-	if !strings.Contains(result, "## 👤 User") {
-		t.Error("output should contain User heading")
-	}
-	if !strings.Contains(result, "Hello, Claude!") {
-		t.Error("output should contain user message text")
-	}
+	assert.Contains(t, result, "## 👤 User", "output should contain User heading")
+	assert.Contains(t, result, "Hello, Claude!", "output should contain user message text")
 
 	// Check assistant message
-	if !strings.Contains(result, "## 🤖 Assistant") {
-		t.Error("output should contain Assistant heading")
-	}
-	if !strings.Contains(result, "Hello! How can I help?") {
-		t.Error("output should contain assistant message text")
-	}
+	assert.Contains(t, result, "## 🤖 Assistant", "output should contain Assistant heading")
+	assert.Contains(t, result, "Hello! How can I help?", "output should contain assistant message text")
 }
 
 func TestConvert_EmptyFile(t *testing.T) {
@@ -616,9 +598,7 @@ func TestConvert_EmptyFile(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected error for empty file")
 	}
-	if !strings.Contains(err.Error(), "empty file") {
-		t.Errorf("expected error containing 'empty file', got: %v", err)
-	}
+	assert.Contains(t, err.Error(), "empty file", "expected error containing 'empty file', got: %v", err)
 }
 
 func TestFormatSize(t *testing.T) {
@@ -693,31 +673,17 @@ func TestConvert_HTMLFormat(t *testing.T) {
 	result := output.String()
 
 	// Check HTML structure
-	if !strings.Contains(result, "<!DOCTYPE html>") {
-		t.Error("output should contain DOCTYPE")
-	}
-	if !strings.Contains(result, "<title>Session Transcript</title>") {
-		t.Error("output should contain title")
-	}
-	if !strings.Contains(result, `<code>test-session-id</code>`) {
-		t.Error("output should contain session ID")
-	}
+	assert.Contains(t, result, "<!DOCTYPE html>", "output should contain DOCTYPE")
+	assert.Contains(t, result, "<title>Session Transcript</title>", "output should contain title")
+	assert.Contains(t, result, `<code>test-session-id</code>`, "output should contain session ID")
 
 	// Check user message
-	if !strings.Contains(result, `class="message user"`) {
-		t.Error("output should contain user message class")
-	}
-	if !strings.Contains(result, "Hello, Claude!") {
-		t.Error("output should contain user message text")
-	}
+	assert.Contains(t, result, `class="message user"`, "output should contain user message class")
+	assert.Contains(t, result, "Hello, Claude!", "output should contain user message text")
 
 	// Check assistant message
-	if !strings.Contains(result, `class="message assistant"`) {
-		t.Error("output should contain assistant message class")
-	}
-	if !strings.Contains(result, "Hello! How can I help?") {
-		t.Error("output should contain assistant message text")
-	}
+	assert.Contains(t, result, `class="message assistant"`, "output should contain assistant message class")
+	assert.Contains(t, result, "Hello! How can I help?", "output should contain assistant message text")
 }
 
 func TestConvert_UnsupportedFormat(t *testing.T) {
@@ -731,9 +697,7 @@ func TestConvert_UnsupportedFormat(t *testing.T) {
 	}
 
 	expectedMsg := "unsupported format: xml"
-	if !strings.Contains(err.Error(), expectedMsg) {
-		t.Errorf("expected error message to contain %q, got: %v", expectedMsg, err)
-	}
+	assert.Contains(t, err.Error(), expectedMsg, "expected error message to contain %q, got: %v", expectedMsg, err)
 }
 
 func TestRun_ListWithPositionalArg(t *testing.T) {
@@ -749,9 +713,7 @@ func TestRun_ListWithPositionalArg(t *testing.T) {
 	}
 
 	expectedMsg := "cannot specify both --list and a positional argument"
-	if !strings.Contains(err.Error(), expectedMsg) {
-		t.Errorf("expected error message to contain %q, got: %v", expectedMsg, err)
-	}
+	assert.Contains(t, err.Error(), expectedMsg, "expected error message to contain %q, got: %v", expectedMsg, err)
 }
 
 // --- Follow Mode Integration Tests ---
@@ -769,9 +731,7 @@ func TestRun_FollowModeValidation_OutputConflict(t *testing.T) {
 		t.Fatal("expected error when --follow and --output are both specified")
 	}
 
-	if !strings.Contains(err.Error(), "cannot use --output with --follow") {
-		t.Errorf("expected error about output conflict, got: %v", err)
-	}
+	assert.Contains(t, err.Error(), "cannot use --output with --follow", "expected error about output conflict, got: %v", err)
 }
 
 func TestRun_FollowModeValidation_HTMLConflict(t *testing.T) {
@@ -787,9 +747,7 @@ func TestRun_FollowModeValidation_HTMLConflict(t *testing.T) {
 		t.Fatal("expected error when --follow and --format html are both specified")
 	}
 
-	if !strings.Contains(err.Error(), "HTML output is not supported in follow mode") {
-		t.Errorf("expected error about HTML conflict, got: %v", err)
-	}
+	assert.Contains(t, err.Error(), "HTML output is not supported in follow mode", "expected error about HTML conflict, got: %v", err)
 }
 
 func TestRun_FollowModeValidation_StdinConflict(t *testing.T) {
@@ -847,9 +805,7 @@ func TestRun_FollowMode_SessionNotFound(t *testing.T) {
 		t.Fatal("expected error when session is not found")
 	}
 
-	if !strings.Contains(err.Error(), "session not found") {
-		t.Errorf("expected 'session not found' error, got: %v", err)
-	}
+	assert.Contains(t, err.Error(), "session not found", "expected 'session not found' error, got: %v", err)
 }
 
 func TestConvert_EmptyFile_Negative(t *testing.T) {
@@ -860,9 +816,7 @@ func TestConvert_EmptyFile_Negative(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected error for empty file")
 	}
-	if !strings.Contains(err.Error(), "empty file") {
-		t.Errorf("expected error containing 'empty file', got: %v", err)
-	}
+	assert.Contains(t, err.Error(), "empty file", "expected error containing 'empty file', got: %v", err)
 }
 
 func TestConvert_InvalidJSONFile_Negative(t *testing.T) {
@@ -921,14 +875,10 @@ func TestConvert_WarningSummaryOutput(t *testing.T) {
 	}
 
 	// Verify warning format: "Warning: line N: message"
-	if !strings.Contains(stderrOutput, "Warning: line 2:") {
-		t.Errorf("expected warning with line number format, got: %s", stderrOutput)
-	}
+	assert.Contains(t, stderrOutput, "Warning: line 2:", "expected warning with line number format, got: %s", stderrOutput)
 
 	// Verify warning summary: "Parsed with N warning(s)"
-	if !strings.Contains(stderrOutput, "Parsed with 1 warning(s)") {
-		t.Errorf("expected warning summary 'Parsed with 1 warning(s)', got: %s", stderrOutput)
-	}
+	assert.Contains(t, stderrOutput, "Parsed with 1 warning(s)", "expected warning summary 'Parsed with 1 warning(s)', got: %s", stderrOutput)
 }
 
 // TestConvert_CodexSessionToMarkdown tests the full pipeline: Codex JSONL -> ParseJSONL -> RenderMarkdown
@@ -951,43 +901,26 @@ func TestConvert_CodexSessionToMarkdown(t *testing.T) {
 	result := output.String()
 
 	// Verify header
-	if !strings.Contains(result, "# Session Transcript") {
-		t.Error("output should contain Session Transcript header")
-	}
+	assert.Contains(t, result, "# Session Transcript", "output should contain Session Transcript header")
 
 	// Verify session ID
-	if !strings.Contains(result, "`codex-test-session`") {
-		t.Error("output should contain session ID")
-	}
+	assert.Contains(t, result, "`codex-test-session`", "output should contain session ID")
 
 	// Verify user message
-	if !strings.Contains(result, "## 👤 User") {
-		t.Error("output should contain User heading")
-	}
-	if !strings.Contains(result, "List all files in the current directory") {
-		t.Error("output should contain user message text")
-	}
+	assert.Contains(t, result, "## 👤 User", "output should contain User heading")
+	assert.Contains(t, result, "List all files in the current directory", "output should contain user message text")
 
 	// Verify tool use (shell_command)
-	if !strings.Contains(result, "shell_command") {
-		t.Error("output should contain shell_command tool name")
-	}
-	if !strings.Contains(result, "ls -la") {
-		t.Error("output should contain command arguments")
-	}
+	assert.Contains(t, result, "shell_command", "output should contain shell_command tool name")
+	assert.Contains(t, result, "ls -la", "output should contain command arguments")
 
 	// Verify tool result
-	if !strings.Contains(result, "file1.txt") || !strings.Contains(result, "file2.txt") {
-		t.Error("output should contain tool result with file names")
-	}
+	assert.Contains(t, result, "file1.txt", "output should contain tool result with file names")
+	assert.Contains(t, result, "file2.txt", "output should contain tool result with file names")
 
 	// Verify assistant message
-	if !strings.Contains(result, "## 🤖 Assistant") {
-		t.Error("output should contain Assistant heading")
-	}
-	if !strings.Contains(result, "The directory contains 2 files") {
-		t.Error("output should contain assistant message text")
-	}
+	assert.Contains(t, result, "## 🤖 Assistant", "output should contain Assistant heading")
+	assert.Contains(t, result, "The directory contains 2 files", "output should contain assistant message text")
 }
 
 // TestConvert_CodexSessionToHTML tests the full pipeline: Codex JSONL -> ParseJSONL -> RenderHTML
@@ -1005,31 +938,17 @@ func TestConvert_CodexSessionToHTML(t *testing.T) {
 	result := output.String()
 
 	// Check HTML structure
-	if !strings.Contains(result, "<!DOCTYPE html>") {
-		t.Error("output should contain DOCTYPE")
-	}
-	if !strings.Contains(result, "<title>Session Transcript</title>") {
-		t.Error("output should contain title")
-	}
-	if !strings.Contains(result, "<code>codex-html-session</code>") {
-		t.Error("output should contain session ID")
-	}
+	assert.Contains(t, result, "<!DOCTYPE html>", "output should contain DOCTYPE")
+	assert.Contains(t, result, "<title>Session Transcript</title>", "output should contain title")
+	assert.Contains(t, result, "<code>codex-html-session</code>", "output should contain session ID")
 
 	// Check user message
-	if !strings.Contains(result, `class="message user"`) {
-		t.Error("output should contain user message class")
-	}
-	if !strings.Contains(result, "Hello from Codex!") {
-		t.Error("output should contain user message text")
-	}
+	assert.Contains(t, result, `class="message user"`, "output should contain user message class")
+	assert.Contains(t, result, "Hello from Codex!", "output should contain user message text")
 
 	// Check assistant message
-	if !strings.Contains(result, `class="message assistant"`) {
-		t.Error("output should contain assistant message class")
-	}
-	if !strings.Contains(result, "Hello! How can I help you today?") {
-		t.Error("output should contain assistant message text")
-	}
+	assert.Contains(t, result, `class="message assistant"`, "output should contain assistant message class")
+	assert.Contains(t, result, "Hello! How can I help you today?", "output should contain assistant message text")
 }
 
 // TestConvert_CodexReasoningBlocks tests that Codex reasoning blocks are rendered correctly
@@ -1049,17 +968,11 @@ func TestConvert_CodexReasoningBlocks(t *testing.T) {
 	result := output.String()
 
 	// Verify reasoning summary is rendered (not encrypted content)
-	if !strings.Contains(result, "Analyzing the problem") {
-		t.Error("output should contain reasoning summary text")
-	}
-	if strings.Contains(result, "encrypted_data_here") {
-		t.Error("output should NOT contain encrypted content")
-	}
+	assert.Contains(t, result, "Analyzing the problem", "output should contain reasoning summary text")
+	assert.NotContains(t, result, "encrypted_data_here", "output should NOT contain encrypted content")
 
 	// Verify agent_reasoning is also rendered
-	if !strings.Contains(result, "Additional reasoning context") {
-		t.Error("output should contain agent_reasoning text")
-	}
+	assert.Contains(t, result, "Additional reasoning context", "output should contain agent_reasoning text")
 }
 
 // TestIntegration_ApsisWithCodexFile tests apsis reading from a Codex JSONL file path
@@ -1097,12 +1010,8 @@ func TestIntegration_ApsisWithCodexFile(t *testing.T) {
 	}
 
 	result := output.String()
-	if !strings.Contains(result, "Integration test message") {
-		t.Error("output should contain user message")
-	}
-	if !strings.Contains(result, "Integration test response") {
-		t.Error("output should contain assistant response")
-	}
+	assert.Contains(t, result, "Integration test message", "output should contain user message")
+	assert.Contains(t, result, "Integration test response", "output should contain assistant response")
 }
 
 // --- resolveInput Tests for Dual-Location Checking ---
@@ -1226,9 +1135,7 @@ func TestResolveInput_ClaudeFirst_WhenBothExist(t *testing.T) {
 	n, _ := reader.Read(buf)
 	content := string(buf[:n])
 
-	if !strings.Contains(content, "claude session") {
-		t.Errorf("expected Claude session content, got: %s", content)
-	}
+	assert.Contains(t, content, "claude session", "expected Claude session content, got: %s", content)
 }
 
 func TestResolveInput_NotFound(t *testing.T) {
@@ -1251,9 +1158,7 @@ func TestResolveInput_NotFound(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected error for non-existent session")
 	}
-	if !strings.Contains(err.Error(), "session not found") {
-		t.Errorf("expected 'session not found' error, got: %v", err)
-	}
+	assert.Contains(t, err.Error(), "session not found", "expected 'session not found' error, got: %v", err)
 }
 
 // TestResolveInput_FallsThroughKiroWhenDatabaseNotFound tests that resolveInput
@@ -1285,9 +1190,7 @@ func TestResolveInput_FallsThroughKiroWhenDatabaseNotFound(t *testing.T) {
 	}
 
 	// The error should be "session not found", not a Kiro-specific error
-	if !strings.Contains(err.Error(), "session not found") {
-		t.Errorf("expected 'session not found' error, got: %v", err)
-	}
+	assert.Contains(t, err.Error(), "session not found", "expected 'session not found' error, got: %v", err)
 }
 
 // --- Follow Mode Integration Tests ---
@@ -1417,9 +1320,7 @@ func TestResolveFollowInput_KiroSessionNotSupported(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected error for Kiro session in follow mode")
 	}
-	if !strings.Contains(err.Error(), "session not found") {
-		t.Errorf("expected 'session not found' error, got: %v", err)
-	}
+	assert.Contains(t, err.Error(), "session not found", "expected 'session not found' error, got: %v", err)
 }
 
 // --- JSON Output Format Tests ---
@@ -1442,12 +1343,8 @@ func TestConvertToJSON_JSONL(t *testing.T) {
 		t.Error("expected output to start with '[' (JSON array)")
 	}
 	// Pretty-printed JSON has quotes on their own (not escaped in Contains check)
-	if !strings.Contains(result, `"type": "user"`) {
-		t.Error("expected output to contain user entry")
-	}
-	if !strings.Contains(result, `"type": "assistant"`) {
-		t.Error("expected output to contain assistant entry")
-	}
+	assert.Contains(t, result, `"type": "user"`, "expected output to contain user entry")
+	assert.Contains(t, result, `"type": "assistant"`, "expected output to contain assistant entry")
 }
 
 func TestConvertToJSON_Kiro(t *testing.T) {
@@ -1479,12 +1376,8 @@ func TestConvertToJSON_Kiro(t *testing.T) {
 	if !strings.HasPrefix(result, "{") {
 		t.Error("expected output to start with '{' (JSON object)")
 	}
-	if !strings.Contains(result, `"conversation_id"`) {
-		t.Error("expected output to contain conversation_id")
-	}
-	if !strings.Contains(result, `"usage_info"`) {
-		t.Error("expected output to contain usage_info")
-	}
+	assert.Contains(t, result, `"conversation_id"`, "expected output to contain conversation_id")
+	assert.Contains(t, result, `"usage_info"`, "expected output to contain usage_info")
 }
 
 func TestConvertToJSON_EmptyInput(t *testing.T) {
@@ -1513,12 +1406,8 @@ func TestConvertToJSON_InvalidLines(t *testing.T) {
 	result := output.String()
 	// Should have 2 valid entries in array (invalid line skipped)
 	// Pretty-printed JSON has quotes on their own
-	if !strings.Contains(result, `"type": "user"`) {
-		t.Error("expected output to contain user entry")
-	}
-	if !strings.Contains(result, `"type": "assistant"`) {
-		t.Error("expected output to contain assistant entry")
-	}
+	assert.Contains(t, result, `"type": "user"`, "expected output to contain user entry")
+	assert.Contains(t, result, `"type": "assistant"`, "expected output to contain assistant entry")
 }
 
 func TestConvert_JSONFormat(t *testing.T) {
@@ -1551,9 +1440,7 @@ func TestValidateFollowMode_JSONFormatConflict(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected error for JSON format in follow mode")
 	}
-	if !strings.Contains(err.Error(), "JSON output is not supported in follow mode") {
-		t.Errorf("expected JSON follow mode error, got: %v", err)
-	}
+	assert.Contains(t, err.Error(), "JSON output is not supported in follow mode", "expected JSON follow mode error, got: %v", err)
 }
 
 // --- Integration Test: Session Output Format ---
@@ -1609,20 +1496,12 @@ func TestIntegration_SessionOutputFormat(t *testing.T) {
 	}
 
 	// Verify output contains source indicators
-	if !strings.Contains(output, "[claude]") {
-		t.Error("output should contain [claude] source indicator")
-	}
-	if !strings.Contains(output, "[codex]") {
-		t.Error("output should contain [codex] source indicator")
-	}
+	assert.Contains(t, output, "[claude]", "output should contain [claude] source indicator")
+	assert.Contains(t, output, "[codex]", "output should contain [codex] source indicator")
 
 	// Verify output contains session IDs
-	if !strings.Contains(output, "test-session") {
-		t.Error("output should contain Claude session ID")
-	}
-	if !strings.Contains(output, "019b892c-3a14-7773-bd76-6465a8a0b634") {
-		t.Error("output should contain Codex session UUID")
-	}
+	assert.Contains(t, output, "test-session", "output should contain Claude session ID")
+	assert.Contains(t, output, "019b892c-3a14-7773-bd76-6465a8a0b634", "output should contain Codex session UUID")
 }
 
 // --- Latest Keyword Tests ---
@@ -1684,9 +1563,7 @@ func TestResolveLatestSession_NoSessions(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected error when no sessions exist")
 	}
-	if !strings.Contains(err.Error(), "no sessions found for project") {
-		t.Errorf("expected 'no sessions found for project' error, got: %v", err)
-	}
+	assert.Contains(t, err.Error(), "no sessions found for project", "expected 'no sessions found for project' error, got: %v", err)
 }
 
 func TestRunLatest_LatestKeywordNotShadowedByFile(t *testing.T) {
@@ -1757,9 +1634,7 @@ func TestRunLatest_LatestKeywordNotShadowedByFile(t *testing.T) {
 
 	// Verify stderr contains the "Using" message from runLatest
 	stderrOutput := stderrBuf.String()
-	if !strings.Contains(stderrOutput, "Using") {
-		t.Errorf("expected stderr to contain 'Using' message from latest resolution, got: %q", stderrOutput)
-	}
+	assert.Contains(t, stderrOutput, "Using", "expected stderr to contain 'Using' message from latest resolution, got: %q", stderrOutput)
 }
 
 // claudeProjectPath converts a project path to the Claude project directory name.
@@ -1820,12 +1695,8 @@ func TestRunLatest_NormalMode(t *testing.T) {
 	}
 
 	output := stdoutBuf.String()
-	if !strings.Contains(output, "test message") {
-		t.Error("output should contain the session's user message")
-	}
-	if !strings.Contains(output, "test response") {
-		t.Error("output should contain the session's assistant response")
-	}
+	assert.Contains(t, output, "test message", "output should contain the session's user message")
+	assert.Contains(t, output, "test response", "output should contain the session's assistant response")
 }
 
 // createDummySession creates a minimal valid JSONL session file with a controlled
@@ -1883,12 +1754,8 @@ func TestRunLatest_HTMLFormat(t *testing.T) {
 	}
 
 	output := stdoutBuf.String()
-	if !strings.Contains(output, "<!DOCTYPE html>") {
-		t.Error("output should contain DOCTYPE for HTML format")
-	}
-	if !strings.Contains(output, "<title>Session Transcript</title>") {
-		t.Error("output should contain HTML title")
-	}
+	assert.Contains(t, output, "<!DOCTYPE html>", "output should contain DOCTYPE for HTML format")
+	assert.Contains(t, output, "<title>Session Transcript</title>", "output should contain HTML title")
 }
 
 func TestRunLatest_JSONFormat(t *testing.T) {
@@ -1974,8 +1841,5 @@ func TestRunLatest_WithOutputFile(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to read output file: %v", err)
 	}
-	if !strings.Contains(string(data), "# Session Transcript") {
-		t.Error("output file should contain Session Transcript header")
-	}
+	assert.Contains(t, string(data), "# Session Transcript", "output file should contain Session Transcript header")
 }
-

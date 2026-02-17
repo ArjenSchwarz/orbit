@@ -7,6 +7,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/stretchr/testify/assert"
 )
 
 // newTestServer creates a server with a temp project directory for testing.
@@ -35,9 +37,7 @@ func TestHandleSessionListEmpty(t *testing.T) {
 	}
 
 	body := rec.Body.String()
-	if !strings.Contains(body, "No sessions found") {
-		t.Error("expected empty state message")
-	}
+	assert.Contains(t, body, "No sessions found", "expected empty state message")
 }
 
 func TestHandleSessionListExactRoot(t *testing.T) {
@@ -66,9 +66,7 @@ func TestHandleSessionListFragment(t *testing.T) {
 
 	// Fragment should not contain full layout
 	body := rec.Body.String()
-	if strings.Contains(body, "<!DOCTYPE html>") {
-		t.Error("fragment should not contain full HTML layout")
-	}
+	assert.NotContains(t, body, "<!DOCTYPE html>", "fragment should not contain full HTML layout")
 }
 
 func TestHandleTranscriptInvalidSource(t *testing.T) {
@@ -124,9 +122,7 @@ func TestHandleTranscriptCSS(t *testing.T) {
 	}
 
 	cacheControl := rec.Header().Get("Cache-Control")
-	if !strings.Contains(cacheControl, "max-age=31536000") {
-		t.Errorf("expected long cache, got %s", cacheControl)
-	}
+	assert.Contains(t, cacheControl, "max-age=31536000", "expected long cache, got %s", cacheControl)
 }
 
 func TestHandleStaticFiles(t *testing.T) {
@@ -157,7 +153,6 @@ func TestHandleStaticFiles(t *testing.T) {
 		})
 	}
 }
-
 
 func TestBuildSessionListDataSortsNewestFirst(t *testing.T) {
 	// Create a temp project directory with Claude sessions to test sort order
@@ -205,8 +200,8 @@ func TestSecurityHeaders(t *testing.T) {
 	// Check security headers are set
 	headers := map[string]string{
 		"X-Content-Type-Options": "nosniff",
-		"X-Frame-Options":       "DENY",
-		"Referrer-Policy":       "no-referrer",
+		"X-Frame-Options":        "DENY",
+		"Referrer-Policy":        "no-referrer",
 	}
 
 	for header, expected := range headers {

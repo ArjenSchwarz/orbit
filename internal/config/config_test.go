@@ -8,6 +8,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/assert"
+
 	"pgregory.net/rapid"
 
 	// Import agent packages to trigger their init() registration.
@@ -1177,9 +1179,7 @@ func TestLoad_ModelTypeCoercion_Boolean_Error(t *testing.T) {
 	if len(cfg.ConfigParseError) == 0 {
 		t.Fatal("expected parse error for boolean model")
 	}
-	if !strings.Contains(cfg.ConfigParseError[0].Error(), "model must be a string or number, got bool") {
-		t.Errorf("expected error to mention bool type, got: %v", cfg.ConfigParseError[0])
-	}
+	assert.Contains(t, cfg.ConfigParseError[0].Error(), "model must be a string or number, got bool", "expected error to mention bool type, got: %v", cfg.ConfigParseError[0])
 }
 
 func TestLoad_ModelTypeCoercion_Array_Error(t *testing.T) {
@@ -1203,9 +1203,7 @@ func TestLoad_ModelTypeCoercion_Array_Error(t *testing.T) {
 	if len(cfg.ConfigParseError) == 0 {
 		t.Fatal("expected parse error for array model")
 	}
-	if !strings.Contains(cfg.ConfigParseError[0].Error(), "model must be a string or number, got array") {
-		t.Errorf("expected error to mention array type, got: %v", cfg.ConfigParseError[0])
-	}
+	assert.Contains(t, cfg.ConfigParseError[0].Error(), "model must be a string or number, got array", "expected error to mention array type, got: %v", cfg.ConfigParseError[0])
 }
 
 func TestLoad_ModelTypeCoercion_Map_Error(t *testing.T) {
@@ -1228,9 +1226,7 @@ func TestLoad_ModelTypeCoercion_Map_Error(t *testing.T) {
 	if len(cfg.ConfigParseError) == 0 {
 		t.Fatal("expected parse error for map model")
 	}
-	if !strings.Contains(cfg.ConfigParseError[0].Error(), "model must be a string or number, got map") {
-		t.Errorf("expected error to mention map type, got: %v", cfg.ConfigParseError[0])
-	}
+	assert.Contains(t, cfg.ConfigParseError[0].Error(), "model must be a string or number, got map", "expected error to mention map type, got: %v", cfg.ConfigParseError[0])
 }
 
 // Tests for ResolveAliases validation
@@ -1250,9 +1246,7 @@ func TestResolveAliases_MissingType(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected error for missing type field")
 	}
-	if !strings.Contains(err.Error(), "missing required \"type\" field") {
-		t.Errorf("expected error to mention missing type, got: %v", err)
-	}
+	assert.Contains(t, err.Error(), "missing required \"type\" field", "expected error to mention missing type, got: %v", err)
 }
 
 func TestResolveAliases_UnknownType(t *testing.T) {
@@ -1270,9 +1264,7 @@ func TestResolveAliases_UnknownType(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected error for unknown type")
 	}
-	if !strings.Contains(err.Error(), "unknown agent type") {
-		t.Errorf("expected error to mention unknown type, got: %v", err)
-	}
+	assert.Contains(t, err.Error(), "unknown agent type", "expected error to mention unknown type, got: %v", err)
 }
 
 func TestResolveAliases_EmptyAgentsSection(t *testing.T) {
@@ -1285,9 +1277,7 @@ func TestResolveAliases_EmptyAgentsSection(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected error for empty agents section")
 	}
-	if !strings.Contains(err.Error(), "no agents configured") {
-		t.Errorf("expected error to mention no agents configured, got: %v", err)
-	}
+	assert.Contains(t, err.Error(), "no agents configured", "expected error to mention no agents configured, got: %v", err)
 }
 
 func TestResolveAliases_DuplicateAfterNormalization(t *testing.T) {
@@ -1307,9 +1297,7 @@ func TestResolveAliases_DuplicateAfterNormalization(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected error for duplicate aliases after normalization")
 	}
-	if !strings.Contains(err.Error(), "duplicate agent aliases") {
-		t.Errorf("expected error to mention duplicate aliases, got: %v", err)
-	}
+	assert.Contains(t, err.Error(), "duplicate agent aliases", "expected error to mention duplicate aliases, got: %v", err)
 }
 
 func TestResolveAliases_Valid(t *testing.T) {
@@ -1363,9 +1351,7 @@ func TestResolveAliases_PropagatesParseErrors(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected error from parse errors")
 	}
-	if !strings.Contains(err.Error(), "model must be a string or number") {
-		t.Errorf("expected parse error to be propagated, got: %v", err)
-	}
+	assert.Contains(t, err.Error(), "model must be a string or number", "expected parse error to be propagated, got: %v", err)
 }
 
 // Tests for RequireConfigFile
@@ -1390,9 +1376,7 @@ func TestRequireConfigFile_NotFound(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected error when config file not found")
 	}
-	if !strings.Contains(err.Error(), "orbit init") {
-		t.Errorf("expected error to mention orbit init, got: %v", err)
-	}
+	assert.Contains(t, err.Error(), "orbit init", "expected error to mention orbit init, got: %v", err)
 }
 
 // Tests for GetResolvedAgent
@@ -1464,9 +1448,7 @@ func TestGetResolvedAgent_NotFound(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected error for unknown agent")
 	}
-	if !strings.Contains(err.Error(), "not configured") {
-		t.Errorf("expected error to mention not configured, got: %v", err)
-	}
+	assert.Contains(t, err.Error(), "not configured", "expected error to mention not configured, got: %v", err)
 }
 
 func TestGetResolvedAgent_BeforeResolve(t *testing.T) {
@@ -1484,9 +1466,7 @@ func TestGetResolvedAgent_BeforeResolve(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected error when ResolveAliases not called")
 	}
-	if !strings.Contains(err.Error(), "ResolveAliases() must be called") {
-		t.Errorf("expected error about ResolveAliases, got: %v", err)
-	}
+	assert.Contains(t, err.Error(), "ResolveAliases() must be called", "expected error about ResolveAliases, got: %v", err)
 }
 
 // Tests for config merge behavior
@@ -2300,15 +2280,9 @@ agents:
 	if err == nil {
 		t.Fatal("expected error for deprecated top-level post-command")
 	}
-	if !strings.Contains(err.Error(), "deprecated") {
-		t.Errorf("expected error to mention 'deprecated', got: %v", err)
-	}
-	if !strings.Contains(err.Error(), "post-command") {
-		t.Errorf("expected error to mention 'post-command', got: %v", err)
-	}
-	if !strings.Contains(err.Error(), "post-prompt") {
-		t.Errorf("expected error to mention 'post-prompt' as replacement, got: %v", err)
-	}
+	assert.Contains(t, err.Error(), "deprecated", "expected error to mention 'deprecated', got: %v", err)
+	assert.Contains(t, err.Error(), "post-command", "expected error to mention 'post-command', got: %v", err)
+	assert.Contains(t, err.Error(), "post-prompt", "expected error to mention 'post-prompt' as replacement, got: %v", err)
 }
 
 func TestCheckDeprecation_TopLevelPostCommand_HomeConfig(t *testing.T) {
@@ -2327,9 +2301,7 @@ func TestCheckDeprecation_TopLevelPostCommand_HomeConfig(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected error for deprecated top-level post-command in home config")
 	}
-	if !strings.Contains(err.Error(), homeDir) {
-		t.Errorf("expected error to mention home config path, got: %v", err)
-	}
+	assert.Contains(t, err.Error(), homeDir, "expected error to mention home config path, got: %v", err)
 }
 
 func TestCheckDeprecation_EnvVar(t *testing.T) {
@@ -2344,12 +2316,8 @@ func TestCheckDeprecation_EnvVar(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected error for deprecated ORBIT_POST_COMMAND env var")
 	}
-	if !strings.Contains(err.Error(), "ORBIT_POST_COMMAND") {
-		t.Errorf("expected error to mention 'ORBIT_POST_COMMAND', got: %v", err)
-	}
-	if !strings.Contains(err.Error(), "ORBIT_POST_PROMPT") {
-		t.Errorf("expected error to mention 'ORBIT_POST_PROMPT' as replacement, got: %v", err)
-	}
+	assert.Contains(t, err.Error(), "ORBIT_POST_COMMAND", "expected error to mention 'ORBIT_POST_COMMAND', got: %v", err)
+	assert.Contains(t, err.Error(), "ORBIT_POST_PROMPT", "expected error to mention 'ORBIT_POST_PROMPT' as replacement, got: %v", err)
 }
 
 func TestCheckDeprecation_AllowsAgentLevelPostCommand(t *testing.T) {
@@ -2427,12 +2395,8 @@ func TestCheckDeprecation_BothEnvAndConfig(t *testing.T) {
 		t.Fatal("expected error for multiple deprecated configurations")
 	}
 	// Should report both deprecations
-	if !strings.Contains(err.Error(), "ORBIT_POST_COMMAND") {
-		t.Errorf("expected error to mention env var, got: %v", err)
-	}
-	if !strings.Contains(err.Error(), tmpDir) {
-		t.Errorf("expected error to mention config file path, got: %v", err)
-	}
+	assert.Contains(t, err.Error(), "ORBIT_POST_COMMAND", "expected error to mention env var, got: %v", err)
+	assert.Contains(t, err.Error(), tmpDir, "expected error to mention config file path, got: %v", err)
 }
 
 func TestCheckDeprecation_InvalidYAML(t *testing.T) {

@@ -6,6 +6,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/stretchr/testify/assert"
 )
 
 // TestConsolidateCommand_FlagParsing tests flag parsing and validation.
@@ -38,8 +40,8 @@ func TestConsolidateCommand_FlagParsing(t *testing.T) {
 			if err == nil {
 				t.Fatal("expected error, got nil")
 			}
-			if tc.wantErr != "" && !strings.Contains(err.Error(), tc.wantErr) {
-				t.Errorf("error %q should contain %q", err.Error(), tc.wantErr)
+			if tc.wantErr != "" {
+				assert.Contains(t, err.Error(), tc.wantErr)
 			}
 		})
 	}
@@ -73,9 +75,8 @@ func TestConsolidateCommand_SpecAutoDetection(t *testing.T) {
 
 	// Error should mention git branch detection failure
 	errStr := err.Error()
-	if !strings.Contains(errStr, "git") && !strings.Contains(errStr, "branch") && !strings.Contains(errStr, "spec") {
-		t.Errorf("error should mention git/branch/spec detection, got: %v", err)
-	}
+	gitOrBranchOrSpec := strings.Contains(errStr, "git") || strings.Contains(errStr, "branch") || strings.Contains(errStr, "spec")
+	assert.True(t, gitOrBranchOrSpec, "error should mention git/branch/spec detection, got: %v", err)
 }
 
 // TestConsolidateCommand_RollbackModeValidation tests that --rollback mode
@@ -104,14 +105,10 @@ func TestConsolidateCommand_RollbackModeValidation(t *testing.T) {
 	}
 
 	// Should NOT fail on variant validation
-	if strings.Contains(err.Error(), "--variant is required") {
-		t.Errorf("--rollback should not require --variant flag, got: %v", err)
-	}
+	assert.NotContains(t, err.Error(), "--variant is required", "--rollback should not require --variant flag, got: %v", err)
 
 	// Should fail on variant metadata lookup instead
-	if !strings.Contains(err.Error(), "no variant run found") {
-		t.Errorf("expected 'no variant run found' error, got: %v", err)
-	}
+	assert.Contains(t, err.Error(), "no variant run found", "expected 'no variant run found' error, got: %v", err)
 }
 
 // TestConsolidateCommand_VariantNotFound tests error message when variant doesn't exist.
@@ -178,9 +175,7 @@ agents:
 	}
 
 	// Error should mention the variant was not found
-	if !strings.Contains(err.Error(), "not found") {
-		t.Errorf("expected 'not found' in error, got: %v", err)
-	}
+	assert.Contains(t, err.Error(), "not found", "expected 'not found' in error, got: %v", err)
 }
 
 // TestTruncateString tests the truncateString helper function.

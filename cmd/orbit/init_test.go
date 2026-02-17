@@ -3,8 +3,9 @@ package main
 import (
 	"os"
 	"path/filepath"
-	"strings"
 	"testing"
+
+	"github.com/stretchr/testify/assert"
 )
 
 func TestInitCommand_NoExistingConfig(t *testing.T) {
@@ -31,12 +32,8 @@ func TestInitCommand_NoExistingConfig(t *testing.T) {
 	}
 
 	// Verify content contains expected values
-	if !strings.Contains(string(content), "type: claude-code") {
-		t.Errorf("config should contain 'type: claude-code', got: %s", content)
-	}
-	if !strings.Contains(string(content), "auto-approve: true") {
-		t.Errorf("config should contain 'auto-approve: true', got: %s", content)
-	}
+	assert.Contains(t, string(content), "type: claude-code", "config should contain 'type: claude-code', got: %s", content)
+	assert.Contains(t, string(content), "auto-approve: true", "config should contain 'auto-approve: true', got: %s", content)
 }
 
 func TestInitCommand_ExistingConfigFails(t *testing.T) {
@@ -62,9 +59,7 @@ func TestInitCommand_ExistingConfigFails(t *testing.T) {
 	}
 
 	// Verify error message
-	if !strings.Contains(err.Error(), "already exists") {
-		t.Errorf("error should mention file already exists, got: %v", err)
-	}
+	assert.Contains(t, err.Error(), "already exists", "error should mention file already exists, got: %v", err)
 
 	// Verify original content is unchanged
 	content, _ := os.ReadFile(configPath)
@@ -102,12 +97,8 @@ func TestInitCommand_ForceOverwrites(t *testing.T) {
 	}
 
 	// Verify content was replaced
-	if strings.Contains(string(content), "existing: config") {
-		t.Errorf("config should be overwritten, still contains old content")
-	}
-	if !strings.Contains(string(content), "type: claude-code") {
-		t.Errorf("config should contain new content with 'type: claude-code'")
-	}
+	assert.NotContains(t, string(content), "existing: config", "config should be overwritten, still contains old content")
+	assert.Contains(t, string(content), "type: claude-code", "config should contain new content with 'type: claude-code'")
 }
 
 func TestInitCommand_WritePermissionError(t *testing.T) {
@@ -139,9 +130,7 @@ func TestInitCommand_WritePermissionError(t *testing.T) {
 	}
 
 	// Verify error mentions write failure
-	if !strings.Contains(err.Error(), "failed to write") {
-		t.Errorf("error should mention write failure, got: %v", err)
-	}
+	assert.Contains(t, err.Error(), "failed to write", "error should mention write failure, got: %v", err)
 }
 
 func TestInitCommand_Help(t *testing.T) {

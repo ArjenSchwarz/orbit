@@ -5,6 +5,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/stretchr/testify/assert"
 )
 
 func TestRenderMarkdown_UserMessage(t *testing.T) {
@@ -22,15 +24,9 @@ func TestRenderMarkdown_UserMessage(t *testing.T) {
 
 	result := RenderMarkdown(entries, RenderOptions{})
 
-	if !strings.Contains(result, "## 👤 User") {
-		t.Error("expected User heading")
-	}
-	if !strings.Contains(result, "Hello, Claude!") {
-		t.Error("expected message content")
-	}
-	if !strings.Contains(result, "---") {
-		t.Error("expected horizontal rule")
-	}
+	assert.Contains(t, result, "## 👤 User", "expected User heading")
+	assert.Contains(t, result, "Hello, Claude!", "expected message content")
+	assert.Contains(t, result, "---", "expected horizontal rule")
 }
 
 func TestRenderMarkdown_AssistantMessage(t *testing.T) {
@@ -48,12 +44,8 @@ func TestRenderMarkdown_AssistantMessage(t *testing.T) {
 
 	result := RenderMarkdown(entries, RenderOptions{})
 
-	if !strings.Contains(result, "## 🤖 Assistant") {
-		t.Error("expected Assistant heading")
-	}
-	if !strings.Contains(result, "Hello! How can I help?") {
-		t.Error("expected message content")
-	}
+	assert.Contains(t, result, "## 🤖 Assistant", "expected Assistant heading")
+	assert.Contains(t, result, "Hello! How can I help?", "expected message content")
 }
 
 func TestRenderMarkdown_WhitespaceOnlyAssistantSkipped(t *testing.T) {
@@ -92,9 +84,7 @@ func TestRenderMarkdown_WhitespaceOnlyAssistantSkipped(t *testing.T) {
 	if count != 1 {
 		t.Errorf("expected 1 Assistant heading, got %d", count)
 	}
-	if !strings.Contains(result, "Real response") {
-		t.Error("expected real response content")
-	}
+	assert.Contains(t, result, "Real response", "expected real response content")
 }
 
 func TestRenderMarkdown_ThinkingBlock(t *testing.T) {
@@ -113,18 +103,10 @@ func TestRenderMarkdown_ThinkingBlock(t *testing.T) {
 
 	result := RenderMarkdown(entries, RenderOptions{})
 
-	if !strings.Contains(result, "<details>") {
-		t.Error("expected details tag")
-	}
-	if !strings.Contains(result, "<summary>💭 Thinking</summary>") {
-		t.Error("expected thinking summary")
-	}
-	if !strings.Contains(result, "Let me think about this...") {
-		t.Error("expected thinking content")
-	}
-	if !strings.Contains(result, "</details>") {
-		t.Error("expected closing details tag")
-	}
+	assert.Contains(t, result, "<details>", "expected details tag")
+	assert.Contains(t, result, "<summary>💭 Thinking</summary>", "expected thinking summary")
+	assert.Contains(t, result, "Let me think about this...", "expected thinking content")
+	assert.Contains(t, result, "</details>", "expected closing details tag")
 }
 
 func TestRenderMarkdown_ToolUse(t *testing.T) {
@@ -163,18 +145,10 @@ func TestRenderMarkdown_ToolUse(t *testing.T) {
 	result := RenderMarkdown(entries, RenderOptions{})
 
 	// Combined tool call + result in collapsible block
-	if !strings.Contains(result, "<details>") {
-		t.Error("expected details block for combined tool")
-	}
-	if !strings.Contains(result, "Bash: List files") {
-		t.Error("expected tool name and description in summary")
-	}
-	if !strings.Contains(result, "**Command:**") {
-		t.Error("expected Command section")
-	}
-	if !strings.Contains(result, "**Result:**") {
-		t.Error("expected Result section")
-	}
+	assert.Contains(t, result, "<details>", "expected details block for combined tool")
+	assert.Contains(t, result, "Bash: List files", "expected tool name and description in summary")
+	assert.Contains(t, result, "**Command:**", "expected Command section")
+	assert.Contains(t, result, "**Result:**", "expected Result section")
 }
 
 func TestRenderMarkdown_ToolResultSuccess(t *testing.T) {
@@ -194,15 +168,9 @@ func TestRenderMarkdown_ToolResultSuccess(t *testing.T) {
 	result := RenderMarkdown(entries, RenderOptions{})
 
 	// Unmatched results render in collapsible blocks
-	if !strings.Contains(result, "<details>") {
-		t.Error("expected details block for unmatched tool_result")
-	}
-	if !strings.Contains(result, "✅ Tool Result") {
-		t.Error("expected success summary")
-	}
-	if !strings.Contains(result, "File contents here") {
-		t.Error("expected result content")
-	}
+	assert.Contains(t, result, "<details>", "expected details block for unmatched tool_result")
+	assert.Contains(t, result, "✅ Tool Result", "expected success summary")
+	assert.Contains(t, result, "File contents here", "expected result content")
 }
 
 func TestRenderMarkdown_ToolResultError(t *testing.T) {
@@ -222,15 +190,9 @@ func TestRenderMarkdown_ToolResultError(t *testing.T) {
 	result := RenderMarkdown(entries, RenderOptions{})
 
 	// Unmatched error results render in collapsible blocks
-	if !strings.Contains(result, "<details>") {
-		t.Error("expected details block for unmatched tool_result")
-	}
-	if !strings.Contains(result, "❌ Tool Error") {
-		t.Error("expected error summary")
-	}
-	if !strings.Contains(result, "Error: file not found") {
-		t.Error("expected error content")
-	}
+	assert.Contains(t, result, "<details>", "expected details block for unmatched tool_result")
+	assert.Contains(t, result, "❌ Tool Error", "expected error summary")
+	assert.Contains(t, result, "Error: file not found", "expected error content")
 }
 
 func TestRenderMarkdown_TruncationRuneBoundary(t *testing.T) {
@@ -251,9 +213,8 @@ func TestRenderMarkdown_TruncationRuneBoundary(t *testing.T) {
 
 	// The output should be valid UTF-8 (no broken characters)
 	// Check for common emoji that should be preserved
-	if !strings.Contains(markdown, "🤖") && !strings.Contains(markdown, "✅") {
-		t.Error("expected valid emoji in output")
-	}
+	hasEmoji := strings.Contains(markdown, "🤖") || strings.Contains(markdown, "✅")
+	assert.True(t, hasEmoji, "expected valid emoji in output")
 }
 
 func TestRenderMarkdown_TitleCustomization(t *testing.T) {
@@ -266,21 +227,15 @@ func TestRenderMarkdown_TitleCustomization(t *testing.T) {
 
 	result := RenderMarkdown(entries, opts)
 
-	if !strings.Contains(result, "# Phase 1 Session Transcript") {
-		t.Error("expected custom title")
-	}
-	if !strings.Contains(result, "**Session ID:** `test-session-123`") {
-		t.Error("expected session ID")
-	}
+	assert.Contains(t, result, "# Phase 1 Session Transcript", "expected custom title")
+	assert.Contains(t, result, "**Session ID:** `test-session-123`", "expected session ID")
 }
 
 func TestRenderMarkdown_DefaultTitle(t *testing.T) {
 	entries := []Entry{}
 	result := RenderMarkdown(entries, RenderOptions{})
 
-	if !strings.Contains(result, "# Session Transcript") {
-		t.Error("expected default title")
-	}
+	assert.Contains(t, result, "# Session Transcript", "expected default title")
 }
 
 func TestRenderMarkdown_CostDisplay(t *testing.T) {
@@ -348,13 +303,9 @@ func TestRenderMarkdown_CostDisplay(t *testing.T) {
 			result := RenderMarkdown(entries, opts)
 
 			if tc.wantCost {
-				if !strings.Contains(result, tc.expected) {
-					t.Errorf("expected %q in output, got:\n%s", tc.expected, result)
-				}
+				assert.Contains(t, result, tc.expected, "expected %q in output, got:\n%s", tc.expected, result)
 			} else {
-				if strings.Contains(result, "**Cost:**") {
-					t.Errorf("expected no cost in output, got:\n%s", result)
-				}
+				assert.NotContains(t, result, "**Cost:**", "expected no cost in output, got:\n%s", result)
 			}
 		})
 	}
@@ -416,12 +367,8 @@ func TestRenderMarkdown_UnknownContentTypes(t *testing.T) {
 
 	result := RenderMarkdown(entries, RenderOptions{})
 
-	if strings.Contains(result, "Should be skipped") {
-		t.Error("unknown content type should be skipped")
-	}
-	if !strings.Contains(result, "Should be visible") {
-		t.Error("known content type should be visible")
-	}
+	assert.NotContains(t, result, "Should be skipped", "unknown content type should be skipped")
+	assert.Contains(t, result, "Should be visible", "known content type should be visible")
 }
 
 func TestTruncateString_ShortString(t *testing.T) {
@@ -446,9 +393,7 @@ func TestTruncateString_Truncated(t *testing.T) {
 	if !strings.HasPrefix(result, "Hello") {
 		t.Errorf("expected prefix 'Hello', got %q", result)
 	}
-	if !strings.Contains(result, "... (truncated)") {
-		t.Error("expected truncation marker")
-	}
+	assert.Contains(t, result, "... (truncated)", "expected truncation marker")
 }
 
 func TestTruncateString_UTF8Safe(t *testing.T) {
@@ -461,13 +406,9 @@ func TestTruncateString_UTF8Safe(t *testing.T) {
 	if !strings.HasPrefix(result, "🎉🎊🎁") {
 		t.Errorf("expected '🎉🎊🎁' prefix, got %q", result)
 	}
-	if !strings.Contains(result, "... (truncated)") {
-		t.Error("expected truncation marker")
-	}
+	assert.Contains(t, result, "... (truncated)", "expected truncation marker")
 	// Should NOT contain broken UTF-8
-	if strings.Contains(result, "\uFFFD") {
-		t.Error("result contains replacement character (broken UTF-8)")
-	}
+	assert.NotContains(t, result, "\uFFFD", "result contains replacement character (broken UTF-8)")
 }
 
 func TestTruncateString_MixedUTF8(t *testing.T) {
@@ -666,21 +607,11 @@ func TestRenderMarkdown_TaskToolAlwaysCollapses(t *testing.T) {
 
 	result := RenderMarkdown(entries, RenderOptions{})
 
-	if !strings.Contains(result, "<details>") {
-		t.Error("subagent Task tool should always be wrapped in details")
-	}
-	if !strings.Contains(result, "<summary>✅ 🤖🔧 Explore: Search for config files</summary>") {
-		t.Error("expected subagent Task summary with robot emoji, tool emoji, subagent_type and description")
-	}
-	if !strings.Contains(result, "</details>") {
-		t.Error("expected closing details tag")
-	}
-	if !strings.Contains(result, "**Prompt:**") {
-		t.Error("expected Prompt section in subagent block")
-	}
-	if !strings.Contains(result, "**Result:**") {
-		t.Error("expected Result section in subagent block")
-	}
+	assert.Contains(t, result, "<details>", "subagent Task tool should always be wrapped in details")
+	assert.Contains(t, result, "<summary>✅ 🤖🔧 Explore: Search for config files</summary>", "expected subagent Task summary with robot emoji, tool emoji, subagent_type and description")
+	assert.Contains(t, result, "</details>", "expected closing details tag")
+	assert.Contains(t, result, "**Prompt:**", "expected Prompt section in subagent block")
+	assert.Contains(t, result, "**Result:**", "expected Result section in subagent block")
 }
 
 func TestRenderMarkdown_TaskToolFallback(t *testing.T) {
@@ -715,12 +646,8 @@ func TestRenderMarkdown_TaskToolFallback(t *testing.T) {
 
 			result := RenderMarkdown(entries, RenderOptions{})
 
-			if !strings.Contains(result, "<details>") {
-				t.Error("Task tool should still be wrapped in details")
-			}
-			if !strings.Contains(result, "<summary>🔧 Task</summary>") {
-				t.Errorf("expected fallback summary '🔧 Task' for case %s", name)
-			}
+			assert.Contains(t, result, "<details>", "Task tool should still be wrapped in details")
+			assert.Contains(t, result, "<summary>🔧 Task</summary>", "expected fallback summary '🔧 Task' for case %s", name)
 		})
 	}
 }
@@ -748,13 +675,9 @@ func TestRenderMarkdown_SkillToolRendersSimple(t *testing.T) {
 	result := RenderMarkdown(entries, RenderOptions{})
 
 	// Skill should render as simple line, not collapsible
-	if !strings.Contains(result, "🔧 Skill: next-task") {
-		t.Error("expected Skill tool to show skill name")
-	}
+	assert.Contains(t, result, "🔧 Skill: next-task", "expected Skill tool to show skill name")
 	// Should NOT be wrapped in details
-	if strings.Contains(result, "<details>") {
-		t.Error("Skill tool should not be wrapped in details")
-	}
+	assert.NotContains(t, result, "<details>", "Skill tool should not be wrapped in details")
 }
 
 func TestRenderMarkdown_SkillToolFallback(t *testing.T) {
@@ -789,13 +712,9 @@ func TestRenderMarkdown_SkillToolFallback(t *testing.T) {
 			result := RenderMarkdown(entries, RenderOptions{})
 
 			// Skill should render as simple line with fallback name
-			if !strings.Contains(result, "🔧 Skill") {
-				t.Errorf("expected fallback '🔧 Skill' for case %s", name)
-			}
+			assert.Contains(t, result, "🔧 Skill", "expected fallback '🔧 Skill' for case %s", name)
 			// Should NOT be wrapped in details
-			if strings.Contains(result, "<details>") {
-				t.Error("Skill tool should not be wrapped in details")
-			}
+			assert.NotContains(t, result, "<details>", "Skill tool should not be wrapped in details")
 		})
 	}
 }
@@ -839,15 +758,9 @@ func TestRenderMarkdown_SkillToolWithDescription(t *testing.T) {
 	result := RenderMarkdown(entries, RenderOptions{})
 
 	// Skill with description should be collapsible
-	if !strings.Contains(result, "<details>") {
-		t.Error("expected Skill with description to be wrapped in details")
-	}
-	if !strings.Contains(result, "🔧 Skill: permission-analyzer") {
-		t.Error("expected Skill tool to show skill name in summary")
-	}
-	if !strings.Contains(result, "This skill analyzes permissions") {
-		t.Error("expected skill description to be rendered")
-	}
+	assert.Contains(t, result, "<details>", "expected Skill with description to be wrapped in details")
+	assert.Contains(t, result, "🔧 Skill: permission-analyzer", "expected Skill tool to show skill name in summary")
+	assert.Contains(t, result, "This skill analyzes permissions", "expected skill description to be rendered")
 }
 
 func TestRenderMarkdown_ToolNameCaseSensitive(t *testing.T) {
@@ -896,12 +809,8 @@ func TestRenderMarkdown_ToolNameCaseSensitive(t *testing.T) {
 			result := RenderMarkdown(entries, RenderOptions{})
 
 			// Case-insensitive variants use combined collapsible format
-			if !strings.Contains(result, "<details>") {
-				t.Errorf("tool %q should use combined collapsible format", toolName)
-			}
-			if !strings.Contains(result, toolName) {
-				t.Errorf("expected tool name %q in output", toolName)
-			}
+			assert.Contains(t, result, "<details>", "tool %q should use combined collapsible format", toolName)
+			assert.Contains(t, result, toolName, "expected tool name %q in output", toolName)
 		})
 	}
 }
@@ -943,12 +852,8 @@ func TestRenderMarkdown_ShortToolNoCollapse(t *testing.T) {
 	result := RenderMarkdown(entries, RenderOptions{})
 
 	// Combined tool call + result uses collapsible format
-	if !strings.Contains(result, "<details>") {
-		t.Error("combined tool block should use details")
-	}
-	if !strings.Contains(result, "Bash") {
-		t.Error("expected tool name in output")
-	}
+	assert.Contains(t, result, "<details>", "combined tool block should use details")
+	assert.Contains(t, result, "Bash", "expected tool name in output")
 }
 
 func TestRenderMarkdown_LongToolCollapses(t *testing.T) {
@@ -987,12 +892,8 @@ func TestRenderMarkdown_LongToolCollapses(t *testing.T) {
 
 	result := RenderMarkdown(entries, RenderOptions{})
 
-	if !strings.Contains(result, "<details>") {
-		t.Error("combined tool block should use details")
-	}
-	if !strings.Contains(result, "Bash") {
-		t.Error("expected tool name in output")
-	}
+	assert.Contains(t, result, "<details>", "combined tool block should use details")
+	assert.Contains(t, result, "Bash", "expected tool name in output")
 }
 
 func TestRenderMarkdown_ExactThresholdNoCollapse(t *testing.T) {
@@ -1103,9 +1004,7 @@ func TestRenderMarkdown_ResultMatchesToolUse(t *testing.T) {
 	result := RenderMarkdown(entries, RenderOptions{})
 
 	// Subagent result should be combined with robot emoji
-	if !strings.Contains(result, "<summary>✅ 🤖🔧 Explore: Search for files</summary>") {
-		t.Error("expected subagent tool result with robot emoji in summary")
-	}
+	assert.Contains(t, result, "<summary>✅ 🤖🔧 Explore: Search for files</summary>", "expected subagent tool result with robot emoji in summary")
 }
 
 func TestRenderMarkdown_UnmatchedResultThreshold(t *testing.T) {
@@ -1130,12 +1029,8 @@ func TestRenderMarkdown_UnmatchedResultThreshold(t *testing.T) {
 
 	result := RenderMarkdown(entries, RenderOptions{})
 
-	if !strings.Contains(result, "<details>") {
-		t.Error("long unmatched result should be collapsed")
-	}
-	if !strings.Contains(result, "<summary>✅ Tool Result</summary>") {
-		t.Error("unmatched result should use generic 'Tool Result' summary")
-	}
+	assert.Contains(t, result, "<details>", "long unmatched result should be collapsed")
+	assert.Contains(t, result, "<summary>✅ Tool Result</summary>", "unmatched result should use generic 'Tool Result' summary")
 }
 
 func TestRenderMarkdown_ResultErrorIcon(t *testing.T) {
@@ -1178,9 +1073,7 @@ func TestRenderMarkdown_ResultErrorIcon(t *testing.T) {
 	result := RenderMarkdown(entries, RenderOptions{})
 
 	// Error result for subagent should use ❌ icon with robot emoji
-	if !strings.Contains(result, "<summary>❌ 🤖🔧 Explore: Search files</summary>") {
-		t.Error("error result should use ❌ icon with robot emoji in summary")
-	}
+	assert.Contains(t, result, "<summary>❌ 🤖🔧 Explore: Search files</summary>", "error result should use ❌ icon with robot emoji in summary")
 }
 
 func TestRenderMarkdown_ZeroLengthResultNoCollapse(t *testing.T) {
@@ -1206,12 +1099,8 @@ func TestRenderMarkdown_ZeroLengthResultNoCollapse(t *testing.T) {
 	result := RenderMarkdown(entries, RenderOptions{})
 
 	// Unmatched results use collapsible format even when empty
-	if !strings.Contains(result, "<details>") {
-		t.Error("unmatched tool_result should use collapsible format")
-	}
-	if !strings.Contains(result, "Tool Result") {
-		t.Error("expected Tool Result summary")
-	}
+	assert.Contains(t, result, "<details>", "unmatched tool_result should use collapsible format")
+	assert.Contains(t, result, "Tool Result", "expected Tool Result summary")
 }
 
 // Cross-entry tool matching tests (Task 11)
@@ -1258,17 +1147,11 @@ func TestRenderMarkdown_CrossEntryToolMatching(t *testing.T) {
 	result := RenderMarkdown(entries, RenderOptions{})
 
 	// Subagent combines tool_use and tool_result into one block with robot emoji
-	if !strings.Contains(result, "<summary>✅ 🤖🔧 Explore: Find config</summary>") {
-		t.Error("subagent should have combined block with robot emoji")
-	}
+	assert.Contains(t, result, "<summary>✅ 🤖🔧 Explore: Find config</summary>", "subagent should have combined block with robot emoji")
 
 	// Should have Prompt and Result sections
-	if !strings.Contains(result, "**Prompt:**") {
-		t.Error("expected Prompt section in combined block")
-	}
-	if !strings.Contains(result, "**Result:**") {
-		t.Error("expected Result section in combined block")
-	}
+	assert.Contains(t, result, "**Prompt:**", "expected Prompt section in combined block")
+	assert.Contains(t, result, "**Result:**", "expected Result section in combined block")
 }
 
 func TestRenderMarkdown_ToolResultInUserEntry(t *testing.T) {
@@ -1310,13 +1193,9 @@ func TestRenderMarkdown_ToolResultInUserEntry(t *testing.T) {
 	result := RenderMarkdown(entries, RenderOptions{})
 
 	// Skill tool_use should render as simple line
-	if !strings.Contains(result, "🔧 Skill: commit") {
-		t.Error("Skill tool_use should render with skill name")
-	}
+	assert.Contains(t, result, "🔧 Skill: commit", "Skill tool_use should render with skill name")
 	// Skill result should be skipped
-	if strings.Contains(result, "Commit created successfully") {
-		t.Error("Skill tool_result should not be rendered")
-	}
+	assert.NotContains(t, result, "Commit created successfully", "Skill tool_result should not be rendered")
 }
 
 func TestRenderMarkdown_MultipleToolsMatching(t *testing.T) {
@@ -1374,17 +1253,11 @@ func TestRenderMarkdown_MultipleToolsMatching(t *testing.T) {
 	result := RenderMarkdown(entries, RenderOptions{})
 
 	// Subagent Task result should be combined with robot emoji
-	if !strings.Contains(result, "<summary>✅ 🤖🔧 Plan: Create plan</summary>") {
-		t.Error("subagent Task result should have robot emoji")
-	}
+	assert.Contains(t, result, "<summary>✅ 🤖🔧 Plan: Create plan</summary>", "subagent Task result should have robot emoji")
 	// Skill should render as simple line (not collapsible, result skipped)
-	if !strings.Contains(result, "🔧 Skill: rune") {
-		t.Error("Skill should render with skill name")
-	}
+	assert.Contains(t, result, "🔧 Skill: rune", "Skill should render with skill name")
 	// Skill result should be skipped
-	if strings.Contains(result, "Rune executed") {
-		t.Error("Skill result should not be rendered")
-	}
+	assert.NotContains(t, result, "Rune executed", "Skill result should not be rendered")
 }
 
 // Tests for Markdown output format (Task 15)
@@ -1413,19 +1286,13 @@ func TestRenderMarkdown_SkillSimpleFormat(t *testing.T) {
 	result := RenderMarkdown(entries, RenderOptions{})
 
 	// Skill should render as simple line
-	if !strings.Contains(result, "🔧 Skill: next-task") {
-		t.Error("expected Skill to render with skill name")
-	}
+	assert.Contains(t, result, "🔧 Skill: next-task", "expected Skill to render with skill name")
 
 	// Should NOT use details/summary
-	if strings.Contains(result, "<details>") {
-		t.Error("Skill should not use details element")
-	}
+	assert.NotContains(t, result, "<details>", "Skill should not use details element")
 
 	// Should NOT show JSON
-	if strings.Contains(result, "```json") {
-		t.Error("Skill should not show JSON input")
-	}
+	assert.NotContains(t, result, "```json", "Skill should not show JSON input")
 }
 
 func TestRenderMarkdown_UncollapsedFormat(t *testing.T) {
@@ -1465,18 +1332,10 @@ func TestRenderMarkdown_UncollapsedFormat(t *testing.T) {
 	result := RenderMarkdown(entries, RenderOptions{})
 
 	// Combined tool call + result uses collapsible format
-	if !strings.Contains(result, "<details>") {
-		t.Error("combined tool block should use details")
-	}
-	if !strings.Contains(result, "Bash") {
-		t.Error("expected tool name in output")
-	}
-	if !strings.Contains(result, "**Command:**") {
-		t.Error("expected Command section")
-	}
-	if !strings.Contains(result, "**Result:**") {
-		t.Error("expected Result section")
-	}
+	assert.Contains(t, result, "<details>", "combined tool block should use details")
+	assert.Contains(t, result, "Bash", "expected tool name in output")
+	assert.Contains(t, result, "**Command:**", "expected Command section")
+	assert.Contains(t, result, "**Result:**", "expected Result section")
 }
 
 // Golden file integration tests for collapsible blocks
@@ -1692,15 +1551,9 @@ func TestBackwardCompat_NoIDFields(t *testing.T) {
 
 	// With no matching IDs, tool_use stores metadata but doesn't render
 	// tool_result renders as standalone collapsible with "Tool Result" summary
-	if !strings.Contains(result, "<details>") {
-		t.Error("expected unmatched tool_result to use collapsible format")
-	}
-	if !strings.Contains(result, "Tool Result") {
-		t.Error("expected unmatched tool_result to have 'Tool Result' summary")
-	}
-	if !strings.Contains(result, "File list here") {
-		t.Error("expected tool result content to be rendered")
-	}
+	assert.Contains(t, result, "<details>", "expected unmatched tool_result to use collapsible format")
+	assert.Contains(t, result, "Tool Result", "expected unmatched tool_result to have 'Tool Result' summary")
+	assert.Contains(t, result, "File list here", "expected tool result content to be rendered")
 }
 
 func TestBackwardCompat_TruncationPreserved(t *testing.T) {
@@ -1742,19 +1595,13 @@ func TestBackwardCompat_TruncationPreserved(t *testing.T) {
 	result := RenderMarkdown(entries, RenderOptions{})
 
 	// Should be collapsed (combined tool block)
-	if !strings.Contains(result, "<details>") {
-		t.Error("combined tool block should be collapsed")
-	}
+	assert.Contains(t, result, "<details>", "combined tool block should be collapsed")
 
 	// Should NOT be truncated (no truncation marker)
-	if strings.Contains(result, "... (truncated)") {
-		t.Error("content should not be truncated with <details> blocks")
-	}
+	assert.NotContains(t, result, "... (truncated)", "content should not be truncated with <details> blocks")
 
 	// Verify the FULL result content IS present (no truncation)
-	if !strings.Contains(result, longResult) {
-		t.Error("full result should be present, not truncated")
-	}
+	assert.Contains(t, result, longResult, "full result should be present, not truncated")
 }
 
 func TestBackwardCompat_PreTruncationDecision(t *testing.T) {
@@ -1785,17 +1632,11 @@ func TestBackwardCompat_PreTruncationDecision(t *testing.T) {
 	result := RenderMarkdown(entries, RenderOptions{})
 
 	// Should be collapsed because original content exceeds threshold
-	if !strings.Contains(result, "<details>") {
-		t.Error("result exceeding threshold should be collapsed")
-	}
-	if !strings.Contains(result, "<summary>✅ Tool Result</summary>") {
-		t.Error("expected collapsed result summary")
-	}
+	assert.Contains(t, result, "<details>", "result exceeding threshold should be collapsed")
+	assert.Contains(t, result, "<summary>✅ Tool Result</summary>", "expected collapsed result summary")
 
 	// Content should NOT be truncated (it's under MaxToolResultRunes)
-	if strings.Contains(result, "... (truncated)") {
-		t.Error("content under MaxToolResultRunes should not be truncated")
-	}
+	assert.NotContains(t, result, "... (truncated)", "content under MaxToolResultRunes should not be truncated")
 }
 
 func TestRenderMarkdown_EditGroupErrorMessagePreserved(t *testing.T) {
@@ -1839,19 +1680,13 @@ func TestRenderMarkdown_EditGroupErrorMessagePreserved(t *testing.T) {
 	result := RenderMarkdown(entries, RenderOptions{})
 
 	// Should show error icon
-	if !strings.Contains(result, "❌") {
-		t.Error("expected error icon for failed edit")
-	}
+	assert.Contains(t, result, "❌", "expected error icon for failed edit")
 
 	// Should show Edit tool summary
-	if !strings.Contains(result, "🔧 Edit:") {
-		t.Error("expected Edit tool in summary")
-	}
+	assert.Contains(t, result, "🔧 Edit:", "expected Edit tool in summary")
 
 	// Error message should be preserved and rendered as fallback content
-	if !strings.Contains(result, "Error: old_string not found in file") {
-		t.Error("expected error message to be preserved in output")
-	}
+	assert.Contains(t, result, "Error: old_string not found in file", "expected error message to be preserved in output")
 }
 
 func TestRenderMarkdown_EditGroupLegacyFormatPreserved(t *testing.T) {
@@ -1895,14 +1730,10 @@ func TestRenderMarkdown_EditGroupLegacyFormatPreserved(t *testing.T) {
 	result := RenderMarkdown(entries, RenderOptions{})
 
 	// Should show success icon
-	if !strings.Contains(result, "✅") {
-		t.Error("expected success icon for successful edit")
-	}
+	assert.Contains(t, result, "✅", "expected success icon for successful edit")
 
 	// Legacy content should be preserved and rendered as fallback
-	if !strings.Contains(result, "Successfully edited /path/to/file.go") {
-		t.Error("expected legacy format content to be preserved in output")
-	}
+	assert.Contains(t, result, "Successfully edited /path/to/file.go", "expected legacy format content to be preserved in output")
 }
 
 // Tests for RenderEntries and BuildToolMeta (Incremental Rendering)
@@ -1998,18 +1829,10 @@ func TestRenderEntries_WithToolUseAndResult(t *testing.T) {
 	result := RenderEntries(entries, toolMeta, skillDescriptions, opts)
 
 	// Should have the combined subagent block
-	if !strings.Contains(result, "🤖🔧 Explore: Find files") {
-		t.Error("expected subagent summary in RenderEntries output")
-	}
-	if !strings.Contains(result, "**Prompt:**") {
-		t.Error("expected Prompt section in RenderEntries output")
-	}
-	if !strings.Contains(result, "**Result:**") {
-		t.Error("expected Result section in RenderEntries output")
-	}
-	if !strings.Contains(result, "Found 3 files") {
-		t.Error("expected result content in RenderEntries output")
-	}
+	assert.Contains(t, result, "🤖🔧 Explore: Find files", "expected subagent summary in RenderEntries output")
+	assert.Contains(t, result, "**Prompt:**", "expected Prompt section in RenderEntries output")
+	assert.Contains(t, result, "**Result:**", "expected Result section in RenderEntries output")
+	assert.Contains(t, result, "Found 3 files", "expected result content in RenderEntries output")
 }
 
 func TestRenderEntries_NoHeader(t *testing.T) {
@@ -2036,16 +1859,10 @@ func TestRenderEntries_NoHeader(t *testing.T) {
 	result := RenderEntries(entries, toolMeta, skillDescriptions, opts)
 
 	// Should NOT contain title or session ID (those are in header)
-	if strings.Contains(result, "Custom Title") {
-		t.Error("RenderEntries should not include title")
-	}
-	if strings.Contains(result, "test-session-123") {
-		t.Error("RenderEntries should not include session ID")
-	}
+	assert.NotContains(t, result, "Custom Title", "RenderEntries should not include title")
+	assert.NotContains(t, result, "test-session-123", "RenderEntries should not include session ID")
 	// Should contain the message content
-	if !strings.Contains(result, "Test message") {
-		t.Error("expected message content in RenderEntries output")
-	}
+	assert.Contains(t, result, "Test message", "expected message content in RenderEntries output")
 }
 
 func TestBuildToolMeta_ExtractsToolInfo(t *testing.T) {
@@ -2267,10 +2084,6 @@ func TestRenderEntries_WithPreBuiltToolMeta(t *testing.T) {
 	result := RenderEntries(newEntries, toolMeta, skillDescriptions, RenderOptions{})
 
 	// Should correctly match the result to the tool_use via pre-built toolMeta
-	if !strings.Contains(result, "Bash: Print greeting") {
-		t.Error("expected tool description from pre-built toolMeta")
-	}
-	if !strings.Contains(result, "hello") {
-		t.Error("expected result content")
-	}
+	assert.Contains(t, result, "Bash: Print greeting", "expected tool description from pre-built toolMeta")
+	assert.Contains(t, result, "hello", "expected result content")
 }

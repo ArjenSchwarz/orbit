@@ -530,4 +530,3 @@ func TestAgent_DiscoverSessions_SessionInfoFields(t *testing.T) {
 	assert.Equal(t, int64(len(jsonValue)), info.Size)
 	assert.Equal(t, resolvedProjectDir, info.Project)
 }
-

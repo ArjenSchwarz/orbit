@@ -72,10 +72,10 @@ func TestErrorClassGen_ValidValues(t *testing.T) {
 	t.Parallel()
 
 	validClasses := map[agents.ErrorClass]bool{
-		agents.ErrorClassRetryable:     true,
-		agents.ErrorClassFatal:         true,
+		agents.ErrorClassRetryable:      true,
+		agents.ErrorClassFatal:          true,
 		agents.ErrorClassSessionInvalid: true,
-		agents.ErrorClassRateLimitWait: true,
+		agents.ErrorClassRateLimitWait:  true,
 	}
 
 	rapid.Check(t, func(rt *rapid.T) {

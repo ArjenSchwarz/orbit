@@ -6,6 +6,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/stretchr/testify/assert"
 )
 
 func TestParseKiroIDE(t *testing.T) {
@@ -543,12 +545,8 @@ func TestConvertKiroIDEActionsToEntries(t *testing.T) {
 			t.Error("expected IsError = true for exit code 1")
 		}
 		got := toolResult.Message.Content[0].Content
-		if !strings.Contains(got, "build failed") {
-			t.Errorf("result content = %q, want to contain %q", got, "build failed")
-		}
-		if !strings.Contains(got, "Exit code: 1") {
-			t.Errorf("result content = %q, want to contain %q", got, "Exit code: 1")
-		}
+		assert.Contains(t, got, "build failed", "result content = %q, want to contain %q", got, "build failed")
+		assert.Contains(t, got, "Exit code: 1", "result content = %q, want to contain %q", got, "Exit code: 1")
 	})
 
 	t.Run("replace action maps to Edit with file path result", func(t *testing.T) {
@@ -708,9 +706,7 @@ func TestConvertKiroIDEActionsToEntries(t *testing.T) {
 		if len(warnings) != 1 {
 			t.Fatalf("expected 1 warning, got %d", len(warnings))
 		}
-		if !strings.Contains(warnings[0].Message, "newFeature") {
-			t.Errorf("warning = %q, want to mention action type", warnings[0].Message)
-		}
+		assert.Contains(t, warnings[0].Message, "newFeature", "warning = %q, want to mention action type", warnings[0].Message)
 	})
 
 	t.Run("userInput action becomes user entry", func(t *testing.T) {
@@ -734,12 +730,8 @@ func TestConvertKiroIDEActionsToEntries(t *testing.T) {
 			t.Fatalf("expected 2 entries, got %d", len(entries))
 		}
 		got := entries[1].Message.Content[0].Text
-		if !strings.Contains(got, "Ready to proceed?") {
-			t.Errorf("text = %q, want to contain question", got)
-		}
-		if !strings.Contains(got, "[Response: next-phase]") {
-			t.Errorf("text = %q, want to contain response type", got)
-		}
+		assert.Contains(t, got, "Ready to proceed?", "text = %q, want to contain question", got)
+		assert.Contains(t, got, "[Response: next-phase]", "text = %q, want to contain response type", got)
 	})
 
 	t.Run("mixed action sequence", func(t *testing.T) {

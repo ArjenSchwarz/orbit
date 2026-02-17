@@ -6,9 +6,10 @@ import (
 	"io"
 	"os"
 	"path/filepath"
-	"strings"
 	"testing"
 	"time"
+
+	"github.com/stretchr/testify/assert"
 
 	"github.com/arjenschwarz/orbit/internal/agents/claudecode"
 )
@@ -222,9 +223,7 @@ func TestResolveInvalidSource(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected error for invalid source")
 	}
-	if !strings.Contains(err.Error(), "unknown source") {
-		t.Errorf("error should mention unknown source, got: %v", err)
-	}
+	assert.Contains(t, err.Error(), "unknown source", "error should mention unknown source, got: %v", err)
 }
 
 func TestResolveMetadataPopulation(t *testing.T) {
