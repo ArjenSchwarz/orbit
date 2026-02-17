@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Refactored
+
+- Split `internal/orbit/orbit.go` (~3,030 lines) into 5 focused files: `orbit.go` (core lifecycle, ~500 lines), `single.go` (single-run orchestration, ~870 lines), `variants.go` (variant orchestration, ~1,120 lines), `comparison.go` (comparison/consolidation/reporting, ~410 lines), and `registry_bridge.go` (registry updates, ~190 lines). No logic changes — all methods remain on `*Orbit`, all tests pass unchanged.
+
 ### Changed
 
 - Add Go and golangci-lint setup to Claude Code GitHub Actions workflows so the agent has access to the Go toolchain and linter during CI runs
