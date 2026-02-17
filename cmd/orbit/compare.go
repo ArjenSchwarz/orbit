@@ -160,7 +160,7 @@ func compareCommand(args []string) error {
 			return fmt.Errorf("failed to get agent: %w", err)
 		}
 
-		adapter := comparison.NewAgentAdapter(agent, comparisonCtx, workDir)
+		adapter := comparison.NewAgentAdapter(agent, workDir)
 		comparator := comparison.NewComparator(adapter, *compareCmd)
 
 		// Use the unified comparison method with summaries only (diffs excluded to save context)
@@ -173,7 +173,7 @@ func compareCommand(args []string) error {
 			OutputPath:  comparisonJSONPath,
 		}
 
-		result, err = comparator.CompareUnified(ctx, comparisonInput)
+		result, err = comparator.CompareUnified(comparisonCtx, comparisonInput)
 		if err != nil {
 			return fmt.Errorf("comparison failed: %w", err)
 		}
