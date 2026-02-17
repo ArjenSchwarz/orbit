@@ -1830,3 +1830,92 @@ func TestAutoConsolidate_LogMessageWhenSingleVariant(t *testing.T) {
 	}
 }
 
+// TestNew_AgentAliasResolvesType verifies that orbit.New() resolves the agent
+// from AgentConfig.Type rather than the alias in Config.Agent. This is the
+// regression test for T-121: single mode didn't use configured agent aliases.
+//
+// Before the fix, orbit.New() passed Config.Agent (the alias name, e.g.
+// "copilot-sonnet") directly to AgentResolver.GetAgent(), which failed because
+// the registry only knows base types (e.g. "copilot"). The fix resolves the
+// type from AgentConfig.Type before looking up the agent.
+func TestNew_AgentAliasResolvesType(t *testing.T) {
+	// Create a mock agent registered under a base type name
+	scenario := testutil.NewScenario().
+		Success("session-1", 0.01).
+		Build()
+	mockAgent := testutil.NewTestAgent(t, "copilot", scenario)
+
+	// Create a resolver that only knows the base type "copilot"
+	resolver := testutil.NewTestAgentResolver()
+	resolver.Add("copilot", mockAgent)
+
+	// Create a tasks file
+	tasksFile := testutil.CreateTasksFile(t, 1)
+	logDir := filepath.Join(t.TempDir(), ".orbit")
+	if err := os.MkdirAll(logDir, 0755); err != nil {
+		t.Fatalf("failed to create log dir: %v", err)
+	}
+
+	// Create orbit config using an alias name that differs from the base type.
+	// This simulates what run.go does: Agent="copilot-sonnet" (alias),
+	// AgentConfig.Type="copilot" (base type).
+	cfg := Config{
+		TasksFile:     tasksFile,
+		LogDir:        logDir,
+		Agent:         "copilot-sonnet", // alias name
+		AgentConfig:   agents.AgentConfig{Type: "copilot"}, // base type
+		AgentResolver: resolver,
+		WorkingDir:    filepath.Dir(tasksFile),
+	}
+
+	o, err := New(cfg)
+	if err != nil {
+		t.Fatalf("New() with alias agent name should resolve via Type, got error: %v", err)
+	}
+	defer o.Close()
+
+	// Verify the agent was created with the correct base type
+	if o.agent.Name() != "copilot" {
+		t.Errorf("expected agent name %q, got %q", "copilot", o.agent.Name())
+	}
+}
+
+// TestNew_AgentAliasWithoutType_FallsBackToName verifies backward compatibility:
+// when AgentConfig.Type is empty, orbit.New() falls back to using Config.Agent
+// as the type (for cases where the alias name equals the base type).
+func TestNew_AgentAliasWithoutType_FallsBackToName(t *testing.T) {
+	scenario := testutil.NewScenario().
+		Success("session-1", 0.01).
+		Build()
+	mockAgent := testutil.NewTestAgent(t, "claude-code", scenario)
+
+	resolver := testutil.NewTestAgentResolver()
+	resolver.Add("claude-code", mockAgent)
+
+	tasksFile := testutil.CreateTasksFile(t, 1)
+	logDir := filepath.Join(t.TempDir(), ".orbit")
+	if err := os.MkdirAll(logDir, 0755); err != nil {
+		t.Fatalf("failed to create log dir: %v", err)
+	}
+
+	// AgentConfig.Type is empty, Agent name is the base type itself
+	cfg := Config{
+		TasksFile:     tasksFile,
+		LogDir:        logDir,
+		Agent:         "claude-code",
+		AgentConfig:   agents.AgentConfig{}, // no Type set
+		AgentResolver: resolver,
+		WorkingDir:    filepath.Dir(tasksFile),
+	}
+
+	o, err := New(cfg)
+	if err != nil {
+		t.Fatalf("New() with empty Type should fall back to Agent name, got error: %v", err)
+	}
+	defer o.Close()
+
+	if o.agent.Name() != "claude-code" {
+		t.Errorf("expected agent name %q, got %q", "claude-code", o.agent.Name())
+	}
+}
+

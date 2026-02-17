@@ -112,8 +112,13 @@ func (o *Orbit) runAutoConsolidate(ctx context.Context) error {
 		}
 	}
 
-	// Create the agent using default agent config (not variant-specific)
-	agent, err := o.config.AgentResolver.GetAgent(o.config.Agent, o.config.AgentConfig)
+	// Create the agent using default agent config (not variant-specific).
+	// Resolve type from config to handle alias-based agent names.
+	agentType := o.config.AgentConfig.Type
+	if agentType == "" {
+		agentType = o.config.Agent
+	}
+	agent, err := o.config.AgentResolver.GetAgent(agentType, o.config.AgentConfig)
 	if err != nil {
 		return fmt.Errorf("failed to create agent for consolidation: %w", err)
 	}
