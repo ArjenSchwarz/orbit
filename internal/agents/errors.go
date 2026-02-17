@@ -10,7 +10,6 @@ import (
 )
 
 // ErrorClass categorizes errors for orchestrator retry logic.
-// This is distinct from internal/errors.ErrorType which provides specific categories.
 type ErrorClass int
 
 const (
@@ -112,6 +111,13 @@ func NewSessionInvalidError(agentName string) *ClassifiedError {
 		Message:  "Session not found or expired",
 		Agent:    agentName,
 	}
+}
+
+// BackoffDuration returns the recommended backoff duration for a retry attempt.
+// Exponential backoff: 1s, 2s, 4s, 8s, 16s (capped).
+func BackoffDuration(attempt int) time.Duration {
+	base := time.Second
+	return min(base*time.Duration(1<<uint(attempt)), 16*time.Second)
 }
 
 // ParseRetryAfter extracts retry-after duration from an error message.

@@ -8,7 +8,6 @@ import (
 
 	"github.com/arjenschwarz/orbit/internal/agents"
 	"github.com/arjenschwarz/orbit/internal/display"
-	orberrors "github.com/arjenschwarz/orbit/internal/errors"
 	"github.com/arjenschwarz/orbit/internal/logs"
 	"github.com/arjenschwarz/orbit/internal/registry"
 	"github.com/google/uuid"
@@ -312,7 +311,7 @@ func (o *Orbit) runPostPromptWithRetry() error {
 			waitTime = classified.RetryAfter
 			log.Printf("Retryable error (attempt %d/%d). Waiting %s before retry...", attempt+1, maxRetries, waitTime)
 		} else {
-			waitTime = orberrors.BackoffDuration(attempt)
+			waitTime = agents.BackoffDuration(attempt)
 			log.Printf("Error (attempt %d/%d). Waiting %s before retry...", attempt+1, maxRetries, waitTime)
 		}
 
@@ -419,7 +418,7 @@ func (o *Orbit) runPhaseWithRetry(phase int) error {
 			waitTime = classified.RetryAfter
 			log.Printf("Retryable error (attempt %d/%d). Waiting %s before retry...", attempt+1, maxRetries, waitTime)
 		} else {
-			waitTime = orberrors.BackoffDuration(attempt)
+			waitTime = agents.BackoffDuration(attempt)
 			log.Printf("Error (attempt %d/%d). Waiting %s before retry...", attempt+1, maxRetries, waitTime)
 		}
 

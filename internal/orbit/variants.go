@@ -15,7 +15,6 @@ import (
 	"github.com/arjenschwarz/orbit/internal/agents"
 	"github.com/arjenschwarz/orbit/internal/cost"
 	"github.com/arjenschwarz/orbit/internal/debug"
-	orberrors "github.com/arjenschwarz/orbit/internal/errors"
 	"github.com/arjenschwarz/orbit/internal/logs"
 	"github.com/arjenschwarz/orbit/internal/registry"
 	"github.com/arjenschwarz/orbit/internal/rune"
@@ -1018,7 +1017,7 @@ func (o *Orbit) runVariantPhaseWithRetry(ctx context.Context, v *variants.Varian
 			log.Printf("Variant %d: retryable error, waiting %s (attempt %d/%d)",
 				v.ID, waitTime, attempt+1, maxRetries)
 		} else {
-			waitTime = orberrors.BackoffDuration(attempt)
+			waitTime = agents.BackoffDuration(attempt)
 			log.Printf("Variant %d: error, waiting %s (attempt %d/%d)",
 				v.ID, waitTime, attempt+1, maxRetries)
 		}
@@ -1097,7 +1096,7 @@ func (o *Orbit) runVariantPostCompletion(ctx context.Context, v *variants.Varian
 			log.Printf("Variant %d post-completion: retryable error, waiting %s (attempt %d/%d)",
 				v.ID, waitTime, attempt+1, maxRetries)
 		} else {
-			waitTime = orberrors.BackoffDuration(attempt)
+			waitTime = agents.BackoffDuration(attempt)
 			log.Printf("Variant %d post-completion: error, waiting %s (attempt %d/%d)",
 				v.ID, waitTime, attempt+1, maxRetries)
 		}

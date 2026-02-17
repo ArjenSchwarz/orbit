@@ -13,7 +13,6 @@ import (
 	"github.com/arjenschwarz/orbit/internal/agents"
 	configPkg "github.com/arjenschwarz/orbit/internal/config"
 	"github.com/arjenschwarz/orbit/internal/debug"
-	orberrors "github.com/arjenschwarz/orbit/internal/errors"
 	"github.com/arjenschwarz/orbit/internal/logs"
 	"github.com/arjenschwarz/orbit/internal/registry"
 	"github.com/arjenschwarz/orbit/internal/rune"
@@ -465,46 +464,6 @@ func TestIsSessionInvalidError(t *testing.T) {
 	}
 }
 
-func TestErrorClassification_IsUsedCorrectly(t *testing.T) {
-	tests := map[string]struct {
-		stderr        string
-		wantRetryable bool
-		wantType      orberrors.ErrorType
-	}{
-		"rate limit": {
-			stderr:        "rate limit exceeded",
-			wantRetryable: true,
-			wantType:      orberrors.ErrRateLimit,
-		},
-		"connection error": {
-			stderr:        "connection timeout",
-			wantRetryable: true,
-			wantType:      orberrors.ErrConnection,
-		},
-		"overloaded": {
-			stderr:        "service unavailable 503",
-			wantRetryable: true,
-			wantType:      orberrors.ErrOverloaded,
-		},
-		"unknown error": {
-			stderr:        "some random error",
-			wantRetryable: false,
-			wantType:      orberrors.ErrUnknown,
-		},
-	}
-
-	for name, tc := range tests {
-		t.Run(name, func(t *testing.T) {
-			classified := orberrors.Classify(1, tc.stderr, "", nil)
-			if classified.Type != tc.wantType {
-				t.Errorf("type: got %v, want %v", classified.Type, tc.wantType)
-			}
-			if classified.Type.IsRetryable() != tc.wantRetryable {
-				t.Errorf("retryable: got %v, want %v", classified.Type.IsRetryable(), tc.wantRetryable)
-			}
-		})
-	}
-}
 
 func TestRunPhase_SessionContinuation_NewSession(t *testing.T) {
 	// Create scenario that returns success
