@@ -53,7 +53,7 @@ func (c *Classifier) Classify(exitCode int, stderr, stdout string, errMsgs []str
 		return &agents.ClassifiedError{
 			Original:   errors.New("rate limited"),
 			Class:      agents.ErrorClassRetryable,
-			RetryAfter: parseRetryAfter(combinedLower),
+			RetryAfter: agents.ParseRetryAfter(combinedLower),
 			Message:    "API rate limit exceeded",
 			Agent:      "claude-code",
 		}
@@ -74,16 +74,8 @@ func (c *Classifier) Classify(exitCode int, stderr, stdout string, errMsgs []str
 	}
 
 	// Check for session-related errors
-	if strings.Contains(combinedLower, "session not found") ||
-		strings.Contains(combinedLower, "invalid session") ||
-		strings.Contains(combinedLower, "session expired") ||
-		strings.Contains(combinedLower, "no such session") {
-		return &agents.ClassifiedError{
-			Original: errors.New("session invalid"),
-			Class:    agents.ErrorClassSessionInvalid,
-			Message:  "Session not found or expired",
-			Agent:    "claude-code",
-		}
+	if agents.MatchesSessionInvalid(combinedLower, "no such session") {
+		return agents.NewSessionInvalidError("claude-code")
 	}
 
 	// Check for connection errors (retryable)
@@ -133,26 +125,6 @@ func (c *Classifier) Classify(exitCode int, stderr, stdout string, errMsgs []str
 	}
 }
 
-// parseRetryAfter extracts retry-after duration from error message.
-func parseRetryAfter(msg string) time.Duration {
-	patterns := []string{
-		`retry.?after[:\s]+(\d+)\s*s`,
-		`wait[:\s]+(\d+)\s*s`,
-		`(\d+)\s*seconds?`,
-	}
-
-	for _, pattern := range patterns {
-		re := regexp.MustCompile(pattern)
-		if matches := re.FindStringSubmatch(msg); len(matches) > 1 {
-			if seconds, err := strconv.Atoi(matches[1]); err == nil {
-				return time.Duration(seconds) * time.Second
-			}
-		}
-	}
-
-	// Default retry after for rate limits
-	return 60 * time.Second
-}
 
 // parseUsageLimitReset parses the reset time from usage limit messages.
 // Example message: "You've hit your limit · resets 3am (Australia/Melbourne)"
@@ -276,21 +248,3 @@ func pluralS(n int) string {
 	return "s"
 }
 
-// IsSessionInvalidError checks if the result indicates a session-related error.
-func IsSessionInvalidError(stderr, stdout string) bool {
-	combined := strings.ToLower(stderr + stdout)
-	sessionErrors := []string{
-		"session not found",
-		"invalid session",
-		"session expired",
-		"no such session",
-	}
-
-	for _, msg := range sessionErrors {
-		if strings.Contains(combined, msg) {
-			return true
-		}
-	}
-
-	return false
-}

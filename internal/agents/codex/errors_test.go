@@ -148,28 +148,6 @@ func TestClassifier_Classify_ErrMsgs(t *testing.T) {
 	}
 }
 
-func TestParseRetryAfter(t *testing.T) {
-	tests := []struct {
-		name     string
-		msg      string
-		expected time.Duration
-	}{
-		{"retry after seconds", "retry after 45 seconds", 45 * time.Second},
-		{"retry after s", "retry-after: 30s", 30 * time.Second},
-		{"wait seconds", "wait: 60 seconds", 60 * time.Second},
-		{"default", "rate limit exceeded", 60 * time.Second},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			got := parseRetryAfter(tt.msg)
-			if got != tt.expected {
-				t.Errorf("parseRetryAfter(%q) = %v, want %v", tt.msg, got, tt.expected)
-			}
-		})
-	}
-}
-
 func TestClassifier_ImplementsInterface(t *testing.T) {
 	var _ = NewClassifier()
 }

@@ -221,3 +221,70 @@ func (m *mockClassifier) Classify(exitCode int, stderr, stdout string, errMsgs [
 		Message: "mock classification",
 	}
 }
+
+func TestMatchesSessionInvalid(t *testing.T) {
+	tests := []struct {
+		name     string
+		input    string
+		extra    []string
+		expected bool
+	}{
+		{"session not found", "error: session not found", nil, true},
+		{"invalid session", "invalid session id", nil, true},
+		{"session expired", "session expired", nil, true},
+		{"no match", "some other error", nil, false},
+		{"empty string", "", nil, false},
+		{"case sensitive requires lowercase input", "SESSION NOT FOUND", nil, false},
+		{"extra pattern matches", "no such session", []string{"no such session"}, true},
+		{"extra pattern no match", "some error", []string{"no such session"}, false},
+		{"common pattern with extra provided", "session not found", []string{"no such session"}, true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := MatchesSessionInvalid(tt.input, tt.extra...)
+			if got != tt.expected {
+				t.Errorf("MatchesSessionInvalid(%q, %v) = %v, want %v", tt.input, tt.extra, got, tt.expected)
+			}
+		})
+	}
+}
+
+func TestNewSessionInvalidError(t *testing.T) {
+	err := NewSessionInvalidError("test-agent")
+
+	if err.Class != ErrorClassSessionInvalid {
+		t.Errorf("Class = %v, want %v", err.Class, ErrorClassSessionInvalid)
+	}
+	if err.Agent != "test-agent" {
+		t.Errorf("Agent = %q, want %q", err.Agent, "test-agent")
+	}
+	if err.Message != "Session not found or expired" {
+		t.Errorf("Message = %q, want %q", err.Message, "Session not found or expired")
+	}
+	if err.Original == nil {
+		t.Error("Original should not be nil")
+	}
+}
+
+func TestParseRetryAfter(t *testing.T) {
+	tests := []struct {
+		name     string
+		msg      string
+		expected time.Duration
+	}{
+		{"retry after seconds", "retry after 45 seconds", 45 * time.Second},
+		{"retry-after colon", "retry-after: 30s", 30 * time.Second},
+		{"wait seconds", "wait: 60 seconds", 60 * time.Second},
+		{"default when no match", "rate limit exceeded", DefaultRateLimitRetryAfter},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := ParseRetryAfter(tt.msg)
+			if got != tt.expected {
+				t.Errorf("ParseRetryAfter(%q) = %v, want %v", tt.msg, got, tt.expected)
+			}
+		})
+	}
+}
