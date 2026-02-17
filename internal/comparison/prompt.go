@@ -262,23 +262,3 @@ func estimatePromptTokens(prompt string) int {
 	return len(prompt) / 4
 }
 
-// Legacy functions for backwards compatibility - these now delegate to the new unified prompt builder
-
-// buildPrompt constructs the comparison prompt for Claude (legacy, uses diffs only).
-func buildPrompt(specName string, variants []VariantData) string {
-	return buildComparisonPrompt(ComparisonInput{
-		SpecName:    specName,
-		Variants:    variants,
-		IncludeDiff: true,
-	})
-}
-
-// buildSummaryPrompt constructs a comparison prompt using summaries instead of full diffs (legacy).
-func buildSummaryPrompt(specName string, variants []VariantData, specContext string) string {
-	return buildComparisonPrompt(ComparisonInput{
-		SpecName:    specName,
-		SpecContext: specContext,
-		Variants:    variants,
-		IncludeDiff: false,
-	})
-}
