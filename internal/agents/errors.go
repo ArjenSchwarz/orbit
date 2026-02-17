@@ -255,18 +255,18 @@ func BackoffDuration(attempt int) time.Duration {
 	return min(base*time.Duration(1<<uint(attempt)), 16*time.Second)
 }
 
+// retryAfterPatterns are pre-compiled regexes for extracting retry-after durations.
+var retryAfterPatterns = []*regexp.Regexp{
+	regexp.MustCompile(`retry.?after[:\s]+(\d+)\s*s`),
+	regexp.MustCompile(`wait[:\s]+(\d+)\s*s`),
+	regexp.MustCompile(`(\d+)\s*seconds?`),
+}
+
 // ParseRetryAfter extracts retry-after duration from an error message.
 // It looks for patterns like "retry after 30s", "wait: 60 seconds", etc.
 // Returns DefaultRateLimitRetryAfter if no pattern matches.
 func ParseRetryAfter(msg string) time.Duration {
-	patterns := []string{
-		`retry.?after[:\s]+(\d+)\s*s`,
-		`wait[:\s]+(\d+)\s*s`,
-		`(\d+)\s*seconds?`,
-	}
-
-	for _, pattern := range patterns {
-		re := regexp.MustCompile(pattern)
+	for _, re := range retryAfterPatterns {
 		if matches := re.FindStringSubmatch(msg); len(matches) > 1 {
 			if seconds, err := strconv.Atoi(matches[1]); err == nil {
 				return time.Duration(seconds) * time.Second

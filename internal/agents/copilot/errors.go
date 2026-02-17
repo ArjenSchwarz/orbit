@@ -58,4 +58,3 @@ func (c *Classifier) Classify(exitCode int, stderr, stdout string, errMsgs []str
 
 	return agents.NewUnknownError("copilot", errMsgs, stderr, stdout)
 }
-
