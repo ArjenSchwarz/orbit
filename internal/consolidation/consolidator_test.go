@@ -193,6 +193,49 @@ func TestNewConsolidator(t *testing.T) {
 		require.NoError(t, err)
 		assert.NotNil(t, consolidator)
 	})
+
+	t.Run("WithGitOps injects into both consolidator and recovery", func(t *testing.T) {
+		tmpDir := t.TempDir()
+		cfg := Config{
+			SpecName:  "test-spec",
+			SpecDir:   tmpDir,
+			VariantID: 1,
+			Agent:     &mockAgent{name: "test"},
+		}
+		mgr := createTestManager(t, 2)
+
+		mock := &stubGitOps{headCommit: "abc123"}
+		consolidator, err := NewConsolidator(cfg, mgr, WithGitOps(mock))
+		require.NoError(t, err)
+
+		// Verify the mock is used by the consolidator
+		assert.Same(t, mock, consolidator.git)
+		// Verify the mock is also used by the recovery manager
+		assert.Same(t, mock, consolidator.recovery.git)
+	})
+}
+
+// stubGitOps is a minimal GitOps implementation for unit tests.
+type stubGitOps struct {
+	headCommit string
+}
+
+func (s *stubGitOps) GetHeadCommit(context.Context) (string, error) {
+	return s.headCommit, nil
+}
+func (s *stubGitOps) HasUncommittedChanges(context.Context) (bool, error) { return false, nil }
+func (s *stubGitOps) ResetHard(context.Context, string) error             { return nil }
+func (s *stubGitOps) CheckoutAll(context.Context) error                   { return nil }
+func (s *stubGitOps) CleanUntracked(context.Context) error                { return nil }
+func (s *stubGitOps) StashPush(context.Context, string) (string, bool, error) {
+	return "", false, nil
+}
+func (s *stubGitOps) StashPop(context.Context) (string, error)          { return "", nil }
+func (s *stubGitOps) StashDrop(context.Context, string) error           { return nil }
+func (s *stubGitOps) RevertCommit(context.Context, string) error        { return nil }
+func (s *stubGitOps) LogOneline(context.Context, int) (string, error)   { return "", nil }
+func (s *stubGitOps) GetCommitSubject(context.Context, string) (string, error) {
+	return "", nil
 }
 
 func TestConsolidator_validateVariant(t *testing.T) {

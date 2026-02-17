@@ -23,6 +23,11 @@ func NewRecoveryManager(worktreePath string, git GitOps) *RecoveryManager {
 	}
 }
 
+// SetGitOps replaces the GitOps implementation used by this recovery manager.
+func (rm *RecoveryManager) SetGitOps(git GitOps) {
+	rm.git = git
+}
+
 // CaptureState records the current worktree state before agent runs.
 // Called for ALL runs (not just --allow-dirty) to enable cleanup on failure.
 func (rm *RecoveryManager) CaptureState(ctx context.Context) error {

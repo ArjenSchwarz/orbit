@@ -30,7 +30,7 @@ type ConsolidatorOption func(*Consolidator)
 func WithGitOps(git GitOps) ConsolidatorOption {
 	return func(c *Consolidator) {
 		c.git = git
-		c.recovery.git = git
+		c.recovery.SetGitOps(git)
 	}
 }
 

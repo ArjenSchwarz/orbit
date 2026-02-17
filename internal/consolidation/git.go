@@ -132,20 +132,8 @@ func (g *execGitOps) StashPush(ctx context.Context, message string) (string, boo
 		return "", false, fmt.Errorf("failed to create stash: %s", stderr.String())
 	}
 
-	// Get the stash reference
-	cmd = exec.CommandContext(ctx, "git", "stash", "list", "-1")
-	cmd.Dir = g.worktreePath
-	out, err := cmd.Output()
-	if err != nil {
-		return "", false, fmt.Errorf("failed to get stash ref: %w", err)
-	}
-
-	stashList := strings.TrimSpace(string(out))
-	if stashList != "" && strings.Contains(stashList, message) {
-		return "stash@{0}", true, nil
-	}
-
-	return "", false, nil
+	// A successful push always creates stash@{0}
+	return "stash@{0}", true, nil
 }
 
 func (g *execGitOps) StashPop(ctx context.Context) (string, error) {
@@ -178,16 +166,21 @@ func (g *execGitOps) StashDrop(ctx context.Context, ref string) error {
 func (g *execGitOps) RevertCommit(ctx context.Context, commitSHA string) error {
 	cmd := exec.CommandContext(ctx, "git", "revert", "--no-edit", commitSHA)
 	cmd.Dir = g.worktreePath
-	var stderr bytes.Buffer
+	var stdout, stderr bytes.Buffer
+	cmd.Stdout = &stdout
 	cmd.Stderr = &stderr
 	if err := cmd.Run(); err != nil {
-		return fmt.Errorf("failed to revert commit: %s", stderr.String())
+		combined := stderr.String()
+		if combined == "" {
+			combined = stdout.String()
+		}
+		return fmt.Errorf("failed to revert commit: %s", combined)
 	}
 	return nil
 }
 
 func (g *execGitOps) LogOneline(ctx context.Context, limit int) (string, error) {
-	cmd := exec.CommandContext(ctx, "git", "log", "-n", fmt.Sprintf("%d", limit), "--oneline", "--format=%H %s")
+	cmd := exec.CommandContext(ctx, "git", "log", "-n", fmt.Sprintf("%d", limit), "--format=%H %s")
 	cmd.Dir = g.worktreePath
 	out, err := cmd.Output()
 	if err != nil {
@@ -201,7 +194,7 @@ func (g *execGitOps) GetCommitSubject(ctx context.Context, commitSHA string) (st
 	cmd.Dir = g.worktreePath
 	out, err := cmd.Output()
 	if err != nil {
-		return "", fmt.Errorf("commit not found")
+		return "", fmt.Errorf("commit not found: %w", err)
 	}
 	return strings.TrimSpace(string(out)), nil
 }
