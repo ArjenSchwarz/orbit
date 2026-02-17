@@ -109,7 +109,7 @@ func TestCreateBranch(t *testing.T) {
 
 	git := NewGit(dir)
 
-	err := git.CreateBranch("test-branch")
+	err := git.CreateBranch("test-branch", "")
 	if err != nil {
 		t.Fatalf("CreateBranch failed: %v", err)
 	}
@@ -131,9 +131,58 @@ func TestCreateBranch_AlreadyExists(t *testing.T) {
 	runGit(t, dir, "branch", "existing-branch")
 
 	// Attempt to create same branch should fail
-	err := git.CreateBranch("existing-branch")
+	err := git.CreateBranch("existing-branch", "")
 	if err == nil {
 		t.Error("expected error when creating existing branch")
+	}
+}
+
+// TestCreateBranch_AtSpecificCommit verifies that CreateBranch pins the new
+// branch to the provided commit SHA rather than using the current HEAD.
+// This is the regression test for T-112: without the commit parameter,
+// concurrent HEAD advances could cause different variant branches to start
+// from different base commits.
+func TestCreateBranch_AtSpecificCommit(t *testing.T) {
+	dir, cleanup := setupTestRepo(t)
+	defer cleanup()
+
+	git := NewGit(dir)
+
+	// Record the initial commit
+	initialCommit, err := git.GetHeadCommit()
+	if err != nil {
+		t.Fatalf("GetHeadCommit failed: %v", err)
+	}
+
+	// Advance HEAD with a new commit
+	testFile := filepath.Join(dir, "advance.txt")
+	if err := os.WriteFile(testFile, []byte("advancing HEAD\n"), 0644); err != nil {
+		t.Fatalf("write file: %v", err)
+	}
+	runGit(t, dir, "add", ".")
+	runGit(t, dir, "commit", "-m", "Advance HEAD")
+
+	newHead, err := git.GetHeadCommit()
+	if err != nil {
+		t.Fatalf("GetHeadCommit failed: %v", err)
+	}
+	if initialCommit == newHead {
+		t.Fatal("HEAD did not advance; test setup is broken")
+	}
+
+	// Create a branch at the *initial* commit, not the current HEAD
+	err = git.CreateBranch("pinned-branch", initialCommit)
+	if err != nil {
+		t.Fatalf("CreateBranch at specific commit failed: %v", err)
+	}
+
+	// Verify the branch points to the initial commit, not the current HEAD
+	branchCommit := runGit(t, dir, "rev-parse", "pinned-branch")
+	if branchCommit != initialCommit {
+		t.Errorf("branch points to %s, want %s (the pinned commit)", branchCommit, initialCommit)
+	}
+	if branchCommit == newHead {
+		t.Errorf("branch points to current HEAD %s; should be pinned to %s", newHead, initialCommit)
 	}
 }
 
@@ -145,7 +194,7 @@ func TestCreateWorktree(t *testing.T) {
 
 	// Create a branch for the worktree
 	branchName := "worktree-branch"
-	err := git.CreateBranch(branchName)
+	err := git.CreateBranch(branchName, "")
 	if err != nil {
 		t.Fatalf("CreateBranch failed: %v", err)
 	}

@@ -67,7 +67,7 @@ func (m *mockGitClient) GetHeadCommitInPath(path string) (string, error) {
 	return m.headCommit, nil
 }
 func (m *mockGitClient) HasUncommittedChanges() (bool, error) { return m.hasUncommittedChg, nil }
-func (m *mockGitClient) CreateBranch(name string) error {
+func (m *mockGitClient) CreateBranch(name, commit string) error {
 	m.createdBranches = append(m.createdBranches, name)
 	return nil
 }

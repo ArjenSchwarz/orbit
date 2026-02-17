@@ -252,8 +252,9 @@ func (m *Manager) Setup(ctx context.Context, continueExisting bool) error {
 		branchName := fmt.Sprintf("%s-%d/%s", m.config.BranchPrefix, i, m.specName)
 		worktreePath := filepath.Join(m.worktreeDir, fmt.Sprintf("%s-%d-%s", m.config.BranchPrefix, i, sanitizedSpec))
 
-		// Create branch
-		if err := m.git.CreateBranch(branchName); err != nil {
+		// Create branch at the captured head commit so all variants share the
+		// same base, even if HEAD advances between iterations.
+		if err := m.git.CreateBranch(branchName, headCommit); err != nil {
 			// Cleanup already created worktrees on failure
 			m.cleanupCreated(ctx, createdWorktrees)
 			return fmt.Errorf("create branch for variant %d: %w", i, err)
