@@ -3,8 +3,6 @@ package opencode
 import (
 	"encoding/json"
 	"errors"
-	"regexp"
-	"strconv"
 	"strings"
 	"time"
 
@@ -14,10 +12,6 @@ import (
 const (
 	// defaultOverloadRetryAfter is the default retry delay when the API is overloaded.
 	defaultOverloadRetryAfter = 30 * time.Second
-
-	// defaultRateLimitRetryAfter is the default retry delay for rate limit errors
-	// when no specific retry-after value is provided.
-	defaultRateLimitRetryAfter = 60 * time.Second
 )
 
 func init() {
@@ -80,23 +74,15 @@ func (c *Classifier) Classify(exitCode int, stderr, stdout string, errMsgs []str
 		return &agents.ClassifiedError{
 			Original:   errors.New("rate limited"),
 			Class:      agents.ErrorClassRetryable,
-			RetryAfter: parseRetryAfter(combined),
+			RetryAfter: agents.ParseRetryAfter(combined),
 			Message:    "API rate limit exceeded",
 			Agent:      "opencode",
 		}
 	}
 
 	// Check for session-related errors
-	if strings.Contains(combined, "session not found") ||
-		strings.Contains(combined, "invalid session") ||
-		strings.Contains(combined, "session expired") ||
-		strings.Contains(combined, "no session") {
-		return &agents.ClassifiedError{
-			Original: errors.New("session invalid"),
-			Class:    agents.ErrorClassSessionInvalid,
-			Message:  "Session not found or expired",
-			Agent:    "opencode",
-		}
+	if agents.MatchesSessionInvalid(combined, "no session") {
+		return agents.NewSessionInvalidError("opencode")
 	}
 
 	// Check for connection errors (retryable)
@@ -178,7 +164,7 @@ func (c *Classifier) classifyPlaintext(combined string) *agents.ClassifiedError 
 		return &agents.ClassifiedError{
 			Original:   errors.New("rate limited"),
 			Class:      agents.ErrorClassRetryable,
-			RetryAfter: parseRetryAfter(combined),
+			RetryAfter: agents.ParseRetryAfter(combined),
 			Message:    "API rate limit exceeded",
 			Agent:      "opencode",
 		}
@@ -228,23 +214,3 @@ func isValidJSONOutput(s string) bool {
 	return json.Unmarshal([]byte(s), &js) == nil
 }
 
-// parseRetryAfter extracts retry-after duration from error message.
-func parseRetryAfter(msg string) time.Duration {
-	patterns := []string{
-		`retry.?after[:\s]+(\d+)\s*s`,
-		`wait[:\s]+(\d+)\s*s`,
-		`(\d+)\s*seconds?`,
-	}
-
-	for _, pattern := range patterns {
-		re := regexp.MustCompile(pattern)
-		if matches := re.FindStringSubmatch(msg); len(matches) > 1 {
-			if seconds, err := strconv.Atoi(matches[1]); err == nil {
-				return time.Duration(seconds) * time.Second
-			}
-		}
-	}
-
-	// Default retry after for rate limits
-	return defaultRateLimitRetryAfter
-}

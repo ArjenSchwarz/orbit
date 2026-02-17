@@ -2,8 +2,6 @@ package copilot
 
 import (
 	"errors"
-	"regexp"
-	"strconv"
 	"strings"
 	"time"
 
@@ -36,7 +34,7 @@ func (c *Classifier) Classify(exitCode int, stderr, stdout string, errMsgs []str
 		return &agents.ClassifiedError{
 			Original:   errors.New("rate limited"),
 			Class:      agents.ErrorClassRetryable,
-			RetryAfter: parseRetryAfter(combined),
+			RetryAfter: agents.ParseRetryAfter(combined),
 			Message:    "API rate limit exceeded",
 			Agent:      "copilot",
 		}
@@ -59,17 +57,8 @@ func (c *Classifier) Classify(exitCode int, stderr, stdout string, errMsgs []str
 	}
 
 	// Check for session-related errors
-	if strings.Contains(combined, "session not found") ||
-		strings.Contains(combined, "invalid session") ||
-		strings.Contains(combined, "session expired") ||
-		strings.Contains(combined, "no session to continue") ||
-		strings.Contains(combined, "no previous session") {
-		return &agents.ClassifiedError{
-			Original: errors.New("session invalid"),
-			Class:    agents.ErrorClassSessionInvalid,
-			Message:  "Session not found or expired",
-			Agent:    "copilot",
-		}
+	if agents.MatchesSessionInvalid(combined, "no session to continue", "no previous session") {
+		return agents.NewSessionInvalidError("copilot")
 	}
 
 	// Check for connection errors (retryable)
@@ -122,23 +111,3 @@ func (c *Classifier) Classify(exitCode int, stderr, stdout string, errMsgs []str
 	}
 }
 
-// parseRetryAfter extracts retry-after duration from error message.
-func parseRetryAfter(msg string) time.Duration {
-	patterns := []string{
-		`retry.?after[:\s]+(\d+)\s*s`,
-		`wait[:\s]+(\d+)\s*s`,
-		`(\d+)\s*seconds?`,
-	}
-
-	for _, pattern := range patterns {
-		re := regexp.MustCompile(pattern)
-		if matches := re.FindStringSubmatch(msg); len(matches) > 1 {
-			if seconds, err := strconv.Atoi(matches[1]); err == nil {
-				return time.Duration(seconds) * time.Second
-			}
-		}
-	}
-
-	// Default retry after for rate limits
-	return 60 * time.Second
-}

@@ -22,24 +22,8 @@ func isSessionInvalidError(result *agents.RunResult) bool {
 		return false
 	}
 
-	// Check for session-related error messages
-	combined := result.Stderr + result.Output
-	sessionErrors := []string{
-		"session not found",
-		"invalid session",
-		"session expired",
-		"no such session",
-		"no conversation found",
-	}
-
-	combinedLower := strings.ToLower(combined)
-	for _, msg := range sessionErrors {
-		if strings.Contains(combinedLower, msg) {
-			return true
-		}
-	}
-
-	return false
+	combinedLower := strings.ToLower(result.Stderr + result.Output)
+	return agents.MatchesSessionInvalid(combinedLower, "no such session", "no conversation found")
 }
 
 // runPrePrompt executes the pre-prompt and stores the session ID for phase 1.
