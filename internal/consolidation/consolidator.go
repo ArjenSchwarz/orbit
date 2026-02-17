@@ -491,10 +491,9 @@ func (c *Consolidator) runWithRetry(ctx context.Context, prompt string) (*agents
 	sessionID := uuid.NewString()
 
 	opts := agents.RunOptions{
-		Prompt:      prompt,
-		SessionID:   sessionID,
-		WorkDir:     worktreePath,
-		AutoApprove: true,
+		Prompt:    prompt,
+		SessionID: sessionID,
+		WorkDir:   worktreePath,
 	}
 
 	var lastErr error
@@ -709,10 +708,9 @@ func (c *Consolidator) runPostPrompt(ctx context.Context) (bool, error) {
 	worktreePath := c.recovery.worktreePath
 
 	opts := agents.RunOptions{
-		Prompt:      c.config.PostPrompt,
-		SessionID:   uuid.NewString(),
-		WorkDir:     worktreePath,
-		AutoApprove: true,
+		Prompt:    c.config.PostPrompt,
+		SessionID: uuid.NewString(),
+		WorkDir:   worktreePath,
 	}
 
 	result, err := c.config.Agent.Run(ctx, opts)
