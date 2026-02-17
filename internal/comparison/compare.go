@@ -44,55 +44,6 @@ const DefaultTimeout = 30 * time.Minute
 // Claude has ~200k token context, but we leave room for the response.
 const MaxPromptTokens = 150000
 
-// Compare analyzes variants and returns structured results.
-// Uses JSON validation with retry on malformed responses.
-func (c *Comparator) Compare(ctx context.Context, specName string, variants []VariantData) (*Result, error) {
-	if len(variants) < 2 {
-		return nil, errors.New("at least 2 variants required for comparison")
-	}
-
-	// Validate that variants have non-empty diffs
-	for _, v := range variants {
-		if strings.TrimSpace(v.Diff) == "" {
-			return nil, fmt.Errorf("variant %d has empty diff", v.ID)
-		}
-	}
-
-	// Custom command support is deferred - only Claude comparison is implemented
-	if c.customCmd != "" {
-		return nil, errors.New("custom comparison commands are not supported")
-	}
-
-	originalPrompt := buildPrompt(specName, variants)
-
-	// Check that the prompt fits within context limits (Requirement 5.8)
-	estimatedTokens := estimatePromptTokens(originalPrompt)
-	if estimatedTokens > MaxPromptTokens {
-		return nil, &DiffTooLargeError{
-			EstimatedTokens: estimatedTokens,
-			MaxTokens:       MaxPromptTokens,
-		}
-	}
-
-	return c.runComparison(originalPrompt, len(variants))
-}
-
-// CompareWithSummaries analyzes variants using summaries instead of full diffs.
-// This is used when diffs are too large to fit in context.
-func (c *Comparator) CompareWithSummaries(ctx context.Context, specName string, variants []VariantData, specContext string) (*Result, error) {
-	if len(variants) < 2 {
-		return nil, errors.New("at least 2 variants required for comparison")
-	}
-
-	// Custom command support is deferred - only Claude comparison is implemented
-	if c.customCmd != "" {
-		return nil, errors.New("custom comparison commands are not supported")
-	}
-
-	originalPrompt := buildSummaryPrompt(specName, variants, specContext)
-	return c.runComparison(originalPrompt, len(variants))
-}
-
 // CompareUnified performs comparison with full control over what data is included.
 // This is the recommended method - it always includes summaries and optionally includes diffs.
 //
@@ -202,7 +153,6 @@ Please provide the comparison result as valid JSON only, with no additional text
 }
 
 // DiffTooLargeError indicates that the combined diff size exceeds context limits.
-// Callers should use CompareWithSummaries as a fallback.
 type DiffTooLargeError struct {
 	EstimatedTokens int
 	MaxTokens       int

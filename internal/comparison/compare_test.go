@@ -224,56 +224,33 @@ func TestLoadResultFromFile_MalformedLearningsTolerated(t *testing.T) {
 	// Malformed learnings are discarded gracefully
 }
 
-func TestBuildPrompt_IncludesAllVariants(t *testing.T) {
-	variants := []VariantData{
-		{ID: 1, Diff: "diff for variant 1"},
-		{ID: 2, Diff: "diff for variant 2"},
-		{ID: 3, Diff: "diff for variant 3"},
-	}
-
-	prompt := buildPrompt("test-spec", variants)
-
-	// Check that all variants are mentioned
-	for _, v := range variants {
-		if !containsString(prompt, v.Diff) {
-			t.Errorf("prompt should contain diff for variant %d", v.ID)
-		}
-	}
-
-	// Check header mentions correct count
-	if !containsString(prompt, "3 implementation variants") {
-		t.Error("prompt should mention 3 implementation variants")
-	}
-
-	// Check spec name is included
-	if !containsString(prompt, "test-spec") {
-		t.Error("prompt should include spec name")
-	}
-}
-
-func TestBuildPrompt_IncludesMetrics(t *testing.T) {
-	variants := []VariantData{
-		{
-			ID:   1,
-			Diff: "diff 1",
-			Metrics: VariantMetrics{
-				Cost:     0.0523,
-				Duration: 3*time.Minute + 30*time.Second,
-				NumTurns: 42,
+func TestBuildComparisonPrompt_IncludesMetrics(t *testing.T) {
+	input := ComparisonInput{
+		SpecName: "test-spec",
+		Variants: []VariantData{
+			{
+				ID:   1,
+				Diff: "diff 1",
+				Metrics: VariantMetrics{
+					Cost:     0.0523,
+					Duration: 3*time.Minute + 30*time.Second,
+					NumTurns: 42,
+				},
+			},
+			{
+				ID:   2,
+				Diff: "diff 2",
+				Metrics: VariantMetrics{
+					Cost:     0.0812,
+					Duration: 5*time.Minute + 15*time.Second,
+					NumTurns: 58,
+				},
 			},
 		},
-		{
-			ID:   2,
-			Diff: "diff 2",
-			Metrics: VariantMetrics{
-				Cost:     0.0812,
-				Duration: 5*time.Minute + 15*time.Second,
-				NumTurns: 58,
-			},
-		},
+		IncludeDiff: true,
 	}
 
-	prompt := buildPrompt("test-spec", variants)
+	prompt := buildComparisonPrompt(input)
 
 	// Check metrics table is present
 	if !containsString(prompt, "## Metrics") {
@@ -547,23 +524,27 @@ func TestEstimatePromptTokens(t *testing.T) {
 	}
 }
 
-func TestCompare_RejectsOversizedPrompt(t *testing.T) {
+func TestCompareUnified_RejectsOversizedPrompt(t *testing.T) {
 	comp := NewComparator(nil, "")
 
-	// Create variants with diffs large enough to exceed the token limit
-	// MaxPromptTokens is 150000, which at ~4 chars/token is ~600000 chars
-	largeDiff := make([]byte, 400000) // 400k chars = ~100k tokens each
-	for i := range largeDiff {
-		largeDiff[i] = 'x'
-	}
-
-	variants := []VariantData{
-		{ID: 1, Diff: string(largeDiff)},
-		{ID: 2, Diff: string(largeDiff)},
+	// Create variants with commit messages large enough to exceed the token limit
+	// even without diffs. MaxPromptTokens is 150000, ~4 chars/token = ~600000 chars.
+	largeMsg := make([]byte, 400000)
+	for i := range largeMsg {
+		largeMsg[i] = 'x'
 	}
 
 	ctx := context.Background()
-	_, err := comp.Compare(ctx, "test-spec", variants)
+	input := ComparisonInput{
+		SpecName: "test-spec",
+		Variants: []VariantData{
+			{ID: 1, CommitMessages: []string{string(largeMsg)}},
+			{ID: 2, CommitMessages: []string{string(largeMsg)}},
+		},
+		IncludeDiff: false,
+	}
+
+	_, err := comp.CompareUnified(ctx, input)
 	if err == nil {
 		t.Fatal("expected error for oversized prompt, got nil")
 	}
@@ -1049,127 +1030,6 @@ func TestParseAndValidate_MalformedLearnings(t *testing.T) {
 	}
 }
 
-// Tests for learnings section in comparison prompt [Req 2.1-2.6]
-
-func TestBuildPrompt_IncludesLearningsInstructions(t *testing.T) {
-	variants := []VariantData{
-		{ID: 1, Diff: "diff 1"},
-		{ID: 2, Diff: "diff 2"},
-	}
-
-	prompt := buildPrompt("test-spec", variants)
-
-	// [Req 2.1] The prompt SHALL include instructions for identifying learnings
-	if !containsString(prompt, "Developer Learnings") {
-		t.Error("prompt should contain Developer Learnings section header")
-	}
-
-	// [Req 2.2] The prompt SHALL request learnings across all four categories
-	expectedCategories := []string{
-		"code-pattern",
-		"architecture",
-		"testing",
-		"error-handling",
-	}
-	for _, category := range expectedCategories {
-		if !containsString(prompt, category) {
-			t.Errorf("prompt should mention category %q", category)
-		}
-	}
-
-	// [Req 2.3] The prompt SHALL instruct the AI to include specific file references
-	if !containsString(prompt, "file references") || !containsString(prompt, "file_references") {
-		t.Error("prompt should instruct AI to include file references")
-	}
-
-	// [Req 2.4] The prompt SHALL instruct the AI to explain why each learning matters
-	if !containsString(prompt, "why") && !containsString(prompt, "WHY") {
-		t.Error("prompt should instruct AI to explain why learnings matter")
-	}
-	if !containsString(prompt, "rationale") {
-		t.Error("prompt should mention rationale field")
-	}
-}
-
-func TestBuildPrompt_LearningsJSONSchema(t *testing.T) {
-	variants := []VariantData{
-		{ID: 1, Diff: "diff 1"},
-	}
-
-	prompt := buildPrompt("test-spec", variants)
-
-	// [Req 2.6] The JSON schema SHALL include the learnings array structure
-	if !containsString(prompt, `"learnings"`) {
-		t.Error("JSON schema should include learnings field")
-	}
-
-	// Schema should define all learning fields
-	schemaFields := []string{
-		"variant_id",
-		"category",
-		"title",
-		"description",
-		"rationale",
-		"file_references",
-	}
-	for _, field := range schemaFields {
-		if !containsString(prompt, field) {
-			t.Errorf("JSON schema should include learning field %q", field)
-		}
-	}
-}
-
-func TestBuildPrompt_LearningsQualityGuidelines(t *testing.T) {
-	variants := []VariantData{
-		{ID: 1, Diff: "diff 1"},
-	}
-
-	prompt := buildPrompt("test-spec", variants)
-
-	// [Req 5.1] The prompt SHALL instruct that learnings should be transferable
-	if !containsString(prompt, "transferable") {
-		t.Error("prompt should mention transferable techniques")
-	}
-
-	// [Req 5.2] The prompt SHALL instruct to exclude trivial observations
-	if !containsString(prompt, "trivial") {
-		t.Error("prompt should instruct to exclude trivial observations")
-	}
-
-	// [Req 5.4] The prompt SHALL provide examples of good learnings vs trivial ones
-	goodExamples := []string{
-		"table-driven",
-		"functional options",
-		"sentinel errors",
-	}
-	foundGoodExample := false
-	for _, example := range goodExamples {
-		if containsString(prompt, example) {
-			foundGoodExample = true
-			break
-		}
-	}
-	if !foundGoodExample {
-		t.Error("prompt should provide examples of good learnings")
-	}
-
-	// Bad examples should also be shown
-	badExamples := []string{
-		"well-formatted",
-		"descriptive names",
-	}
-	foundBadExample := false
-	for _, example := range badExamples {
-		if containsString(prompt, example) {
-			foundBadExample = true
-			break
-		}
-	}
-	if !foundBadExample {
-		t.Error("prompt should provide examples of trivial/bad learnings to exclude")
-	}
-}
-
 // Integration Tests for Comparison with Learnings
 
 // mockPromptRunner implements the promptRunner interface for testing.
@@ -1235,15 +1095,18 @@ func TestIntegration_ComparisonWithLearnings(t *testing.T) {
 	runner := &mockPromptRunner{response: aiResponse}
 	comp := NewComparator(runner, "")
 
-	variants := []VariantData{
-		{ID: 1, Diff: "+func handler() {}\n+// implementation"},
-		{ID: 2, Diff: "+func handler() {}\n+// different impl"},
+	ctx := context.Background()
+	input := ComparisonInput{
+		SpecName: "test-feature",
+		Variants: []VariantData{
+			{ID: 1, CommitMessages: []string{"implement handler"}},
+			{ID: 2, CommitMessages: []string{"different impl"}},
+		},
 	}
 
-	ctx := context.Background()
-	result, err := comp.Compare(ctx, "test-feature", variants)
+	result, err := comp.CompareUnified(ctx, input)
 	if err != nil {
-		t.Fatalf("Compare() failed: %v", err)
+		t.Fatalf("CompareUnified() failed: %v", err)
 	}
 
 	// Verify basic comparison fields
@@ -1310,16 +1173,19 @@ func TestIntegration_ComparisonWithLearningsGroupedByVariant(t *testing.T) {
 	runner := &mockPromptRunner{response: aiResponse}
 	comp := NewComparator(runner, "")
 
-	variants := []VariantData{
-		{ID: 1, Diff: "+v1"},
-		{ID: 2, Diff: "+v2"},
-		{ID: 3, Diff: "+v3"},
+	ctx := context.Background()
+	input := ComparisonInput{
+		SpecName: "test-feature",
+		Variants: []VariantData{
+			{ID: 1, CommitMessages: []string{"v1"}},
+			{ID: 2, CommitMessages: []string{"v2"}},
+			{ID: 3, CommitMessages: []string{"v3"}},
+		},
 	}
 
-	ctx := context.Background()
-	result, err := comp.Compare(ctx, "test-feature", variants)
+	result, err := comp.CompareUnified(ctx, input)
 	if err != nil {
-		t.Fatalf("Compare() failed: %v", err)
+		t.Fatalf("CompareUnified() failed: %v", err)
 	}
 
 	// Group learnings by variant
@@ -1463,15 +1329,18 @@ func TestIntegration_GracefulDegradation_MalformedLearnings(t *testing.T) {
 			runner := &mockPromptRunner{response: tc.response}
 			comp := NewComparator(runner, "")
 
-			variants := []VariantData{
-				{ID: 1, Diff: "+v1"},
-				{ID: 2, Diff: "+v2"},
+			ctx := context.Background()
+			input := ComparisonInput{
+				SpecName: "test-feature",
+				Variants: []VariantData{
+					{ID: 1, CommitMessages: []string{"v1"}},
+					{ID: 2, CommitMessages: []string{"v2"}},
+				},
 			}
 
-			ctx := context.Background()
-			result, err := comp.Compare(ctx, "test-feature", variants)
+			result, err := comp.CompareUnified(ctx, input)
 			if err != nil {
-				t.Fatalf("Compare() should not fail on malformed learnings: %v", err)
+				t.Fatalf("CompareUnified() should not fail on malformed learnings: %v", err)
 			}
 
 			// Core comparison fields should be valid
@@ -1769,15 +1638,18 @@ func TestIntegration_GracefulDegradation_WhitespaceOnlyFields(t *testing.T) {
 	runner := &mockPromptRunner{response: aiResponse}
 	comp := NewComparator(runner, "")
 
-	variants := []VariantData{
-		{ID: 1, Diff: "+v1"},
-		{ID: 2, Diff: "+v2"},
+	ctx := context.Background()
+	input := ComparisonInput{
+		SpecName: "test-feature",
+		Variants: []VariantData{
+			{ID: 1, CommitMessages: []string{"v1"}},
+			{ID: 2, CommitMessages: []string{"v2"}},
+		},
 	}
 
-	ctx := context.Background()
-	result, err := comp.Compare(ctx, "test-feature", variants)
+	result, err := comp.CompareUnified(ctx, input)
 	if err != nil {
-		t.Fatalf("Compare() failed: %v", err)
+		t.Fatalf("CompareUnified() failed: %v", err)
 	}
 
 	// Only the third learning should be valid (both title and rationale non-empty after trim)
