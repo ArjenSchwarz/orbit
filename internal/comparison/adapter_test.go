@@ -18,11 +18,11 @@ func TestAgentAdapter_RunCustomPrompt(t *testing.T) {
 	agent := testutil.NewTestAgent(t, "mock", scenario)
 	t.Cleanup(func() { agent.AssertAllConsumed(t) })
 
-	ctx := context.Background()
 	workDir := "/test/workdir"
-	adapter := NewAgentAdapter(agent, ctx, workDir)
+	adapter := NewAgentAdapter(agent, workDir)
 
-	result, err := adapter.RunCustomPrompt("test prompt")
+	ctx := context.Background()
+	result, err := adapter.RunCustomPrompt(ctx, "test prompt")
 
 	require.NoError(t, err)
 	require.NotNil(t, result)
@@ -46,11 +46,10 @@ func TestAgentAdapter_PassesWorkDir(t *testing.T) {
 	agent := testutil.NewTestAgent(t, "mock", scenario)
 	t.Cleanup(func() { agent.AssertAllConsumed(t) })
 
-	ctx := context.Background()
 	workDir := "/different/path/to/project"
-	adapter := NewAgentAdapter(agent, ctx, workDir)
+	adapter := NewAgentAdapter(agent, workDir)
 
-	_, err := adapter.RunCustomPrompt("any prompt")
+	_, err := adapter.RunCustomPrompt(context.Background(), "any prompt")
 	require.NoError(t, err)
 
 	calls := agent.Recorder().Calls()
@@ -66,10 +65,9 @@ func TestAgentAdapter_PropagatesErrors(t *testing.T) {
 	agent := testutil.NewTestAgent(t, "mock", scenario)
 	t.Cleanup(func() { agent.AssertAllConsumed(t) })
 
-	ctx := context.Background()
-	adapter := NewAgentAdapter(agent, ctx, "/workdir")
+	adapter := NewAgentAdapter(agent, "/workdir")
 
-	result, err := adapter.RunCustomPrompt("test prompt")
+	result, err := adapter.RunCustomPrompt(context.Background(), "test prompt")
 
 	// TestAgent returns errors like real agents do when IsError is true
 	require.Error(t, err)
@@ -84,22 +82,14 @@ func TestNewAgentAdapter_PanicsOnInvalidInputs(t *testing.T) {
 
 	tests := map[string]struct {
 		agent   agents.Agent
-		ctx     context.Context
 		workDir string
 	}{
 		"nil agent panics": {
 			agent:   nil,
-			ctx:     context.Background(),
-			workDir: "/tmp/test",
-		},
-		"nil context panics": {
-			agent:   validAgent,
-			ctx:     nil,
 			workDir: "/tmp/test",
 		},
 		"empty workDir panics": {
 			agent:   validAgent,
-			ctx:     context.Background(),
 			workDir: "",
 		},
 	}
@@ -107,7 +97,7 @@ func TestNewAgentAdapter_PanicsOnInvalidInputs(t *testing.T) {
 	for name, tc := range tests {
 		t.Run(name, func(t *testing.T) {
 			assert.Panics(t, func() {
-				NewAgentAdapter(tc.agent, tc.ctx, tc.workDir)
+				NewAgentAdapter(tc.agent, tc.workDir)
 			})
 		})
 	}
@@ -117,7 +107,7 @@ func TestNewAgentAdapter_ValidInputsSucceed(t *testing.T) {
 	scenario := testutil.NewScenario().Build()
 	agent := testutil.NewTestAgent(t, "mock", scenario)
 
-	adapter := NewAgentAdapter(agent, context.Background(), "/tmp/test")
+	adapter := NewAgentAdapter(agent, "/tmp/test")
 
 	require.NotNil(t, adapter)
 }
@@ -130,16 +120,16 @@ func TestAgentAdapter_ContextPropagation(t *testing.T) {
 	agent := testutil.NewTestAgent(t, "mock", scenario)
 	t.Cleanup(func() { agent.AssertAllConsumed(t) })
 
+	adapter := NewAgentAdapter(agent, "/tmp/test")
+
 	type contextKey string
 	testKey := contextKey("test-key")
 	ctx := context.WithValue(context.Background(), testKey, "test-value")
-	adapter := NewAgentAdapter(agent, ctx, "/tmp/test")
 
-	_, err := adapter.RunCustomPrompt("test")
+	_, err := adapter.RunCustomPrompt(ctx, "test")
 	require.NoError(t, err)
 
-	// The context is captured at construction time and passed to the agent
-	// We verify by checking the call was made successfully with our context
+	// Verify the call was made successfully with the provided context
 	agent.Recorder().AssertCallCount(t, 1)
 }
 
@@ -154,9 +144,9 @@ func TestAgentAdapter_CancelledContext(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel() // Cancel immediately
 
-	adapter := NewAgentAdapter(agent, ctx, "/tmp/test")
+	adapter := NewAgentAdapter(agent, "/tmp/test")
 
-	_, err := adapter.RunCustomPrompt("test")
+	_, err := adapter.RunCustomPrompt(ctx, "test")
 	// TestAgent will return the retryable error we configured
 	require.Error(t, err)
 }
@@ -169,10 +159,10 @@ func TestAgentAdapter_WithExtraArgs(t *testing.T) {
 	agent := testutil.NewTestAgent(t, "mock", scenario)
 	t.Cleanup(func() { agent.AssertAllConsumed(t) })
 
-	adapter := NewAgentAdapter(agent, context.Background(), "/tmp/test").
+	adapter := NewAgentAdapter(agent, "/tmp/test").
 		WithExtraArgs("--tools", "")
 
-	_, err := adapter.RunCustomPrompt("test prompt")
+	_, err := adapter.RunCustomPrompt(context.Background(), "test prompt")
 	require.NoError(t, err)
 
 	calls := agent.Recorder().Calls()
@@ -189,19 +179,19 @@ func TestAgentAdapter_WithExtraArgs_DoesNotMutateOriginal(t *testing.T) {
 	agent := testutil.NewTestAgent(t, "mock", scenario)
 	t.Cleanup(func() { agent.AssertAllConsumed(t) })
 
-	original := NewAgentAdapter(agent, context.Background(), "/tmp/test")
+	original := NewAgentAdapter(agent, "/tmp/test")
 	withArgs := original.WithExtraArgs("--tools", "")
 
-	// Call original — should have no extra args
-	_, err := original.RunCustomPrompt("prompt1")
+	// Call original - should have no extra args
+	_, err := original.RunCustomPrompt(context.Background(), "prompt1")
 	require.NoError(t, err)
 
 	calls := agent.Recorder().Calls()
 	require.Len(t, calls, 1)
 	assert.Empty(t, calls[0].Options.ExtraArgs)
 
-	// Call copy — should have extra args
-	_, err = withArgs.RunCustomPrompt("prompt2")
+	// Call copy - should have extra args
+	_, err = withArgs.RunCustomPrompt(context.Background(), "prompt2")
 	require.NoError(t, err)
 
 	calls = agent.Recorder().Calls()

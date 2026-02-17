@@ -16,7 +16,7 @@ import (
 // promptRunner is an interface for running custom prompts.
 // This abstracts the Claude client to allow testing and future agent flexibility.
 type promptRunner interface {
-	RunCustomPrompt(prompt string) (*agents.RunResult, error)
+	RunCustomPrompt(ctx context.Context, prompt string) (*agents.RunResult, error)
 }
 
 // Comparator generates comparisons between variants using Claude.
@@ -90,7 +90,7 @@ func (c *Comparator) CompareUnified(ctx context.Context, input ComparisonInput) 
 		}
 	}
 
-	result, err := c.runComparison(originalPrompt, len(input.Variants))
+	result, err := c.runComparison(ctx, originalPrompt, len(input.Variants))
 	if err != nil && input.OutputPath != "" {
 		// The agent may have written the comparison file before the session
 		// failed (e.g., timeout, malformed response). Check for it.
@@ -121,11 +121,11 @@ func (c *Comparator) loadFallbackResult(path string, modTimeBefore time.Time) (*
 }
 
 // runComparison executes the comparison prompt with retry logic.
-func (c *Comparator) runComparison(originalPrompt string, numVariants int) (*Result, error) {
+func (c *Comparator) runComparison(ctx context.Context, originalPrompt string, numVariants int) (*Result, error) {
 	prompt := originalPrompt
 
 	for attempt := 0; attempt < c.maxRetries; attempt++ {
-		response, err := c.promptRunner.RunCustomPrompt(prompt)
+		response, err := c.promptRunner.RunCustomPrompt(ctx, prompt)
 		if err != nil {
 			return nil, fmt.Errorf("claude execution failed: %w", err)
 		}

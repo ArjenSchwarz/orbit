@@ -49,7 +49,7 @@ func (o *Orbit) runComparison(ctx context.Context) error {
 	comparisonCtx, cancel := context.WithTimeout(o.shutdownCtx, comparison.DefaultTimeout)
 	defer cancel()
 
-	adapter := comparison.NewAgentAdapter(o.agent, comparisonCtx, o.config.WorkingDir)
+	adapter := comparison.NewAgentAdapter(o.agent, o.config.WorkingDir)
 	comparator := comparison.NewComparator(adapter, o.config.CompareCommand)
 
 	comparisonJSONPath := filepath.Join(o.config.SpecDir, ".orbit", "comparison.json")
@@ -60,7 +60,7 @@ func (o *Orbit) runComparison(ctx context.Context) error {
 		IncludeDiff: false,
 		OutputPath:  comparisonJSONPath,
 	}
-	result, err := comparator.CompareUnified(ctx, comparisonInput)
+	result, err := comparator.CompareUnified(comparisonCtx, comparisonInput)
 	if err != nil {
 		return fmt.Errorf("compare variants: %w", err)
 	}

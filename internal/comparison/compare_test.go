@@ -1038,7 +1038,7 @@ type mockPromptRunner struct {
 	err      error
 }
 
-func (m *mockPromptRunner) RunCustomPrompt(prompt string) (*agents.RunResult, error) {
+func (m *mockPromptRunner) RunCustomPrompt(_ context.Context, prompt string) (*agents.RunResult, error) {
 	if m.err != nil {
 		return nil, m.err
 	}
@@ -1610,7 +1610,7 @@ type fileWritingMockRunner struct {
 	err         error  // If set, return this error
 }
 
-func (m *fileWritingMockRunner) RunCustomPrompt(prompt string) (*agents.RunResult, error) {
+func (m *fileWritingMockRunner) RunCustomPrompt(_ context.Context, prompt string) (*agents.RunResult, error) {
 	// Simulate the agent writing the comparison file before the error
 	if err := os.WriteFile(m.outputPath, []byte(m.fileContent), 0o644); err != nil {
 		return nil, fmt.Errorf("mock: failed to write file: %w", err)
