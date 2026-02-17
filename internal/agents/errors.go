@@ -76,8 +76,8 @@ type ErrorClassifier interface {
 	Classify(exitCode int, stderr, stdout string, errMsgs []string) *ClassifiedError
 }
 
-// DefaultRateLimitRetryAfter is the default retry delay for rate limit errors
-// when no specific retry-after value is provided.
+// DefaultRateLimitRetryAfter is the default retry delay for 429/rate-limit errors
+// when no Retry-After header or parseable duration is present.
 const DefaultRateLimitRetryAfter = 60 * time.Second
 
 // commonSessionInvalidPatterns are session-invalid patterns shared across all agents.
@@ -103,7 +103,7 @@ func NewSessionInvalidError(agentName string) *ClassifiedError {
 	}
 }
 
-// DefaultOverloadRetryAfter is the default retry delay for overload errors.
+// DefaultOverloadRetryAfter is the default retry delay for 503/overload errors.
 const DefaultOverloadRetryAfter = 30 * time.Second
 
 // commonRateLimitPatterns are rate-limit patterns shared across all agents.
@@ -134,6 +134,8 @@ func MatchesAuthError(combinedLower string, extraPatterns ...string) bool {
 }
 
 // commonConnectionPatterns are connection/network error patterns shared across all agents.
+// Includes "dns" and "unreachable" beyond the original per-agent sets — these are
+// legitimate connection errors that were simply missing from some classifiers.
 var commonConnectionPatterns = []string{
 	"connection",
 	"network",

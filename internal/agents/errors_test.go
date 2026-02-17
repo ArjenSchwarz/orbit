@@ -422,6 +422,7 @@ func TestMatchesOverload(t *testing.T) {
 }
 
 func TestNewRateLimitError(t *testing.T) {
+	// RetryAfter is parsed via ParseRetryAfter, so this also validates that path.
 	err := NewRateLimitError("test-agent", "retry after 30 seconds")
 
 	if err.Class != ErrorClassRetryable {
