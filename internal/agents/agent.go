@@ -30,12 +30,6 @@ type Agent interface {
 	Resume(ctx context.Context, sessionID string, opts RunOptions) (*RunResult, error)
 }
 
-// SessionExporter is an optional interface for agents that require explicit session export.
-// Kiro implements this interface because it doesn't store sessions automatically.
-type SessionExporter interface {
-	ExportSession(ctx context.Context, filename string) error
-}
-
 // SessionInfo contains metadata about a discovered session.
 type SessionInfo struct {
 	ID        string

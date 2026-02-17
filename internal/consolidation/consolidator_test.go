@@ -15,10 +15,9 @@ import (
 
 // mockAgent implements agents.Agent for testing.
 type mockAgent struct {
-	name         string
-	runResult    *agents.RunResult
-	runErr       error
-	exportCalled bool
+	name      string
+	runResult *agents.RunResult
+	runErr    error
 }
 
 func (m *mockAgent) Name() string              { return m.name }
@@ -34,10 +33,6 @@ func (m *mockAgent) Run(ctx context.Context, opts agents.RunOptions) (*agents.Ru
 }
 func (m *mockAgent) Resume(ctx context.Context, sessionID string, opts agents.RunOptions) (*agents.RunResult, error) {
 	return m.runResult, m.runErr
-}
-func (m *mockAgent) ExportSession(ctx context.Context, filename string) error {
-	m.exportCalled = true
-	return nil
 }
 
 // mockGitClient implements variants.GitClient for testing.

@@ -422,15 +422,6 @@ func (c *Consolidator) Run(ctx context.Context) (*ConsolidationResult, error) {
 	commitSHA := parseCommitSHA(result.Output)
 	report := result.Output
 
-	// Check for SessionExporter interface and call ExportSession for agents like Kiro
-	if exporter, ok := c.config.Agent.(agents.SessionExporter); ok {
-		sessionFile := filepath.Join(c.config.SpecDir, ".orbit", fmt.Sprintf("consolidation-session-%s.json", result.SessionID))
-		if err := exporter.ExportSession(ctx, sessionFile); err != nil {
-			// Log but don't fail - session export is best-effort
-			fmt.Fprintf(os.Stderr, "Warning: failed to export session: %v\n", err)
-		}
-	}
-
 	// Run tests
 	consolidationResult := &ConsolidationResult{
 		CommitSHA:   commitSHA,

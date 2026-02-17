@@ -78,17 +78,6 @@ func TestAgent_DefaultSessionDir(t *testing.T) {
 	}
 }
 
-func TestAgent_DoesNotImplementSessionExporter(t *testing.T) {
-	agent := New(agents.AgentConfig{})
-
-	// Kiro should NOT implement SessionExporter interface anymore
-	// (ExportSession was removed in favor of reading SQLite logs directly)
-	_, ok := agent.(agents.SessionExporter)
-	if ok {
-		t.Fatal("Kiro agent should NOT implement SessionExporter interface")
-	}
-}
-
 func TestAgent_BuildArgs_NewSession(t *testing.T) {
 	agent := New(agents.AgentConfig{
 		AutoApprove: false,

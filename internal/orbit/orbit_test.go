@@ -284,7 +284,6 @@ func TestRunPhaseWithRetry_RateLimitError(t *testing.T) {
 
 	agent := testutil.NewTestAgent(t, "test-agent", scenario,
 		testutil.WithClock(clock),
-		testutil.WithSessionExport("/tmp/test"),
 	)
 	t.Cleanup(func() { agent.AssertAllConsumed(t) })
 
@@ -329,7 +328,6 @@ func TestRunPhaseWithRetry_OverloadedError(t *testing.T) {
 
 	agent := testutil.NewTestAgent(t, "test-agent", scenario,
 		testutil.WithClock(clock),
-		testutil.WithSessionExport("/tmp/test"),
 	)
 	t.Cleanup(func() { agent.AssertAllConsumed(t) })
 
@@ -515,7 +513,7 @@ func TestRunPhase_SessionContinuation_NewSession(t *testing.T) {
 		Success("test-session", 0.0).
 		Build()
 
-	agent := testutil.NewTestAgent(t, "mock", scenario, testutil.WithSessionExport("/tmp/test"))
+	agent := testutil.NewTestAgent(t, "mock", scenario)
 	t.Cleanup(func() { agent.AssertAllConsumed(t) })
 
 	o := &Orbit{
@@ -556,7 +554,7 @@ func TestRunPhase_SessionContinuation_WithLogManager(t *testing.T) {
 		Success("test-session", 0.0).
 		Build()
 
-	agent := testutil.NewTestAgent(t, "mock", scenario, testutil.WithSessionExport("/tmp/test"))
+	agent := testutil.NewTestAgent(t, "mock", scenario)
 	t.Cleanup(func() { agent.AssertAllConsumed(t) })
 
 	// Create log manager in temp directory
@@ -604,7 +602,7 @@ func TestRunPhase_ResumeFallback(t *testing.T) {
 		Success("new-session", 0.0). // Fresh Run succeeds
 		Build()
 
-	agent := testutil.NewTestAgent(t, "mock", scenario, testutil.WithSessionExport("/tmp/test"))
+	agent := testutil.NewTestAgent(t, "mock", scenario)
 	t.Cleanup(func() { agent.AssertAllConsumed(t) })
 
 	// Create log manager in temp directory
@@ -1510,7 +1508,7 @@ func TestRunPhase_UsesPrePromptSession(t *testing.T) {
 		Success("pre-prompt-session-123", 0.0).
 		Build()
 
-	agent := testutil.NewTestAgent(t, "mock", scenario, testutil.WithSessionExport("/tmp/test"))
+	agent := testutil.NewTestAgent(t, "mock", scenario)
 	t.Cleanup(func() { agent.AssertAllConsumed(t) })
 
 	dbg, _ := debug.NewLogger(debug.LoggerConfig{})
@@ -1553,7 +1551,7 @@ func TestRunPhase_DoesNotUsePrePromptSessionForPhase2(t *testing.T) {
 		Success("new-session", 0.0).
 		Build()
 
-	agent := testutil.NewTestAgent(t, "mock", scenario, testutil.WithSessionExport("/tmp/test"))
+	agent := testutil.NewTestAgent(t, "mock", scenario)
 	t.Cleanup(func() { agent.AssertAllConsumed(t) })
 
 	dbg, _ := debug.NewLogger(debug.LoggerConfig{})
