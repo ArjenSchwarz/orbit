@@ -242,22 +242,6 @@ func TestTestAgent_WithConfig_OverridesDefaults(t *testing.T) {
 	}
 }
 
-func TestTestAgent_SessionExporter(t *testing.T) {
-	scenario := NewScenario().Build()
-	agent := NewTestAgent(t, "test-agent", scenario, WithSessionExport("/export/path"))
-
-	if !agent.HasSessionExport() {
-		t.Error("expected HasSessionExport to return true")
-	}
-
-	// Verify it implements SessionExporter
-	var exporter agents.SessionExporter = agent
-	err := exporter.ExportSession(context.Background(), "test.json")
-	if err != nil {
-		t.Errorf("unexpected error from ExportSession: %v", err)
-	}
-}
-
 func TestTestAgent_ContextDeadline_Recorded(t *testing.T) {
 	scenario := NewScenario().
 		Success("session-1", 0.05).

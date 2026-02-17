@@ -28,9 +28,8 @@ type TestAgent struct {
 	clock    Clock
 	config   TestAgentConfig
 
-	mu         sync.Mutex
-	callIndex  int
-	exportPath string // if set, implements SessionExporter interface
+	mu        sync.Mutex
+	callIndex int
 }
 
 // Verify TestAgent implements agents.Agent interface.
@@ -277,27 +276,3 @@ func WithConfig(config TestAgentConfig) TestAgentOption {
 	}
 }
 
-// WithSessionExport enables SessionExporter interface support.
-// When enabled, ExportSession() can be called to simulate session export.
-func WithSessionExport(path string) TestAgentOption {
-	return func(a *TestAgent) {
-		a.exportPath = path
-	}
-}
-
-// ExportSession implements agents.SessionExporter for test agents with export enabled.
-func (a *TestAgent) ExportSession(ctx context.Context, filename string) error {
-	if a.exportPath == "" {
-		a.t.Fatalf("TestAgent %q: ExportSession called but WithSessionExport not configured", a.name)
-	}
-	// In tests, we don't actually write files - just return success
-	return nil
-}
-
-// HasSessionExport returns true if the agent has session export enabled.
-func (a *TestAgent) HasSessionExport() bool {
-	return a.exportPath != ""
-}
-
-// Verify testAgentExporter implements agents.SessionExporter interface.
-var _ agents.SessionExporter = (*TestAgent)(nil)

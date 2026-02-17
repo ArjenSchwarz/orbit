@@ -522,7 +522,7 @@ func TestOrbit_WithVariants_MockExecution(t *testing.T) {
 	scenario := testutil.NewScenario().
 		Success("test-session", 0.05).
 		Build()
-	agent := testutil.NewTestAgent(t, "mock", scenario, testutil.WithSessionExport("/tmp/test"))
+	agent := testutil.NewTestAgent(t, "mock", scenario)
 	// Note: We don't add AssertAllConsumed cleanup because DryRun mode doesn't call the agent
 
 	// Create Orbit config

@@ -3,7 +3,6 @@ package orbit
 import (
 	"fmt"
 	"log"
-	"path/filepath"
 	"strings"
 	"time"
 
@@ -41,16 +40,6 @@ func isSessionInvalidError(result *agents.RunResult) bool {
 	}
 
 	return false
-}
-
-// generateSessionExportFilename creates a filename for session export.
-// The filename is placed in the log directory with the pattern: phase-N-agent-session.json
-func (o *Orbit) generateSessionExportFilename(phase int) string {
-	if o.logManager == nil {
-		// Fallback if no log manager
-		return fmt.Sprintf("phase-%d-%s-session.json", phase, o.agent.Name())
-	}
-	return filepath.Join(o.logManager.SessionDir(), fmt.Sprintf("phase-%d-run-%d-%s-session.json", phase, o.currentPhaseRunCount, o.agent.Name()))
 }
 
 // runPrePrompt executes the pre-prompt and stores the session ID for phase 1.
@@ -639,19 +628,6 @@ func (o *Orbit) runPhase(phase int) error {
 		if err := o.logManager.CompletePhase(); err != nil {
 			log.Printf("Warning: failed to complete phase: %v", err)
 			o.debug.Log("Failed to complete phase in log manager: %v", err)
-		}
-	}
-
-	// Export session for agents that require explicit export (e.g., Kiro) [Decision 8]
-	if exporter, ok := o.agent.(agents.SessionExporter); ok {
-		exportFilename := o.generateSessionExportFilename(phase)
-		o.debug.Log("Exporting session to %s", exportFilename)
-		if err := exporter.ExportSession(o.shutdownCtx, exportFilename); err != nil {
-			// Handle export failures gracefully - log warning but don't fail orchestration
-			log.Printf("Warning: failed to export session: %v", err)
-			o.debug.Log("Session export failed: %v", err)
-		} else {
-			o.debug.Log("Session exported successfully to %s", exportFilename)
 		}
 	}
 
