@@ -43,7 +43,7 @@ func runGit(t *testing.T, dir string, args ...string) string {
 
 func TestRecoveryManager_CaptureState(t *testing.T) {
 	repoDir := setupGitRepo(t)
-	rm := NewRecoveryManager(repoDir)
+	rm := NewRecoveryManager(repoDir, NewExecGitOps(repoDir))
 	ctx := context.Background()
 
 	err := rm.CaptureState(ctx)
@@ -54,7 +54,7 @@ func TestRecoveryManager_CaptureState(t *testing.T) {
 func TestRecoveryManager_CreateSnapshot(t *testing.T) {
 	t.Run("creates stash when uncommitted changes exist", func(t *testing.T) {
 		repoDir := setupGitRepo(t)
-		rm := NewRecoveryManager(repoDir)
+		rm := NewRecoveryManager(repoDir, NewExecGitOps(repoDir))
 		ctx := context.Background()
 
 		// Create uncommitted changes
@@ -73,7 +73,7 @@ func TestRecoveryManager_CreateSnapshot(t *testing.T) {
 
 	t.Run("no stash when working directory is clean", func(t *testing.T) {
 		repoDir := setupGitRepo(t)
-		rm := NewRecoveryManager(repoDir)
+		rm := NewRecoveryManager(repoDir, NewExecGitOps(repoDir))
 		ctx := context.Background()
 
 		err := rm.CreateSnapshot(ctx)
@@ -83,7 +83,7 @@ func TestRecoveryManager_CreateSnapshot(t *testing.T) {
 
 	t.Run("stashes tracked modified files", func(t *testing.T) {
 		repoDir := setupGitRepo(t)
-		rm := NewRecoveryManager(repoDir)
+		rm := NewRecoveryManager(repoDir, NewExecGitOps(repoDir))
 		ctx := context.Background()
 
 		// Modify existing file
@@ -105,7 +105,7 @@ func TestRecoveryManager_CreateSnapshot(t *testing.T) {
 func TestRecoveryManager_RestoreOnFailure(t *testing.T) {
 	t.Run("removes uncommitted tracked changes", func(t *testing.T) {
 		repoDir := setupGitRepo(t)
-		rm := NewRecoveryManager(repoDir)
+		rm := NewRecoveryManager(repoDir, NewExecGitOps(repoDir))
 		ctx := context.Background()
 
 		// Modify existing file
@@ -124,7 +124,7 @@ func TestRecoveryManager_RestoreOnFailure(t *testing.T) {
 
 	t.Run("removes untracked files", func(t *testing.T) {
 		repoDir := setupGitRepo(t)
-		rm := NewRecoveryManager(repoDir)
+		rm := NewRecoveryManager(repoDir, NewExecGitOps(repoDir))
 		ctx := context.Background()
 
 		// Create untracked file
@@ -142,7 +142,7 @@ func TestRecoveryManager_RestoreOnFailure(t *testing.T) {
 
 	t.Run("removes untracked directories", func(t *testing.T) {
 		repoDir := setupGitRepo(t)
-		rm := NewRecoveryManager(repoDir)
+		rm := NewRecoveryManager(repoDir, NewExecGitOps(repoDir))
 		ctx := context.Background()
 
 		// Create untracked directory with files
@@ -164,7 +164,7 @@ func TestRecoveryManager_RestoreOnFailure(t *testing.T) {
 func TestRecoveryManager_RestoreStash(t *testing.T) {
 	t.Run("restores stashed changes", func(t *testing.T) {
 		repoDir := setupGitRepo(t)
-		rm := NewRecoveryManager(repoDir)
+		rm := NewRecoveryManager(repoDir, NewExecGitOps(repoDir))
 		ctx := context.Background()
 
 		// Create and stash changes
@@ -189,7 +189,7 @@ func TestRecoveryManager_RestoreStash(t *testing.T) {
 
 	t.Run("no-op when no stash exists", func(t *testing.T) {
 		repoDir := setupGitRepo(t)
-		rm := NewRecoveryManager(repoDir)
+		rm := NewRecoveryManager(repoDir, NewExecGitOps(repoDir))
 		ctx := context.Background()
 
 		warning, err := rm.RestoreStash(ctx)
@@ -199,7 +199,7 @@ func TestRecoveryManager_RestoreStash(t *testing.T) {
 
 	t.Run("handles stash conflict gracefully", func(t *testing.T) {
 		repoDir := setupGitRepo(t)
-		rm := NewRecoveryManager(repoDir)
+		rm := NewRecoveryManager(repoDir, NewExecGitOps(repoDir))
 		ctx := context.Background()
 
 		// Create and stash changes to README.md
@@ -230,7 +230,7 @@ func TestRecoveryManager_RestoreStash(t *testing.T) {
 func TestRecoveryManager_Cleanup(t *testing.T) {
 	t.Run("drops stash on cleanup", func(t *testing.T) {
 		repoDir := setupGitRepo(t)
-		rm := NewRecoveryManager(repoDir)
+		rm := NewRecoveryManager(repoDir, NewExecGitOps(repoDir))
 		ctx := context.Background()
 
 		// Create and stash changes
@@ -257,7 +257,7 @@ func TestRecoveryManager_Cleanup(t *testing.T) {
 
 	t.Run("no-op when no stash exists", func(t *testing.T) {
 		repoDir := setupGitRepo(t)
-		rm := NewRecoveryManager(repoDir)
+		rm := NewRecoveryManager(repoDir, NewExecGitOps(repoDir))
 		ctx := context.Background()
 
 		err := rm.Cleanup(ctx)
@@ -268,7 +268,7 @@ func TestRecoveryManager_Cleanup(t *testing.T) {
 func TestRecoveryManager_PartialFailureScenario(t *testing.T) {
 	// Simulates a scenario where agent makes partial modifications before failing
 	repoDir := setupGitRepo(t)
-	rm := NewRecoveryManager(repoDir)
+	rm := NewRecoveryManager(repoDir, NewExecGitOps(repoDir))
 	ctx := context.Background()
 
 	// Capture initial state
