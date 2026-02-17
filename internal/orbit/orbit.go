@@ -224,13 +224,21 @@ func New(config Config) (*Orbit, error) {
 		agentConfig.AutoApprove = true
 	}
 
-	agent, err := config.AgentResolver.GetAgent(agentName, agentConfig)
-	if err != nil {
-		return nil, fmt.Errorf("failed to get agent %q: %w", agentName, err)
+	// Resolve the agent type from config, falling back to the alias name.
+	// In alias-based configs, config.Agent holds the alias (e.g., "copilot-sonnet")
+	// while config.AgentConfig.Type holds the registry type (e.g., "copilot").
+	agentType := agentConfig.Type
+	if agentType == "" {
+		agentType = agentName
 	}
 
-	// Get the error classifier for this agent
-	errorClassifier := agents.GetClassifier(agentName)
+	agent, err := config.AgentResolver.GetAgent(agentType, agentConfig)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get agent %q (type: %s): %w", agentName, agentType, err)
+	}
+
+	// Get the error classifier for this agent type
+	errorClassifier := agents.GetClassifier(agentType)
 
 	// Log configuration if debug enabled
 	if config.Debug {
