@@ -46,31 +46,13 @@ func (c *Classifier) Classify(exitCode int, stderr, stdout string, errMsgs []str
 	}
 
 	// Check for rate limiting
-	if strings.Contains(combinedLower, "rate limit") ||
-		strings.Contains(combinedLower, "rate_limit") ||
-		strings.Contains(combinedLower, "429") ||
-		strings.Contains(combinedLower, "too many requests") {
-		return &agents.ClassifiedError{
-			Original:   errors.New("rate limited"),
-			Class:      agents.ErrorClassRetryable,
-			RetryAfter: agents.ParseRetryAfter(combinedLower),
-			Message:    "API rate limit exceeded",
-			Agent:      "claude-code",
-		}
+	if agents.MatchesRateLimit(combinedLower) {
+		return agents.NewRateLimitError("claude-code", combinedLower)
 	}
 
 	// Check for authentication errors (fatal)
-	if strings.Contains(combinedLower, "not authenticated") ||
-		strings.Contains(combinedLower, "api key") ||
-		strings.Contains(combinedLower, "authentication") ||
-		strings.Contains(combinedLower, "unauthorized") ||
-		strings.Contains(combinedLower, "invalid token") {
-		return &agents.ClassifiedError{
-			Original: errors.New("authentication failed"),
-			Class:    agents.ErrorClassFatal,
-			Message:  "Authentication error",
-			Agent:    "claude-code",
-		}
+	if agents.MatchesAuthError(combinedLower, "not authenticated", "authentication") {
+		return agents.NewAuthError("claude-code")
 	}
 
 	// Check for session-related errors
@@ -79,50 +61,16 @@ func (c *Classifier) Classify(exitCode int, stderr, stdout string, errMsgs []str
 	}
 
 	// Check for connection errors (retryable)
-	if strings.Contains(combinedLower, "connection") ||
-		strings.Contains(combinedLower, "network") ||
-		strings.Contains(combinedLower, "timeout") ||
-		strings.Contains(combinedLower, "dns") ||
-		strings.Contains(combinedLower, "unreachable") {
-		return &agents.ClassifiedError{
-			Original: errors.New("connection failed"),
-			Class:    agents.ErrorClassRetryable,
-			Message:  "Network connection error",
-			Agent:    "claude-code",
-		}
+	if agents.MatchesConnectionError(combinedLower) {
+		return agents.NewConnectionError("claude-code")
 	}
 
 	// Check for API overload (retryable)
-	if strings.Contains(combinedLower, "overloaded") ||
-		strings.Contains(combinedLower, "503") ||
-		strings.Contains(combinedLower, "service unavailable") {
-		return &agents.ClassifiedError{
-			Original:   errors.New("api overloaded"),
-			Class:      agents.ErrorClassRetryable,
-			RetryAfter: 30 * time.Second,
-			Message:    "API is overloaded",
-			Agent:      "claude-code",
-		}
+	if agents.MatchesOverload(combinedLower) {
+		return agents.NewOverloadError("claude-code")
 	}
 
-	// Unknown error - build message from available sources
-	msg := strings.Join(errMsgs, "; ")
-	if msg == "" {
-		msg = stderr
-	}
-	if msg == "" {
-		msg = stdout
-	}
-	if msg == "" {
-		msg = "unknown error"
-	}
-
-	return &agents.ClassifiedError{
-		Original: errors.New(msg),
-		Class:    agents.ErrorClassUnknown,
-		Message:  msg,
-		Agent:    "claude-code",
-	}
+	return agents.NewUnknownError("claude-code", errMsgs, stderr, stdout)
 }
 
 

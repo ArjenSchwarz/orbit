@@ -311,3 +311,273 @@ func TestParseRetryAfter(t *testing.T) {
 		})
 	}
 }
+
+func TestMatchesRateLimit(t *testing.T) {
+	tests := []struct {
+		name     string
+		input    string
+		extra    []string
+		expected bool
+	}{
+		{"rate limit", "error: rate limit exceeded", nil, true},
+		{"rate_limit", "rate_limit_error", nil, true},
+		{"429 status", "http 429 response", nil, true},
+		{"too many requests", "too many requests", nil, true},
+		{"no match", "authentication failed", nil, false},
+		{"empty string", "", nil, false},
+		{"extra pattern matches", "request throttled", []string{"throttl"}, true},
+		{"extra pattern no match", "some error", []string{"throttl"}, false},
+		{"common pattern with extra", "rate limit hit", []string{"throttl"}, true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := MatchesRateLimit(tt.input, tt.extra...)
+			if got != tt.expected {
+				t.Errorf("MatchesRateLimit(%q, %v) = %v, want %v", tt.input, tt.extra, got, tt.expected)
+			}
+		})
+	}
+}
+
+func TestMatchesAuthError(t *testing.T) {
+	tests := []struct {
+		name     string
+		input    string
+		extra    []string
+		expected bool
+	}{
+		{"unauthorized", "401 unauthorized", nil, true},
+		{"invalid token", "invalid token provided", nil, true},
+		{"api key", "missing api key", nil, true},
+		{"no match", "connection timeout", nil, false},
+		{"empty string", "", nil, false},
+		{"extra pattern matches", "not authenticated", []string{"not authenticated"}, true},
+		{"extra pattern no match", "rate limit", []string{"not authenticated"}, false},
+		{"common pattern with extra", "unauthorized access", []string{"credentials"}, true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := MatchesAuthError(tt.input, tt.extra...)
+			if got != tt.expected {
+				t.Errorf("MatchesAuthError(%q, %v) = %v, want %v", tt.input, tt.extra, got, tt.expected)
+			}
+		})
+	}
+}
+
+func TestMatchesConnectionError(t *testing.T) {
+	tests := []struct {
+		name     string
+		input    string
+		extra    []string
+		expected bool
+	}{
+		{"connection", "connection refused", nil, true},
+		{"network", "network error", nil, true},
+		{"timeout", "request timeout", nil, true},
+		{"dns", "dns resolution failed", nil, true},
+		{"unreachable", "host unreachable", nil, true},
+		{"no match", "authentication failed", nil, false},
+		{"empty string", "", nil, false},
+		{"extra pattern matches", "econnrefused", []string{"econnrefused"}, true},
+		{"extra pattern no match", "rate limit", []string{"econnrefused"}, false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := MatchesConnectionError(tt.input, tt.extra...)
+			if got != tt.expected {
+				t.Errorf("MatchesConnectionError(%q, %v) = %v, want %v", tt.input, tt.extra, got, tt.expected)
+			}
+		})
+	}
+}
+
+func TestMatchesOverload(t *testing.T) {
+	tests := []struct {
+		name     string
+		input    string
+		extra    []string
+		expected bool
+	}{
+		{"overloaded", "api overloaded", nil, true},
+		{"503", "http 503 error", nil, true},
+		{"service unavailable", "service unavailable", nil, true},
+		{"no match", "authentication failed", nil, false},
+		{"empty string", "", nil, false},
+		{"extra pattern matches", "temporarily unavailable", []string{"temporarily unavailable"}, true},
+		{"extra pattern no match", "rate limit", []string{"temporarily unavailable"}, false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := MatchesOverload(tt.input, tt.extra...)
+			if got != tt.expected {
+				t.Errorf("MatchesOverload(%q, %v) = %v, want %v", tt.input, tt.extra, got, tt.expected)
+			}
+		})
+	}
+}
+
+func TestNewRateLimitError(t *testing.T) {
+	err := NewRateLimitError("test-agent", "retry after 30 seconds")
+
+	if err.Class != ErrorClassRetryable {
+		t.Errorf("Class = %v, want %v", err.Class, ErrorClassRetryable)
+	}
+	if err.Agent != "test-agent" {
+		t.Errorf("Agent = %q, want %q", err.Agent, "test-agent")
+	}
+	if err.Message != "API rate limit exceeded" {
+		t.Errorf("Message = %q, want %q", err.Message, "API rate limit exceeded")
+	}
+	if err.RetryAfter != 30*time.Second {
+		t.Errorf("RetryAfter = %v, want %v", err.RetryAfter, 30*time.Second)
+	}
+	if err.Original == nil {
+		t.Error("Original should not be nil")
+	}
+}
+
+func TestNewRateLimitError_DefaultRetryAfter(t *testing.T) {
+	err := NewRateLimitError("test-agent", "rate limit exceeded")
+
+	if err.RetryAfter != DefaultRateLimitRetryAfter {
+		t.Errorf("RetryAfter = %v, want %v", err.RetryAfter, DefaultRateLimitRetryAfter)
+	}
+}
+
+func TestNewAuthError(t *testing.T) {
+	err := NewAuthError("test-agent")
+
+	if err.Class != ErrorClassFatal {
+		t.Errorf("Class = %v, want %v", err.Class, ErrorClassFatal)
+	}
+	if err.Agent != "test-agent" {
+		t.Errorf("Agent = %q, want %q", err.Agent, "test-agent")
+	}
+	if err.Message != "Authentication error" {
+		t.Errorf("Message = %q, want %q", err.Message, "Authentication error")
+	}
+	if err.Original == nil {
+		t.Error("Original should not be nil")
+	}
+}
+
+func TestNewConnectionError(t *testing.T) {
+	err := NewConnectionError("test-agent")
+
+	if err.Class != ErrorClassRetryable {
+		t.Errorf("Class = %v, want %v", err.Class, ErrorClassRetryable)
+	}
+	if err.Agent != "test-agent" {
+		t.Errorf("Agent = %q, want %q", err.Agent, "test-agent")
+	}
+	if err.Message != "Network connection error" {
+		t.Errorf("Message = %q, want %q", err.Message, "Network connection error")
+	}
+	if err.Original == nil {
+		t.Error("Original should not be nil")
+	}
+}
+
+func TestNewOverloadError(t *testing.T) {
+	err := NewOverloadError("test-agent")
+
+	if err.Class != ErrorClassRetryable {
+		t.Errorf("Class = %v, want %v", err.Class, ErrorClassRetryable)
+	}
+	if err.Agent != "test-agent" {
+		t.Errorf("Agent = %q, want %q", err.Agent, "test-agent")
+	}
+	if err.Message != "API is overloaded" {
+		t.Errorf("Message = %q, want %q", err.Message, "API is overloaded")
+	}
+	if err.RetryAfter != DefaultOverloadRetryAfter {
+		t.Errorf("RetryAfter = %v, want %v", err.RetryAfter, DefaultOverloadRetryAfter)
+	}
+	if err.Original == nil {
+		t.Error("Original should not be nil")
+	}
+}
+
+func TestNewUnknownError(t *testing.T) {
+	tests := []struct {
+		name        string
+		errMsgs     []string
+		stderr      string
+		stdout      string
+		expectedMsg string
+	}{
+		{
+			name:        "uses errMsgs first",
+			errMsgs:     []string{"error one", "error two"},
+			stderr:      "stderr content",
+			stdout:      "stdout content",
+			expectedMsg: "error one; error two",
+		},
+		{
+			name:        "falls back to stderr",
+			errMsgs:     nil,
+			stderr:      "stderr content",
+			stdout:      "stdout content",
+			expectedMsg: "stderr content",
+		},
+		{
+			name:        "falls back to stdout",
+			errMsgs:     nil,
+			stderr:      "",
+			stdout:      "stdout content",
+			expectedMsg: "stdout content",
+		},
+		{
+			name:        "defaults to unknown error",
+			errMsgs:     nil,
+			stderr:      "",
+			stdout:      "",
+			expectedMsg: "unknown error",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := NewUnknownError("test-agent", tt.errMsgs, tt.stderr, tt.stdout)
+			if err.Class != ErrorClassUnknown {
+				t.Errorf("Class = %v, want %v", err.Class, ErrorClassUnknown)
+			}
+			if err.Agent != "test-agent" {
+				t.Errorf("Agent = %q, want %q", err.Agent, "test-agent")
+			}
+			if err.Message != tt.expectedMsg {
+				t.Errorf("Message = %q, want %q", err.Message, tt.expectedMsg)
+			}
+		})
+	}
+}
+
+func TestBuildUnknownMessage(t *testing.T) {
+	tests := []struct {
+		name     string
+		errMsgs  []string
+		stderr   string
+		stdout   string
+		expected string
+	}{
+		{"errMsgs joined", []string{"a", "b"}, "x", "y", "a; b"},
+		{"stderr fallback", nil, "stderr msg", "stdout msg", "stderr msg"},
+		{"stdout fallback", nil, "", "stdout msg", "stdout msg"},
+		{"default", nil, "", "", "unknown error"},
+		{"empty errMsgs", []string{}, "stderr msg", "", "stderr msg"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := BuildUnknownMessage(tt.errMsgs, tt.stderr, tt.stdout)
+			if got != tt.expected {
+				t.Errorf("BuildUnknownMessage(%v, %q, %q) = %q, want %q", tt.errMsgs, tt.stderr, tt.stdout, got, tt.expected)
+			}
+		})
+	}
+}

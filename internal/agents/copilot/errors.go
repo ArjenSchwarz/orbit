@@ -3,7 +3,6 @@ package copilot
 import (
 	"errors"
 	"strings"
-	"time"
 
 	"github.com/arjenschwarz/orbit/internal/agents"
 )
@@ -26,28 +25,14 @@ func (c *Classifier) Classify(exitCode int, stderr, stdout string, errMsgs []str
 	combined := strings.ToLower(stderr + stdout + strings.Join(errMsgs, " "))
 
 	// Check for rate limiting
-	if strings.Contains(combined, "rate limit") ||
-		strings.Contains(combined, "rate_limit") ||
-		strings.Contains(combined, "429") ||
-		strings.Contains(combined, "too many requests") ||
-		strings.Contains(combined, "throttled") {
-		return &agents.ClassifiedError{
-			Original:   errors.New("rate limited"),
-			Class:      agents.ErrorClassRetryable,
-			RetryAfter: agents.ParseRetryAfter(combined),
-			Message:    "API rate limit exceeded",
-			Agent:      "copilot",
-		}
+	if agents.MatchesRateLimit(combined, "throttled") {
+		return agents.NewRateLimitError("copilot", combined)
 	}
 
 	// Check for authentication errors (fatal)
-	if strings.Contains(combined, "not logged in") ||
-		strings.Contains(combined, "authentication required") ||
-		strings.Contains(combined, "unauthorized") ||
-		strings.Contains(combined, "invalid token") ||
-		strings.Contains(combined, "access denied") ||
-		strings.Contains(combined, "login required") ||
-		strings.Contains(combined, "gh auth login") {
+	// Copilot has a custom message pointing users to 'gh auth login'.
+	if agents.MatchesAuthError(combined, "not logged in", "authentication required",
+		"access denied", "login required", "gh auth login") {
 		return &agents.ClassifiedError{
 			Original: errors.New("authentication failed"),
 			Class:    agents.ErrorClassFatal,
@@ -62,52 +47,15 @@ func (c *Classifier) Classify(exitCode int, stderr, stdout string, errMsgs []str
 	}
 
 	// Check for connection errors (retryable)
-	if strings.Contains(combined, "connection") ||
-		strings.Contains(combined, "network") ||
-		strings.Contains(combined, "timeout") ||
-		strings.Contains(combined, "dns") ||
-		strings.Contains(combined, "unreachable") ||
-		strings.Contains(combined, "econnrefused") ||
-		strings.Contains(combined, "enotfound") {
-		return &agents.ClassifiedError{
-			Original: errors.New("connection failed"),
-			Class:    agents.ErrorClassRetryable,
-			Message:  "Network connection error",
-			Agent:    "copilot",
-		}
+	if agents.MatchesConnectionError(combined, "econnrefused", "enotfound") {
+		return agents.NewConnectionError("copilot")
 	}
 
 	// Check for API overload (retryable)
-	if strings.Contains(combined, "overloaded") ||
-		strings.Contains(combined, "503") ||
-		strings.Contains(combined, "service unavailable") ||
-		strings.Contains(combined, "temporarily unavailable") {
-		return &agents.ClassifiedError{
-			Original:   errors.New("api overloaded"),
-			Class:      agents.ErrorClassRetryable,
-			RetryAfter: 30 * time.Second,
-			Message:    "API is overloaded",
-			Agent:      "copilot",
-		}
+	if agents.MatchesOverload(combined, "temporarily unavailable") {
+		return agents.NewOverloadError("copilot")
 	}
 
-	// Unknown error - build message from available sources
-	msg := strings.Join(errMsgs, "; ")
-	if msg == "" {
-		msg = stderr
-	}
-	if msg == "" {
-		msg = stdout
-	}
-	if msg == "" {
-		msg = "unknown error"
-	}
-
-	return &agents.ClassifiedError{
-		Original: errors.New(msg),
-		Class:    agents.ErrorClassUnknown,
-		Message:  msg,
-		Agent:    "copilot",
-	}
+	return agents.NewUnknownError("copilot", errMsgs, stderr, stdout)
 }
 
