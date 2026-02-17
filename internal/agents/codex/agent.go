@@ -7,10 +7,12 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"time"
 
 	"github.com/arjenschwarz/orbit/internal/agents"
 )
+
+// Compile-time interface check.
+var _ agents.Agent = (*Agent)(nil)
 
 const defaultPrompt = "Run /next-task --phase and when complete run /commit"
 
@@ -154,47 +156,24 @@ func (a *Agent) buildArgs(opts agents.RunOptions) []string {
 func (a *Agent) execute(ctx context.Context, opts agents.RunOptions, _ bool) (*agents.RunResult, error) {
 	args := a.buildArgs(opts)
 
-	cmd := exec.CommandContext(ctx, a.cliPath, args...)
-	if opts.WorkDir != "" {
-		cmd.Dir = opts.WorkDir
-	}
-
-	// Set environment variables
-	if len(opts.Env) > 0 {
-		cmd.Env = os.Environ()
-		for k, v := range opts.Env {
-			cmd.Env = append(cmd.Env, k+"="+v)
-		}
-	}
-
-	var stdout, stderr bytes.Buffer
-	cmd.Stdout = &stdout
-	cmd.Stderr = &stderr
-	cmd.Stdin = nil // Explicitly close stdin so Codex doesn't wait for input
-
-	startTime := time.Now()
-	err := cmd.Run()
-	duration := time.Since(startTime)
+	execResult := agents.Execute(ctx, agents.ExecuteConfig{
+		CLIPath: a.cliPath,
+		Args:    args,
+		WorkDir: opts.WorkDir,
+		Env:     opts.Env,
+	})
 
 	result := &agents.RunResult{
 		SessionID: opts.SessionID,
-		Duration:  duration,
-		Output:    stdout.String(),
-		Stderr:    stderr.String(),
+		Duration:  execResult.Duration,
+		ExitCode:  execResult.ExitCode,
+		Output:    string(execResult.Stdout),
+		Stderr:    execResult.Stderr,
 	}
 
-	// Get exit code
-	if err != nil {
-		if exitErr, ok := err.(*exec.ExitError); ok {
-			result.ExitCode = exitErr.ExitCode()
-		} else {
-			result.ExitCode = -1
-		}
+	if execResult.Err != nil {
+		result.Error = execResult.Err
 	}
 
-	if err != nil {
-		result.Error = err
-	}
-
-	return result, err
+	return result, execResult.Err
 }

@@ -9,7 +9,6 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"time"
 
 	"github.com/arjenschwarz/orbit/internal/agents"
 	"github.com/arjenschwarz/orbit/internal/agents/kiro/logs"
@@ -159,12 +158,9 @@ func (a *Agent) buildArgs(opts agents.RunOptions, resume bool) []string {
 func (a *Agent) execute(ctx context.Context, opts agents.RunOptions, resume bool) (*agents.RunResult, error) {
 	args := a.buildArgs(opts, resume)
 
-	cmd := exec.CommandContext(ctx, a.cliPath, args...)
+	// Resolve workDir for post-execution session lookup
 	workDir := opts.WorkDir
-	if workDir != "" {
-		cmd.Dir = workDir
-	} else {
-		// Get current working directory for session lookup
+	if workDir == "" {
 		var err error
 		workDir, err = os.Getwd()
 		if err != nil {
@@ -172,38 +168,23 @@ func (a *Agent) execute(ctx context.Context, opts agents.RunOptions, resume bool
 		}
 	}
 
-	// Set environment variables
-	if len(opts.Env) > 0 {
-		cmd.Env = appendEnv(opts.Env)
-	}
-
-	var stdout, stderr bytes.Buffer
-	cmd.Stdout = &stdout
-	cmd.Stderr = &stderr
-	cmd.Stdin = nil // Explicitly close stdin so Kiro doesn't wait for input
-
-	startTime := time.Now()
-	err := cmd.Run()
-	duration := time.Since(startTime)
+	execResult := agents.Execute(ctx, agents.ExecuteConfig{
+		CLIPath: a.cliPath,
+		Args:    args,
+		WorkDir: opts.WorkDir,
+		Env:     opts.Env,
+	})
 
 	result := &agents.RunResult{
 		SessionID: opts.SessionID,
-		Duration:  duration,
-		Output:    stdout.String(),
-		Stderr:    stderr.String(),
+		Duration:  execResult.Duration,
+		ExitCode:  execResult.ExitCode,
+		Output:    string(execResult.Stdout),
+		Stderr:    execResult.Stderr,
 	}
 
-	// Get exit code
-	if err != nil {
-		if exitErr, ok := err.(*exec.ExitError); ok {
-			result.ExitCode = exitErr.ExitCode()
-		} else {
-			result.ExitCode = -1
-		}
-	}
-
-	if err != nil {
-		result.Error = err
+	if execResult.Err != nil {
+		result.Error = execResult.Err
 	}
 
 	// Try to extract usage info from the session
@@ -216,7 +197,7 @@ func (a *Agent) execute(ctx context.Context, opts agents.RunOptions, resume bool
 		}
 	}
 
-	return result, err
+	return result, execResult.Err
 }
 
 // extractSessionCredits fetches the most recent session for the directory and extracts credit usage.
@@ -261,11 +242,3 @@ func (a *Agent) extractSessionCredits(ctx context.Context, workDir string) float
 	return credits
 }
 
-// appendEnv appends environment variables to the current environment.
-func appendEnv(env map[string]string) []string {
-	result := os.Environ() // Start with existing environment
-	for k, v := range env {
-		result = append(result, k+"="+v)
-	}
-	return result
-}
