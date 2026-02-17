@@ -48,8 +48,6 @@ func (a *AgentAdapter) WithExtraArgs(args ...string) *AgentAdapter {
 }
 
 // RunCustomPrompt implements the promptRunner interface by delegating to agent.Run().
-// Note: AutoApprove is controlled by the agent's config, not RunOptions.
-// The agent passed to the adapter should already be configured with AutoApprove if needed.
 func (a *AgentAdapter) RunCustomPrompt(prompt string) (*agents.RunResult, error) {
 	opts := agents.RunOptions{
 		Prompt:    prompt,

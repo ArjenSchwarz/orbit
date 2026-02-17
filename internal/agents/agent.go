@@ -51,7 +51,6 @@ type RunOptions struct {
 	Prompt      string
 	WorkDir     string
 	SessionID   string            // Pre-generated UUID for tracking
-	AutoApprove bool
 	Timeout     time.Duration     // 0 = no timeout
 	Env         map[string]string
 	ExtraArgs   []string          // Agent-specific CLI arguments
