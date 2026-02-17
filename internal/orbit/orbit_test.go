@@ -303,8 +303,8 @@ func TestRunPhaseWithRetry_RateLimitError(t *testing.T) {
 	// Verify 2 calls: 1 failure then success
 	agent.Recorder().AssertCallCount(t, 2)
 
-	// Verify backoff duration: 60s from rate limit RetryAfter
-	clock.AssertSleeps(t, []time.Duration{60 * time.Second})
+	// Verify total backoff: 60s from rate limit RetryAfter (chunked into 30s pieces)
+	clock.AssertTotalSleep(t, 60*time.Second)
 }
 
 func TestRunPhaseWithRetry_OverloadedError(t *testing.T) {

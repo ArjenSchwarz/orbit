@@ -6,6 +6,11 @@ import (
 	"time"
 )
 
+// maxRateLimitResets is the maximum number of times the attempt counter can
+// be reset due to rate-limit waits before giving up. Prevents infinite loops
+// if a rate-limit condition never resolves.
+const maxRateLimitResets = 5
+
 // RetryConfig configures the shared retry executor.
 // Each caller provides callbacks for execution, error classification,
 // and retry notification. This unifies the retry-with-backoff pattern
@@ -15,6 +20,9 @@ type RetryConfig struct {
 	MaxRetries int
 
 	// Sleep pauses for the given duration. Inject Clock.Sleep for testability.
+	// During rate-limit waits, sleep is performed in 30-second chunks with
+	// context cancellation checks between chunks, so shutdown is responsive
+	// even during multi-hour waits.
 	Sleep func(time.Duration)
 
 	// Execute runs the operation. The attempt parameter is 0-based.
@@ -51,8 +59,13 @@ type RetryConfig struct {
 // On rate-limit waits (ErrorClassRateLimitWait), the attempt counter resets
 // to 0 so the caller gets a fresh set of retries after the limit lifts.
 func RunWithRetry(ctx context.Context, cfg RetryConfig) (*RunResult, error) {
+	if cfg.MaxRetries < 1 {
+		return nil, fmt.Errorf("MaxRetries must be >= 1, got %d", cfg.MaxRetries)
+	}
+
 	var lastErr error
 	var lastResult *RunResult
+	rateLimitResets := 0
 
 	for attempt := 0; attempt < cfg.MaxRetries; attempt++ {
 		if ctx.Err() != nil {
@@ -80,20 +93,29 @@ func RunWithRetry(ctx context.Context, cfg RetryConfig) (*RunResult, error) {
 			break
 		}
 
-		// Calculate wait duration.
+		// calcBackoff returns RetryAfter for rate-limit waits (ignoring attempt),
+		// explicit RetryAfter for retryable errors, or exponential backoff.
 		backoff := calcBackoff(attempt, classified)
 
 		if cfg.OnRetry != nil {
 			cfg.OnRetry(attempt+1, cfg.MaxRetries, classified, backoff)
 		}
 
-		// Rate-limit wait resets the attempt counter.
-		// Set to -1 because the loop increment will make it 0.
+		// Rate-limit wait resets the attempt counter so the caller gets
+		// a fresh set of retries. Cap resets to prevent infinite loops
+		// if the rate-limit condition never resolves.
 		if classified.Class.IsRateLimitWait() {
+			rateLimitResets++
+			if rateLimitResets > maxRateLimitResets {
+				return lastResult, fmt.Errorf("rate-limit wait exceeded %d resets: %w", maxRateLimitResets, lastErr)
+			}
 			attempt = -1
 		}
 
-		cfg.Sleep(backoff)
+		// Sleep in chunks for long waits so context cancellation is responsive.
+		if err := sleepWithContext(ctx, backoff, cfg.Sleep); err != nil {
+			return lastResult, err
+		}
 
 		if cfg.AfterWait != nil {
 			cfg.AfterWait()
@@ -101,6 +123,27 @@ func RunWithRetry(ctx context.Context, cfg RetryConfig) (*RunResult, error) {
 	}
 
 	return lastResult, fmt.Errorf("max retries exceeded: %w", lastErr)
+}
+
+// sleepChunk is the maximum duration for a single sleep call during
+// chunked sleeping. Long waits (e.g., rate-limit resets) are broken into
+// chunks of this size with context checks between them.
+const sleepChunk = 30 * time.Second
+
+// sleepWithContext sleeps for the given duration, checking for context
+// cancellation between chunks. For short durations (<= sleepChunk), this
+// is a single sleep call. For longer durations, sleep is broken into chunks
+// so that shutdown (Ctrl+C) is responsive even during multi-hour waits.
+func sleepWithContext(ctx context.Context, d time.Duration, sleep func(time.Duration)) error {
+	for d > 0 {
+		if ctx.Err() != nil {
+			return ctx.Err()
+		}
+		chunk := min(d, sleepChunk)
+		sleep(chunk)
+		d -= chunk
+	}
+	return nil
 }
 
 // calcBackoff determines the wait duration for a retry attempt.

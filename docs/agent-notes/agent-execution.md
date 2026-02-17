@@ -37,7 +37,7 @@ When `cfg.Env` is nil or empty, the command inherits the default environment (Go
 
 ## Shared Retry Executor (`internal/agents/retry.go`)
 
-All retry-with-backoff logic is consolidated in `agents.RunWithRetry()`. This replaces 4 previously divergent retry loops:
+All retry-with-backoff logic is consolidated in `agents.RunWithRetry()`. This replaces 5 previously divergent retry loops:
 
 - `runPhaseWithRetry` (single-run mode)
 - `runPostPromptWithRetry` (single-run mode)
@@ -76,4 +76,5 @@ Two helper functions in `internal/orbit/single.go`:
 
 - `o.sleepFunc()` in orbit package returns `time.Sleep` if `o.config.Clock` is nil. Tests that construct `Orbit` directly (not via `New()`) may not set Clock.
 - Consolidation uses `time.Sleep` directly since it doesn't have a Clock dependency.
-- The executor uses `Clock.Sleep` instead of `time.After` + select. This means context cancellation during sleep isn't instant, but the durations are short (1-16s backoff) and rate-limit waits are intentional blocks.
+- Long sleeps (rate-limit waits) are broken into 30-second chunks with context checks between them, so Ctrl+C is responsive even during multi-hour usage limit waits.
+- Rate-limit resets are capped at 5 to prevent infinite loops if the condition never resolves.
