@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"log"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"sync"
@@ -46,31 +45,15 @@ func (o *Orbit) getAgentConfig(agentName string) agents.AgentConfig {
 }
 
 // executeVariantShellCommand runs a shell command in a variant's worktree.
-// It executes the command using /bin/sh -c with the working directory set to the
-// variant's worktree, and sets ORBIT_PHASE_COUNT, ORBIT_AGENT, and ORBIT_VARIANT
-// environment variables.
+// It delegates to runShellCore with variant-specific parameters: the variant's
+// worktree as working directory, the variant's agent name, and ORBIT_VARIANT env var.
 func (o *Orbit) executeVariantShellCommand(
 	ctx context.Context,
 	v *variants.Variant,
 	command, logName string,
 	logManager *logs.Manager,
 ) (*ShellCommandResult, error) {
-	startTime := time.Now()
-	result := &ShellCommandResult{
-		Command:   command,
-		StartedAt: startTime,
-	}
-
-	// Create context with timeout, respecting the parent context
-	cmdCtx, cancel := context.WithTimeout(ctx, o.config.CommandTimeout)
-	defer cancel()
-
-	// Build command using /bin/sh -c
-	cmd := exec.CommandContext(cmdCtx, "/bin/sh", "-c", command)
-	cmd.Dir = v.WorktreePath // Use variant worktree, not main repo
-
-	// Get phase count from variant's rune client
-	// Build the variant tasks file path
+	// Build the variant tasks file path to get phase count
 	tasksFile := o.config.TasksFile
 	if o.config.RepoRoot != "" {
 		absTasksFile := tasksFile
@@ -87,95 +70,14 @@ func (o *Orbit) executeVariantShellCommand(
 		phaseCount = len(summaries)
 	}
 
-	// Set up environment with ORBIT_PHASE_COUNT, ORBIT_AGENT, and ORBIT_VARIANT
-	cmd.Env = append(os.Environ(),
-		fmt.Sprintf("ORBIT_PHASE_COUNT=%d", phaseCount),
-		fmt.Sprintf("ORBIT_AGENT=%s", v.Agent),
-		fmt.Sprintf("ORBIT_VARIANT=%d", v.ID),
-	)
-
-	// Capture stdout and stderr
-	var stdout, stderr strings.Builder
-	cmd.Stdout = &stdout
-	cmd.Stderr = &stderr
-
-	// Execute the command
-	err := cmd.Run()
-	result.CompletedAt = time.Now()
-	result.Duration = result.CompletedAt.Sub(startTime)
-	result.Stdout = stdout.String()
-	result.Stderr = stderr.String()
-
-	// Get exit code
-	if exitErr, ok := err.(*exec.ExitError); ok {
-		result.ExitCode = exitErr.ExitCode()
-	} else if err != nil {
-		result.ExitCode = -1 // Command didn't start or context was canceled
-	}
-
-	// Save log file to variant's log directory
-	if logManager != nil {
-		o.saveVariantShellCommandLog(result, logName, logManager)
-		// Record in summary.json
-		if recordErr := logManager.RecordShellCommand(logName, result.Command, result.ExitCode,
-			result.StartedAt, result.CompletedAt, result.Duration); recordErr != nil {
-			o.debug.Log("Warning: variant %d failed to record shell command: %v", v.ID, recordErr)
-		}
-	}
-
-	// Check for context errors to provide better error messages
-	if cmdCtx.Err() == context.DeadlineExceeded {
-		return result, fmt.Errorf("command timed out after %v", o.config.CommandTimeout)
-	}
-	if cmdCtx.Err() == context.Canceled && ctx.Err() != nil {
-		return result, fmt.Errorf("command interrupted by shutdown")
-	}
-
-	if err != nil {
-		return result, err
-	}
-
-	return result, nil
-}
-
-// saveVariantShellCommandLog writes the command output to a log file in the variant's log directory.
-func (o *Orbit) saveVariantShellCommandLog(result *ShellCommandResult, logName string, logManager *logs.Manager) {
-	if logManager == nil {
-		return
-	}
-
-	filename := fmt.Sprintf("%s-run-%d.txt", logName, logManager.RunNumber())
-	path := filepath.Join(logManager.SessionDir(), filename)
-
-	content := fmt.Sprintf(`Orbit Shell Command Log
-========================================
-
-Command: %s
-Exit Code: %d
-Started: %s
-Completed: %s
-Duration: %s
-
-Stdout:
-----------------------------------------
-%s
-
-Stderr:
-----------------------------------------
-%s
-`,
-		result.Command,
-		result.ExitCode,
-		result.StartedAt.Format(time.RFC3339),
-		result.CompletedAt.Format(time.RFC3339),
-		result.Duration.String(),
-		result.Stdout,
-		result.Stderr,
-	)
-
-	if err := os.WriteFile(path, []byte(content), 0644); err != nil {
-		o.debug.Log("Warning: failed to save %s log to %s: %v", logName, path, err)
-	}
+	return o.runShellCore(command, logName, shellExecParams{
+		ctx:        ctx,
+		workDir:    v.WorktreePath,
+		phaseCount: phaseCount,
+		agentName:  v.Agent,
+		variantID:  v.ID,
+		logManager: logManager,
+	})
 }
 
 // runVariantPrePrompt executes pre-prompt for a variant and returns the session ID.

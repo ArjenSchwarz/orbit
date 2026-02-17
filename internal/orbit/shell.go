@@ -10,6 +10,8 @@ import (
 	"runtime"
 	"strings"
 	"time"
+
+	"github.com/arjenschwarz/orbit/internal/logs"
 )
 
 // ShellCommandResult holds the result of a shell command execution.
@@ -23,11 +25,43 @@ type ShellCommandResult struct {
 	CompletedAt time.Time     // When the command completed
 }
 
+// shellExecParams captures the varying parameters for shell command execution.
+// Both single-run and variant modes provide different values for these fields
+// while sharing the same core execution logic via runShellCore.
+type shellExecParams struct {
+	ctx        context.Context // Parent context (shutdownCtx for single-run, variant ctx for variants)
+	workDir    string          // Working directory for the command
+	phaseCount int             // Number of phases (from rune client)
+	agentName  string          // Agent name for ORBIT_AGENT env var
+	variantID  int             // Variant ID for ORBIT_VARIANT env var (0 = not a variant)
+	logManager *logs.Manager   // Log manager for saving output (nil = skip logging)
+}
+
 // executeShellCommand runs a shell command with timeout and environment setup.
 // It executes the command using /bin/sh -c, sets the working directory,
 // and adds ORBIT_PHASE_COUNT and ORBIT_AGENT environment variables.
 // Returns an error if the command is empty or if running on Windows.
 func (o *Orbit) executeShellCommand(command, logName string) (*ShellCommandResult, error) {
+	// Get phase count from rune client (not from cached phaseSummaries which may be empty)
+	phaseCount := 0
+	if summaries, err := o.runeClient.GetPhaseSummaries(); err == nil {
+		phaseCount = len(summaries)
+	}
+
+	return o.runShellCore(command, logName, shellExecParams{
+		ctx:        o.shutdownCtx,
+		workDir:    o.config.WorkingDir,
+		phaseCount: phaseCount,
+		agentName:  o.agent.Name(),
+		logManager: o.logManager,
+	})
+}
+
+// runShellCore is the shared implementation for shell command execution.
+// It handles command creation, environment setup, output capture, exit code
+// extraction, logging, and context error reporting. Both executeShellCommand
+// (single-run) and executeVariantShellCommand (variant mode) delegate here.
+func (o *Orbit) runShellCore(command, logName string, params shellExecParams) (*ShellCommandResult, error) {
 	if command == "" {
 		return nil, fmt.Errorf("command cannot be empty")
 	}
@@ -42,25 +76,22 @@ func (o *Orbit) executeShellCommand(command, logName string) (*ShellCommandResul
 		StartedAt: startTime,
 	}
 
-	// Create context with timeout, respecting shutdown context
-	ctx, cancel := context.WithTimeout(o.shutdownCtx, o.config.CommandTimeout)
+	// Create context with timeout, respecting the parent context
+	cmdCtx, cancel := context.WithTimeout(params.ctx, o.config.CommandTimeout)
 	defer cancel()
 
 	// Build command using /bin/sh -c
-	cmd := exec.CommandContext(ctx, "/bin/sh", "-c", command)
-	cmd.Dir = o.config.WorkingDir
+	cmd := exec.CommandContext(cmdCtx, "/bin/sh", "-c", command)
+	cmd.Dir = params.workDir
 
-	// Get phase count from rune client (not from cached phaseSummaries which may be empty)
-	phaseCount := 0
-	if summaries, err := o.runeClient.GetPhaseSummaries(); err == nil {
-		phaseCount = len(summaries)
-	}
-
-	// Set up environment with ORBIT_PHASE_COUNT and ORBIT_AGENT
+	// Set up environment variables
 	cmd.Env = append(os.Environ(),
-		fmt.Sprintf("ORBIT_PHASE_COUNT=%d", phaseCount),
-		fmt.Sprintf("ORBIT_AGENT=%s", o.agent.Name()),
+		fmt.Sprintf("ORBIT_PHASE_COUNT=%d", params.phaseCount),
+		fmt.Sprintf("ORBIT_AGENT=%s", params.agentName),
 	)
+	if params.variantID > 0 {
+		cmd.Env = append(cmd.Env, fmt.Sprintf("ORBIT_VARIANT=%d", params.variantID))
+	}
 
 	// Capture stdout and stderr
 	var stdout, stderr strings.Builder
@@ -81,21 +112,20 @@ func (o *Orbit) executeShellCommand(command, logName string) (*ShellCommandResul
 		result.ExitCode = -1 // Command didn't start or context was canceled
 	}
 
-	// Save log file
-	if o.logManager != nil {
-		o.saveShellCommandLog(result, logName)
-		// Record in summary.json
-		if recordErr := o.logManager.RecordShellCommand(logName, result.Command, result.ExitCode,
+	// Save log file and record in summary
+	if params.logManager != nil {
+		o.saveShellCommandLog(result, logName, params.logManager)
+		if recordErr := params.logManager.RecordShellCommand(logName, result.Command, result.ExitCode,
 			result.StartedAt, result.CompletedAt, result.Duration); recordErr != nil {
 			o.debug.Log("Warning: failed to record shell command: %v", recordErr)
 		}
 	}
 
 	// Check for context errors to provide better error messages
-	if ctx.Err() == context.DeadlineExceeded {
-		return result, fmt.Errorf("command timed out after %v: %s", o.config.CommandTimeout, command)
+	if cmdCtx.Err() == context.DeadlineExceeded {
+		return result, fmt.Errorf("command timed out after %v", o.config.CommandTimeout)
 	}
-	if ctx.Err() == context.Canceled && o.shutdownCtx.Err() != nil {
+	if cmdCtx.Err() == context.Canceled && params.ctx.Err() != nil {
 		return result, fmt.Errorf("command interrupted by shutdown")
 	}
 
@@ -108,13 +138,13 @@ func (o *Orbit) executeShellCommand(command, logName string) (*ShellCommandResul
 
 // saveShellCommandLog writes the command output to a log file.
 // The file is saved in the session directory with the format: {logName}-run-N.txt
-func (o *Orbit) saveShellCommandLog(result *ShellCommandResult, logName string) {
-	if o.logManager == nil {
+func (o *Orbit) saveShellCommandLog(result *ShellCommandResult, logName string, logManager *logs.Manager) {
+	if logManager == nil {
 		return
 	}
 
-	filename := fmt.Sprintf("%s-run-%d.txt", logName, o.logManager.RunNumber())
-	path := filepath.Join(o.logManager.SessionDir(), filename)
+	filename := fmt.Sprintf("%s-run-%d.txt", logName, logManager.RunNumber())
+	path := filepath.Join(logManager.SessionDir(), filename)
 
 	content := fmt.Sprintf(`Orbit Shell Command Log
 ========================================
