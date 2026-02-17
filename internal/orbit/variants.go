@@ -829,187 +829,83 @@ func (o *Orbit) buildVariantPrompt(v *variants.Variant) string {
 // runVariantPhaseWithRetry executes a single phase with retry logic.
 // If continueSessionID is non-empty, the first attempt will resume that session (for pre-prompt continuation).
 func (o *Orbit) runVariantPhaseWithRetry(ctx context.Context, v *variants.Variant, agent agents.Agent, prompt string, continueSessionID string) (*agents.RunResult, error) {
-	var lastErr error
-	var lastResult *agents.RunResult
+	return agents.RunWithRetry(ctx, agents.RetryConfig{
+		MaxRetries: maxRetries,
+		Sleep:      o.sleepFunc(),
+		Execute: func(ctx context.Context, attempt int) (*agents.RunResult, error) {
+			// Determine session ID and whether to resume
+			var sessionID string
+			var isResume bool
+			if continueSessionID != "" && attempt == 0 {
+				sessionID = continueSessionID
+				isResume = true
+				o.debug.Log("Variant %d: phase 1 continuing pre-prompt session %s", v.ID, sessionID)
+			} else {
+				sessionID = uuid.NewString()
+				isResume = false
+			}
 
-	for attempt := 0; attempt < maxRetries; attempt++ {
-		select {
-		case <-ctx.Done():
-			return nil, ctx.Err()
-		default:
-		}
+			opts := agents.RunOptions{
+				Prompt:    prompt,
+				SessionID: sessionID,
+				WorkDir:   v.WorktreePath,
+			}
 
-		// Determine session ID and whether to resume
-		var sessionID string
-		var isResume bool
-		if continueSessionID != "" && attempt == 0 {
-			// First attempt for phase 1 with pre-prompt session - continue it
-			sessionID = continueSessionID
-			isResume = true
-			o.debug.Log("Variant %d: phase 1 continuing pre-prompt session %s", v.ID, sessionID)
-		} else {
-			// Fresh session for this phase or retry
-			sessionID = uuid.NewString()
-			isResume = false
-		}
-
-		opts := agents.RunOptions{
-			Prompt:    prompt,
-			SessionID: sessionID,
-			WorkDir:   v.WorktreePath,
-		}
-
-		var result *agents.RunResult
-		var err error
-		if isResume {
-			result, err = agent.Resume(ctx, sessionID, opts)
-			// Handle resume failure - start fresh session
-			if err != nil && isSessionInvalidError(result) {
-				o.debug.Log("Variant %d: session resume failed, starting fresh session", v.ID)
-				log.Printf("Variant %d: session resume failed, starting fresh session", v.ID)
-				opts.SessionID = uuid.NewString()
+			var result *agents.RunResult
+			var err error
+			if isResume {
+				result, err = agent.Resume(ctx, sessionID, opts)
+				if err != nil && isSessionInvalidError(result) {
+					o.debug.Log("Variant %d: session resume failed, starting fresh session", v.ID)
+					log.Printf("Variant %d: session resume failed, starting fresh session", v.ID)
+					opts.SessionID = uuid.NewString()
+					result, err = agent.Run(ctx, opts)
+				}
+			} else {
 				result, err = agent.Run(ctx, opts)
 			}
-		} else {
-			result, err = agent.Run(ctx, opts)
-		}
-
-		if err == nil && result != nil && !result.IsError {
-			return result, nil
-		}
-
-		lastResult = result
-		if err != nil {
-			lastErr = err
-		} else if result != nil && result.IsError {
-			lastErr = fmt.Errorf("agent reported error")
-		}
-
-		// Classify the error using agent-specific classifier.
-		// Guard against nil result: when the agent returns (nil, error), use the
-		// error message for classification instead of dereferencing nil fields.
-		classifier := agents.GetClassifier(agent.Name())
-		var stderr, output string
-		var errMsgs []string
-		if result != nil {
-			stderr = result.Stderr
-			output = result.Output
-			errMsgs = result.Errors
-		} else if lastErr != nil {
-			stderr = lastErr.Error()
-			errMsgs = []string{lastErr.Error()}
-		}
-		classified := classifier.Classify(1, stderr, output, errMsgs)
-		if !classified.Class.IsRetryable() {
-			return result, classified
-		}
-
-		// Determine wait time using RetryAfter from classifier, with fallback to exponential backoff
-		var waitTime time.Duration
-		if classified.Class.IsRateLimitWait() {
-			// Usage limit wait - this is a special case where we wait until a specific time
-			// and then reset the attempt counter since the limit has been lifted
-			waitTime = classified.RetryAfter
-			log.Printf("Variant %d: usage limit reached, waiting %s until reset...", v.ID, waitTime)
-			// Reset attempt counter after this wait - the rate limit will be lifted
-			// We use -1 because the loop will increment it to 0
-			attempt = -1
-		} else if classified.RetryAfter > 0 {
-			waitTime = classified.RetryAfter
-			log.Printf("Variant %d: retryable error, waiting %s (attempt %d/%d)",
-				v.ID, waitTime, attempt+1, maxRetries)
-		} else {
-			waitTime = agents.BackoffDuration(attempt)
-			log.Printf("Variant %d: error, waiting %s (attempt %d/%d)",
-				v.ID, waitTime, attempt+1, maxRetries)
-		}
-
-		select {
-		case <-ctx.Done():
-			return lastResult, ctx.Err()
-		case <-time.After(waitTime):
-		}
-	}
-
-	return lastResult, fmt.Errorf("max retries exceeded: %w", lastErr)
+			return result, err
+		},
+		Classify: classifyFromAgent(agent.Name()),
+		OnRetry: func(attempt, maxRetries int, classified *agents.ClassifiedError, backoff time.Duration) {
+			if classified.Class.IsRateLimitWait() {
+				log.Printf("Variant %d: usage limit reached, waiting %s until reset...", v.ID, backoff)
+			} else if classified.RetryAfter > 0 {
+				log.Printf("Variant %d: retryable error, waiting %s (attempt %d/%d)",
+					v.ID, backoff, attempt, maxRetries)
+			} else {
+				log.Printf("Variant %d: error, waiting %s (attempt %d/%d)",
+					v.ID, backoff, attempt, maxRetries)
+			}
+		},
+	})
 }
 
 // runVariantPostCompletion executes the post-completion command for a variant.
 func (o *Orbit) runVariantPostCompletion(ctx context.Context, v *variants.Variant, agent agents.Agent) (*agents.RunResult, error) {
-	var lastErr error
-	var lastResult *agents.RunResult
-
-	for attempt := 0; attempt < maxRetries; attempt++ {
-		select {
-		case <-ctx.Done():
-			return nil, ctx.Err()
-		default:
-		}
-
-		// Execute the post-completion command in the variant's worktree
-		opts := agents.RunOptions{
-			Prompt:    o.config.PostPrompt,
-			SessionID: uuid.NewString(),
-			WorkDir:   v.WorktreePath,
-		}
-		result, err := agent.Run(ctx, opts)
-		if err == nil && result != nil && !result.IsError {
-			return result, nil
-		}
-
-		lastResult = result
-		if err != nil {
-			lastErr = err
-		} else if result != nil && result.IsError {
-			lastErr = fmt.Errorf("agent reported error in post-completion")
-		}
-
-		// Classify the error using agent-specific classifier.
-		// Guard against nil result: when the agent returns (nil, error), use the
-		// error message for classification instead of dereferencing nil fields.
-		classifier := agents.GetClassifier(agent.Name())
-		var stderr, output string
-		var errMsgs []string
-		if result != nil {
-			stderr = result.Stderr
-			output = result.Output
-			errMsgs = result.Errors
-		} else if lastErr != nil {
-			stderr = lastErr.Error()
-			errMsgs = []string{lastErr.Error()}
-		}
-		classified := classifier.Classify(1, stderr, output, errMsgs)
-		if !classified.Class.IsRetryable() {
-			return result, classified
-		}
-
-		// Determine wait time using RetryAfter from classifier, with fallback to exponential backoff
-		var waitTime time.Duration
-		if classified.Class.IsRateLimitWait() {
-			// Usage limit wait - this is a special case where we wait until a specific time
-			// and then reset the attempt counter since the limit has been lifted
-			waitTime = classified.RetryAfter
-			log.Printf("Variant %d post-completion: usage limit reached, waiting %s until reset...", v.ID, waitTime)
-			// Reset attempt counter after this wait - the rate limit will be lifted
-			// We use -1 because the loop will increment it to 0
-			attempt = -1
-		} else if classified.RetryAfter > 0 {
-			waitTime = classified.RetryAfter
-			log.Printf("Variant %d post-completion: retryable error, waiting %s (attempt %d/%d)",
-				v.ID, waitTime, attempt+1, maxRetries)
-		} else {
-			waitTime = agents.BackoffDuration(attempt)
-			log.Printf("Variant %d post-completion: error, waiting %s (attempt %d/%d)",
-				v.ID, waitTime, attempt+1, maxRetries)
-		}
-
-		select {
-		case <-ctx.Done():
-			return lastResult, ctx.Err()
-		case <-time.After(waitTime):
-		}
-	}
-
-	return lastResult, fmt.Errorf("max retries exceeded: %w", lastErr)
+	return agents.RunWithRetry(ctx, agents.RetryConfig{
+		MaxRetries: maxRetries,
+		Sleep:      o.sleepFunc(),
+		Execute: func(ctx context.Context, _ int) (*agents.RunResult, error) {
+			opts := agents.RunOptions{
+				Prompt:    o.config.PostPrompt,
+				SessionID: uuid.NewString(),
+				WorkDir:   v.WorktreePath,
+			}
+			return agent.Run(ctx, opts)
+		},
+		Classify: classifyFromAgent(agent.Name()),
+		OnRetry: func(attempt, maxRetries int, classified *agents.ClassifiedError, backoff time.Duration) {
+			if classified.Class.IsRateLimitWait() {
+				log.Printf("Variant %d post-completion: usage limit reached, waiting %s until reset...", v.ID, backoff)
+			} else if classified.RetryAfter > 0 {
+				log.Printf("Variant %d post-completion: retryable error, waiting %s (attempt %d/%d)",
+					v.ID, backoff, attempt, maxRetries)
+			} else {
+				log.Printf("Variant %d post-completion: error, waiting %s (attempt %d/%d)",
+					v.ID, backoff, attempt, maxRetries)
+			}
+		},
+	})
 }
 

@@ -1,6 +1,8 @@
 package orbit
 
 import (
+	"context"
+	"errors"
 	"fmt"
 	"log"
 	"strings"
@@ -12,6 +14,71 @@ import (
 	"github.com/arjenschwarz/orbit/internal/registry"
 	"github.com/google/uuid"
 )
+
+// sleepFunc returns the sleep function from the configured clock.
+// Falls back to time.Sleep if no clock is configured (e.g., in tests that
+// construct Orbit directly without going through New).
+func (o *Orbit) sleepFunc() func(time.Duration) {
+	if o.config.Clock != nil {
+		return o.config.Clock.Sleep
+	}
+	return time.Sleep
+}
+
+// classifyReturned is a Classify callback for RunWithRetry when the Execute
+// function already returns a *ClassifiedError (e.g., runPhase, runPostPrompt).
+// Returns nil on success, passes through ClassifiedError, and wraps unknown
+// errors as fatal.
+func classifyReturned(_ *agents.RunResult, err error) *agents.ClassifiedError {
+	if err == nil {
+		return nil
+	}
+	var classified *agents.ClassifiedError
+	if ok := errors.As(err, &classified); ok {
+		return classified
+	}
+	// Unknown error type — not retryable
+	return &agents.ClassifiedError{
+		Original: err,
+		Class:    agents.ErrorClassFatal,
+		Message:  err.Error(),
+	}
+}
+
+// classifyFromAgent returns a Classify callback that uses the agent's registered
+// error classifier. Used by variant and consolidation modes where Execute returns
+// raw agent results instead of pre-classified errors.
+func classifyFromAgent(agentName string) func(*agents.RunResult, error) *agents.ClassifiedError {
+	classifier := agents.GetClassifier(agentName)
+	return func(result *agents.RunResult, err error) *agents.ClassifiedError {
+		// Success: no error and result is not an error
+		if err == nil && (result == nil || !result.IsError) {
+			return nil
+		}
+
+		// Build inputs for classifier, guarding against nil result
+		var stderr, output string
+		var errMsgs []string
+		if result != nil {
+			stderr = result.Stderr
+			output = result.Output
+			errMsgs = result.Errors
+		}
+		if err != nil {
+			if stderr == "" {
+				stderr = err.Error()
+			}
+			if len(errMsgs) == 0 {
+				errMsgs = []string{err.Error()}
+			}
+		} else if result != nil && result.IsError {
+			if len(errMsgs) == 0 {
+				errMsgs = []string{"agent reported error"}
+			}
+		}
+		return classifier.Classify(1, stderr, output, errMsgs)
+	}
+}
 
 // isSessionInvalidError checks if the result contains a session-related error.
 // This is used to detect when a session resume has failed and a fresh session
@@ -280,190 +347,134 @@ func (o *Orbit) runPostPrompt() error {
 
 // runPostPromptWithRetry executes the post-prompt with retry logic for transient errors.
 func (o *Orbit) runPostPromptWithRetry() error {
-	var lastErr error
+	_, err := agents.RunWithRetry(o.shutdownCtx, agents.RetryConfig{
+		MaxRetries: maxRetries,
+		Sleep:      o.sleepFunc(),
+		Execute: func(_ context.Context, _ int) (*agents.RunResult, error) {
+			return nil, o.runPostPrompt()
+		},
+		Classify: classifyReturned,
+		OnRetry: func(attempt, maxRetries int, classified *agents.ClassifiedError, backoff time.Duration) {
+			if o.spinner != nil {
+				o.spinner.Pause()
+			}
 
-	for attempt := range maxRetries {
-		err := o.runPostPrompt()
-		if err == nil {
-			return nil
-		}
+			if classified.Class.IsRateLimitWait() {
+				log.Printf("Usage limit reached. Waiting %s until reset...", backoff)
+			} else if classified.RetryAfter > 0 {
+				log.Printf("Retryable error (attempt %d/%d). Waiting %s before retry...", attempt, maxRetries, backoff)
+			} else {
+				log.Printf("Error (attempt %d/%d). Waiting %s before retry...", attempt, maxRetries, backoff)
+			}
 
-		// Handle agent-specific classified errors
-		classified, ok := err.(*agents.ClassifiedError)
-		if !ok {
-			return err
-		}
-
-		lastErr = err
-
-		if !classified.Class.IsRetryable() {
-			return err
-		}
-
-		// Pause spinner before logging to prevent visual artifacts
-		if o.spinner != nil {
-			o.spinner.Pause()
-		}
-
-		// Determine wait time using RetryAfter from classifier, with fallback to exponential backoff
-		var waitTime time.Duration
-		if classified.RetryAfter > 0 {
-			waitTime = classified.RetryAfter
-			log.Printf("Retryable error (attempt %d/%d). Waiting %s before retry...", attempt+1, maxRetries, waitTime)
-		} else {
-			waitTime = agents.BackoffDuration(attempt)
-			log.Printf("Error (attempt %d/%d). Waiting %s before retry...", attempt+1, maxRetries, waitTime)
-		}
-
-		// Resume spinner with wait countdown during retry wait
-		if o.spinner != nil {
-			o.spinner.UpdateWait(waitTime)
-			o.spinner.Resume()
-		}
-
-		o.config.Clock.Sleep(waitTime)
-
-		// Stop spinner before next attempt (runPostPrompt will start it again)
-		if o.spinner != nil {
-			o.spinner.Stop()
-		}
-	}
-
-	return fmt.Errorf("max retries exceeded: %w", lastErr)
+			if o.spinner != nil {
+				o.spinner.UpdateWait(backoff)
+				o.spinner.Resume()
+			}
+		},
+		AfterWait: func() {
+			if o.spinner != nil {
+				o.spinner.Stop()
+			}
+		},
+	})
+	return err
 }
 
 // runPhaseWithRetry executes a phase with retry logic for transient errors.
 func (o *Orbit) runPhaseWithRetry(phase int) error {
-	var lastErr error
 	o.currentPhaseRunCount = 0
-
 	o.debug.Log("Starting phase %d with up to %d retries", phase, maxRetries)
-
 	phaseStart := time.Now()
 
-	for attempt := 0; attempt < maxRetries; attempt++ {
-		o.currentPhaseRunCount++
-		o.debug.Log("Phase %d attempt %d/%d", phase, attempt+1, maxRetries)
-
-		// Update phase status to running (req 3.5)
-		o.updatePhaseStatus(phase, registry.PhaseStatusRunning, o.currentPhaseRunCount)
-
-		err := o.runPhase(phase)
-		if err == nil {
-			o.debug.Log("Phase %d completed successfully on attempt %d", phase, attempt+1)
-			// Update phase status to completed (req 3.6)
-			o.updatePhaseStatus(phase, registry.PhaseStatusCompleted, o.currentPhaseRunCount)
-
-			// Log phase completion with duration and transcript path (Req 3.3, 4.2)
-			phaseDuration := time.Since(phaseStart)
-			logFields := map[string]any{
-				"phase":    phase,
-				"status":   "completed",
-				"duration": phaseDuration.String(),
+	_, err := agents.RunWithRetry(o.shutdownCtx, agents.RetryConfig{
+		MaxRetries: maxRetries,
+		Sleep:      o.sleepFunc(),
+		Execute: func(_ context.Context, attempt int) (*agents.RunResult, error) {
+			o.currentPhaseRunCount++
+			o.debug.Log("Phase %d attempt %d/%d", phase, attempt+1, maxRetries)
+			o.updatePhaseStatus(phase, registry.PhaseStatusRunning, o.currentPhaseRunCount)
+			return nil, o.runPhase(phase)
+		},
+		Classify: func(_ *agents.RunResult, err error) *agents.ClassifiedError {
+			if err == nil {
+				// Phase succeeded
+				o.debug.Log("Phase %d completed successfully", phase)
+				o.updatePhaseStatus(phase, registry.PhaseStatusCompleted, o.currentPhaseRunCount)
+				o.logPhaseOutcome(phase, "completed", phaseStart)
+				return nil
 			}
-			if o.logManager != nil {
-				logFields["transcript_path"] = o.logManager.SessionDir()
+			o.debug.Log("Phase %d failed: %v", phase, err)
+			classified := classifyReturned(nil, err)
+			o.debug.LogError(classified.Class.String(), classified.Message, classified.Class.IsRetryable())
+			o.debug.LogErrorWithChain("Phase execution failed", err, map[string]any{
+				"phase":         phase,
+				"error_class":   classified.Class.String(),
+				"retryable":     classified.Class.IsRetryable(),
+				"is_rate_limit": classified.Class.IsRateLimitWait(),
+			})
+			return classified
+		},
+		OnRetry: func(attempt, maxRetries int, classified *agents.ClassifiedError, backoff time.Duration) {
+			if o.spinner != nil {
+				o.spinner.Pause()
 			}
-			o.debug.LogStructured("info", "Phase completed", logFields)
 
-			return nil
-		}
+			if classified.Class.IsRateLimitWait() {
+				log.Printf("Usage limit reached. Waiting %s until reset...", backoff)
+				o.debug.Log("Rate limit wait: resetting attempt counter after wait")
+			} else if classified.RetryAfter > 0 {
+				log.Printf("Retryable error (attempt %d/%d). Waiting %s before retry...", attempt, maxRetries, backoff)
+			} else {
+				log.Printf("Error (attempt %d/%d). Waiting %s before retry...", attempt, maxRetries, backoff)
+			}
 
-		o.debug.Log("Phase %d attempt %d failed: %v", phase, attempt+1, err)
+			o.debug.LogRetry(attempt, maxRetries, classified.Class.String(), backoff.String())
+			o.debug.LogStructured("info", "Retry attempt", map[string]any{
+				"phase":            phase,
+				"attempt":          attempt,
+				"max_attempts":     maxRetries,
+				"error_class":      classified.Class.String(),
+				"backoff_duration": backoff.String(),
+			})
 
-		// Handle agent-specific classified errors
-		classified, ok := err.(*agents.ClassifiedError)
-		if !ok {
-			o.debug.Log("Error is not a ClassifiedError, not retrying: %T", err)
-			// Unknown error type, don't retry
-			return err
-		}
+			if o.spinner != nil {
+				o.spinner.UpdateWait(backoff)
+				o.spinner.Resume()
+			}
+		},
+		AfterWait: func() {
+			if o.spinner != nil {
+				o.spinner.Stop()
+			}
+		},
+	})
 
-		o.debug.LogError(classified.Class.String(), classified.Message, classified.Class.IsRetryable())
-
-		// Log error with chain for structured output (Req 3.8)
-		o.debug.LogErrorWithChain("Phase execution failed", err, map[string]any{
-			"phase":         phase,
-			"attempt":       attempt + 1,
-			"error_class":   classified.Class.String(),
-			"retryable":     classified.Class.IsRetryable(),
-			"is_rate_limit": classified.Class.IsRateLimitWait(),
-		})
-
-		lastErr = err
-
-		if !classified.Class.IsRetryable() {
-			o.debug.Log("Error class %s is not retryable, stopping", classified.Class)
-			// Non-retryable error
-			return err
-		}
-
-		// Pause spinner before logging to prevent visual artifacts
-		if o.spinner != nil {
-			o.spinner.Pause()
-		}
-
-		// Determine wait time using RetryAfter from classifier, with fallback to exponential backoff
-		var waitTime time.Duration
-		if classified.Class.IsRateLimitWait() {
-			// Usage limit wait - this is a special case where we wait until a specific time
-			// and then reset the attempt counter since the limit has been lifted
-			waitTime = classified.RetryAfter
-			log.Printf("Usage limit reached. Waiting %s until reset...", waitTime)
-			o.debug.Log("Rate limit wait: resetting attempt counter after wait")
-			// Reset attempt counter after this wait - the rate limit will be lifted
-			// We use -1 because the loop will increment it to 0
-			attempt = -1
-		} else if classified.RetryAfter > 0 {
-			waitTime = classified.RetryAfter
-			log.Printf("Retryable error (attempt %d/%d). Waiting %s before retry...", attempt+1, maxRetries, waitTime)
-		} else {
-			waitTime = agents.BackoffDuration(attempt)
-			log.Printf("Error (attempt %d/%d). Waiting %s before retry...", attempt+1, maxRetries, waitTime)
-		}
-
-		o.debug.LogRetry(attempt+1, maxRetries, classified.Class.String(), waitTime.String())
-
-		// Log retry with structured fields (Req 3.6)
-		o.debug.LogStructured("info", "Retry attempt", map[string]any{
-			"phase":            phase,
-			"attempt":          attempt + 1,
-			"max_attempts":     maxRetries,
-			"error_class":      classified.Class.String(),
-			"backoff_duration": waitTime.String(),
-		})
-
-		// Resume spinner with wait countdown during retry wait
-		if o.spinner != nil {
-			o.spinner.UpdateWait(waitTime)
-			o.spinner.Resume()
-		}
-
-		o.config.Clock.Sleep(waitTime)
-
-		// Stop spinner before next phase attempt (runPhase will start it again)
-		if o.spinner != nil {
-			o.spinner.Stop()
-		}
+	if err != nil {
+		o.debug.Log("Phase %d failed after %d attempts", phase, maxRetries)
+		o.updatePhaseStatus(phase, registry.PhaseStatusFailed, o.currentPhaseRunCount)
+		o.logPhaseOutcome(phase, "failed", phaseStart)
 	}
 
-	o.debug.Log("Phase %d failed after %d attempts", phase, maxRetries)
-	// Update phase status to failed after max retries (req 3.6)
-	o.updatePhaseStatus(phase, registry.PhaseStatusFailed, o.currentPhaseRunCount)
+	return err
+}
 
-	// Log phase failure with duration and transcript path (Req 3.3, 4.2)
+// logPhaseOutcome logs phase completion or failure with duration and transcript path.
+func (o *Orbit) logPhaseOutcome(phase int, status string, phaseStart time.Time) {
 	phaseDuration := time.Since(phaseStart)
 	logFields := map[string]any{
 		"phase":    phase,
-		"status":   "failed",
+		"status":   status,
 		"duration": phaseDuration.String(),
 	}
 	if o.logManager != nil {
 		logFields["transcript_path"] = o.logManager.SessionDir()
 	}
-	o.debug.LogStructured("error", "Phase failed", logFields)
-
-	return fmt.Errorf("max retries exceeded: %w", lastErr)
+	level := "info"
+	if status == "failed" {
+		level = "error"
+	}
+	o.debug.LogStructured(level, "Phase "+status, logFields)
 }
 
 // runPhase executes a single phase.
