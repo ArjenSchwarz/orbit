@@ -489,100 +489,61 @@ func (c *Consolidator) Run(ctx context.Context) (*ConsolidationResult, error) {
 }
 
 // runWithRetry runs the agent with exponential backoff for retryable errors.
-// Uses proper exponential backoff with timing: 1s, 2s, 4s, 8s, 16s.
+// Uses the shared retry executor with proper error classification via the
+// agent's registered classifier (instead of type-asserting the agent).
 // Implements: [5.8], [5.9]
 func (c *Consolidator) runWithRetry(ctx context.Context, prompt string) (*agents.RunResult, error) {
 	const maxRetries = 5
-	backoffDurations := []time.Duration{
-		1 * time.Second,
-		2 * time.Second,
-		4 * time.Second,
-		8 * time.Second,
-		16 * time.Second,
-	}
-
 	worktreePath := c.recovery.worktreePath
-
-	// Generate a unique session ID for this consolidation run
 	sessionID := uuid.NewString()
 
-	opts := agents.RunOptions{
-		Prompt:    prompt,
-		SessionID: sessionID,
-		WorkDir:   worktreePath,
-	}
-
-	var lastErr error
-	for attempt := 0; attempt <= maxRetries; attempt++ {
-		if ctx.Err() != nil {
-			return nil, ctx.Err()
-		}
-
-		result, err := c.config.Agent.Run(ctx, opts)
-		if err == nil && (result == nil || result.Error == nil) {
-			return result, nil
-		}
-
-		// Classify error for retry decision
-		classifier, ok := c.config.Agent.(agents.ErrorClassifier)
-		if !ok {
-			// Agent doesn't support classification - return the error
-			if err != nil {
-				return result, err
+	return agents.RunWithRetry(ctx, agents.RetryConfig{
+		MaxRetries: maxRetries,
+		Sleep:      time.Sleep,
+		Execute: func(ctx context.Context, _ int) (*agents.RunResult, error) {
+			opts := agents.RunOptions{
+				Prompt:    prompt,
+				SessionID: sessionID,
+				WorkDir:   worktreePath,
 			}
-			if result != nil && result.Error != nil {
-				return result, result.Error
+			return c.config.Agent.Run(ctx, opts)
+		},
+		Classify: func(result *agents.RunResult, err error) *agents.ClassifiedError {
+			// Success check: no error and no result-level error
+			if err == nil && (result == nil || result.Error == nil) {
+				return nil
 			}
-			return result, nil
-		}
 
-		exitCode := 0
-		stderr := ""
-		stdout := ""
-		var errMsgs []string
-
-		if result != nil {
-			exitCode = result.ExitCode
-			stderr = result.Stderr
-			stdout = result.Output
-			errMsgs = result.Errors
-		}
-
-		classifiedErr := classifier.Classify(exitCode, stderr, stdout, errMsgs)
-		if classifiedErr == nil || classifiedErr.Class != agents.ErrorClassRetryable {
-			// Not retryable - return the error
-			if err != nil {
-				return result, err
+			classifier := agents.GetClassifier(c.config.Agent.Name())
+			var exitCode int
+			var stderr, stdout string
+			var errMsgs []string
+			if result != nil {
+				exitCode = result.ExitCode
+				stderr = result.Stderr
+				stdout = result.Output
+				errMsgs = result.Errors
 			}
-			if result != nil && result.Error != nil {
-				return result, result.Error
+			if err != nil && stderr == "" {
+				stderr = err.Error()
 			}
-			return result, fmt.Errorf("agent execution failed")
-		}
-
-		lastErr = classifiedErr
-
-		// Don't retry on last attempt
-		if attempt >= maxRetries {
-			break
-		}
-
-		// Apply backoff
-		backoff := backoffDurations[attempt]
-		if classifiedErr.RetryAfter > 0 {
-			backoff = classifiedErr.RetryAfter
-		}
-
-		c.updateSpinnerMessage(fmt.Sprintf("Retrying in %v (attempt %d/%d)...", backoff, attempt+1, maxRetries))
-
-		select {
-		case <-ctx.Done():
-			return nil, ctx.Err()
-		case <-time.After(backoff):
-		}
-	}
-
-	return nil, fmt.Errorf("max retries exceeded: %w", lastErr)
+			if err != nil && len(errMsgs) == 0 {
+				errMsgs = []string{err.Error()}
+			}
+			classified := classifier.Classify(exitCode, stderr, stdout, errMsgs)
+			if classified == nil {
+				return &agents.ClassifiedError{
+					Original: fmt.Errorf("agent execution failed"),
+					Class:    agents.ErrorClassFatal,
+					Message:  "agent execution failed",
+				}
+			}
+			return classified
+		},
+		OnRetry: func(attempt, maxRetries int, classified *agents.ClassifiedError, backoff time.Duration) {
+			c.updateSpinnerMessage(fmt.Sprintf("Retrying in %v (attempt %d/%d)...", backoff, attempt, maxRetries))
+		},
+	})
 }
 
 // Rollback reverts the most recent consolidation commit.

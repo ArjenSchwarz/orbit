@@ -252,15 +252,14 @@ func TestRunPostPromptWithRetry_MaxRetriesExceeded(t *testing.T) {
 		t.Error("expected wrapped agents.ClassifiedError")
 	}
 
-	// Verify backoff durations: 1s, 2s, 4s, 8s, 16s (sleep after each of the 5 failed attempts)
-	// Note: The last sleep (16s) is technically unnecessary since no retry follows,
-	// but the current implementation sleeps before checking the loop condition
+	// Verify backoff durations: 1s, 2s, 4s, 8s (4 sleeps for 5 attempts).
+	// The shared retry executor skips the sleep after the final attempt
+	// since no retry will follow.
 	clock.AssertSleeps(t, []time.Duration{
 		time.Second,
 		2 * time.Second,
 		4 * time.Second,
 		8 * time.Second,
-		16 * time.Second,
 	})
 }
 
@@ -304,8 +303,8 @@ func TestRunPhaseWithRetry_RateLimitError(t *testing.T) {
 	// Verify 2 calls: 1 failure then success
 	agent.Recorder().AssertCallCount(t, 2)
 
-	// Verify backoff duration: 60s from rate limit RetryAfter
-	clock.AssertSleeps(t, []time.Duration{60 * time.Second})
+	// Verify total backoff: 60s from rate limit RetryAfter (chunked into 30s pieces)
+	clock.AssertTotalSleep(t, 60*time.Second)
 }
 
 func TestRunPhaseWithRetry_OverloadedError(t *testing.T) {

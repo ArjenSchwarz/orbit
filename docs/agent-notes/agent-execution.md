@@ -34,3 +34,47 @@ Kiro resolves the working directory independently of the executor for its post-p
 ## Environment Handling
 
 When `cfg.Env` is nil or empty, the command inherits the default environment (Go's `exec.Cmd` default behavior). When env vars are provided, the current environment is explicitly copied via `os.Environ()` and the additional vars are appended. This means provided vars override existing ones with the same name (last value wins in the env slice).
+
+## Shared Retry Executor (`internal/agents/retry.go`)
+
+All retry-with-backoff logic is consolidated in `agents.RunWithRetry()`. This replaces 5 previously divergent retry loops:
+
+- `runPhaseWithRetry` (single-run mode)
+- `runPostPromptWithRetry` (single-run mode)
+- `runVariantPhaseWithRetry` (variant mode)
+- `runVariantPostCompletion` (variant mode)
+- `consolidation.runWithRetry` (consolidation mode)
+
+### Design
+
+Callback-based `RetryConfig` struct with:
+
+| Field | Type | Purpose |
+|-------|------|---------|
+| `MaxRetries` | `int` | Maximum number of attempts |
+| `Sleep` | `func(time.Duration)` | Injected sleep (Clock.Sleep for testability) |
+| `Execute` | `func(ctx, attempt)` | Runs the operation |
+| `Classify` | `func(result, err)` | Returns nil for success, ClassifiedError for failure |
+| `OnRetry` | `func(attempt, max, classified, backoff)` | Pre-sleep logging/UI |
+| `AfterWait` | `func()` | Post-sleep cleanup (e.g., spinner stop) |
+
+### Classify Callback Patterns
+
+Two helper functions in `internal/orbit/single.go`:
+
+1. **`classifyReturned`** — for callers where Execute already returns a `*ClassifiedError` (single-run mode). Passes it through or wraps unknown errors as fatal.
+2. **`classifyFromAgent(agentName)`** — for callers where Execute returns raw agent results (variant/consolidation mode). Uses `agents.GetClassifier()` from the registry.
+
+### Key Behaviors
+
+- **Rate-limit wait**: resets attempt counter to 0 after sleeping, giving a fresh set of retries
+- **Last attempt optimization**: skips sleep after the final failed attempt (no retry follows)
+- **Context cancellation**: checked before each Execute call
+- **Backoff priority**: rate-limit duration > explicit RetryAfter > exponential backoff (1s, 2s, 4s, 8s, 16s capped)
+
+### Gotchas
+
+- `o.sleepFunc()` in orbit package returns `time.Sleep` if `o.config.Clock` is nil. Tests that construct `Orbit` directly (not via `New()`) may not set Clock.
+- Consolidation uses `time.Sleep` directly since it doesn't have a Clock dependency.
+- Long sleeps (rate-limit waits) are broken into 30-second chunks with context checks between them, so Ctrl+C is responsive even during multi-hour usage limit waits.
+- Rate-limit resets are capped at 5 to prevent infinite loops if the condition never resolves.

@@ -65,6 +65,19 @@ func (c *FakeClock) Sleeps() []time.Duration {
 	return result
 }
 
+// AssertTotalSleep verifies that the sum of all recorded sleeps equals the expected duration.
+// Useful when sleep is chunked (e.g., sleepWithContext breaks long waits into 30s pieces).
+func (c *FakeClock) AssertTotalSleep(t testing.TB, expected time.Duration) {
+	t.Helper()
+	var total time.Duration
+	for _, s := range c.Sleeps() {
+		total += s
+	}
+	if total != expected {
+		t.Errorf("total sleep = %v, want %v (individual sleeps: %v)", total, expected, c.Sleeps())
+	}
+}
+
 // AssertSleeps verifies that the recorded sleeps match the expected durations.
 func (c *FakeClock) AssertSleeps(t testing.TB, expected []time.Duration) {
 	t.Helper()
