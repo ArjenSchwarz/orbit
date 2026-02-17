@@ -4,14 +4,8 @@ import (
 	"encoding/json"
 	"errors"
 	"strings"
-	"time"
 
 	"github.com/arjenschwarz/orbit/internal/agents"
-)
-
-const (
-	// defaultOverloadRetryAfter is the default retry delay when the API is overloaded.
-	defaultOverloadRetryAfter = 30 * time.Second
 )
 
 func init() {
@@ -40,7 +34,7 @@ func (c *Classifier) Classify(exitCode int, stderr, stdout string, errMsgs []str
 		return c.classifyPlaintext(combined)
 	}
 
-	// Check for fatal model errors
+	// Check for fatal model errors (opencode-specific)
 	if strings.Contains(combined, "providermodelnotfounderror") ||
 		strings.Contains(combined, "model not found") ||
 		strings.Contains(combined, "invalid model") {
@@ -53,31 +47,13 @@ func (c *Classifier) Classify(exitCode int, stderr, stdout string, errMsgs []str
 	}
 
 	// Check for authentication errors (fatal)
-	if strings.Contains(combined, "authenticationerror") ||
-		strings.Contains(combined, "authentication failed") ||
-		strings.Contains(combined, "api key") ||
-		strings.Contains(combined, "invalid token") ||
-		strings.Contains(combined, "unauthorized") {
-		return &agents.ClassifiedError{
-			Original: errors.New("authentication failed"),
-			Class:    agents.ErrorClassFatal,
-			Message:  "Authentication error",
-			Agent:    "opencode",
-		}
+	if agents.MatchesAuthError(combined, "authenticationerror", "authentication failed") {
+		return agents.NewAuthError("opencode")
 	}
 
 	// Check for rate limiting (retryable)
-	if strings.Contains(combined, "rate limit") ||
-		strings.Contains(combined, "rate_limit") ||
-		strings.Contains(combined, "429") ||
-		strings.Contains(combined, "too many requests") {
-		return &agents.ClassifiedError{
-			Original:   errors.New("rate limited"),
-			Class:      agents.ErrorClassRetryable,
-			RetryAfter: agents.ParseRetryAfter(combined),
-			Message:    "API rate limit exceeded",
-			Agent:      "opencode",
-		}
+	if agents.MatchesRateLimit(combined) {
+		return agents.NewRateLimitError("opencode", combined)
 	}
 
 	// Check for session-related errors
@@ -86,55 +62,21 @@ func (c *Classifier) Classify(exitCode int, stderr, stdout string, errMsgs []str
 	}
 
 	// Check for connection errors (retryable)
-	if strings.Contains(combined, "connection") ||
-		strings.Contains(combined, "network") ||
-		strings.Contains(combined, "timeout") ||
-		strings.Contains(combined, "dns") ||
-		strings.Contains(combined, "unreachable") {
-		return &agents.ClassifiedError{
-			Original: errors.New("connection failed"),
-			Class:    agents.ErrorClassRetryable,
-			Message:  "Network connection error",
-			Agent:    "opencode",
-		}
+	if agents.MatchesConnectionError(combined) {
+		return agents.NewConnectionError("opencode")
 	}
 
 	// Check for API overload (retryable)
-	if strings.Contains(combined, "overloaded") ||
-		strings.Contains(combined, "503") ||
-		strings.Contains(combined, "service unavailable") {
-		return &agents.ClassifiedError{
-			Original:   errors.New("api overloaded"),
-			Class:      agents.ErrorClassRetryable,
-			RetryAfter: defaultOverloadRetryAfter,
-			Message:    "API is overloaded",
-			Agent:      "opencode",
-		}
+	if agents.MatchesOverload(combined) {
+		return agents.NewOverloadError("opencode")
 	}
 
-	// Unknown error - build message from available sources
-	msg := strings.Join(errMsgs, "; ")
-	if msg == "" {
-		msg = stderr
-	}
-	if msg == "" {
-		msg = stdout
-	}
-	if msg == "" {
-		msg = "unknown error"
-	}
-
-	return &agents.ClassifiedError{
-		Original: errors.New(msg),
-		Class:    agents.ErrorClassUnknown,
-		Message:  msg,
-		Agent:    "opencode",
-	}
+	return agents.NewUnknownError("opencode", errMsgs, stderr, stdout)
 }
 
 // classifyPlaintext parses error patterns from non-JSON output.
 func (c *Classifier) classifyPlaintext(combined string) *agents.ClassifiedError {
-	// Check for model errors
+	// Check for model errors (opencode-specific)
 	if strings.Contains(combined, "providermodelnotfounderror") ||
 		strings.Contains(combined, "model not found") {
 		return &agents.ClassifiedError{
@@ -146,53 +88,23 @@ func (c *Classifier) classifyPlaintext(combined string) *agents.ClassifiedError 
 	}
 
 	// Check for authentication errors
-	if strings.Contains(combined, "authenticationerror") ||
-		strings.Contains(combined, "unauthorized") ||
-		strings.Contains(combined, "api key") {
-		return &agents.ClassifiedError{
-			Original: errors.New("authentication failed"),
-			Class:    agents.ErrorClassFatal,
-			Message:  "Authentication error",
-			Agent:    "opencode",
-		}
+	if agents.MatchesAuthError(combined, "authenticationerror") {
+		return agents.NewAuthError("opencode")
 	}
 
 	// Check for rate limiting
-	if strings.Contains(combined, "rate limit") ||
-		strings.Contains(combined, "429") ||
-		strings.Contains(combined, "too many requests") {
-		return &agents.ClassifiedError{
-			Original:   errors.New("rate limited"),
-			Class:      agents.ErrorClassRetryable,
-			RetryAfter: agents.ParseRetryAfter(combined),
-			Message:    "API rate limit exceeded",
-			Agent:      "opencode",
-		}
+	if agents.MatchesRateLimit(combined) {
+		return agents.NewRateLimitError("opencode", combined)
 	}
 
 	// Check for connection errors
-	if strings.Contains(combined, "connection") ||
-		strings.Contains(combined, "network") ||
-		strings.Contains(combined, "timeout") {
-		return &agents.ClassifiedError{
-			Original: errors.New("connection failed"),
-			Class:    agents.ErrorClassRetryable,
-			Message:  "Network connection error",
-			Agent:    "opencode",
-		}
+	if agents.MatchesConnectionError(combined) {
+		return agents.NewConnectionError("opencode")
 	}
 
 	// Check for overload errors
-	if strings.Contains(combined, "overloaded") ||
-		strings.Contains(combined, "503") ||
-		strings.Contains(combined, "service unavailable") {
-		return &agents.ClassifiedError{
-			Original:   errors.New("api overloaded"),
-			Class:      agents.ErrorClassRetryable,
-			RetryAfter: defaultOverloadRetryAfter,
-			Message:    "API is overloaded",
-			Agent:      "opencode",
-		}
+	if agents.MatchesOverload(combined) {
+		return agents.NewOverloadError("opencode")
 	}
 
 	// Default: return as unknown with output included
