@@ -267,6 +267,29 @@ func TestNewSessionInvalidError(t *testing.T) {
 	}
 }
 
+func TestBackoffDuration(t *testing.T) {
+	tests := map[string]struct {
+		attempt int
+		want    time.Duration
+	}{
+		"attempt 0":         {0, 1 * time.Second},
+		"attempt 1":         {1, 2 * time.Second},
+		"attempt 2":         {2, 4 * time.Second},
+		"attempt 3":         {3, 8 * time.Second},
+		"attempt 4":         {4, 16 * time.Second},
+		"attempt 5 capped":  {5, 16 * time.Second},
+		"attempt 10 capped": {10, 16 * time.Second},
+	}
+
+	for name, tc := range tests {
+		t.Run(name, func(t *testing.T) {
+			if got := BackoffDuration(tc.attempt); got != tc.want {
+				t.Errorf("BackoffDuration(%d) = %v, want %v", tc.attempt, got, tc.want)
+			}
+		})
+	}
+}
+
 func TestParseRetryAfter(t *testing.T) {
 	tests := []struct {
 		name     string

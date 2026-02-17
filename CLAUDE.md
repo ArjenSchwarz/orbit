@@ -134,7 +134,6 @@ internal/
   report/            - Comparison report generation
   cost/              - Cost formatting utilities for multi-unit cost display (USD, credits, premium requests)
   rune/client.go     - Wrapper for rune CLI task management
-  errors/errors.go   - Legacy error classification (deprecated, use agents/errors)
   logs/manager.go    - Session log storage and summary management
   config/config.go   - Configuration loading via Viper (files, env vars, defaults)
   debug/debug.go     - Debug logging utilities
