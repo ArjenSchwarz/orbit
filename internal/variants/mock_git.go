@@ -105,7 +105,7 @@ func (m *MockGit) GetHeadCommitInPath(_ string) (string, error) {
 }
 
 // CreateBranch records the call and returns the configured error.
-func (m *MockGit) CreateBranch(name string) error {
+func (m *MockGit) CreateBranch(name, commit string) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.CreatedBranches = append(m.CreatedBranches, name)

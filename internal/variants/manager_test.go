@@ -10,6 +10,11 @@ import (
 	"time"
 )
 
+// branchCreateCall records the name and commit passed to CreateBranch.
+type branchCreateCall struct {
+	name, commit string
+}
+
 // mockGitClient implements GitClient for testing.
 type mockGitClient struct {
 	mu sync.Mutex
@@ -19,6 +24,7 @@ type mockGitClient struct {
 	uncommittedChanges  bool
 	branchDiverged      bool
 	createdBranches     []string
+	branchCreateCalls   []branchCreateCall
 	createdWorktrees    map[string]string // path -> branch
 	removedWorktrees    []string
 	deletedBranches     []string
@@ -54,13 +60,14 @@ func (m *mockGitClient) GetHeadCommitInPath(_ string) (string, error) {
 	return m.headCommit, nil
 }
 
-func (m *mockGitClient) CreateBranch(name string) error {
+func (m *mockGitClient) CreateBranch(name, commit string) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	if m.createBranchError != nil {
 		return m.createBranchError
 	}
 	m.createdBranches = append(m.createdBranches, name)
+	m.branchCreateCalls = append(m.branchCreateCalls, branchCreateCall{name: name, commit: commit})
 	return nil
 }
 
@@ -1251,6 +1258,40 @@ func TestSanitizeSpecName(t *testing.T) {
 				t.Errorf("sanitizeSpecName(%q) = %q, want %q", tt.input, result, tt.expected)
 			}
 		})
+	}
+}
+
+// TestSetup_PinsBranchesToCapturedCommit is the regression test for T-112.
+// It verifies that all variant branches are created at the HEAD commit captured
+// at the start of Setup, not at whatever HEAD happens to be when each individual
+// branch is created. Without this fix, if HEAD advances between branch creation
+// calls (e.g., another process pushes to main), different variants would start
+// from different base commits, leading to inconsistent comparison results.
+func TestSetup_PinsBranchesToCapturedCommit(t *testing.T) {
+	tmpDir := t.TempDir()
+	specDir := filepath.Join(tmpDir, "specs", "test-spec")
+	git := newMockGitClient()
+
+	cfg := Config{Count: 3, BranchPrefix: "orbit-impl"}
+	mgr, err := NewManager(cfg, "test-spec", specDir, tmpDir, git)
+	if err != nil {
+		t.Fatalf("NewManager: %v", err)
+	}
+
+	ctx := context.Background()
+	if err := mgr.Setup(ctx, false); err != nil {
+		t.Fatalf("Setup: %v", err)
+	}
+
+	// All branches must have been created at the captured head commit
+	if len(git.branchCreateCalls) != 3 {
+		t.Fatalf("expected 3 branch create calls, got %d", len(git.branchCreateCalls))
+	}
+	for _, call := range git.branchCreateCalls {
+		if call.commit != "abc123def456" {
+			t.Errorf("branch %q created at commit %q, want %q",
+				call.name, call.commit, "abc123def456")
+		}
 	}
 }
 

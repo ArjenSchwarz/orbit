@@ -26,8 +26,9 @@ type GitClient interface {
 	// GetHeadCommitInPath returns the HEAD commit SHA for a specific path (worktree).
 	GetHeadCommitInPath(path string) (string, error)
 
-	// CreateBranch creates a new branch from HEAD.
-	CreateBranch(name string) error
+	// CreateBranch creates a new branch at the given commit.
+	// If commit is empty, the branch is created at HEAD.
+	CreateBranch(name, commit string) error
 
 	// CreateWorktree creates a worktree for a branch at the specified path.
 	CreateWorktree(ctx context.Context, path, branch string) error
@@ -108,9 +109,14 @@ func (g *Git) GetHeadCommitInPath(path string) (string, error) {
 	return strings.TrimSpace(string(out)), nil
 }
 
-// CreateBranch creates a new branch from HEAD.
-func (g *Git) CreateBranch(name string) error {
-	cmd := exec.Command("git", "branch", name)
+// CreateBranch creates a new branch at the given commit.
+// If commit is empty, the branch is created at HEAD.
+func (g *Git) CreateBranch(name, commit string) error {
+	args := []string{"branch", name}
+	if commit != "" {
+		args = append(args, commit)
+	}
+	cmd := exec.Command("git", args...)
 	cmd.Dir = g.repoRoot
 	var stderr bytes.Buffer
 	cmd.Stderr = &stderr

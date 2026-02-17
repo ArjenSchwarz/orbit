@@ -24,7 +24,7 @@ type mockGitClient struct {
 func (m *mockGitClient) GetCurrentBranch() (string, error)                       { return "", nil }
 func (m *mockGitClient) GetHeadCommit() (string, error)                          { return "", nil }
 func (m *mockGitClient) GetHeadCommitInPath(path string) (string, error)         { return "", nil }
-func (m *mockGitClient) CreateBranch(name string) error                          { return nil }
+func (m *mockGitClient) CreateBranch(name, commit string) error                  { return nil }
 func (m *mockGitClient) CreateWorktree(ctx context.Context, path, branch string) error {
 	return nil
 }
