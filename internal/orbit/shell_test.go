@@ -154,6 +154,40 @@ func TestExecuteShellCommand_EnvVars(t *testing.T) {
 	assert.Contains(t, result.Stdout, "PHASE=", "Expected ORBIT_PHASE_COUNT in output. Stdout = %q", result.Stdout)
 }
 
+func TestRunShellCore_VariantIDEnvVar(t *testing.T) {
+	tempDir := t.TempDir()
+	o := setupTestOrbit(t, tempDir, 30*time.Second)
+
+	result, err := o.runShellCore("echo VAR=$ORBIT_VARIANT", "test", shellExecParams{
+		ctx:        t.Context(),
+		workDir:    tempDir,
+		agentName:  "test-agent",
+		variantID:  3,
+		phaseCount: 1,
+	})
+	if err != nil {
+		t.Fatalf("runShellCore() returned error: %v", err)
+	}
+	assert.Contains(t, result.Stdout, "VAR=3")
+}
+
+func TestRunShellCore_NoVariantIDWhenZero(t *testing.T) {
+	tempDir := t.TempDir()
+	o := setupTestOrbit(t, tempDir, 30*time.Second)
+
+	result, err := o.runShellCore("echo VAR=${ORBIT_VARIANT:-unset}", "test", shellExecParams{
+		ctx:        t.Context(),
+		workDir:    tempDir,
+		agentName:  "test-agent",
+		variantID:  0,
+		phaseCount: 1,
+	})
+	if err != nil {
+		t.Fatalf("runShellCore() returned error: %v", err)
+	}
+	assert.Contains(t, result.Stdout, "VAR=unset")
+}
+
 func TestExecuteShellCommand_CapturesOutput(t *testing.T) {
 	tempDir := t.TempDir()
 	o := setupTestOrbit(t, tempDir, 30*time.Second)

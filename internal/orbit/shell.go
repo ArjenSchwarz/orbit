@@ -42,14 +42,6 @@ type shellExecParams struct {
 // and adds ORBIT_PHASE_COUNT and ORBIT_AGENT environment variables.
 // Returns an error if the command is empty or if running on Windows.
 func (o *Orbit) executeShellCommand(command, logName string) (*ShellCommandResult, error) {
-	if command == "" {
-		return nil, fmt.Errorf("command cannot be empty")
-	}
-
-	if runtime.GOOS == "windows" {
-		return nil, fmt.Errorf("shell commands are not supported on Windows (requires /bin/sh)")
-	}
-
 	// Get phase count from rune client (not from cached phaseSummaries which may be empty)
 	phaseCount := 0
 	if summaries, err := o.runeClient.GetPhaseSummaries(); err == nil {
@@ -70,6 +62,14 @@ func (o *Orbit) executeShellCommand(command, logName string) (*ShellCommandResul
 // extraction, logging, and context error reporting. Both executeShellCommand
 // (single-run) and executeVariantShellCommand (variant mode) delegate here.
 func (o *Orbit) runShellCore(command, logName string, params shellExecParams) (*ShellCommandResult, error) {
+	if command == "" {
+		return nil, fmt.Errorf("command cannot be empty")
+	}
+
+	if runtime.GOOS == "windows" {
+		return nil, fmt.Errorf("shell commands are not supported on Windows (requires /bin/sh)")
+	}
+
 	startTime := time.Now()
 	result := &ShellCommandResult{
 		Command:   command,
@@ -123,7 +123,7 @@ func (o *Orbit) runShellCore(command, logName string, params shellExecParams) (*
 
 	// Check for context errors to provide better error messages
 	if cmdCtx.Err() == context.DeadlineExceeded {
-		return result, fmt.Errorf("command timed out after %v: %s", o.config.CommandTimeout, command)
+		return result, fmt.Errorf("command timed out after %v", o.config.CommandTimeout)
 	}
 	if cmdCtx.Err() == context.Canceled && params.ctx.Err() != nil {
 		return result, fmt.Errorf("command interrupted by shutdown")
