@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 	"testing"
 	"time"
 
@@ -146,8 +147,8 @@ func TestRunWithRetry_MaxRetriesExceeded(t *testing.T) {
 	if err == nil {
 		t.Fatal("got err = nil, want error")
 	}
-	if !errors.Is(err, err) { // Just verify it's an error
-		t.Errorf("unexpected error type: %T", err)
+	if !strings.Contains(err.Error(), "max retries exceeded") {
+		t.Errorf("got err = %q, want containing %q", err, "max retries exceeded")
 	}
 	if calls != 3 {
 		t.Errorf("got %d calls, want 3", calls)
@@ -474,8 +475,8 @@ func TestRunWithRetry_RateLimitResetCapped(t *testing.T) {
 	if err == nil {
 		t.Fatal("got err = nil, want error")
 	}
-	if !errors.Is(err, err) {
-		t.Errorf("unexpected error type: %T", err)
+	if !strings.Contains(err.Error(), "rate-limit wait exceeded") {
+		t.Errorf("got err = %q, want containing %q", err, "rate-limit wait exceeded")
 	}
 	// Should stop after maxRateLimitResets (5) + 1 = 6 rate-limit attempts
 	if calls > 10 {

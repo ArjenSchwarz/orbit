@@ -298,7 +298,17 @@ func (o *Orbit) runPostPrompt() error {
 			o.debug.Log("Saving failed post-completion session for debugging")
 			_ = o.logManager.SavePostCompletionSession(result, startTime)
 		}
-		classified := o.errorClassifier.Classify(1, result.Stderr, result.Output, result.Errors)
+		var stderr, output string
+		var errMsgs []string
+		if result != nil {
+			stderr = result.Stderr
+			output = result.Output
+			errMsgs = result.Errors
+		} else {
+			stderr = err.Error()
+			errMsgs = []string{err.Error()}
+		}
+		classified := o.errorClassifier.Classify(1, stderr, output, errMsgs)
 		o.debug.LogError(classified.Class.String(), classified.Message, classified.Class.IsRetryable())
 		return classified
 	}
