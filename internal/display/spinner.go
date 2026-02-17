@@ -56,6 +56,22 @@ func newSpinnerWithTTY(isTTY bool) *Spinner {
 
 // Start begins the spinner animation for a phase.
 // Idempotent: calling Start() when already started is a no-op.
+func (s *Spinner) Start(phase int) {
+	s.startWith(phase, false, false)
+}
+
+// StartPostCompletion begins spinner for post-completion command.
+func (s *Spinner) StartPostCompletion() {
+	s.startWith(0, true, false)
+}
+
+// StartPrePrompt begins spinner for pre-prompt execution.
+func (s *Spinner) StartPrePrompt() {
+	s.startWith(0, false, true)
+}
+
+// startWith is the shared implementation for all Start variants.
+// Idempotent: calling when already started is a no-op.
 //
 // Goroutine safety: The done channel is captured and passed to updateLoop to
 // prevent a race condition. Without this, a rapid Stop() -> Start() sequence
@@ -63,7 +79,7 @@ func newSpinnerWithTTY(isTTY bool) *Spinner {
 // Stop() closes the channel, and Start() creates a new channel before the
 // goroutine checks s.done, it would read the new (unclosed) channel and
 // continue running.
-func (s *Spinner) Start(phase int) {
+func (s *Spinner) startWith(phase int, postCompletion, prePrompt bool) {
 	if s == nil {
 		return
 	}
@@ -79,80 +95,17 @@ func (s *Spinner) Start(phase int) {
 	s.startTime = time.Now()
 	s.started = true
 	s.isWaiting = false
-	s.isPostCompletion = false
-	s.isPrePrompt = false
+	s.isPostCompletion = postCompletion
+	s.isPrePrompt = prePrompt
 	s.stopOnce = sync.Once{}
 	s.done = make(chan struct{})
 
 	s.updateSuffix()
 	s.spinner.Start()
 
-	// Start goroutine to update elapsed time.
 	// Capture done channel to avoid race: if Stop() closes the channel and
 	// a subsequent Start() creates a new one, the goroutine must monitor
 	// the original channel, not the reassigned s.done field.
-	done := s.done
-	go s.updateLoop(done)
-}
-
-// StartPostCompletion begins spinner for post-completion command.
-// See Start() for goroutine safety notes.
-func (s *Spinner) StartPostCompletion() {
-	if s == nil {
-		return
-	}
-
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
-	if s.started {
-		return
-	}
-
-	s.phase = 0
-	s.startTime = time.Now()
-	s.started = true
-	s.isWaiting = false
-	s.isPostCompletion = true
-	s.isPrePrompt = false
-	s.stopOnce = sync.Once{}
-	s.done = make(chan struct{})
-
-	s.updateSuffix()
-	s.spinner.Start()
-
-	// See Start() for why we capture the done channel.
-	done := s.done
-	go s.updateLoop(done)
-}
-
-// StartPrePrompt begins spinner for pre-prompt execution.
-// See Start() for goroutine safety notes.
-func (s *Spinner) StartPrePrompt() {
-	if s == nil {
-		return
-	}
-
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
-	if s.started {
-		return
-	}
-
-	s.phase = 0
-	s.startTime = time.Now()
-	s.started = true
-	s.isWaiting = false
-	s.isPostCompletion = false
-	s.isPrePrompt = true
-	s.stopOnce = sync.Once{}
-	s.done = make(chan struct{})
-
-	s.updateSuffix()
-	s.spinner.Start()
-
-	// See Start() for why we capture the done channel.
 	done := s.done
 	go s.updateLoop(done)
 }
