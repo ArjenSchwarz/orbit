@@ -23,6 +23,17 @@ import (
 	"github.com/google/uuid"
 )
 
+// ConsolidatorOption configures optional dependencies for the Consolidator.
+type ConsolidatorOption func(*Consolidator)
+
+// WithGitOps sets a custom GitOps implementation (useful for testing).
+func WithGitOps(git GitOps) ConsolidatorOption {
+	return func(c *Consolidator) {
+		c.git = git
+		c.recovery.SetGitOps(git)
+	}
+}
+
 // ErrNoImprovements indicates the comparison report has no cross-variant improvements.
 var ErrNoImprovements = errors.New("no cross-variant improvements found in comparison report. Nothing to consolidate")
 
@@ -31,13 +42,14 @@ type Consolidator struct {
 	config   Config
 	manager  *variants.Manager
 	recovery *RecoveryManager
+	git      GitOps
 	spinner  *display.Spinner
 	logger   *Logger
 }
 
 // NewConsolidator creates a consolidator for a spec.
 // Implements: [2.3], [2.4], [2.5], [2.6]
-func NewConsolidator(cfg Config, mgr *variants.Manager) (*Consolidator, error) {
+func NewConsolidator(cfg Config, mgr *variants.Manager, opts ...ConsolidatorOption) (*Consolidator, error) {
 	if cfg.SpecDir == "" {
 		return nil, errors.New("spec directory is required")
 	}
@@ -57,18 +69,26 @@ func NewConsolidator(cfg Config, mgr *variants.Manager) (*Consolidator, error) {
 		return nil, fmt.Errorf("variant %d not found", cfg.VariantID)
 	}
 
-	return &Consolidator{
+	gitOps := NewExecGitOps(worktreePath)
+	c := &Consolidator{
 		config:   cfg,
 		manager:  mgr,
-		recovery: NewRecoveryManager(worktreePath),
+		git:      gitOps,
+		recovery: NewRecoveryManager(worktreePath, gitOps),
 		spinner:  display.NewSpinner(),
 		logger:   NewLogger(orbitDir),
-	}, nil
+	}
+
+	for _, opt := range opts {
+		opt(c)
+	}
+
+	return c, nil
 }
 
 // NewConsolidatorForRollback creates a consolidator configured only for rollback operations.
 // Unlike NewConsolidator, this does not require an agent since rollback only needs git operations.
-func NewConsolidatorForRollback(cfg Config, mgr *variants.Manager) (*Consolidator, error) {
+func NewConsolidatorForRollback(cfg Config, mgr *variants.Manager, opts ...ConsolidatorOption) (*Consolidator, error) {
 	if cfg.SpecDir == "" {
 		return nil, errors.New("spec directory is required")
 	}
@@ -85,13 +105,21 @@ func NewConsolidatorForRollback(cfg Config, mgr *variants.Manager) (*Consolidato
 		return nil, fmt.Errorf("variant %d not found", cfg.VariantID)
 	}
 
-	return &Consolidator{
+	gitOps := NewExecGitOps(worktreePath)
+	c := &Consolidator{
 		config:   cfg,
 		manager:  mgr,
-		recovery: NewRecoveryManager(worktreePath),
+		git:      gitOps,
+		recovery: NewRecoveryManager(worktreePath, gitOps),
 		logger:   NewLogger(orbitDir),
 		// No spinner or agent needed for rollback
-	}, nil
+	}
+
+	for _, opt := range opts {
+		opt(c)
+	}
+
+	return c, nil
 }
 
 // getWorktreePath returns the worktree path for a variant ID, or empty if not found.
@@ -288,15 +316,12 @@ func (c *Consolidator) checkCleanState(ctx context.Context) error {
 		return nil
 	}
 
-	worktreePath := c.recovery.worktreePath
-	cmd := exec.CommandContext(ctx, "git", "status", "--porcelain")
-	cmd.Dir = worktreePath
-	out, err := cmd.Output()
+	dirty, err := c.git.HasUncommittedChanges(ctx)
 	if err != nil {
-		return fmt.Errorf("failed to check git status: %w", err)
+		return err
 	}
 
-	if len(strings.TrimSpace(string(out))) > 0 {
+	if dirty {
 		return fmt.Errorf("worktree has uncommitted changes. Commit or stash changes, or use --allow-dirty to proceed anyway")
 	}
 
@@ -566,30 +591,24 @@ func (c *Consolidator) runWithRetry(ctx context.Context, prompt string) (*agents
 // 3. Validates commit exists and message matches pattern before reverting
 // Implements: [5.7]
 func (c *Consolidator) Rollback(ctx context.Context) error {
-	worktreePath := c.recovery.worktreePath
-
 	// Try to get commit SHA from log first
 	commitSHA, err := c.logger.GetLatestCommitSHA()
 	if err != nil {
 		// Fall back to searching recent commits
-		commitSHA, err = c.findConsolidationCommit(ctx, worktreePath)
+		commitSHA, err = c.findConsolidationCommit(ctx)
 		if err != nil {
 			return fmt.Errorf("no consolidation commit found to rollback: %w", err)
 		}
 	}
 
 	// Validate commit exists and message matches pattern
-	if err := c.validateCommitForRollback(ctx, worktreePath, commitSHA); err != nil {
+	if err := c.validateCommitForRollback(ctx, commitSHA); err != nil {
 		return fmt.Errorf("cannot rollback commit %s: %w", truncateSHA(commitSHA), err)
 	}
 
 	// Revert the commit
-	cmd := exec.CommandContext(ctx, "git", "revert", "--no-edit", commitSHA)
-	cmd.Dir = worktreePath
-	var stderr bytes.Buffer
-	cmd.Stderr = &stderr
-	if err := cmd.Run(); err != nil {
-		return fmt.Errorf("failed to revert commit: %s", stderr.String())
+	if err := c.git.RevertCommit(ctx, commitSHA); err != nil {
+		return err
 	}
 
 	fmt.Printf("Successfully rolled back consolidation commit %s\n", truncateSHA(commitSHA))
@@ -597,19 +616,17 @@ func (c *Consolidator) Rollback(ctx context.Context) error {
 }
 
 // findConsolidationCommit searches recent commits for the consolidation message pattern.
-func (c *Consolidator) findConsolidationCommit(ctx context.Context, worktreePath string) (string, error) {
+func (c *Consolidator) findConsolidationCommit(ctx context.Context) (string, error) {
 	// Search recent commits for the message pattern
-	cmd := exec.CommandContext(ctx, "git", "log", "-n", "20", "--oneline", "--format=%H %s")
-	cmd.Dir = worktreePath
-	out, err := cmd.Output()
+	out, err := c.git.LogOneline(ctx, 20)
 	if err != nil {
-		return "", fmt.Errorf("failed to read git log: %w", err)
+		return "", err
 	}
 
 	// Pattern: feat(consolidate): Apply improvements from variants X, Y to variant Z for spec-name
 	pattern := regexp.MustCompile(`^feat\(consolidate\): Apply improvements from variants .+ to variant \d+ for .+$`)
 
-	scanner := bufio.NewScanner(bytes.NewReader(out))
+	scanner := bufio.NewScanner(bytes.NewReader([]byte(out)))
 	for scanner.Scan() {
 		line := scanner.Text()
 		parts := strings.SplitN(line, " ", 2)
@@ -627,16 +644,13 @@ func (c *Consolidator) findConsolidationCommit(ctx context.Context, worktreePath
 }
 
 // validateCommitForRollback verifies a commit exists and has the expected message pattern.
-func (c *Consolidator) validateCommitForRollback(ctx context.Context, worktreePath, commitSHA string) error {
+func (c *Consolidator) validateCommitForRollback(ctx context.Context, commitSHA string) error {
 	// Get commit message
-	cmd := exec.CommandContext(ctx, "git", "log", "-1", "--format=%s", commitSHA)
-	cmd.Dir = worktreePath
-	out, err := cmd.Output()
+	msg, err := c.git.GetCommitSubject(ctx, commitSHA)
 	if err != nil {
 		return fmt.Errorf("commit not found")
 	}
 
-	msg := strings.TrimSpace(string(out))
 	pattern := regexp.MustCompile(`^feat\(consolidate\): Apply improvements from variants .+ to variant \d+ for .+$`)
 	if !pattern.MatchString(msg) {
 		return fmt.Errorf("commit message does not match consolidation pattern")
