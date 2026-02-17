@@ -129,6 +129,68 @@ func TestFormatTotals(t *testing.T) {
 	}
 }
 
+func TestTotalsFromValue(t *testing.T) {
+	tests := map[string]struct {
+		existing Totals
+		value    float64
+		unit     string
+		expected Totals
+	}{
+		"existing totals returned as-is": {
+			existing: Totals{USD: 1.0, Credits: 2.0},
+			value:    5.0,
+			unit:     UnitUSD,
+			expected: Totals{USD: 1.0, Credits: 2.0},
+		},
+		"existing with only credits": {
+			existing: Totals{Credits: 3.0},
+			value:    5.0,
+			unit:     UnitUSD,
+			expected: Totals{Credits: 3.0},
+		},
+		"empty existing USD": {
+			existing: Totals{},
+			value:    1.50,
+			unit:     UnitUSD,
+			expected: Totals{USD: 1.50},
+		},
+		"empty existing credits": {
+			existing: Totals{},
+			value:    2.50,
+			unit:     UnitCredits,
+			expected: Totals{Credits: 2.50},
+		},
+		"empty existing premium requests": {
+			existing: Totals{},
+			value:    3.0,
+			unit:     UnitPremiumRequests,
+			expected: Totals{PremiumRequests: 3.0},
+		},
+		"empty existing unknown unit defaults to USD": {
+			existing: Totals{},
+			value:    4.0,
+			unit:     "unknown",
+			expected: Totals{USD: 4.0},
+		},
+		"zero existing zero value": {
+			existing: Totals{},
+			value:    0,
+			unit:     UnitUSD,
+			expected: Totals{},
+		},
+	}
+
+	for name, tc := range tests {
+		t.Run(name, func(t *testing.T) {
+			got := TotalsFromValue(tc.existing, tc.value, tc.unit)
+			if got != tc.expected {
+				t.Errorf("TotalsFromValue(%+v, %v, %q) = %+v, want %+v",
+					tc.existing, tc.value, tc.unit, got, tc.expected)
+			}
+		})
+	}
+}
+
 func TestInferUnitFromAgent(t *testing.T) {
 	tests := map[string]struct {
 		agentType string

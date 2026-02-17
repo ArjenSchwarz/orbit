@@ -361,7 +361,7 @@ func (o *Orbit) runWithVariants(ctx context.Context) error {
 	// Generate report based on outcomes
 	if successCount == 0 {
 		log.Println("All variants failed; generating partial report")
-		return o.generatePartialReport()
+		return o.generateReport(true)
 	}
 
 	if successCount == 1 {
@@ -369,7 +369,7 @@ func (o *Orbit) runWithVariants(ctx context.Context) error {
 		if o.config.AutoConsolidate {
 			log.Println("Skipping auto-consolidation: comparison requires 2+ successful variants")
 		}
-		return o.generateReport()
+		return o.generateReport(false)
 	}
 
 	// Compare multiple successful variants
@@ -379,7 +379,7 @@ func (o *Orbit) runWithVariants(ctx context.Context) error {
 	}
 
 	// Generate report first - auto-consolidation reads the report file
-	if err := o.generateReport(); err != nil {
+	if err := o.generateReport(false); err != nil {
 		log.Printf("Report generation failed: %v", err)
 		// Return early if report generation fails - consolidation depends on the report
 		return err
@@ -875,15 +875,7 @@ func (o *Orbit) runVariant(ctx context.Context, v *variants.Variant) error {
 
 	// Infer cost unit and build totals from agent type
 	costUnit := cost.InferUnitFromAgent(agentType)
-	var costTotals cost.Totals
-	switch costUnit {
-	case cost.UnitCredits:
-		costTotals.Credits = totalCost
-	case cost.UnitPremiumRequests:
-		costTotals.PremiumRequests = totalCost
-	default:
-		costTotals.USD = totalCost
-	}
+	costTotals := cost.TotalsFromValue(cost.Totals{}, totalCost, costUnit)
 
 	if err := o.variantManager.UpdateMetrics(v.ID, totalCost, costUnit, costTotals, duration, totalTurns); err != nil {
 		log.Printf("Warning: failed to update variant %d metrics: %v", v.ID, err)

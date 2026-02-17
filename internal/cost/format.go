@@ -99,6 +99,24 @@ func FormatTotals(totals Totals) string {
 	return strings.Join(parts, ", ")
 }
 
+// TotalsFromValue constructs a Totals struct from a single cost value and unit.
+// If existing has any non-zero field, it is returned as-is.
+func TotalsFromValue(existing Totals, value float64, unit string) Totals {
+	if existing.USD > 0 || existing.Credits > 0 || existing.PremiumRequests > 0 {
+		return existing
+	}
+	var t Totals
+	switch unit {
+	case UnitCredits:
+		t.Credits = value
+	case UnitPremiumRequests:
+		t.PremiumRequests = value
+	default:
+		t.USD = value
+	}
+	return t
+}
+
 // InferUnitFromAgent returns the cost unit for an agent type.
 // Used for backward compatibility with legacy summary.json files.
 func InferUnitFromAgent(agentType string) string {

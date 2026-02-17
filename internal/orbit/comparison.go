@@ -220,49 +220,40 @@ func (o *Orbit) runPostConsolidateCommand(ctx context.Context, worktreePath stri
 }
 
 // generateReport creates the HTML comparison report.
-func (o *Orbit) generateReport() error {
-	log.Println("Generating comparison report...")
+// When allFailed is true, diffs are skipped and the function returns an "all variants failed" error.
+func (o *Orbit) generateReport(allFailed bool) error {
+	if allFailed {
+		log.Println("Generating partial report (all variants failed)...")
+	} else {
+		log.Println("Generating comparison report...")
+	}
 
 	metadata := o.variantManager.GetMetadata()
 	if metadata == nil {
 		return fmt.Errorf("no variant metadata available")
 	}
 
-	// Gather diffs for report
-	gitClient := variants.NewGit(o.config.RepoRoot)
-	diffGatherer := comparison.NewDiffGatherer(gitClient)
 	variantList := o.variantManager.GetVariantsSnapshot()
 
-	variantData, err := diffGatherer.GatherDiffs(context.Background(), metadata.BaseCommit, variantList)
-	if err != nil {
-		log.Printf("Warning: could not gather diffs for report: %v", err)
-	}
-
-	// Build variant data map for lookup
+	// Gather diffs unless all variants failed (nothing useful to diff)
 	variantDiffs := make(map[int]string)
-	for _, vd := range variantData {
-		variantDiffs[vd.ID] = vd.Diff
+	if !allFailed {
+		gitClient := variants.NewGit(o.config.RepoRoot)
+		diffGatherer := comparison.NewDiffGatherer(gitClient)
+
+		variantData, err := diffGatherer.GatherDiffs(context.Background(), metadata.BaseCommit, variantList)
+		if err != nil {
+			log.Printf("Warning: could not gather diffs for report: %v", err)
+		}
+		for _, vd := range variantData {
+			variantDiffs[vd.ID] = vd.Diff
+		}
 	}
 
-	// Build report data
+	// Build report variant data
 	reportVariants := make([]report.VariantReportData, 0, len(variantList))
 	for _, v := range variantList {
-		// Build cost totals from variant data
-		var costTotals cost.Totals
-		if v.CostTotals.USD > 0 || v.CostTotals.Credits > 0 || v.CostTotals.PremiumRequests > 0 {
-			costTotals = v.CostTotals
-		} else {
-			// Construct totals from single cost value
-			switch v.CostUnit {
-			case cost.UnitCredits:
-				costTotals.Credits = v.Cost
-			case cost.UnitPremiumRequests:
-				costTotals.PremiumRequests = v.Cost
-			default:
-				// Default to USD if unknown or explicitly USD
-				costTotals.USD = v.Cost
-			}
-		}
+		costTotals := cost.TotalsFromValue(v.CostTotals, v.Cost, v.CostUnit)
 
 		reportVariants = append(reportVariants, report.VariantReportData{
 			ID:     v.ID,
@@ -300,76 +291,11 @@ func (o *Orbit) generateReport() error {
 	}
 
 	log.Printf("Report generated: %s/index.html", reportDir)
+
+	if allFailed {
+		return fmt.Errorf("all variants failed")
+	}
 	return nil
-}
-
-// generatePartialReport creates a report when all variants failed.
-func (o *Orbit) generatePartialReport() error {
-	log.Println("Generating partial report (all variants failed)...")
-
-	metadata := o.variantManager.GetMetadata()
-	if metadata == nil {
-		return fmt.Errorf("no variant metadata available")
-	}
-
-	variantList := o.variantManager.GetVariantsSnapshot()
-
-	// Build report data with failure info
-	reportVariants := make([]report.VariantReportData, 0, len(variantList))
-	for _, v := range variantList {
-		// Build cost totals from variant data
-		var costTotals cost.Totals
-		if v.CostTotals.USD > 0 || v.CostTotals.Credits > 0 || v.CostTotals.PremiumRequests > 0 {
-			costTotals = v.CostTotals
-		} else {
-			// Construct totals from single cost value
-			switch v.CostUnit {
-			case cost.UnitCredits:
-				costTotals.Credits = v.Cost
-			case cost.UnitPremiumRequests:
-				costTotals.PremiumRequests = v.Cost
-			default:
-				// Default to USD if unknown or explicitly USD
-				costTotals.USD = v.Cost
-			}
-		}
-
-		reportVariants = append(reportVariants, report.VariantReportData{
-			ID:     v.ID,
-			Branch: v.Branch,
-			Status: string(v.Status),
-			Error:  v.Error,
-			Agent:  v.Agent,
-			Metrics: report.VariantMetrics{
-				Cost:         &costTotals,
-				Duration:     v.Duration.Round(time.Second).String(),
-				NumTurns:     v.NumTurns,
-				LinesAdded:   v.LinesAdded,
-				LinesRemoved: v.LinesRemoved,
-			},
-		})
-	}
-
-	reportData := &report.ReportData{
-		SpecName:       o.config.BranchName,
-		GeneratedAt:    time.Now(),
-		Variants:       reportVariants,
-		Comparison:     nil, // No comparison for all-failed case
-		BaseCommit:     metadata.BaseCommit,
-		OriginalBranch: metadata.OriginalBranch,
-		VariantCommits: o.variantManager.GetVariantCommits(),
-	}
-
-	// Create report in comparison-report directory under spec
-	reportDir := filepath.Join(o.config.SpecDir, "comparison-report")
-	generator := report.NewGenerator(reportDir)
-
-	if err := generator.Generate(reportData); err != nil {
-		return fmt.Errorf("generate partial report: %w", err)
-	}
-
-	log.Printf("Partial report generated: %s/index.html", reportDir)
-	return fmt.Errorf("all variants failed")
 }
 
 // readSpecContext reads key spec files to provide context for comparison.
