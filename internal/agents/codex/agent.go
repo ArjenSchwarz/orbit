@@ -22,8 +22,9 @@ func init() {
 
 // Agent implements the agents.Agent interface for Codex.
 type Agent struct {
-	config  agents.AgentConfig
-	cliPath string
+	config     agents.AgentConfig
+	cliPath    string
+	sessionDir string // override for testing; empty means use DefaultSessionDir()
 }
 
 // New creates a new Codex agent.
@@ -71,7 +72,10 @@ func (a *Agent) DefaultSessionDir() string {
 
 // DiscoverSessions lists sessions for a given project directory.
 func (a *Agent) DiscoverSessions(ctx context.Context, projectDir string) ([]agents.SessionInfo, error) {
-	sessionDir := a.DefaultSessionDir()
+	sessionDir := a.sessionDir
+	if sessionDir == "" {
+		sessionDir = a.DefaultSessionDir()
+	}
 	if sessionDir == "" {
 		return nil, nil
 	}
