@@ -210,12 +210,13 @@ func (r *Resolver) ResolvePath(source, sessionID string) (string, error) {
 }
 
 // findKiroIDEPath finds the best .chat file path for a Kiro IDE session.
-// The returned path is validated with IsPathWithinDir to reject symlinks
-// pointing outside the workspace directory.
+// Each candidate is validated with IsPathWithinDir inside the scan loop,
+// so symlinks pointing outside the workspace are skipped without shadowing
+// legitimate files.
 func (r *Resolver) findKiroIDEPath(workspaceDir, sessionID string) (string, error) {
 	entries, err := os.ReadDir(workspaceDir)
 	if err != nil {
-		return "", err
+		return "", fmt.Errorf("read kiro ide workspace: %w", err)
 	}
 
 	var bestPath string
@@ -227,6 +228,9 @@ func (r *Resolver) findKiroIDEPath(workspaceDir, sessionID string) (string, erro
 			continue
 		}
 		path := filepath.Join(workspaceDir, entry.Name())
+		if !web.IsPathWithinDir(path, workspaceDir) {
+			continue
+		}
 		data, err := os.ReadFile(path)
 		if err != nil {
 			continue
@@ -249,10 +253,6 @@ func (r *Resolver) findKiroIDEPath(workspaceDir, sessionID string) (string, erro
 	}
 
 	if bestPath == "" {
-		return "", fmt.Errorf("session not found: %s", sessionID)
-	}
-
-	if !web.IsPathWithinDir(bestPath, workspaceDir) {
 		return "", fmt.Errorf("session not found: %s", sessionID)
 	}
 

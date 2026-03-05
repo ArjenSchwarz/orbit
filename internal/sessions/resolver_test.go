@@ -342,6 +342,35 @@ func TestFindKiroIDEPath_RejectsSymlinkOutsideWorkspace(t *testing.T) {
 		"error should indicate session not found for path traversal via symlink")
 }
 
+func TestFindKiroIDEPath_SymlinkDoesNotShadowLegitimateFile(t *testing.T) {
+	// A symlink with more messages should not prevent a legitimate file
+	// with fewer messages from being returned.
+	workspaceDir := t.TempDir()
+	outsideDir := t.TempDir()
+
+	sessionID := "exec-789"
+
+	// Create a legitimate file with 2 messages
+	writeKiroIDEChatFile(t, workspaceDir, "legitimate.chat", sessionID, 2)
+
+	// Create a symlink to an outside file with more messages (would win selection without validation)
+	writeKiroIDEChatFile(t, outsideDir, "outside.chat", sessionID, 5)
+	symlinkPath := filepath.Join(workspaceDir, "symlinked.chat")
+	if err := os.Symlink(filepath.Join(outsideDir, "outside.chat"), symlinkPath); err != nil {
+		t.Fatalf("failed to create symlink: %v", err)
+	}
+
+	resolver := newTestResolver("/fake/project", t.TempDir())
+	path, err := resolver.findKiroIDEPath(workspaceDir, sessionID)
+	if err != nil {
+		t.Fatalf("expected legitimate file to be found, got error: %v", err)
+	}
+	expected := filepath.Join(workspaceDir, "legitimate.chat")
+	if path != expected {
+		t.Errorf("path = %q, want %q (should return legitimate file, not symlink)", path, expected)
+	}
+}
+
 func TestFindKiroIDEPath_AcceptsRegularFile(t *testing.T) {
 	workspaceDir := t.TempDir()
 	sessionID := "exec-456"
