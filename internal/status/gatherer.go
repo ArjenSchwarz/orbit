@@ -167,11 +167,7 @@ func (g *Gatherer) gatherKiroLastAction(ctx context.Context, v *variants.Variant
 		return &LastActionResult{State: LastActionUnavailable}
 	}
 
-	// Get current session ID from in-progress phase
-	var sessionID string
-	if summary.CurrentPhase != nil {
-		sessionID = summary.CurrentPhase.SessionID
-	}
+	sessionID := getActiveSessionID(&summary)
 	if sessionID == "" {
 		return &LastActionResult{State: LastActionWaiting}
 	}
@@ -230,11 +226,19 @@ func (g *Gatherer) gatherTaskProgress(worktreePath string) *TaskProgress {
 }
 
 // getActiveSessionID returns the session ID for the currently active session.
-// It checks CurrentPhase first, then falls back to pre-prompt and post-completion.
-// BUG: Currently only checks CurrentPhase — pre-prompt and post-prompt are ignored.
+// It checks sources in priority order:
+//  1. CurrentPhase — a numbered phase is running
+//  2. PrePrompt (status "started") — pre-prompt is running
+//  3. PostCompletion — post-prompt is running
 func getActiveSessionID(summary *logs.Summary) string {
-	if summary.CurrentPhase != nil {
+	if summary.CurrentPhase != nil && summary.CurrentPhase.SessionID != "" {
 		return summary.CurrentPhase.SessionID
+	}
+	if summary.PrePrompt != nil && summary.PrePrompt.Status == logs.PrePromptStatusStarted && summary.PrePrompt.SessionID != "" {
+		return summary.PrePrompt.SessionID
+	}
+	if summary.PostCompletion != nil && summary.PostCompletion.SessionID != "" {
+		return summary.PostCompletion.SessionID
 	}
 	return ""
 }
@@ -261,11 +265,7 @@ func GetLiveTranscriptPath(worktreePath, variantLogDir string) (string, error) {
 		return "", err
 	}
 
-	// Get current session ID from in-progress phase
-	var sessionID string
-	if summary.CurrentPhase != nil {
-		sessionID = summary.CurrentPhase.SessionID
-	}
+	sessionID := getActiveSessionID(&summary)
 	if sessionID == "" {
 		return "", nil
 	}
