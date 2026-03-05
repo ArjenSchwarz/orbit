@@ -215,6 +215,18 @@ func (m *Manager) Setup(ctx context.Context, continueExisting bool) error {
 		for _, id := range preserved {
 			completedIDs[id] = true
 		}
+
+		// If completed variants were preserved, verify HEAD hasn't moved since the
+		// original run. New branches are created at HEAD, so if HEAD != BaseCommit,
+		// different variants would have different bases, producing incorrect diffs
+		// and comparisons (T-191).
+		if len(completedIDs) > 0 && m.metadata != nil && m.metadata.BaseCommit != headCommit {
+			return fmt.Errorf(
+				"cannot start new run: HEAD (%s) differs from base commit (%s) of preserved completed variants; "+
+					"checkout the original base commit or use 'orbit cleanup' to discard completed variants first",
+				headCommit, m.metadata.BaseCommit,
+			)
+		}
 	}
 
 	// Ensure .gitignore is in place before creating worktrees

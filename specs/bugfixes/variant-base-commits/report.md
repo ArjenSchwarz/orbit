@@ -1,7 +1,7 @@
 # Bugfix Report: Variant New Run Mixes Base Commits
 
 **Date:** 2026-03-05
-**Status:** In Progress
+**Status:** Fixed
 
 ## Description of the Issue
 
@@ -33,7 +33,15 @@ When starting a new variant run with existing metadata (`continueExisting=false`
 
 ## Resolution for the Issue
 
-*(To be filled after fix is implemented)*
+**Changes made:**
+- `internal/variants/manager.go:Setup()` — After `CleanupUnfinished` preserves completed variants, added a check that `headCommit == metadata.BaseCommit`. If they differ, Setup returns an error with a clear message explaining the mismatch and what the user should do.
+- `internal/variants/manager_test.go:TestSetup_PreservesCompletedVariants` — Updated the existing test to use a base commit matching the mock HEAD, preventing it from exercising the now-rejected buggy path.
+
+**Approach rationale:** Option (b) from the ticket — error when HEAD != BaseCommit — was chosen because it is the safest option. It prevents silent corruption of comparison results without making assumptions about what the user wants. The error message tells the user to either checkout the original base commit or use `orbit cleanup` to discard completed variants.
+
+**Alternatives considered:**
+- Create new branches at `metadata.BaseCommit` instead of HEAD — This would work but is surprising behaviour; users expect new work to start from HEAD.
+- Update BaseCommit and invalidate preserved variants — This defeats the purpose of preserving completed variants and wastes the work already done.
 
 ## Regression Test
 
@@ -57,9 +65,9 @@ When starting a new variant run with existing metadata (`continueExisting=false`
 ## Verification
 
 **Automated:**
-- [ ] Regression test passes
-- [ ] Full test suite passes
-- [ ] Linters/validators pass
+- [x] Regression test passes
+- [x] Full test suite passes
+- [x] Linters/validators pass
 
 ## Prevention
 
