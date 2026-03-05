@@ -11,6 +11,16 @@ Calls agent-specific list functions in parallel, then merges and sorts results:
 - `listKiroSessions(projectPath)` - filters via SQLite directory discovery
 - `listKiroIDESessions(projectPath)` - filters via workspace directory lookup
 
+## Path normalization
+
+When filtering sessions by project path, always use `normalizePath()` (EvalSymlinks + filepath.Clean) for comparisons. This is critical on macOS where `/tmp` symlinks to `/private/tmp`.
+
+- `listCodex` and `listCopilot` both use `normalizePath` for path comparison
+- `listClaude` uses an encoded project path in the directory name (different approach, not affected)
+- `listKiro` and `listKiroIDE` delegate path filtering to their respective libraries
+
+Bug T-290 was caused by `listCopilot` using plain string equality instead of `normalizePath`.
+
 ## Codex session structure
 
 Sessions stored in `~/.codex/sessions/YYYY/MM/DD/session-{uuid}.jsonl`.
