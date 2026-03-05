@@ -276,6 +276,193 @@ func TestResolveMetadataPopulation(t *testing.T) {
 	}
 }
 
+// TestResolvePathCodexSymlinkEscape verifies that ResolvePath for Codex rejects
+// sessions found via symlinks that resolve outside ~/.codex/sessions/.
+func TestResolvePathCodexSymlinkEscape(t *testing.T) {
+	homeDir := t.TempDir()
+	projectPath := t.TempDir()
+
+	sessionID := "12345678-1234-1234-1234-123456789abc"
+
+	// Create a session file outside the expected Codex base directory.
+	outsideDir := filepath.Join(homeDir, "outside")
+	if err := os.MkdirAll(outsideDir, 0755); err != nil {
+		t.Fatalf("create outside dir: %v", err)
+	}
+	outsideFile := filepath.Join(outsideDir, fmt.Sprintf("session-%s.jsonl", sessionID))
+	meta := map[string]any{
+		"type":      "session_meta",
+		"timestamp": "2025-01-15T14:30:00Z",
+		"payload": map[string]any{
+			"id":  sessionID,
+			"cwd": projectPath,
+		},
+	}
+	data, _ := json.Marshal(meta)
+	if err := os.WriteFile(outsideFile, append(data, '\n'), 0644); err != nil {
+		t.Fatalf("write outside file: %v", err)
+	}
+
+	// Create the Codex sessions directory and place a symlink inside it
+	// that points to the outside directory.
+	codexDir := filepath.Join(homeDir, ".codex", "sessions", "2025", "01", "15")
+	if err := os.MkdirAll(codexDir, 0755); err != nil {
+		t.Fatalf("create codex dir: %v", err)
+	}
+	symlinkPath := filepath.Join(codexDir, fmt.Sprintf("session-%s.jsonl", sessionID))
+	if err := os.Symlink(outsideFile, symlinkPath); err != nil {
+		t.Fatalf("create symlink: %v", err)
+	}
+
+	resolver := newTestResolver(projectPath, homeDir)
+	_, err := resolver.ResolvePath(SourceCodex, sessionID)
+	if err == nil {
+		t.Fatal("expected error for Codex session via symlink escaping base dir, got nil")
+	}
+	assert.Contains(t, err.Error(), "session not found")
+}
+
+// TestResolvePathCopilotSymlinkEscape verifies that ResolvePath for Copilot rejects
+// sessions found via a symlinked session-state directory that resolves outside
+// the expected base dir. We symlink the entire session-state directory to an
+// outside location so findCopilotSession returns a real directory entry (not a
+// symlink DirEntry), but the resolved path is outside the canonical base.
+func TestResolvePathCopilotSymlinkEscape(t *testing.T) {
+	homeDir := t.TempDir()
+	projectPath := t.TempDir()
+
+	sessionID := "12345678-1234-1234-1234-123456789abc"
+
+	// Create a real session directory outside the expected Copilot base.
+	outsideDir := filepath.Join(homeDir, "outside")
+	outsideSessionDir := filepath.Join(outsideDir, sessionID)
+	if err := os.MkdirAll(outsideSessionDir, 0755); err != nil {
+		t.Fatalf("create outside dir: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(outsideSessionDir, "events.jsonl"), []byte(`{"type":"event"}`+"\n"), 0644); err != nil {
+		t.Fatalf("write events file: %v", err)
+	}
+
+	// Instead of creating a real session-state dir, symlink it to the outside location.
+	// This way os.ReadDir follows the symlink for the directory itself, so entries
+	// appear as real directories, but the resolved events.jsonl path is outside
+	// the canonical ~/.copilot/session-state/.
+	copilotBase := filepath.Join(homeDir, ".copilot")
+	if err := os.MkdirAll(copilotBase, 0755); err != nil {
+		t.Fatalf("create copilot base: %v", err)
+	}
+	if err := os.Symlink(outsideDir, filepath.Join(copilotBase, "session-state")); err != nil {
+		t.Fatalf("create symlink: %v", err)
+	}
+
+	resolver := newTestResolver(projectPath, homeDir)
+	_, err := resolver.ResolvePath(SourceCopilot, sessionID)
+	if err == nil {
+		t.Fatal("expected error for Copilot session via symlink escaping base dir, got nil")
+	}
+	assert.Contains(t, err.Error(), "session not found")
+}
+
+// TestResolvePathKiroIDESymlinkEscape verifies that ResolvePath for Kiro IDE rejects
+// .chat files that are symlinks resolving outside the workspace directory.
+func TestResolvePathKiroIDESymlinkEscape(t *testing.T) {
+	homeDir := t.TempDir()
+
+	// We need to set up a fake Kiro IDE workspace directory.
+	// Since KiroIDEWorkspaceDir uses a real base path we can't easily control,
+	// we test via findKiroIDEPath directly which is the underlying function.
+
+	workspaceDir := filepath.Join(homeDir, "workspace")
+	if err := os.MkdirAll(workspaceDir, 0755); err != nil {
+		t.Fatalf("create workspace dir: %v", err)
+	}
+
+	sessionID := "test-execution-id"
+
+	// Create the real .chat file outside the workspace directory.
+	outsideDir := filepath.Join(homeDir, "outside")
+	if err := os.MkdirAll(outsideDir, 0755); err != nil {
+		t.Fatalf("create outside dir: %v", err)
+	}
+	chatContent := map[string]any{
+		"executionId": sessionID,
+		"chat":        []any{map[string]string{"role": "human", "content": "hello"}},
+	}
+	data, _ := json.Marshal(chatContent)
+	outsideFile := filepath.Join(outsideDir, "session.chat")
+	if err := os.WriteFile(outsideFile, data, 0644); err != nil {
+		t.Fatalf("write outside chat file: %v", err)
+	}
+
+	// Symlink from inside workspace to outside.
+	if err := os.Symlink(outsideFile, filepath.Join(workspaceDir, "session.chat")); err != nil {
+		t.Fatalf("create symlink: %v", err)
+	}
+
+	resolver := newTestResolver(t.TempDir(), homeDir)
+	_, err := resolver.findKiroIDEPath(workspaceDir, sessionID)
+	if err == nil {
+		t.Fatal("expected error for Kiro IDE session via symlink escaping workspace dir, got nil")
+	}
+	assert.Contains(t, err.Error(), "session not found")
+}
+
+// TestResolvePathCodexValid verifies that ResolvePath works for a normal Codex session.
+func TestResolvePathCodexValid(t *testing.T) {
+	homeDir := t.TempDir()
+	projectPath := t.TempDir()
+
+	sessionID := "12345678-1234-1234-1234-123456789abc"
+	codexDir := filepath.Join(homeDir, ".codex", "sessions", "2025", "01", "15")
+	if err := os.MkdirAll(codexDir, 0755); err != nil {
+		t.Fatalf("create dir: %v", err)
+	}
+
+	meta := map[string]any{
+		"type":      "session_meta",
+		"timestamp": "2025-01-15T14:30:00Z",
+		"payload":   map[string]any{"id": sessionID, "cwd": projectPath},
+	}
+	data, _ := json.Marshal(meta)
+	filePath := filepath.Join(codexDir, fmt.Sprintf("session-%s.jsonl", sessionID))
+	if err := os.WriteFile(filePath, append(data, '\n'), 0644); err != nil {
+		t.Fatalf("write file: %v", err)
+	}
+
+	resolver := newTestResolver(projectPath, homeDir)
+	path, err := resolver.ResolvePath(SourceCodex, sessionID)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if path == "" {
+		t.Fatal("expected non-empty path")
+	}
+}
+
+// TestResolvePathCopilotValid verifies that ResolvePath works for a normal Copilot session.
+func TestResolvePathCopilotValid(t *testing.T) {
+	homeDir := t.TempDir()
+	projectPath := t.TempDir()
+
+	sessionID := "12345678-1234-1234-1234-123456789abc"
+	sessionDir := filepath.Join(homeDir, ".copilot", "session-state", sessionID)
+	if err := os.MkdirAll(sessionDir, 0755); err != nil {
+		t.Fatalf("create dir: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(sessionDir, "events.jsonl"), []byte(`{"type":"event"}`+"\n"), 0644); err != nil {
+		t.Fatalf("write file: %v", err)
+	}
+
+	resolver := newTestResolver(projectPath, homeDir)
+	path, err := resolver.ResolvePath(SourceCopilot, sessionID)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if path == "" {
+		t.Fatal("expected non-empty path")
+	}
+}
+
 func TestNewResolver(t *testing.T) {
 	resolver, err := NewResolver("/test/project")
 	if err != nil {
