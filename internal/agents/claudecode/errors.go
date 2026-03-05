@@ -89,7 +89,7 @@ func parseUsageLimitReset(msg string) time.Duration {
 	pattern := `resets?\s+(\d{1,2})(?::(\d{2}))?\s*(am|pm)(?:\s*\(([^)]+)\))?`
 	re := regexp.MustCompile("(?i)" + pattern)
 	matches := re.FindStringSubmatch(msg)
-	if len(matches) < 4 {
+	if matches == nil {
 		return 0
 	}
 
@@ -117,12 +117,10 @@ func parseUsageLimitReset(msg string) time.Duration {
 		hour = 0
 	}
 
-	// Load the timezone, defaulting to local time when not specified
+	// Load the timezone, defaulting to local time when not specified.
+	// matches[4] is "" when the optional timezone group didn't match.
 	var loc *time.Location
-	tzName := ""
-	if len(matches) >= 5 {
-		tzName = matches[4]
-	}
+	tzName := matches[4]
 
 	if tzName != "" {
 		loc, err = time.LoadLocation(tzName)
