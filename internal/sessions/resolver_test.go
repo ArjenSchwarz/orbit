@@ -291,3 +291,84 @@ func TestNewResolver(t *testing.T) {
 		t.Error("homeDir should not be empty")
 	}
 }
+
+// writeKiroIDEChatFile creates a .chat file with the given executionID and message count.
+func writeKiroIDEChatFile(t *testing.T, dir, filename, executionID string, msgCount int) string {
+	t.Helper()
+	msgs := make([]json.RawMessage, msgCount)
+	for i := range msgs {
+		msgs[i] = json.RawMessage(`{"role":"human","content":"msg"}`)
+	}
+	header := struct {
+		ExecutionID string            `json:"executionId"`
+		Chat        []json.RawMessage `json:"chat"`
+	}{
+		ExecutionID: executionID,
+		Chat:        msgs,
+	}
+	data, err := json.Marshal(header)
+	if err != nil {
+		t.Fatalf("failed to marshal chat header: %v", err)
+	}
+	path := filepath.Join(dir, filename)
+	if err := os.WriteFile(path, data, 0644); err != nil {
+		t.Fatalf("failed to write chat file: %v", err)
+	}
+	return path
+}
+
+func TestFindKiroIDEPath_RejectsSymlinkOutsideWorkspace(t *testing.T) {
+	// Set up a workspace directory and an outside directory
+	workspaceDir := t.TempDir()
+	outsideDir := t.TempDir()
+
+	sessionID := "exec-123"
+
+	// Create a real .chat file outside the workspace
+	writeKiroIDEChatFile(t, outsideDir, "outside.chat", sessionID, 3)
+
+	// Create a symlink inside the workspace pointing to the outside file
+	symlinkPath := filepath.Join(workspaceDir, "symlinked.chat")
+	if err := os.Symlink(filepath.Join(outsideDir, "outside.chat"), symlinkPath); err != nil {
+		t.Fatalf("failed to create symlink: %v", err)
+	}
+
+	resolver := newTestResolver("/fake/project", t.TempDir())
+	_, err := resolver.findKiroIDEPath(workspaceDir, sessionID)
+	if err == nil {
+		t.Fatal("expected error for symlinked .chat file pointing outside workspace, but got nil")
+	}
+	assert.Contains(t, err.Error(), "session not found",
+		"error should indicate session not found for path traversal via symlink")
+}
+
+func TestFindKiroIDEPath_AcceptsRegularFile(t *testing.T) {
+	workspaceDir := t.TempDir()
+	sessionID := "exec-456"
+
+	writeKiroIDEChatFile(t, workspaceDir, "session.chat", sessionID, 2)
+
+	resolver := newTestResolver("/fake/project", t.TempDir())
+	path, err := resolver.findKiroIDEPath(workspaceDir, sessionID)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	expected := filepath.Join(workspaceDir, "session.chat")
+	if path != expected {
+		t.Errorf("path = %q, want %q", path, expected)
+	}
+}
+
+func TestFindKiroIDEPath_SessionNotFound(t *testing.T) {
+	workspaceDir := t.TempDir()
+
+	// Create a .chat file with a different execution ID
+	writeKiroIDEChatFile(t, workspaceDir, "other.chat", "different-id", 1)
+
+	resolver := newTestResolver("/fake/project", t.TempDir())
+	_, err := resolver.findKiroIDEPath(workspaceDir, "nonexistent-session")
+	if err == nil {
+		t.Fatal("expected error for nonexistent session")
+	}
+	assert.Contains(t, err.Error(), "session not found")
+}
