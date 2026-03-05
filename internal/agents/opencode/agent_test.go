@@ -2,10 +2,15 @@ package opencode
 
 import (
 	"context"
+	"encoding/json"
+	"os"
+	"path/filepath"
 	"slices"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 
 	"github.com/arjenschwarz/orbit/internal/agents"
 )
@@ -343,6 +348,83 @@ func TestIsValidJSON(t *testing.T) {
 			}
 		})
 	}
+}
+
+// TestDiscoverSessions_CreatedAtFallbackToModTime verifies that when no msg_
+// files exist in a session directory, CreatedAt falls back to the directory's
+// modTime rather than remaining as the zero time.
+// Regression test for T-273.
+func TestDiscoverSessions_CreatedAtFallbackToModTime(t *testing.T) {
+	tmp := t.TempDir()
+
+	// Create a session directory with no msg_ files.
+	sessionDir := filepath.Join(tmp, "ses_no_messages")
+	require.NoError(t, os.Mkdir(sessionDir, 0o755))
+
+	// Write a non-message file so the directory isn't empty.
+	require.NoError(t, os.WriteFile(filepath.Join(sessionDir, "metadata.json"), []byte(`{}`), 0o644))
+
+	agent := &Agent{config: agents.AgentConfig{}, cliPath: "opencode"}
+
+	// Override DefaultSessionDir by calling the internal discover helper directly.
+	sessions, err := discoverSessionsIn(context.Background(), tmp)
+	require.NoError(t, err)
+	require.Len(t, sessions, 1, "expected exactly one session")
+
+	_ = agent // ensure agent is used
+
+	session := sessions[0]
+	assert.Equal(t, "ses_no_messages", session.ID)
+	assert.False(t, session.CreatedAt.IsZero(),
+		"CreatedAt must not be zero when no msg_ files exist; should fall back to directory modTime")
+}
+
+// TestDiscoverSessions_CreatedAtFallbackWhenParsingFails verifies that when
+// msg_ files exist but contain unparseable timestamps, CreatedAt falls back
+// to the directory modTime.
+// Regression test for T-273.
+func TestDiscoverSessions_CreatedAtFallbackWhenParsingFails(t *testing.T) {
+	tmp := t.TempDir()
+
+	sessionDir := filepath.Join(tmp, "ses_bad_timestamps")
+	require.NoError(t, os.Mkdir(sessionDir, 0o755))
+
+	// Write a msg_ file with a created field that cannot be parsed into a time.
+	badMsg := `{"id":"msg_1","sessionID":"ses_bad_timestamps","role":"user","time":{"created":"not-a-timestamp"}}`
+	require.NoError(t, os.WriteFile(filepath.Join(sessionDir, "msg_001.json"), []byte(badMsg), 0o644))
+
+	sessions, err := discoverSessionsIn(context.Background(), tmp)
+	require.NoError(t, err)
+	require.Len(t, sessions, 1)
+
+	session := sessions[0]
+	assert.False(t, session.CreatedAt.IsZero(),
+		"CreatedAt must not be zero when msg_ timestamp parsing fails; should fall back to directory modTime")
+}
+
+// TestParseCreatedTime_ZeroUnixReturnsFallback verifies that a created time
+// of unix epoch 0 returns the fallback rather than time.Time{} (Go zero).
+// Regression test for T-273.
+func TestParseCreatedTime_ZeroUnixReturnsFallback(t *testing.T) {
+	fallback := time.Date(2026, 3, 1, 12, 0, 0, 0, time.UTC)
+
+	// Numeric 0
+	raw := json.RawMessage(`0`)
+	got := parseCreatedTime(raw, fallback)
+	assert.Equal(t, fallback, got,
+		"parseCreatedTime with 0 should return fallback, not Go zero time")
+
+	// Negative number
+	raw = json.RawMessage(`-1`)
+	got = parseCreatedTime(raw, fallback)
+	assert.Equal(t, fallback, got,
+		"parseCreatedTime with negative value should return fallback")
+
+	// String "0"
+	raw = json.RawMessage(`"0"`)
+	got = parseCreatedTime(raw, fallback)
+	assert.Equal(t, fallback, got,
+		"parseCreatedTime with string \"0\" should return fallback")
 }
 
 func TestAgent_DiscoverSessions_ContextCancellation(t *testing.T) {

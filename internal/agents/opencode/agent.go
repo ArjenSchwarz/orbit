@@ -162,6 +162,13 @@ func (a *Agent) DiscoverSessions(ctx context.Context, projectDir string) ([]agen
 		return nil, nil
 	}
 
+	return discoverSessionsIn(ctx, sessionDir)
+}
+
+// discoverSessionsIn scans sessionDir for OpenCode session subdirectories and
+// returns session metadata for each. Extracted from DiscoverSessions to allow
+// testing with arbitrary directories.
+func discoverSessionsIn(ctx context.Context, sessionDir string) ([]agents.SessionInfo, error) {
 	// Sessions are stored in ~/.local/share/opencode/storage/message/<sessionID>/
 	entries, err := os.ReadDir(sessionDir)
 	if err != nil {
