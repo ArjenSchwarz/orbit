@@ -1916,15 +1916,15 @@ func (c *exitCodeCapturingClassifier) Classify(exitCode int, stderr, stdout stri
 func TestClassifyFromAgent_PassesExitCode(t *testing.T) {
 	t.Parallel()
 
-	classifier := &exitCodeCapturingClassifier{}
-
-	// Register a test classifier that captures the exit code
+	// Register a test classifier factory that creates a fresh instance per call.
+	// classifyFromAgent calls GetClassifier once, so each subtest gets its own
+	// classify closure with its own classifier instance.
 	const testAgent = "exit-code-test-agent"
+	var currentClassifier *exitCodeCapturingClassifier
 	agents.RegisterClassifier(testAgent, func() agents.ErrorClassifier {
-		return classifier
+		currentClassifier = &exitCodeCapturingClassifier{}
+		return currentClassifier
 	})
-
-	classify := classifyFromAgent(testAgent)
 
 	tests := []struct {
 		name         string
@@ -1966,6 +1966,11 @@ func TestClassifyFromAgent_PassesExitCode(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			// Each call to classifyFromAgent invokes GetClassifier, which creates
+			// a fresh classifier instance via the factory registered above.
+			classify := classifyFromAgent(testAgent)
+			classifier := currentClassifier
+
 			classified := classify(tt.result, tt.err)
 			if classified == nil {
 				t.Fatal("expected non-nil ClassifiedError")
@@ -1983,14 +1988,6 @@ func TestClassifyFromAgent_PassesExitCode(t *testing.T) {
 // Regression test for T-126.
 func TestDirectClassify_PassesExitCode(t *testing.T) {
 	t.Parallel()
-
-	classifier := &exitCodeCapturingClassifier{}
-
-	o := &Orbit{
-		config:          Config{},
-		debug:           debug.New(false, ""),
-		errorClassifier: classifier,
-	}
 
 	tests := []struct {
 		name         string
@@ -2020,8 +2017,13 @@ func TestDirectClassify_PassesExitCode(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			// Call classifyPhaseError which is the shared classification path
-			// for direct Classify calls in runPhase and runPostPrompt
+			classifier := &exitCodeCapturingClassifier{}
+			o := &Orbit{
+				config:          Config{},
+				debug:           debug.New(false, ""),
+				errorClassifier: classifier,
+			}
+
 			classified := o.classifyRunError(tt.result, tt.err)
 			if classified == nil {
 				t.Fatal("expected non-nil ClassifiedError")

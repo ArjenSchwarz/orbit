@@ -124,6 +124,8 @@ func (o *Orbit) classifyRunError(result *agents.RunResult, err error) *agents.Cl
 		}
 	}
 
+	o.debug.Log("Classifying error: exitCode=%d, stderr=%d bytes, output=%d bytes, errors=%v",
+		exitCode, len(stderr), len(output), errMsgs)
 	return o.errorClassifier.Classify(exitCode, stderr, output, errMsgs)
 }
 
