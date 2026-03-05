@@ -1407,13 +1407,15 @@ func TestSetup_NewRunErrorsWhenHEADDiffersFromBaseCommit(t *testing.T) {
 	if err := os.MkdirAll(orbitDir, 0755); err != nil {
 		t.Fatalf("create orbit dir: %v", err)
 	}
-	metadataBytes, _ := json.Marshal(mgr.metadata)
+	metadataBytes, err := json.Marshal(mgr.metadata)
+	if err != nil {
+		t.Fatalf("marshal metadata: %v", err)
+	}
 	if err := os.WriteFile(filepath.Join(orbitDir, "variants.json"), metadataBytes, 0644); err != nil {
 		t.Fatalf("create variants.json: %v", err)
 	}
 
-	ctx := context.Background()
-	err = mgr.Setup(ctx, false)
+	err = mgr.Setup(t.Context(), false)
 
 	// Must return an error because HEAD != BaseCommit with preserved completed variants
 	if err == nil {
@@ -1421,6 +1423,11 @@ func TestSetup_NewRunErrorsWhenHEADDiffersFromBaseCommit(t *testing.T) {
 	}
 	if !contains(err.Error(), "base commit") {
 		t.Errorf("error should mention base commit mismatch, got: %v", err)
+	}
+
+	// Verify no worktrees were removed — error should fire before cleanup (T-191 review fix)
+	if len(git.removedWorktrees) != 0 {
+		t.Errorf("expected 0 removed worktrees (error before cleanup), got %d", len(git.removedWorktrees))
 	}
 }
 
@@ -1458,13 +1465,15 @@ func TestSetup_NewRunSucceedsWhenHEADMatchesBaseCommit(t *testing.T) {
 	if err := os.MkdirAll(orbitDir, 0755); err != nil {
 		t.Fatalf("create orbit dir: %v", err)
 	}
-	metadataBytes, _ := json.Marshal(mgr.metadata)
+	metadataBytes, err := json.Marshal(mgr.metadata)
+	if err != nil {
+		t.Fatalf("marshal metadata: %v", err)
+	}
 	if err := os.WriteFile(filepath.Join(orbitDir, "variants.json"), metadataBytes, 0644); err != nil {
 		t.Fatalf("create variants.json: %v", err)
 	}
 
-	ctx := context.Background()
-	err = mgr.Setup(ctx, false)
+	err = mgr.Setup(t.Context(), false)
 
 	// Must succeed — HEAD matches BaseCommit
 	if err != nil {
@@ -1516,12 +1525,15 @@ func TestSetup_NewRunNoCompletedVariantsAllowsDifferentHEAD(t *testing.T) {
 	if err := os.MkdirAll(orbitDir, 0755); err != nil {
 		t.Fatalf("create orbit dir: %v", err)
 	}
-	if err := os.WriteFile(filepath.Join(orbitDir, "variants.json"), []byte("{}"), 0644); err != nil {
+	metadataBytes, err := json.Marshal(mgr.metadata)
+	if err != nil {
+		t.Fatalf("marshal metadata: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(orbitDir, "variants.json"), metadataBytes, 0644); err != nil {
 		t.Fatalf("create variants.json: %v", err)
 	}
 
-	ctx := context.Background()
-	err = mgr.Setup(ctx, false)
+	err = mgr.Setup(t.Context(), false)
 
 	// Should succeed — no completed variants to preserve, so a fresh run starts
 	if err != nil {

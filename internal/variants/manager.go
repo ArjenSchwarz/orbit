@@ -208,24 +208,25 @@ func (m *Manager) Setup(ctx context.Context, continueExisting bool) error {
 
 	// Clean up only unfinished variants, preserving completed ones
 	if m.metadata != nil {
+		// Before mutating state, check if any completed variants would be preserved
+		// with an incompatible base commit. New branches are created at HEAD, so if
+		// HEAD != BaseCommit, different variants would have different bases, producing
+		// incorrect diffs and comparisons (T-191). We check before CleanupUnfinished
+		// to avoid removing worktrees/branches when the run will be rejected.
+		if m.hasCompletedVariants() && m.metadata.BaseCommit != headCommit {
+			return fmt.Errorf(
+				"cannot start new run: HEAD (%s) differs from base commit (%s) of preserved completed variants; "+
+					"checkout the original base commit or use 'orbit cleanup' to discard completed variants first",
+				headCommit, m.metadata.BaseCommit,
+			)
+		}
+
 		preserved, err := m.CleanupUnfinished(ctx)
 		if err != nil {
 			return fmt.Errorf("cleanup unfinished variants: %w", err)
 		}
 		for _, id := range preserved {
 			completedIDs[id] = true
-		}
-
-		// If completed variants were preserved, verify HEAD hasn't moved since the
-		// original run. New branches are created at HEAD, so if HEAD != BaseCommit,
-		// different variants would have different bases, producing incorrect diffs
-		// and comparisons (T-191).
-		if len(completedIDs) > 0 && m.metadata != nil && m.metadata.BaseCommit != headCommit {
-			return fmt.Errorf(
-				"cannot start new run: HEAD (%s) differs from base commit (%s) of preserved completed variants; "+
-					"checkout the original base commit or use 'orbit cleanup' to discard completed variants first",
-				headCommit, m.metadata.BaseCommit,
-			)
 		}
 	}
 
@@ -371,6 +372,20 @@ func (m *Manager) UpdateAgentInfo(id int, agentAlias, agentType, model string) e
 	v.Model = model
 
 	return m.saveLocked()
+}
+
+// hasCompletedVariants returns true if any variant has StatusCompleted.
+// Caller must NOT hold the mutex (metadata is only read during Setup which is single-threaded).
+func (m *Manager) hasCompletedVariants() bool {
+	if m.metadata == nil {
+		return false
+	}
+	for _, v := range m.metadata.Variants {
+		if v.Status == StatusCompleted {
+			return true
+		}
+	}
+	return false
 }
 
 // GetVariant returns a variant by ID.
