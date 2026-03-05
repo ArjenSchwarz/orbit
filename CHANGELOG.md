@@ -7,9 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- Fix Copilot session listing missing sessions when project path contains symlinks by normalizing paths with `EvalSymlinks` + `Clean` before comparison, matching the existing Codex behavior (T-290)
+
 ### Added
 
-- Add failing regression test for Copilot session path normalization bug (T-290)
+- Add regression test for Copilot session path normalization with symlinked project paths (T-290)
 
 ### Refactored
 
