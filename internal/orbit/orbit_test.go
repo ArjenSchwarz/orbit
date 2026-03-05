@@ -1896,6 +1896,144 @@ func TestVariantPostCompletion_NilRunResult(t *testing.T) {
 	}
 }
 
+// exitCodeCapturingClassifier records the exit code passed to Classify so tests
+// can verify the correct value is forwarded from RunResult.ExitCode.
+type exitCodeCapturingClassifier struct {
+	capturedExitCode int
+}
+
+func (c *exitCodeCapturingClassifier) Classify(exitCode int, stderr, stdout string, errMsgs []string) *agents.ClassifiedError {
+	c.capturedExitCode = exitCode
+	return &agents.ClassifiedError{
+		Class:   agents.ErrorClassUnknown,
+		Message: "captured",
+	}
+}
+
+// TestClassifyFromAgent_PassesExitCode verifies that classifyFromAgent forwards
+// result.ExitCode to the classifier instead of a hardcoded value.
+// Regression test for T-126.
+func TestClassifyFromAgent_PassesExitCode(t *testing.T) {
+	t.Parallel()
+
+	classifier := &exitCodeCapturingClassifier{}
+
+	// Register a test classifier that captures the exit code
+	const testAgent = "exit-code-test-agent"
+	agents.RegisterClassifier(testAgent, func() agents.ErrorClassifier {
+		return classifier
+	})
+
+	classify := classifyFromAgent(testAgent)
+
+	tests := []struct {
+		name         string
+		result       *agents.RunResult
+		err          error
+		wantExitCode int
+	}{
+		{
+			name:         "exit code 42 from result",
+			result:       &agents.RunResult{ExitCode: 42, IsError: true, Errors: []string{"failed"}},
+			err:          nil,
+			wantExitCode: 42,
+		},
+		{
+			name:         "exit code 0 with error flag",
+			result:       &agents.RunResult{ExitCode: 0, IsError: true, Errors: []string{"failed"}},
+			err:          nil,
+			wantExitCode: 0,
+		},
+		{
+			name:         "exit code 137 (killed) with error",
+			result:       &agents.RunResult{ExitCode: 137, Stderr: "killed"},
+			err:          errors.New("process killed"),
+			wantExitCode: 137,
+		},
+		{
+			name:         "exit code 2 from result with error",
+			result:       &agents.RunResult{ExitCode: 2, Stderr: "misuse"},
+			err:          errors.New("misuse of shell"),
+			wantExitCode: 2,
+		},
+		{
+			name:         "nil result defaults to 1",
+			result:       nil,
+			err:          errors.New("agent binary not found"),
+			wantExitCode: 1,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			classified := classify(tt.result, tt.err)
+			if classified == nil {
+				t.Fatal("expected non-nil ClassifiedError")
+			}
+			if classifier.capturedExitCode != tt.wantExitCode {
+				t.Errorf("exit code passed to Classify = %d, want %d",
+					classifier.capturedExitCode, tt.wantExitCode)
+			}
+		})
+	}
+}
+
+// TestDirectClassify_PassesExitCode verifies that the direct o.errorClassifier.Classify
+// calls in runPhase and runPostPrompt forward result.ExitCode.
+// Regression test for T-126.
+func TestDirectClassify_PassesExitCode(t *testing.T) {
+	t.Parallel()
+
+	classifier := &exitCodeCapturingClassifier{}
+
+	o := &Orbit{
+		config:          Config{},
+		debug:           debug.New(false, ""),
+		errorClassifier: classifier,
+	}
+
+	tests := []struct {
+		name         string
+		result       *agents.RunResult
+		err          error
+		wantExitCode int
+	}{
+		{
+			name:         "result with exit code 42",
+			result:       &agents.RunResult{ExitCode: 42, Stderr: "timeout"},
+			err:          errors.New("timeout"),
+			wantExitCode: 42,
+		},
+		{
+			name:         "result with exit code 0 and IsError",
+			result:       &agents.RunResult{ExitCode: 0, IsError: true, Errors: []string{"failed"}},
+			err:          nil,
+			wantExitCode: 0,
+		},
+		{
+			name:         "nil result defaults to 1",
+			result:       nil,
+			err:          errors.New("binary not found"),
+			wantExitCode: 1,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// Call classifyPhaseError which is the shared classification path
+			// for direct Classify calls in runPhase and runPostPrompt
+			classified := o.classifyRunError(tt.result, tt.err)
+			if classified == nil {
+				t.Fatal("expected non-nil ClassifiedError")
+			}
+			if classifier.capturedExitCode != tt.wantExitCode {
+				t.Errorf("exit code passed to Classify = %d, want %d",
+					classifier.capturedExitCode, tt.wantExitCode)
+			}
+		})
+	}
+}
+
 func TestRunVariantsParallel_CancelPreservesMixedStatuses(t *testing.T) {
 	t.Parallel()
 
