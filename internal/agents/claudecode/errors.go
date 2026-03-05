@@ -30,7 +30,9 @@ func (c *Classifier) Classify(exitCode int, stderr, stdout string, errMsgs []str
 	combinedLower := strings.ToLower(combined)
 
 	// Check for usage limit (5-hour limit) - must check before regular rate limit
-	// Example message: "You've hit your limit · resets 3am (Australia/Melbourne)"
+	// Example messages:
+	//   "You've hit your limit · resets 3am (Australia/Melbourne)"
+	//   "You've hit your limit · resets 3am"
 	if strings.Contains(combinedLower, "hit your limit") ||
 		strings.Contains(combinedLower, "you've hit your limit") {
 		waitDuration := parseUsageLimitReset(combined)
@@ -75,22 +77,25 @@ func (c *Classifier) Classify(exitCode int, stderr, stdout string, errMsgs []str
 
 
 // parseUsageLimitReset parses the reset time from usage limit messages.
-// Example message: "You've hit your limit · resets 3am (Australia/Melbourne)"
+// Example messages:
+//   - "You've hit your limit · resets 3am (Australia/Melbourne)"
+//   - "You've hit your limit · resets 3am"
+//
+// When no timezone is specified, defaults to the system's local timezone.
 // Returns the duration to wait until the reset time, or 0 if parsing fails.
 func parseUsageLimitReset(msg string) time.Duration {
-	// Pattern to match: "resets <time> (<timezone>)"
+	// Pattern to match: "resets <time>" with optional "(<timezone>)"
 	// Time formats: "3am", "3:00am", "12:30pm", "3 am", "3:00 am"
-	pattern := `resets?\s+(\d{1,2})(?::(\d{2}))?\s*(am|pm)\s*\(([^)]+)\)`
+	pattern := `resets?\s+(\d{1,2})(?::(\d{2}))?\s*(am|pm)(?:\s*\(([^)]+)\))?`
 	re := regexp.MustCompile("(?i)" + pattern)
 	matches := re.FindStringSubmatch(msg)
-	if len(matches) < 5 {
+	if len(matches) < 4 {
 		return 0
 	}
 
 	hourStr := matches[1]
 	minuteStr := matches[2]
 	ampm := strings.ToLower(matches[3])
-	tzName := matches[4]
 
 	hour, err := strconv.Atoi(hourStr)
 	if err != nil {
@@ -112,14 +117,26 @@ func parseUsageLimitReset(msg string) time.Duration {
 		hour = 0
 	}
 
-	// Load the timezone
-	loc, err := time.LoadLocation(tzName)
-	if err != nil {
-		// Try common timezone abbreviations
-		loc = parseTimezoneAbbrev(tzName)
-		if loc == nil {
-			return 0
+	// Load the timezone, defaulting to local time when not specified
+	var loc *time.Location
+	tzName := ""
+	if len(matches) >= 5 {
+		tzName = matches[4]
+	}
+
+	if tzName != "" {
+		loc, err = time.LoadLocation(tzName)
+		if err != nil {
+			// Try common timezone abbreviations
+			loc = parseTimezoneAbbrev(tzName)
+			if loc == nil {
+				return 0
+			}
 		}
+	} else {
+		// No timezone specified — assume local time, as Claude CLI most likely
+		// displays the reset time in the user's local timezone.
+		loc = time.Local
 	}
 
 	now := time.Now().In(loc)
