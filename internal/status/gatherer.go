@@ -229,6 +229,16 @@ func (g *Gatherer) gatherTaskProgress(worktreePath string) *TaskProgress {
 	}
 }
 
+// getActiveSessionID returns the session ID for the currently active session.
+// It checks CurrentPhase first, then falls back to pre-prompt and post-completion.
+// BUG: Currently only checks CurrentPhase — pre-prompt and post-prompt are ignored.
+func getActiveSessionID(summary *logs.Summary) string {
+	if summary.CurrentPhase != nil {
+		return summary.CurrentPhase.SessionID
+	}
+	return ""
+}
+
 // GetLiveTranscriptPath returns the path to the live Claude transcript.
 //
 // Parameters:
