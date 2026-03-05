@@ -323,35 +323,32 @@ func TestResolvePathCodexSymlinkEscape(t *testing.T) {
 }
 
 // TestResolvePathCopilotSymlinkEscape verifies that ResolvePath for Copilot rejects
-// sessions found via a symlinked session-state directory that resolves outside
-// the expected base dir. We symlink the entire session-state directory to an
-// outside location so findCopilotSession returns a real directory entry (not a
-// symlink DirEntry), but the resolved path is outside the canonical base.
+// sessions where the events.jsonl file is a symlink resolving outside the
+// expected base directory. The session directory is real but contains a symlinked
+// events.jsonl pointing to an outside file.
 func TestResolvePathCopilotSymlinkEscape(t *testing.T) {
 	homeDir := t.TempDir()
 	projectPath := t.TempDir()
 
 	sessionID := "12345678-1234-1234-1234-123456789abc"
 
-	// Create a real session directory outside the expected Copilot base.
+	// Create a real events file outside the expected Copilot base.
 	outsideDir := filepath.Join(homeDir, "outside")
-	outsideSessionDir := filepath.Join(outsideDir, sessionID)
-	if err := os.MkdirAll(outsideSessionDir, 0755); err != nil {
+	if err := os.MkdirAll(outsideDir, 0755); err != nil {
 		t.Fatalf("create outside dir: %v", err)
 	}
-	if err := os.WriteFile(filepath.Join(outsideSessionDir, "events.jsonl"), []byte(`{"type":"event"}`+"\n"), 0644); err != nil {
+	outsideFile := filepath.Join(outsideDir, "events.jsonl")
+	if err := os.WriteFile(outsideFile, []byte(`{"type":"event"}`+"\n"), 0644); err != nil {
 		t.Fatalf("write events file: %v", err)
 	}
 
-	// Instead of creating a real session-state dir, symlink it to the outside location.
-	// This way os.ReadDir follows the symlink for the directory itself, so entries
-	// appear as real directories, but the resolved events.jsonl path is outside
-	// the canonical ~/.copilot/session-state/.
-	copilotBase := filepath.Join(homeDir, ".copilot")
-	if err := os.MkdirAll(copilotBase, 0755); err != nil {
-		t.Fatalf("create copilot base: %v", err)
+	// Create the real session directory inside Copilot session-state, but
+	// symlink events.jsonl to the outside file.
+	copilotSessionDir := filepath.Join(homeDir, ".copilot", "session-state", sessionID)
+	if err := os.MkdirAll(copilotSessionDir, 0755); err != nil {
+		t.Fatalf("create copilot session dir: %v", err)
 	}
-	if err := os.Symlink(outsideDir, filepath.Join(copilotBase, "session-state")); err != nil {
+	if err := os.Symlink(outsideFile, filepath.Join(copilotSessionDir, "events.jsonl")); err != nil {
 		t.Fatalf("create symlink: %v", err)
 	}
 
