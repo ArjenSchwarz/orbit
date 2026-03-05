@@ -389,9 +389,11 @@ func TestSetup_PreservesCompletedVariants(t *testing.T) {
 	// - Variant 1: completed (should be preserved)
 	// - Variant 2: failed (should be cleaned up and recreated)
 	// - Variant 3: pending (should be cleaned up and recreated)
+	// BaseCommit must match mock HEAD ("abc123def456") so preserved
+	// completed variants share the same base as new ones (T-191).
 	mgr.metadata = &VariantsMetadata{
 		RunID:          "existing-run",
-		BaseCommit:     "abc123",
+		BaseCommit:     "abc123def456",
 		OriginalBranch: "feature/test-spec",
 		StartedAt:      time.Now(),
 		Variants: []*Variant{
@@ -1368,6 +1370,167 @@ func TestSetup_ContinuePreservesPendingVariants(t *testing.T) {
 	}
 	if len(git.createdBranches) != 0 {
 		t.Errorf("expected 0 created branches in continue mode, got %d", len(git.createdBranches))
+	}
+}
+
+// TestSetup_NewRunErrorsWhenHEADDiffersFromBaseCommit is the regression test for T-191.
+// When starting a new run (continueExisting=false) with completed variants preserved,
+// if HEAD has moved since the original run, the old BaseCommit and new HEAD differ.
+// New variant branches would be created at HEAD while comparisons use BaseCommit,
+// producing incorrect diffs. Setup must reject this scenario.
+func TestSetup_NewRunErrorsWhenHEADDiffersFromBaseCommit(t *testing.T) {
+	tmpDir := t.TempDir()
+	specDir := filepath.Join(tmpDir, "specs", "test-spec")
+	git := newMockGitClient()
+	// Mock HEAD is "abc123def456" — differs from metadata BaseCommit "old-base-commit"
+
+	cfg := Config{Count: 3, BranchPrefix: "orbit-impl"}
+	mgr, err := NewManager(cfg, "test-spec", specDir, tmpDir, git)
+	if err != nil {
+		t.Fatalf("NewManager: %v", err)
+	}
+
+	// Metadata from a previous run with a different base commit
+	mgr.metadata = &VariantsMetadata{
+		RunID:          "previous-run",
+		BaseCommit:     "old-base-commit", // Different from current HEAD
+		OriginalBranch: "feature/test-spec",
+		StartedAt:      time.Now(),
+		Variants: []*Variant{
+			{ID: 1, Branch: "orbit-impl-1/test-spec", WorktreePath: "/tmp/wt1", Status: StatusCompleted},
+			{ID: 2, Branch: "orbit-impl-2/test-spec", WorktreePath: "/tmp/wt2", Status: StatusFailed},
+		},
+	}
+
+	// Create metadata file
+	orbitDir := filepath.Join(specDir, ".orbit")
+	if err := os.MkdirAll(orbitDir, 0755); err != nil {
+		t.Fatalf("create orbit dir: %v", err)
+	}
+	metadataBytes, _ := json.Marshal(mgr.metadata)
+	if err := os.WriteFile(filepath.Join(orbitDir, "variants.json"), metadataBytes, 0644); err != nil {
+		t.Fatalf("create variants.json: %v", err)
+	}
+
+	ctx := context.Background()
+	err = mgr.Setup(ctx, false)
+
+	// Must return an error because HEAD != BaseCommit with preserved completed variants
+	if err == nil {
+		t.Fatal("expected error when HEAD differs from BaseCommit with preserved completed variants, got nil")
+	}
+	if !contains(err.Error(), "base commit") {
+		t.Errorf("error should mention base commit mismatch, got: %v", err)
+	}
+}
+
+// TestSetup_NewRunSucceedsWhenHEADMatchesBaseCommit verifies that the T-191 fix
+// allows new runs when HEAD matches the preserved metadata's BaseCommit. This is
+// the happy path: completed variants remain valid because all branches share the
+// same base.
+func TestSetup_NewRunSucceedsWhenHEADMatchesBaseCommit(t *testing.T) {
+	tmpDir := t.TempDir()
+	specDir := filepath.Join(tmpDir, "specs", "test-spec")
+	git := newMockGitClient()
+	// Mock HEAD is "abc123def456"
+
+	cfg := Config{Count: 3, BranchPrefix: "orbit-impl"}
+	mgr, err := NewManager(cfg, "test-spec", specDir, tmpDir, git)
+	if err != nil {
+		t.Fatalf("NewManager: %v", err)
+	}
+
+	// Metadata from a previous run with MATCHING base commit
+	mgr.metadata = &VariantsMetadata{
+		RunID:          "previous-run",
+		BaseCommit:     "abc123def456", // Same as current HEAD
+		OriginalBranch: "feature/test-spec",
+		StartedAt:      time.Now(),
+		Variants: []*Variant{
+			{ID: 1, Branch: "orbit-impl-1/test-spec", WorktreePath: "/tmp/wt1", Status: StatusCompleted},
+			{ID: 2, Branch: "orbit-impl-2/test-spec", WorktreePath: "/tmp/wt2", Status: StatusFailed},
+			{ID: 3, Branch: "orbit-impl-3/test-spec", WorktreePath: "/tmp/wt3", Status: StatusPending},
+		},
+	}
+
+	// Create metadata file
+	orbitDir := filepath.Join(specDir, ".orbit")
+	if err := os.MkdirAll(orbitDir, 0755); err != nil {
+		t.Fatalf("create orbit dir: %v", err)
+	}
+	metadataBytes, _ := json.Marshal(mgr.metadata)
+	if err := os.WriteFile(filepath.Join(orbitDir, "variants.json"), metadataBytes, 0644); err != nil {
+		t.Fatalf("create variants.json: %v", err)
+	}
+
+	ctx := context.Background()
+	err = mgr.Setup(ctx, false)
+
+	// Must succeed — HEAD matches BaseCommit
+	if err != nil {
+		t.Fatalf("Setup should succeed when HEAD matches BaseCommit, got: %v", err)
+	}
+
+	// Verify completed variant was preserved and new ones were created
+	variants := mgr.GetVariantsSnapshot()
+	if len(variants) != 3 {
+		t.Fatalf("expected 3 variants, got %d", len(variants))
+	}
+
+	v1 := mgr.GetVariant(1)
+	if v1 == nil || v1.Status != StatusCompleted {
+		t.Errorf("variant 1 should be completed, got %v", v1)
+	}
+}
+
+// TestSetup_NewRunNoCompletedVariantsAllowsDifferentHEAD verifies that when
+// all previous variants are non-completed, a fresh run is started regardless
+// of HEAD vs BaseCommit. The T-191 check only applies when completed variants
+// are being preserved.
+func TestSetup_NewRunNoCompletedVariantsAllowsDifferentHEAD(t *testing.T) {
+	tmpDir := t.TempDir()
+	specDir := filepath.Join(tmpDir, "specs", "test-spec")
+	git := newMockGitClient()
+	// Mock HEAD is "abc123def456" — differs from metadata BaseCommit
+
+	cfg := Config{Count: 2, BranchPrefix: "orbit-impl"}
+	mgr, err := NewManager(cfg, "test-spec", specDir, tmpDir, git)
+	if err != nil {
+		t.Fatalf("NewManager: %v", err)
+	}
+
+	// All variants are non-completed — cleanup will remove everything
+	mgr.metadata = &VariantsMetadata{
+		RunID:          "previous-run",
+		BaseCommit:     "old-base-commit", // Different from HEAD
+		OriginalBranch: "feature/test-spec",
+		StartedAt:      time.Now(),
+		Variants: []*Variant{
+			{ID: 1, Branch: "orbit-impl-1/test-spec", WorktreePath: "/tmp/wt1", Status: StatusFailed},
+			{ID: 2, Branch: "orbit-impl-2/test-spec", WorktreePath: "/tmp/wt2", Status: StatusPending},
+		},
+	}
+
+	// Create metadata file
+	orbitDir := filepath.Join(specDir, ".orbit")
+	if err := os.MkdirAll(orbitDir, 0755); err != nil {
+		t.Fatalf("create orbit dir: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(orbitDir, "variants.json"), []byte("{}"), 0644); err != nil {
+		t.Fatalf("create variants.json: %v", err)
+	}
+
+	ctx := context.Background()
+	err = mgr.Setup(ctx, false)
+
+	// Should succeed — no completed variants to preserve, so a fresh run starts
+	if err != nil {
+		t.Fatalf("Setup should succeed when no completed variants exist, got: %v", err)
+	}
+
+	// BaseCommit should be the current HEAD, not the old one
+	if mgr.metadata.BaseCommit != "abc123def456" {
+		t.Errorf("BaseCommit should be current HEAD 'abc123def456', got %q", mgr.metadata.BaseCommit)
 	}
 }
 
