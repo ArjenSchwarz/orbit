@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -12,6 +13,14 @@ import (
 	"github.com/arjenschwarz/orbit/internal/logs"
 	"github.com/arjenschwarz/orbit/internal/variants"
 )
+
+// requireRune skips the test if the rune CLI is not installed.
+func requireRune(t *testing.T) {
+	t.Helper()
+	if _, err := exec.LookPath("rune"); err != nil {
+		t.Skip("rune CLI not installed, skipping test that requires rune")
+	}
+}
 
 // mockGitClient implements variants.GitClient for testing.
 type mockGitClient struct {
@@ -702,6 +711,8 @@ func TestFromRunePhaseSummary(t *testing.T) {
 // when the tasks file is named TASKS.md (uppercase) instead of tasks.md.
 // Bug T-133: status always hardcoded "tasks.md", ignoring uppercase variant.
 func TestGatherTaskProgress_UppercaseTasksFile(t *testing.T) {
+	requireRune(t)
+
 	// Create a temp worktree-like directory with TASKS.md (uppercase)
 	worktree := t.TempDir()
 	specDir := filepath.Join(worktree, "specs", "my-feature")
@@ -734,6 +745,8 @@ func TestGatherTaskProgress_UppercaseTasksFile(t *testing.T) {
 // when the run used a custom --tasks-file path stored in metadata.
 // Bug T-133: status ignores the actual tasks file path from run config.
 func TestGatherTaskProgress_CustomTasksFile(t *testing.T) {
+	requireRune(t)
+
 	// Create a temp worktree-like directory with tasks in a custom location
 	worktree := t.TempDir()
 	customDir := filepath.Join(worktree, "custom", "path")
@@ -768,6 +781,8 @@ func TestGatherTaskProgress_CustomTasksFile(t *testing.T) {
 // TestGatherTaskProgress_StandardPath verifies that the default tasks.md path
 // still works after the fix (no regression).
 func TestGatherTaskProgress_StandardPath(t *testing.T) {
+	requireRune(t)
+
 	worktree := t.TempDir()
 	specDir := filepath.Join(worktree, "specs", "my-feature")
 	if err := os.MkdirAll(specDir, 0755); err != nil {
@@ -797,6 +812,8 @@ func TestGatherTaskProgress_StandardPath(t *testing.T) {
 // tasksFileRel is set (from variants.json metadata), it takes precedence over
 // the default detection logic.
 func TestGatherTaskProgress_MetadataTasksFileTakesPrecedence(t *testing.T) {
+	requireRune(t)
+
 	worktree := t.TempDir()
 
 	// Create both the standard location and custom location
@@ -849,4 +866,99 @@ func TestGatherTaskProgress_MetadataTasksFileTakesPrecedence(t *testing.T) {
 	if len(progress.Phases) != 2 {
 		t.Errorf("expected 2 phases from custom tasks file, got %d", len(progress.Phases))
 	}
+}
+
+// TestResolveTasksFile_PathResolution tests the path resolution logic directly,
+// without requiring the rune CLI.
+func TestResolveTasksFile_PathResolution(t *testing.T) {
+	t.Run("uses tasksFileRel when set and file exists", func(t *testing.T) {
+		worktree := t.TempDir()
+		customDir := filepath.Join(worktree, "custom")
+		if err := os.MkdirAll(customDir, 0755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(customDir, "tasks.md"), []byte("# tasks"), 0644); err != nil {
+			t.Fatal(err)
+		}
+
+		g := NewGatherer(&mockGitClient{}, "my-feature", "specs/my-feature", "abc123", worktree)
+		g.SetTasksFileRel("custom/tasks.md")
+
+		resolved := g.resolveTasksFile(worktree)
+		expected := filepath.Join(worktree, "custom", "tasks.md")
+		if resolved != expected {
+			t.Errorf("resolved = %q, want %q", resolved, expected)
+		}
+	})
+
+	t.Run("falls back to tasks.md when tasksFileRel not set", func(t *testing.T) {
+		worktree := t.TempDir()
+		specDir := filepath.Join(worktree, "specs", "my-feature")
+		if err := os.MkdirAll(specDir, 0755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(specDir, "tasks.md"), []byte("# tasks"), 0644); err != nil {
+			t.Fatal(err)
+		}
+
+		g := NewGatherer(&mockGitClient{}, "my-feature", "specs/my-feature", "abc123", worktree)
+		resolved := g.resolveTasksFile(worktree)
+		expected := filepath.Join(worktree, "specs", "my-feature", "tasks.md")
+		if resolved != expected {
+			t.Errorf("resolved = %q, want %q", resolved, expected)
+		}
+	})
+
+	t.Run("falls back to TASKS.md when tasks.md absent", func(t *testing.T) {
+		worktree := t.TempDir()
+		specDir := filepath.Join(worktree, "specs", "my-feature")
+		if err := os.MkdirAll(specDir, 0755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(specDir, "TASKS.md"), []byte("# tasks"), 0644); err != nil {
+			t.Fatal(err)
+		}
+
+		g := NewGatherer(&mockGitClient{}, "my-feature", "specs/my-feature", "abc123", worktree)
+		resolved := g.resolveTasksFile(worktree)
+
+		// On case-insensitive filesystems (macOS), tasks.md and TASKS.md
+		// resolve to the same file, so the first candidate (tasks.md) matches.
+		// On case-sensitive filesystems (Linux), only TASKS.md matches.
+		lowercasePath := filepath.Join(worktree, "specs", "my-feature", "tasks.md")
+		uppercasePath := filepath.Join(worktree, "specs", "my-feature", "TASKS.md")
+		if resolved != lowercasePath && resolved != uppercasePath {
+			t.Errorf("resolved = %q, want %q or %q", resolved, lowercasePath, uppercasePath)
+		}
+	})
+
+	t.Run("falls back to detection when tasksFileRel file missing", func(t *testing.T) {
+		worktree := t.TempDir()
+		specDir := filepath.Join(worktree, "specs", "my-feature")
+		if err := os.MkdirAll(specDir, 0755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(specDir, "tasks.md"), []byte("# tasks"), 0644); err != nil {
+			t.Fatal(err)
+		}
+
+		g := NewGatherer(&mockGitClient{}, "my-feature", "specs/my-feature", "abc123", worktree)
+		g.SetTasksFileRel("nonexistent/tasks.md") // Points to a file that doesn't exist
+
+		resolved := g.resolveTasksFile(worktree)
+		expected := filepath.Join(worktree, "specs", "my-feature", "tasks.md")
+		if resolved != expected {
+			t.Errorf("resolved = %q, want %q (should fall back to default)", resolved, expected)
+		}
+	})
+
+	t.Run("returns empty when no file found", func(t *testing.T) {
+		worktree := t.TempDir()
+
+		g := NewGatherer(&mockGitClient{}, "my-feature", "specs/my-feature", "abc123", worktree)
+		resolved := g.resolveTasksFile(worktree)
+		if resolved != "" {
+			t.Errorf("resolved = %q, want empty string", resolved)
+		}
+	})
 }
