@@ -4,9 +4,11 @@ package codex
 import (
 	"bytes"
 	"context"
+	"io/fs"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 
 	"github.com/arjenschwarz/orbit/internal/agents"
 )
@@ -80,33 +82,37 @@ func (a *Agent) DiscoverSessions(ctx context.Context, projectDir string) ([]agen
 		return nil, nil
 	}
 
-	// Sessions may be stored in ~/.codex/sessions/
-	entries, err := os.ReadDir(sessionDir)
-	if err != nil {
-		if os.IsNotExist(err) {
-			return nil, nil
-		}
-		return nil, err
+	// Codex sessions are stored in YYYY/MM/DD subdirectories under ~/.codex/sessions/.
+	// Walk the tree to find all .jsonl session files.
+	if _, err := os.Stat(sessionDir); os.IsNotExist(err) {
+		return nil, nil
 	}
 
 	var sessions []agents.SessionInfo
-	for _, entry := range entries {
-		if entry.IsDir() {
-			continue
+	err := filepath.WalkDir(sessionDir, func(path string, d fs.DirEntry, err error) error {
+		if err != nil || d.IsDir() {
+			return nil
+		}
+		if !strings.HasSuffix(d.Name(), ".jsonl") {
+			return nil
 		}
 
-		info, err := entry.Info()
-		if err != nil {
-			continue
+		info, infoErr := d.Info()
+		if infoErr != nil {
+			return nil
 		}
 
 		sessions = append(sessions, agents.SessionInfo{
-			ID:        entry.Name(),
-			Agent:     "codex",
-			Path:      filepath.Join(sessionDir, entry.Name()),
+			ID:    d.Name(),
+			Agent: "codex",
+			Path:  path,
 			CreatedAt: info.ModTime(),
 			Size:      info.Size(),
 		})
+		return nil
+	})
+	if err != nil {
+		return nil, err
 	}
 
 	return sessions, nil
