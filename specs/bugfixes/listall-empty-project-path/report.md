@@ -33,9 +33,10 @@ When `ListAll("")` is called with an empty project path (meaning "return all ses
 ## Resolution for the Issue
 
 **Changes made:**
-- `internal/sessions/lister.go:listClaude` - When `projectPath` is empty, iterate over all subdirectories under `~/.claude/projects/` and collect sessions from each, rather than looking in the root directory for `.jsonl` files
+- `internal/sessions/lister.go:listClaude` - Split into three functions: `listClaude` (entry point that checks for empty path), `listClaudeAllProjects` (iterates all project subdirectories), and `listClaudeDir` (reads `.jsonl` files from a single directory)
+- When `projectPath` is empty, `listClaudeAllProjects` iterates all subdirectories under `~/.claude/projects/` and collects sessions from each
 
-**Approach rationale:** This mirrors how Codex handles the empty path case — skip the project filter and return everything. The fix is minimal and contained within `listClaude`.
+**Approach rationale:** This mirrors how Codex handles the empty path case — skip the project filter and return everything. Extracting `listClaudeDir` avoids duplicating the session-reading logic between the filtered and unfiltered paths.
 
 **Alternatives considered:**
 - Add a separate `ListAllUnfiltered()` method — rejected because the current API contract already supports empty path meaning "all"
@@ -54,15 +55,16 @@ When `ListAll("")` is called with an empty project path (meaning "return all ses
 
 | File | Change |
 |------|--------|
-| `internal/sessions/lister.go` | Handle empty projectPath in listClaude |
-| `internal/sessions/lister_test.go` | Add regression test |
+| `internal/sessions/lister.go` | Handle empty projectPath in listClaude; extract listClaudeDir and listClaudeAllProjects |
+| `internal/sessions/lister_test.go` | Add regression test TestListAllClaudeSessionsEmptyProjectPath |
+| `docs/agent-notes/apsis-session-listing.md` | Document empty project path handling |
 
 ## Verification
 
 **Automated:**
-- [ ] Regression test passes
-- [ ] Full test suite passes
-- [ ] Linters/validators pass
+- [x] Regression test passes
+- [x] Full test suite passes
+- [x] Linters/validators pass
 
 ## Prevention
 
