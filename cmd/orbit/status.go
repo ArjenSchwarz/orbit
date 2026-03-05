@@ -82,6 +82,9 @@ func statusCommand(args []string) error {
 
 	// Gather status information for all variants
 	gatherer := status.NewGatherer(git, specName, specDir, metadata.BaseCommit, repoRoot)
+	if metadata.TasksFileRel != "" {
+		gatherer.SetTasksFileRel(metadata.TasksFileRel)
+	}
 	ctx := context.Background()
 	infos := gatherer.GatherAllVariants(ctx, metadata.Variants)
 

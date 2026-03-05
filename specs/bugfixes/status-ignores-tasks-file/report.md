@@ -1,7 +1,7 @@
 # Bugfix Report: Status Ignores Custom Tasks File Path
 
 **Date:** 2026-03-05
-**Status:** In Progress
+**Status:** Fixed
 **Ticket:** T-133
 
 ## Description of the Issue
@@ -41,7 +41,18 @@ This hardcodes two assumptions:
 
 ## Resolution for the Issue
 
-*To be filled after implementation.*
+**Changes made:**
+- `internal/variants/types.go` — Added `TasksFileRel` field to `VariantsMetadata` (persisted in `variants.json` with `omitempty` for backward compat)
+- `internal/variants/manager.go` — Added `SetTasksFile(relPath)` method to store the tasks file path in metadata
+- `internal/orbit/variants.go` — After variant setup, stores the tasks file relative path in metadata via `SetTasksFile`; added `tasksFileRel()` helper to compute the relative path
+- `internal/status/gatherer.go` — Added `tasksFileRel` field and `SetTasksFileRel` setter; replaced hardcoded path with `resolveTasksFile()` which first tries the stored path, then falls back to auto-detection of both `tasks.md` and `TASKS.md`
+- `cmd/orbit/status.go` — Passes `metadata.TasksFileRel` to the gatherer when available
+
+**Approach rationale:** Two-layer fix: (1) persist the tasks file path in variant metadata so it survives across processes, and (2) add fallback auto-detection of both filename casings for backward compatibility with existing `variants.json` files that lack the field.
+
+**Alternatives considered:**
+- Only add TASKS.md fallback without metadata storage — would not fix the `--tasks-file` custom path case
+- Add tasksFileRel as a required parameter to `NewGatherer` — would break the existing API and all callers unnecessarily; a setter is cleaner since the field is optional
 
 ## Regression Test
 
@@ -66,6 +77,12 @@ This hardcodes two assumptions:
 ## Verification
 
 **Automated:**
-- [ ] Regression test passes
-- [ ] Full test suite passes
-- [ ] Linters/validators pass
+- [x] Regression test passes
+- [x] Full test suite passes
+- [x] Linters/validators pass
+
+## Prevention
+
+**Recommendations to avoid similar bugs:**
+- When a value can come from user configuration, avoid hardcoding the default assumption. Instead, store the actual configured value and fall back to detection logic.
+- The `detectTasksFile` function in `cmd/orbit/run.go` already checks both casings; status should mirror that logic or share it.

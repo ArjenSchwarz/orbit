@@ -711,9 +711,11 @@ func TestGatherTaskProgress_UppercaseTasksFile(t *testing.T) {
 
 	// Write TASKS.md (uppercase) — the gatherer should find this
 	tasksContent := `# Tasks
+
 ## Phase 1: Setup
-- [x] Task A
-- [ ] Task B
+
+- [x] 1. Task A
+- [ ] 2. Task B
 `
 	if err := os.WriteFile(filepath.Join(specDir, "TASKS.md"), []byte(tasksContent), 0644); err != nil {
 		t.Fatal(err)
@@ -741,9 +743,11 @@ func TestGatherTaskProgress_CustomTasksFile(t *testing.T) {
 
 	// Write tasks file at the custom location
 	tasksContent := `# Tasks
+
 ## Phase 1: Setup
-- [x] Task A
-- [ ] Task B
+
+- [x] 1. Task A
+- [ ] 2. Task B
 `
 	if err := os.WriteFile(filepath.Join(customDir, "tasks.md"), []byte(tasksContent), 0644); err != nil {
 		t.Fatal(err)
@@ -771,9 +775,11 @@ func TestGatherTaskProgress_StandardPath(t *testing.T) {
 	}
 
 	tasksContent := `# Tasks
+
 ## Phase 1: Setup
-- [x] Task A
-- [ ] Task B
+
+- [x] 1. Task A
+- [ ] 2. Task B
 `
 	if err := os.WriteFile(filepath.Join(specDir, "tasks.md"), []byte(tasksContent), 0644); err != nil {
 		t.Fatal(err)
@@ -805,8 +811,10 @@ func TestGatherTaskProgress_MetadataTasksFileTakesPrecedence(t *testing.T) {
 
 	// Standard tasks file at specs/my-feature/tasks.md with 1 phase
 	standardContent := `# Tasks
+
 ## Phase 1: Standard
-- [x] Task A
+
+- [x] 1. Task A
 `
 	if err := os.WriteFile(filepath.Join(specDir, "tasks.md"), []byte(standardContent), 0644); err != nil {
 		t.Fatal(err)
@@ -814,11 +822,14 @@ func TestGatherTaskProgress_MetadataTasksFileTakesPrecedence(t *testing.T) {
 
 	// Custom tasks file with 2 phases
 	customContent := `# Tasks
+
 ## Phase 1: Custom Setup
-- [x] Task A
+
+- [x] 1. Task A
 
 ## Phase 2: Custom Build
-- [ ] Task B
+
+- [ ] 2. Task B
 `
 	if err := os.WriteFile(filepath.Join(customDir, "tasks.md"), []byte(customContent), 0644); err != nil {
 		t.Fatal(err)

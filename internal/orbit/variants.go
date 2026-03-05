@@ -187,6 +187,13 @@ func (o *Orbit) runWithVariants(ctx context.Context) error {
 		return fmt.Errorf("setup variants: %w", err)
 	}
 
+	// Store tasks file path in metadata so status can find it
+	if tasksFileRel := o.tasksFileRel(); tasksFileRel != "" {
+		if err := o.variantManager.SetTasksFile(tasksFileRel); err != nil {
+			o.debug.Log("Warning: failed to store tasks file path in metadata: %v", err)
+		}
+	}
+
 	// Snapshot variants slice under lock to avoid race condition during parallel execution
 	variantList := o.variantManager.GetVariantsSnapshot()
 
@@ -907,5 +914,22 @@ func (o *Orbit) runVariantPostCompletion(ctx context.Context, v *variants.Varian
 			}
 		},
 	})
+}
+
+// tasksFileRel returns the tasks file path relative to the repo root.
+// Returns empty string if the relative path cannot be computed.
+func (o *Orbit) tasksFileRel() string {
+	if o.config.RepoRoot == "" {
+		return o.config.TasksFile
+	}
+	absTasksFile := o.config.TasksFile
+	if !filepath.IsAbs(absTasksFile) {
+		absTasksFile = filepath.Join(o.config.RepoRoot, absTasksFile)
+	}
+	relPath, err := filepath.Rel(o.config.RepoRoot, absTasksFile)
+	if err != nil {
+		return ""
+	}
+	return relPath
 }
 
