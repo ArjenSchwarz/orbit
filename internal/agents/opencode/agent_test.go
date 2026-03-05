@@ -364,14 +364,9 @@ func TestDiscoverSessions_CreatedAtFallbackToModTime(t *testing.T) {
 	// Write a non-message file so the directory isn't empty.
 	require.NoError(t, os.WriteFile(filepath.Join(sessionDir, "metadata.json"), []byte(`{}`), 0o644))
 
-	agent := &Agent{config: agents.AgentConfig{}, cliPath: "opencode"}
-
-	// Override DefaultSessionDir by calling the internal discover helper directly.
 	sessions, err := discoverSessionsIn(context.Background(), tmp)
 	require.NoError(t, err)
 	require.Len(t, sessions, 1, "expected exactly one session")
-
-	_ = agent // ensure agent is used
 
 	session := sessions[0]
 	assert.Equal(t, "ses_no_messages", session.ID)
@@ -408,23 +403,22 @@ func TestDiscoverSessions_CreatedAtFallbackWhenParsingFails(t *testing.T) {
 func TestParseCreatedTime_ZeroUnixReturnsFallback(t *testing.T) {
 	fallback := time.Date(2026, 3, 1, 12, 0, 0, 0, time.UTC)
 
-	// Numeric 0
-	raw := json.RawMessage(`0`)
-	got := parseCreatedTime(raw, fallback)
-	assert.Equal(t, fallback, got,
-		"parseCreatedTime with 0 should return fallback, not Go zero time")
+	tests := map[string]struct {
+		raw json.RawMessage
+	}{
+		"numeric zero":     {raw: json.RawMessage(`0`)},
+		"negative number":  {raw: json.RawMessage(`-1`)},
+		"string zero":      {raw: json.RawMessage(`"0"`)},
+		"negative float":   {raw: json.RawMessage(`-100.5`)},
+	}
 
-	// Negative number
-	raw = json.RawMessage(`-1`)
-	got = parseCreatedTime(raw, fallback)
-	assert.Equal(t, fallback, got,
-		"parseCreatedTime with negative value should return fallback")
-
-	// String "0"
-	raw = json.RawMessage(`"0"`)
-	got = parseCreatedTime(raw, fallback)
-	assert.Equal(t, fallback, got,
-		"parseCreatedTime with string \"0\" should return fallback")
+	for name, tt := range tests {
+		t.Run(name, func(t *testing.T) {
+			got := parseCreatedTime(tt.raw, fallback)
+			assert.Equal(t, fallback, got,
+				"parseCreatedTime should return fallback for non-positive unix value")
+		})
+	}
 }
 
 func TestAgent_DiscoverSessions_ContextCancellation(t *testing.T) {
