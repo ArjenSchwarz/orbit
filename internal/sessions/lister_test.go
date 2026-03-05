@@ -424,6 +424,41 @@ func TestListAllClaudeSessionsEmptyProjectPath(t *testing.T) {
 	}
 }
 
+// TestListAllCodexSessionsEmptyProjectPath verifies that ListAll returns Codex
+// sessions when projectPath is empty (no project filtering).
+func TestListAllCodexSessionsEmptyProjectPath(t *testing.T) {
+	homeDir := t.TempDir()
+
+	t1 := time.Date(2025, 1, 15, 10, 0, 0, 0, time.UTC)
+	sessionID := "00000000-0000-0000-0000-000000000042"
+
+	// Create a Codex session associated with a specific project path
+	setupCodexSession(t, homeDir, "/some/project", sessionID, t1)
+
+	lister := newTestLister(homeDir)
+
+	// Empty projectPath should return all Codex sessions regardless of their cwd
+	sessions, _, err := lister.ListAll("")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	var codexSessions []SessionInfo
+	for _, s := range sessions {
+		if s.Source == SourceCodex {
+			codexSessions = append(codexSessions, s)
+		}
+	}
+
+	if len(codexSessions) != 1 {
+		t.Fatalf("expected 1 Codex session with empty projectPath, got %d", len(codexSessions))
+	}
+
+	if codexSessions[0].ID != sessionID {
+		t.Errorf("session.ID = %q, want %q", codexSessions[0].ID, sessionID)
+	}
+}
+
 func TestListAllPartialFailure(t *testing.T) {
 	homeDir := t.TempDir()
 	projectPath := t.TempDir()

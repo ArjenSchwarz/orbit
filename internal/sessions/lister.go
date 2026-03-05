@@ -100,7 +100,11 @@ func (l *Lister) listClaudeAllProjects(projectsRoot string) ([]SessionInfo, erro
 		projectDir := filepath.Join(projectsRoot, entry.Name())
 		sessions, err := l.listClaudeDir(projectDir)
 		if err != nil {
-			continue // skip unreadable project directories
+			// Individual project directory failures (e.g. permission denied) are
+			// intentionally skipped so that sessions from other projects are still
+			// returned. This parallels how ListAll collects per-source warnings
+			// rather than stopping on the first source failure.
+			continue
 		}
 		allSessions = append(allSessions, sessions...)
 	}

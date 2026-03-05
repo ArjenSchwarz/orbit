@@ -26,7 +26,7 @@ Bug T-290 was caused by `listCopilot` using plain string equality instead of `no
 When `projectPath` is empty (no filtering), each agent source must return ALL sessions:
 - **Claude**: `listClaude` iterates all subdirectories under `~/.claude/projects/` and collects sessions from each. Uses `listClaudeAllProjects()` internally.
 - **Codex**: `listCodex` skips the `cwd` filter check when `projectPath` is empty.
-- **Copilot**: `listCopilot` uses `matchPath != "" && matchPath != projectPath` — sessions with a known path are included only when their path matches or when `projectPath` is empty (via `matchPath` also being empty).
+- **Copilot**: `listCopilot` uses `matchPath != "" && matchPath != projectPath` — when `projectPath` is empty and a session has a known cwd/git_root, `matchPath != ""` is true so the session is skipped. Only sessions without a known workspace path are returned. This is a known limitation (separate from T-146).
 
 This was the subject of T-146 — `listClaude` previously called `BuildProjectPath("")` which returned `""`, causing it to look in the root `~/.claude/projects/` directory (which contains subdirectories, not `.jsonl` files).
 ## Codex session structure
