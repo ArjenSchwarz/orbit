@@ -697,3 +697,145 @@ func TestFromRunePhaseSummary(t *testing.T) {
 	// A direct test would require importing rune which creates a circular import
 	// The function is a simple data transformation tested by integration
 }
+
+// TestGatherTaskProgress_UppercaseTasksFile verifies that task progress is found
+// when the tasks file is named TASKS.md (uppercase) instead of tasks.md.
+// Bug T-133: status always hardcoded "tasks.md", ignoring uppercase variant.
+func TestGatherTaskProgress_UppercaseTasksFile(t *testing.T) {
+	// Create a temp worktree-like directory with TASKS.md (uppercase)
+	worktree := t.TempDir()
+	specDir := filepath.Join(worktree, "specs", "my-feature")
+	if err := os.MkdirAll(specDir, 0755); err != nil {
+		t.Fatal(err)
+	}
+
+	// Write TASKS.md (uppercase) — the gatherer should find this
+	tasksContent := `# Tasks
+## Phase 1: Setup
+- [x] Task A
+- [ ] Task B
+`
+	if err := os.WriteFile(filepath.Join(specDir, "TASKS.md"), []byte(tasksContent), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	g := NewGatherer(&mockGitClient{}, "my-feature", "specs/my-feature", "abc123", worktree)
+	progress := g.gatherTaskProgress(worktree)
+
+	// Before the fix, this returns nil because it only looks for tasks.md
+	if progress == nil {
+		t.Fatal("expected task progress to be found for TASKS.md, got nil")
+	}
+}
+
+// TestGatherTaskProgress_CustomTasksFile verifies that task progress works
+// when the run used a custom --tasks-file path stored in metadata.
+// Bug T-133: status ignores the actual tasks file path from run config.
+func TestGatherTaskProgress_CustomTasksFile(t *testing.T) {
+	// Create a temp worktree-like directory with tasks in a custom location
+	worktree := t.TempDir()
+	customDir := filepath.Join(worktree, "custom", "path")
+	if err := os.MkdirAll(customDir, 0755); err != nil {
+		t.Fatal(err)
+	}
+
+	// Write tasks file at the custom location
+	tasksContent := `# Tasks
+## Phase 1: Setup
+- [x] Task A
+- [ ] Task B
+`
+	if err := os.WriteFile(filepath.Join(customDir, "tasks.md"), []byte(tasksContent), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	// Create gatherer with custom tasks file relative path
+	g := NewGatherer(&mockGitClient{}, "my-feature", "specs/my-feature", "abc123", worktree)
+	g.SetTasksFileRel("custom/path/tasks.md")
+
+	progress := g.gatherTaskProgress(worktree)
+
+	// Before the fix, this returns nil because it only looks at specs/my-feature/tasks.md
+	if progress == nil {
+		t.Fatal("expected task progress to be found for custom tasks file path, got nil")
+	}
+}
+
+// TestGatherTaskProgress_StandardPath verifies that the default tasks.md path
+// still works after the fix (no regression).
+func TestGatherTaskProgress_StandardPath(t *testing.T) {
+	worktree := t.TempDir()
+	specDir := filepath.Join(worktree, "specs", "my-feature")
+	if err := os.MkdirAll(specDir, 0755); err != nil {
+		t.Fatal(err)
+	}
+
+	tasksContent := `# Tasks
+## Phase 1: Setup
+- [x] Task A
+- [ ] Task B
+`
+	if err := os.WriteFile(filepath.Join(specDir, "tasks.md"), []byte(tasksContent), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	g := NewGatherer(&mockGitClient{}, "my-feature", "specs/my-feature", "abc123", worktree)
+	progress := g.gatherTaskProgress(worktree)
+
+	if progress == nil {
+		t.Fatal("expected task progress to be found for standard tasks.md, got nil")
+	}
+}
+
+// TestGatherTaskProgress_MetadataTasksFileTakesPrecedence verifies that when
+// tasksFileRel is set (from variants.json metadata), it takes precedence over
+// the default detection logic.
+func TestGatherTaskProgress_MetadataTasksFileTakesPrecedence(t *testing.T) {
+	worktree := t.TempDir()
+
+	// Create both the standard location and custom location
+	specDir := filepath.Join(worktree, "specs", "my-feature")
+	if err := os.MkdirAll(specDir, 0755); err != nil {
+		t.Fatal(err)
+	}
+	customDir := filepath.Join(worktree, "other")
+	if err := os.MkdirAll(customDir, 0755); err != nil {
+		t.Fatal(err)
+	}
+
+	// Standard tasks file at specs/my-feature/tasks.md with 1 phase
+	standardContent := `# Tasks
+## Phase 1: Standard
+- [x] Task A
+`
+	if err := os.WriteFile(filepath.Join(specDir, "tasks.md"), []byte(standardContent), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	// Custom tasks file with 2 phases
+	customContent := `# Tasks
+## Phase 1: Custom Setup
+- [x] Task A
+
+## Phase 2: Custom Build
+- [ ] Task B
+`
+	if err := os.WriteFile(filepath.Join(customDir, "tasks.md"), []byte(customContent), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	// When tasksFileRel is set, it should use the custom file
+	g := NewGatherer(&mockGitClient{}, "my-feature", "specs/my-feature", "abc123", worktree)
+	g.SetTasksFileRel("other/tasks.md")
+
+	progress := g.gatherTaskProgress(worktree)
+	if progress == nil {
+		t.Fatal("expected task progress, got nil")
+	}
+
+	// The custom file has 2 phases, standard has 1.
+	// If we're reading the custom file, we should see 2 phases.
+	if len(progress.Phases) != 2 {
+		t.Errorf("expected 2 phases from custom tasks file, got %d", len(progress.Phases))
+	}
+}
