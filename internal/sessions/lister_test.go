@@ -253,6 +253,54 @@ func TestListAllCopilotSessions(t *testing.T) {
 	}
 }
 
+func TestListCopilotNormalizesPathsForComparison(t *testing.T) {
+	homeDir := t.TempDir()
+
+	// realDir is the actual project directory on disk.
+	realDir := t.TempDir()
+
+	// Create a symlink that points to realDir. On macOS t.TempDir() itself
+	// may go through /var -> /private/var, so EvalSymlinks gives us the
+	// canonical target we store in the workspace.yaml.
+	symlinkDir := filepath.Join(t.TempDir(), "link-to-project")
+	realTarget, err := filepath.EvalSymlinks(realDir)
+	if err != nil {
+		t.Fatalf("EvalSymlinks(%q): %v", realDir, err)
+	}
+	if err := os.Symlink(realTarget, symlinkDir); err != nil {
+		t.Fatalf("Symlink: %v", err)
+	}
+
+	t1 := time.Date(2025, 6, 1, 12, 0, 0, 0, time.UTC)
+	sessionID := "symlink-copilot-session"
+
+	// Setup stores the real (resolved) path inside workspace.yaml.
+	setupCopilotSession(t, homeDir, realTarget, sessionID, t1)
+
+	lister := newTestLister(homeDir)
+
+	// Query via the symlink path — before the fix this returned 0 sessions
+	// because listCopilot compared paths with plain string equality.
+	sessions, _, err := lister.ListAll(symlinkDir)
+	if err != nil {
+		t.Fatalf("ListAll: %v", err)
+	}
+
+	var copilotSessions []SessionInfo
+	for _, s := range sessions {
+		if s.Source == SourceCopilot {
+			copilotSessions = append(copilotSessions, s)
+		}
+	}
+
+	if len(copilotSessions) != 1 {
+		t.Fatalf("expected 1 Copilot session when querying via symlink, got %d", len(copilotSessions))
+	}
+	if copilotSessions[0].ID != sessionID {
+		t.Errorf("session.ID = %q, want %q", copilotSessions[0].ID, sessionID)
+	}
+}
+
 func TestListAllCodexSessions(t *testing.T) {
 	homeDir := t.TempDir()
 	projectPath := t.TempDir()
