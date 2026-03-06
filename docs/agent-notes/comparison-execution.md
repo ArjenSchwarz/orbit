@@ -48,3 +48,4 @@ The adapter doesn't set a `SessionID` in `RunOptions`. The Claude agent now corr
 
 - The `RunOptions.Timeout` field exists but is unused by all agents. Use context timeouts instead.
 - `exec.CommandContext` kills the process when context is cancelled, but doesn't clean up gracefully. For Claude CLI this is acceptable since `-p` mode sessions can be safely interrupted.
+- All variant branches must share the same base commit as `metadata.BaseCommit`. `Manager.Setup()` enforces this (T-191): when preserving completed variants on a new run, it errors if HEAD != BaseCommit. Without this check, comparison diffs use the wrong base for newly-created variants.

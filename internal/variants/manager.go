@@ -208,6 +208,19 @@ func (m *Manager) Setup(ctx context.Context, continueExisting bool) error {
 
 	// Clean up only unfinished variants, preserving completed ones
 	if m.metadata != nil {
+		// Before mutating state, check if any completed variants would be preserved
+		// with an incompatible base commit. New branches are created at HEAD, so if
+		// HEAD != BaseCommit, different variants would have different bases, producing
+		// incorrect diffs and comparisons (T-191). We check before CleanupUnfinished
+		// to avoid removing worktrees/branches when the run will be rejected.
+		if m.hasCompletedVariants() && m.metadata.BaseCommit != headCommit {
+			return fmt.Errorf(
+				"cannot start new run: HEAD (%s) differs from base commit (%s) of preserved completed variants; "+
+					"checkout the original base commit or use 'orbit cleanup' to discard completed variants first",
+				headCommit, m.metadata.BaseCommit,
+			)
+		}
+
 		preserved, err := m.CleanupUnfinished(ctx)
 		if err != nil {
 			return fmt.Errorf("cleanup unfinished variants: %w", err)
@@ -359,6 +372,21 @@ func (m *Manager) UpdateAgentInfo(id int, agentAlias, agentType, model string) e
 	v.Model = model
 
 	return m.saveLocked()
+}
+
+// hasCompletedVariants returns true if any variant has StatusCompleted.
+// Returns false when metadata is nil (no previous run).
+// Does not acquire m.mu; safe to call during single-threaded Setup.
+func (m *Manager) hasCompletedVariants() bool {
+	if m.metadata == nil {
+		return false
+	}
+	for _, v := range m.metadata.Variants {
+		if v.Status == StatusCompleted {
+			return true
+		}
+	}
+	return false
 }
 
 // GetVariant returns a variant by ID.
