@@ -373,7 +373,7 @@ func TestGetLiveTranscriptPath(t *testing.T) {
 		}
 	})
 
-	t.Run("returns empty string when no current phase", func(t *testing.T) {
+	t.Run("returns empty string when no active session", func(t *testing.T) {
 		summary := logs.Summary{
 			CurrentPhase: nil,
 		}
@@ -390,7 +390,123 @@ func TestGetLiveTranscriptPath(t *testing.T) {
 			t.Fatalf("Unexpected error: %v", err)
 		}
 		if path != "" {
-			t.Errorf("Expected empty path when no current phase, got %q", path)
+			t.Errorf("Expected empty path when no active session, got %q", path)
+		}
+	})
+
+	t.Run("returns path when pre-prompt is active", func(t *testing.T) {
+		// Bug T-259: When pre-prompt is running (status=started), CurrentPhase is nil.
+		// GetLiveTranscriptPath should fall back to pre-prompt session ID.
+		summary := logs.Summary{
+			CurrentPhase: nil,
+			PrePrompt: &logs.PrePromptState{
+				SessionID: "pre-prompt-session-456",
+				Status:    logs.PrePromptStatusStarted,
+			},
+		}
+		data, _ := json.Marshal(summary)
+		summaryPath := filepath.Join(variantLogDir, "summary.json")
+		if err := os.WriteFile(summaryPath, data, 0644); err != nil {
+			t.Fatalf("Failed to write summary: %v", err)
+		}
+
+		worktreePath := filepath.Join(tmpDir, "worktrees", "impl-1")
+		path, err := GetLiveTranscriptPath(worktreePath, variantLogDir)
+
+		if err != nil {
+			t.Fatalf("Unexpected error: %v", err)
+		}
+		if path == "" {
+			t.Error("Expected non-empty path when pre-prompt is active")
+		}
+		if filepath.Base(path) != "pre-prompt-session-456.jsonl" {
+			t.Errorf("Path should use pre-prompt session ID, got %q", filepath.Base(path))
+		}
+	})
+
+	t.Run("returns path when post-prompt is active", func(t *testing.T) {
+		// Bug T-259: When post-prompt is running, CurrentPhase is nil.
+		// GetLiveTranscriptPath should fall back to post-completion session ID.
+		summary := logs.Summary{
+			CurrentPhase: nil,
+			PostCompletion: &logs.PostCompletionState{
+				SessionID: "post-prompt-session-789",
+			},
+		}
+		data, _ := json.Marshal(summary)
+		summaryPath := filepath.Join(variantLogDir, "summary.json")
+		if err := os.WriteFile(summaryPath, data, 0644); err != nil {
+			t.Fatalf("Failed to write summary: %v", err)
+		}
+
+		worktreePath := filepath.Join(tmpDir, "worktrees", "impl-1")
+		path, err := GetLiveTranscriptPath(worktreePath, variantLogDir)
+
+		if err != nil {
+			t.Fatalf("Unexpected error: %v", err)
+		}
+		if path == "" {
+			t.Error("Expected non-empty path when post-prompt is active")
+		}
+		if filepath.Base(path) != "post-prompt-session-789.jsonl" {
+			t.Errorf("Path should use post-prompt session ID, got %q", filepath.Base(path))
+		}
+	})
+
+	t.Run("prefers current phase over pre-prompt", func(t *testing.T) {
+		// When both CurrentPhase and PrePrompt have session IDs,
+		// CurrentPhase should take priority (it means a phase is actively running).
+		summary := logs.Summary{
+			CurrentPhase: &logs.PhaseState{
+				Phase:     1,
+				SessionID: "phase-session-111",
+			},
+			PrePrompt: &logs.PrePromptState{
+				SessionID: "pre-prompt-session-222",
+				Status:    logs.PrePromptStatusCompleted,
+			},
+		}
+		data, _ := json.Marshal(summary)
+		summaryPath := filepath.Join(variantLogDir, "summary.json")
+		if err := os.WriteFile(summaryPath, data, 0644); err != nil {
+			t.Fatalf("Failed to write summary: %v", err)
+		}
+
+		worktreePath := filepath.Join(tmpDir, "worktrees", "impl-1")
+		path, err := GetLiveTranscriptPath(worktreePath, variantLogDir)
+
+		if err != nil {
+			t.Fatalf("Unexpected error: %v", err)
+		}
+		if filepath.Base(path) != "phase-session-111.jsonl" {
+			t.Errorf("Should prefer current phase session, got %q", filepath.Base(path))
+		}
+	})
+
+	t.Run("ignores completed pre-prompt when no current phase", func(t *testing.T) {
+		// A completed pre-prompt is not a live session — it finished already.
+		// Only "started" pre-prompts have a live session.
+		summary := logs.Summary{
+			CurrentPhase: nil,
+			PrePrompt: &logs.PrePromptState{
+				SessionID: "pre-prompt-done-333",
+				Status:    logs.PrePromptStatusCompleted,
+			},
+		}
+		data, _ := json.Marshal(summary)
+		summaryPath := filepath.Join(variantLogDir, "summary.json")
+		if err := os.WriteFile(summaryPath, data, 0644); err != nil {
+			t.Fatalf("Failed to write summary: %v", err)
+		}
+
+		worktreePath := filepath.Join(tmpDir, "worktrees", "impl-1")
+		path, err := GetLiveTranscriptPath(worktreePath, variantLogDir)
+
+		if err != nil {
+			t.Fatalf("Unexpected error: %v", err)
+		}
+		if path != "" {
+			t.Errorf("Expected empty path when pre-prompt is completed and no current phase, got %q", path)
 		}
 	})
 
@@ -471,6 +587,109 @@ func TestGetLiveTranscriptPath(t *testing.T) {
 			t.Errorf("Path should be under home directory, got %q", path)
 		}
 	})
+}
+
+func TestGetActiveSessionID(t *testing.T) {
+	tests := []struct {
+		name    string
+		summary logs.Summary
+		want    string
+	}{
+		{
+			name:    "no active session",
+			summary: logs.Summary{},
+			want:    "",
+		},
+		{
+			name: "current phase active",
+			summary: logs.Summary{
+				CurrentPhase: &logs.PhaseState{
+					Phase:     2,
+					SessionID: "phase-sess",
+				},
+			},
+			want: "phase-sess",
+		},
+		{
+			name: "pre-prompt started",
+			summary: logs.Summary{
+				PrePrompt: &logs.PrePromptState{
+					SessionID: "pre-sess",
+					Status:    logs.PrePromptStatusStarted,
+				},
+			},
+			want: "pre-sess",
+		},
+		{
+			name: "pre-prompt completed — not active",
+			summary: logs.Summary{
+				PrePrompt: &logs.PrePromptState{
+					SessionID: "pre-sess",
+					Status:    logs.PrePromptStatusCompleted,
+				},
+			},
+			want: "",
+		},
+		{
+			name: "post-completion active",
+			summary: logs.Summary{
+				PostCompletion: &logs.PostCompletionState{
+					SessionID: "post-sess",
+				},
+			},
+			want: "post-sess",
+		},
+		{
+			name: "current phase takes priority over pre-prompt",
+			summary: logs.Summary{
+				CurrentPhase: &logs.PhaseState{
+					Phase:     1,
+					SessionID: "phase-sess",
+				},
+				PrePrompt: &logs.PrePromptState{
+					SessionID: "pre-sess",
+					Status:    logs.PrePromptStatusStarted,
+				},
+			},
+			want: "phase-sess",
+		},
+		{
+			name: "current phase takes priority over post-completion",
+			summary: logs.Summary{
+				CurrentPhase: &logs.PhaseState{
+					Phase:     3,
+					SessionID: "phase-sess",
+				},
+				PostCompletion: &logs.PostCompletionState{
+					SessionID: "post-sess",
+				},
+			},
+			want: "phase-sess",
+		},
+		{
+			name: "current phase with empty session ID falls through to pre-prompt",
+			summary: logs.Summary{
+				CurrentPhase: &logs.PhaseState{
+					Phase:     1,
+					SessionID: "",
+				},
+				PrePrompt: &logs.PrePromptState{
+					SessionID: "pre-sess",
+					Status:    logs.PrePromptStatusStarted,
+				},
+			},
+			want: "pre-sess",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := getActiveSessionID(&tt.summary)
+			if got != tt.want {
+				t.Errorf("getActiveSessionID() = %q, want %q", got, tt.want)
+			}
+		})
+	}
 }
 
 func TestFromRunePhaseSummary(t *testing.T) {
