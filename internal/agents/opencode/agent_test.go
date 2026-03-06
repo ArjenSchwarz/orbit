@@ -355,6 +355,8 @@ func TestIsValidJSON(t *testing.T) {
 // modTime rather than remaining as the zero time.
 // Regression test for T-273.
 func TestDiscoverSessions_CreatedAtFallbackToModTime(t *testing.T) {
+	t.Parallel()
+
 	tmp := t.TempDir()
 
 	// Create a session directory with no msg_ files.
@@ -364,7 +366,7 @@ func TestDiscoverSessions_CreatedAtFallbackToModTime(t *testing.T) {
 	// Write a non-message file so the directory isn't empty.
 	require.NoError(t, os.WriteFile(filepath.Join(sessionDir, "metadata.json"), []byte(`{}`), 0o644))
 
-	sessions, err := discoverSessionsIn(context.Background(), tmp)
+	sessions, err := discoverSessionsIn(t.Context(), tmp)
 	require.NoError(t, err)
 	require.Len(t, sessions, 1, "expected exactly one session")
 
@@ -374,11 +376,14 @@ func TestDiscoverSessions_CreatedAtFallbackToModTime(t *testing.T) {
 		"CreatedAt must not be zero when no msg_ files exist; should fall back to directory modTime")
 }
 
-// TestDiscoverSessions_CreatedAtFallbackWhenParsingFails verifies that when
-// msg_ files exist but contain unparseable timestamps, CreatedAt falls back
-// to the directory modTime.
+// TestDiscoverSessions_ParseCreatedTimeFallbackOnBadTimestamp verifies that
+// when a msg_ file has an unparseable timestamp, parseCreatedTime returns
+// the modTime fallback. This exercises the fallback parameter in parseCreatedTime,
+// not the createdAt.IsZero() guard in discoverSessionsIn.
 // Regression test for T-273.
-func TestDiscoverSessions_CreatedAtFallbackWhenParsingFails(t *testing.T) {
+func TestDiscoverSessions_ParseCreatedTimeFallbackOnBadTimestamp(t *testing.T) {
+	t.Parallel()
+
 	tmp := t.TempDir()
 
 	sessionDir := filepath.Join(tmp, "ses_bad_timestamps")
@@ -388,7 +393,7 @@ func TestDiscoverSessions_CreatedAtFallbackWhenParsingFails(t *testing.T) {
 	badMsg := `{"id":"msg_1","sessionID":"ses_bad_timestamps","role":"user","time":{"created":"not-a-timestamp"}}`
 	require.NoError(t, os.WriteFile(filepath.Join(sessionDir, "msg_001.json"), []byte(badMsg), 0o644))
 
-	sessions, err := discoverSessionsIn(context.Background(), tmp)
+	sessions, err := discoverSessionsIn(t.Context(), tmp)
 	require.NoError(t, err)
 	require.Len(t, sessions, 1)
 
@@ -397,24 +402,57 @@ func TestDiscoverSessions_CreatedAtFallbackWhenParsingFails(t *testing.T) {
 		"CreatedAt must not be zero when msg_ timestamp parsing fails; should fall back to directory modTime")
 }
 
+// TestDiscoverSessions_CreatedAtFallbackWhenAllMsgFilesUnreadable verifies
+// that when all msg_ files fail to unmarshal, the createdAt.IsZero() guard
+// in discoverSessionsIn falls back to directory modTime.
+// Regression test for T-273.
+func TestDiscoverSessions_CreatedAtFallbackWhenAllMsgFilesUnreadable(t *testing.T) {
+	t.Parallel()
+
+	tmp := t.TempDir()
+
+	sessionDir := filepath.Join(tmp, "ses_invalid_json")
+	require.NoError(t, os.Mkdir(sessionDir, 0o755))
+
+	// Write a msg_ file with invalid JSON so json.Unmarshal fails and
+	// parseCreatedTime is never called — createdAt stays zero.
+	require.NoError(t, os.WriteFile(
+		filepath.Join(sessionDir, "msg_001.json"),
+		[]byte(`not valid json at all`),
+		0o644,
+	))
+
+	sessions, err := discoverSessionsIn(t.Context(), tmp)
+	require.NoError(t, err)
+	require.Len(t, sessions, 1)
+
+	session := sessions[0]
+	assert.False(t, session.CreatedAt.IsZero(),
+		"CreatedAt must not be zero when all msg_ files fail to unmarshal; should fall back to directory modTime")
+}
+
 // TestParseCreatedTime_ZeroUnixReturnsFallback verifies that a created time
 // of unix epoch 0 returns the fallback rather than time.Time{} (Go zero).
 // Regression test for T-273.
 func TestParseCreatedTime_ZeroUnixReturnsFallback(t *testing.T) {
+	t.Parallel()
+
 	fallback := time.Date(2026, 3, 1, 12, 0, 0, 0, time.UTC)
 
 	tests := map[string]struct {
 		raw json.RawMessage
 	}{
-		"numeric zero":     {raw: json.RawMessage(`0`)},
-		"negative number":  {raw: json.RawMessage(`-1`)},
-		"string zero":      {raw: json.RawMessage(`"0"`)},
-		"negative float":   {raw: json.RawMessage(`-100.5`)},
+		"numeric zero":    {raw: json.RawMessage(`0`)},
+		"negative number": {raw: json.RawMessage(`-1`)},
+		"string zero":     {raw: json.RawMessage(`"0"`)},
+		"negative float":  {raw: json.RawMessage(`-100.5`)},
 	}
 
-	for name, tt := range tests {
+	for name, tc := range tests {
 		t.Run(name, func(t *testing.T) {
-			got := parseCreatedTime(tt.raw, fallback)
+			t.Parallel()
+
+			got := parseCreatedTime(tc.raw, fallback)
 			assert.Equal(t, fallback, got,
 				"parseCreatedTime should return fallback for non-positive unix value")
 		})
