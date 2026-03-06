@@ -332,6 +332,10 @@ func TestAgent_DiscoverSessions_NestedDirs(t *testing.T) {
 	if sessions[0].Agent != "codex" {
 		t.Errorf("session.Agent = %q, want %q", sessions[0].Agent, "codex")
 	}
+	// ID should have .jsonl stripped (filename without extension)
+	if sessions[0].ID != "session-abc123" {
+		t.Errorf("session.ID = %q, want %q", sessions[0].ID, "session-abc123")
+	}
 }
 
 func TestAgent_DiscoverSessions_MultipleNestedSessions(t *testing.T) {
@@ -403,6 +407,79 @@ func TestAgent_DiscoverSessions_SkipsNonJSONL(t *testing.T) {
 
 	if len(sessions) != 1 {
 		t.Fatalf("expected 1 session (only .jsonl), got %d", len(sessions))
+	}
+}
+
+func TestAgent_DiscoverSessions_ExtractsUUID(t *testing.T) {
+	// When a filename contains a UUID, the session ID should be the UUID only.
+	tmpDir := t.TempDir()
+
+	nestedDir := filepath.Join(tmpDir, "2025", "01", "15")
+	if err := os.MkdirAll(nestedDir, 0o755); err != nil {
+		t.Fatalf("failed to create nested dir: %v", err)
+	}
+
+	sessionFile := filepath.Join(nestedDir, "session-a1b2c3d4-e5f6-7890-abcd-ef1234567890.jsonl")
+	if err := os.WriteFile(sessionFile, []byte(`{"type":"session_meta"}`+"\n"), 0o644); err != nil {
+		t.Fatalf("failed to write session file: %v", err)
+	}
+
+	agent := &Agent{
+		config:     agents.AgentConfig{},
+		cliPath:    "codex",
+		sessionDir: tmpDir,
+	}
+
+	sessions, err := agent.DiscoverSessions(context.Background(), "")
+	if err != nil {
+		t.Fatalf("DiscoverSessions() error = %v", err)
+	}
+
+	if len(sessions) != 1 {
+		t.Fatalf("expected 1 session, got %d", len(sessions))
+	}
+
+	wantID := "a1b2c3d4-e5f6-7890-abcd-ef1234567890"
+	if sessions[0].ID != wantID {
+		t.Errorf("session.ID = %q, want UUID %q", sessions[0].ID, wantID)
+	}
+}
+
+func TestAgent_DiscoverSessions_SkipsEmptyFiles(t *testing.T) {
+	// Zero-size files should be skipped (incomplete or in-progress sessions).
+	tmpDir := t.TempDir()
+
+	nestedDir := filepath.Join(tmpDir, "2025", "01", "15")
+	if err := os.MkdirAll(nestedDir, 0o755); err != nil {
+		t.Fatalf("failed to create nested dir: %v", err)
+	}
+
+	// Create an empty .jsonl file
+	if err := os.WriteFile(filepath.Join(nestedDir, "empty-session.jsonl"), []byte{}, 0o644); err != nil {
+		t.Fatalf("failed to write empty file: %v", err)
+	}
+	// Create a non-empty .jsonl file
+	if err := os.WriteFile(filepath.Join(nestedDir, "valid-session.jsonl"), []byte(`{"type":"session_meta"}`+"\n"), 0o644); err != nil {
+		t.Fatalf("failed to write valid file: %v", err)
+	}
+
+	agent := &Agent{
+		config:     agents.AgentConfig{},
+		cliPath:    "codex",
+		sessionDir: tmpDir,
+	}
+
+	sessions, err := agent.DiscoverSessions(context.Background(), "")
+	if err != nil {
+		t.Fatalf("DiscoverSessions() error = %v", err)
+	}
+
+	if len(sessions) != 1 {
+		t.Fatalf("expected 1 session (empty file skipped), got %d", len(sessions))
+	}
+
+	if sessions[0].ID != "valid-session" {
+		t.Errorf("session.ID = %q, want %q", sessions[0].ID, "valid-session")
 	}
 }
 

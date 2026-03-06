@@ -8,6 +8,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"strings"
 
 	"github.com/arjenschwarz/orbit/internal/agents"
@@ -17,6 +18,9 @@ import (
 var _ agents.Agent = (*Agent)(nil)
 
 const defaultPrompt = "Run /next-task --phase and when complete run /commit"
+
+// uuidPattern matches standard UUID format for extracting session IDs from filenames.
+var uuidPattern = regexp.MustCompile(`(?i)[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}`)
 
 func init() {
 	agents.Register("codex", New)
@@ -84,16 +88,20 @@ func (a *Agent) DiscoverSessions(ctx context.Context, projectDir string) ([]agen
 
 	// Codex sessions are stored in YYYY/MM/DD subdirectories under ~/.codex/sessions/.
 	// Walk the tree to find all .jsonl session files.
-	if _, err := os.Stat(sessionDir); os.IsNotExist(err) {
-		return nil, nil
+	if _, err := os.Stat(sessionDir); err != nil {
+		if os.IsNotExist(err) {
+			return nil, nil
+		}
+		return nil, err
 	}
 
 	var sessions []agents.SessionInfo
 	err := filepath.WalkDir(sessionDir, func(path string, d fs.DirEntry, err error) error {
-		if err != nil || d.IsDir() {
+		if err != nil {
+			// Skip inaccessible entries (e.g., permission denied) and continue walking.
 			return nil
 		}
-		if !strings.HasSuffix(d.Name(), ".jsonl") {
+		if d.IsDir() || !strings.HasSuffix(d.Name(), ".jsonl") {
 			return nil
 		}
 
@@ -102,10 +110,21 @@ func (a *Agent) DiscoverSessions(ctx context.Context, projectDir string) ([]agen
 			return nil
 		}
 
+		if info.Size() == 0 {
+			return nil
+		}
+
+		// Strip .jsonl extension and extract UUID if present, consistent with sessions/lister.go.
+		filename := d.Name()
+		sessionID := strings.TrimSuffix(filename, ".jsonl")
+		if match := uuidPattern.FindString(filename); match != "" {
+			sessionID = match
+		}
+
 		sessions = append(sessions, agents.SessionInfo{
-			ID:    d.Name(),
-			Agent: "codex",
-			Path:  path,
+			ID:        sessionID,
+			Agent:     "codex",
+			Path:      path,
 			CreatedAt: info.ModTime(),
 			Size:      info.Size(),
 		})
