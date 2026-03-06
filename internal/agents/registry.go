@@ -69,6 +69,14 @@ func RegisterClassifier(name string, factory func() ErrorClassifier) {
 	classifierRegistry[name] = factory
 }
 
+// UnregisterClassifier removes an error classifier from the registry.
+// Intended for test cleanup to avoid polluting the global registry.
+func UnregisterClassifier(name string) {
+	mu.Lock()
+	defer mu.Unlock()
+	delete(classifierRegistry, name)
+}
+
 // GetClassifier returns an error classifier for the given agent name.
 // Returns a default classifier if the agent doesn't have one registered.
 func GetClassifier(name string) ErrorClassifier {

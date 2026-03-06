@@ -76,7 +76,11 @@ func classifyFromAgent(agentName string) func(*agents.RunResult, error) *agents.
 				errMsgs = []string{"agent reported error"}
 			}
 		}
-		return classifier.Classify(1, stderr, output, errMsgs)
+		exitCode := 1 // default when result is nil (no exit code available)
+		if result != nil {
+			exitCode = result.ExitCode
+		}
+		return classifier.Classify(exitCode, stderr, output, errMsgs)
 	}
 }
 
@@ -90,6 +94,39 @@ func isSessionInvalidError(result *agents.RunResult) bool {
 
 	combinedLower := strings.ToLower(result.Stderr + result.Output)
 	return agents.MatchesSessionInvalid(combinedLower, "no such session", "no conversation found")
+}
+
+// classifyRunError classifies an agent run error using the Orbit's error classifier.
+// It extracts stderr, output, and error messages from the result (or the error itself
+// if the result is nil), and passes the actual exit code to the classifier.
+// When result is nil, exit code defaults to 1 since no real exit code is available.
+func (o *Orbit) classifyRunError(result *agents.RunResult, err error) *agents.ClassifiedError {
+	var stderr, output string
+	var errMsgs []string
+	exitCode := 1 // default when result is nil (no exit code available)
+
+	if result != nil {
+		stderr = result.Stderr
+		output = result.Output
+		errMsgs = result.Errors
+		exitCode = result.ExitCode
+	}
+	if err != nil {
+		if stderr == "" {
+			stderr = err.Error()
+		}
+		if len(errMsgs) == 0 {
+			errMsgs = []string{err.Error()}
+		}
+	} else if result != nil && result.IsError {
+		if len(errMsgs) == 0 {
+			errMsgs = []string{"agent reported error"}
+		}
+	}
+
+	o.debug.Log("Classifying error: exitCode=%d, stderr=%d bytes, output=%d bytes, errors=%v",
+		exitCode, len(stderr), len(output), errMsgs)
+	return o.errorClassifier.Classify(exitCode, stderr, output, errMsgs)
 }
 
 // runPrePrompt executes the pre-prompt and stores the session ID for phase 1.
@@ -298,17 +335,7 @@ func (o *Orbit) runPostPrompt() error {
 			o.debug.Log("Saving failed post-completion session for debugging")
 			_ = o.logManager.SavePostCompletionSession(result, startTime)
 		}
-		var stderr, output string
-		var errMsgs []string
-		if result != nil {
-			stderr = result.Stderr
-			output = result.Output
-			errMsgs = result.Errors
-		} else {
-			stderr = err.Error()
-			errMsgs = []string{err.Error()}
-		}
-		classified := o.errorClassifier.Classify(1, stderr, output, errMsgs)
+		classified := o.classifyRunError(result, err)
 		o.debug.LogError(classified.Class.String(), classified.Message, classified.Class.IsRetryable())
 		return classified
 	}
@@ -325,7 +352,7 @@ func (o *Orbit) runPostPrompt() error {
 		if o.logManager != nil {
 			_ = o.logManager.SavePostCompletionSession(result, startTime)
 		}
-		classified := o.errorClassifier.Classify(1, result.Stderr, result.Output, result.Errors)
+		classified := o.classifyRunError(result, nil)
 		o.debug.LogError(classified.Class.String(), classified.Message, classified.Class.IsRetryable())
 		return classified
 	}
@@ -585,22 +612,7 @@ func (o *Orbit) runPhase(phase int) error {
 			_ = o.logManager.SaveSession(phase, result, startTime)
 		}
 
-		// Classify using agent-specific classifier.
-		// Guard against nil result: when the agent returns (nil, error), use the
-		// error message for classification instead of dereferencing nil fields.
-		var stderr, output string
-		var errMsgs []string
-		if result != nil {
-			stderr = result.Stderr
-			output = result.Output
-			errMsgs = result.Errors
-		} else {
-			stderr = err.Error()
-			errMsgs = []string{err.Error()}
-		}
-		o.debug.Log("Classifying error from stderr=%d bytes, output=%d bytes, errors=%v",
-			len(stderr), len(output), errMsgs)
-		classified := o.errorClassifier.Classify(1, stderr, output, errMsgs)
+		classified := o.classifyRunError(result, err)
 		o.debug.LogError(classified.Class.String(), classified.Message, classified.Class.IsRetryable())
 		return classified
 	}
@@ -617,7 +629,7 @@ func (o *Orbit) runPhase(phase int) error {
 		if o.logManager != nil {
 			_ = o.logManager.SaveSession(phase, result, startTime)
 		}
-		classified := o.errorClassifier.Classify(1, result.Stderr, result.Output, result.Errors)
+		classified := o.classifyRunError(result, nil)
 		o.debug.LogError(classified.Class.String(), classified.Message, classified.Class.IsRetryable())
 		return classified
 	}
