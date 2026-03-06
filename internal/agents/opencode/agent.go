@@ -127,14 +127,20 @@ func parseCreatedTime(raw json.RawMessage, fallback time.Time) time.Time {
 		}
 		// Try as numeric string (unix timestamp)
 		if unix, err := strconv.ParseInt(str, 10, 64); err == nil {
-			return unixToTime(unix)
+			if t := unixToTime(unix); !t.IsZero() {
+				return t
+			}
+			return fallback
 		}
 	}
 
 	// Try to parse as a number (unix timestamp)
 	var num float64
 	if err := json.Unmarshal(raw, &num); err == nil {
-		return unixToTime(int64(num))
+		if t := unixToTime(int64(num)); !t.IsZero() {
+			return t
+		}
+		return fallback
 	}
 
 	return fallback
@@ -162,6 +168,13 @@ func (a *Agent) DiscoverSessions(ctx context.Context, projectDir string) ([]agen
 		return nil, nil
 	}
 
+	return discoverSessionsIn(ctx, sessionDir)
+}
+
+// discoverSessionsIn scans sessionDir for OpenCode session subdirectories and
+// returns session metadata for each. Extracted from DiscoverSessions to allow
+// testing with arbitrary directories.
+func discoverSessionsIn(ctx context.Context, sessionDir string) ([]agents.SessionInfo, error) {
 	// Sessions are stored in ~/.local/share/opencode/storage/message/<sessionID>/
 	entries, err := os.ReadDir(sessionDir)
 	if err != nil {
@@ -220,6 +233,11 @@ func (a *Agent) DiscoverSessions(ctx context.Context, projectDir string) ([]agen
 
 			createdAt = parseCreatedTime(msg.Time.Created, modTime)
 			break // Only need the first message for metadata
+		}
+
+		// Fall back to directory modTime when no msg_ file provided a usable timestamp.
+		if createdAt.IsZero() {
+			createdAt = modTime
 		}
 
 		sessions = append(sessions, agents.SessionInfo{

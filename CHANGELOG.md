@@ -10,11 +10,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 
 - Fix Copilot session listing missing sessions when project path contains symlinks by normalizing paths with `EvalSymlinks` + `Clean` before comparison, matching the existing Codex behavior (T-290)
+- Fix OpenCode `DiscoverSessions` leaving `CreatedAt` as zero time when no `msg_` files are present or when timestamp parsing yields zero; now falls back to directory modification time
 
 ### Added
 
 - Add regression test for Copilot session path normalization with symlinked project paths (T-290)
-
 ### Refactored
 
 - Split `internal/orbit/orbit.go` (~3,030 lines) into 5 focused files: `orbit.go` (core lifecycle, ~500 lines), `single.go` (single-run orchestration, ~870 lines), `variants.go` (variant orchestration, ~1,120 lines), `comparison.go` (comparison/consolidation/reporting, ~410 lines), and `registry_bridge.go` (registry updates, ~190 lines). No logic changes — all methods remain on `*Orbit`, all tests pass unchanged.

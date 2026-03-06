@@ -36,6 +36,18 @@ Two functions read from session_meta:
 
 `resolveInput()` and `resolveFollowInput()` use `findCodexSession()` to locate a session by UUID. This scans all codex sessions without project filtering (intentional — user explicitly asked for a specific session).
 
+## OpenCode session structure
+
+Sessions stored in `~/.local/share/opencode/storage/message/<sessionID>/`.
+
+Each session directory contains `msg_<id>.json` files. The `DiscoverSessions` method reads the first `msg_` file to extract `time.created` for `CreatedAt`.
+
+The `parseCreatedTime` function handles multiple timestamp formats: RFC3339, RFC3339Nano, unix seconds, unix milliseconds, and numeric strings. It accepts a `fallback` parameter used when parsing fails.
+
+**Gotcha**: `unixToTime` returns `time.Time{}` for values <= 0. Callers of `parseCreatedTime` should not assume the fallback is always honored — `unixToTime` results must be checked for zero before returning. (Fixed in T-273.)
+
+**Gotcha**: If no `msg_` files exist in the session directory (or all fail to read/unmarshal), the `CreatedAt` will be zero unless there's an explicit fallback to directory modTime after the msg_ file loop. (Fixed in T-273.)
+
 ## Kiro IDE execution detail actions
 
 When a `costPath` (execution detail file path) is provided, the Kiro IDE parser reads the `actions` array from the execution detail file and converts them to `tool_use`/`tool_result` entry pairs. This produces much richer transcripts than the `.chat` file alone, which only has conversational messages.
