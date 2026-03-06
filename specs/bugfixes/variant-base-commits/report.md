@@ -8,7 +8,7 @@
 When starting a new variant run with existing metadata (`continueExisting=false`), `Manager.Setup()` cleans up unfinished variants but preserves completed ones. It does not update `metadata.BaseCommit`, and new branches are created at the current HEAD. If HEAD has moved since the original run, this mixes base commits across variants: completed variants use the old base, new variants use the current HEAD. Comparisons later use `metadata.BaseCommit` for all diffs, producing incorrect results for newly-created variants.
 
 **Reproduction steps:**
-1. Run `orbit run --variants 3` — all variants complete at commit `abc123`
+1. Run `orbit run --variants 3` at commit `abc123`
 2. Only variant 1 completes; variants 2 and 3 fail
 3. Make a new commit (HEAD is now `def456`)
 4. Re-run `orbit run --variants 3`, choose "new run"

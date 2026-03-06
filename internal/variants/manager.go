@@ -375,7 +375,8 @@ func (m *Manager) UpdateAgentInfo(id int, agentAlias, agentType, model string) e
 }
 
 // hasCompletedVariants returns true if any variant has StatusCompleted.
-// Caller must NOT hold the mutex (metadata is only read during Setup which is single-threaded).
+// Returns false when metadata is nil (no previous run).
+// Does not acquire m.mu; safe to call during single-threaded Setup.
 func (m *Manager) hasCompletedVariants() bool {
 	if m.metadata == nil {
 		return false
