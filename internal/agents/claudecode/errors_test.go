@@ -189,16 +189,48 @@ func TestClassifier_Classify_UsageLimit(t *testing.T) {
 func TestClassifier_Classify_UsageLimitNoResetTime(t *testing.T) {
 	c := NewClassifier()
 
-	// When usage limit message is detected but time parsing fails,
+	// When usage limit message is detected but has no time at all,
 	// it should fall through to unknown error (not crash)
 	err := c.Classify(1, "you've hit your limit", "", nil)
-	// Should not be RateLimitWait because parsing failed
+	// Should not be RateLimitWait because no reset time present
 	if err.Class == agents.ErrorClassRateLimitWait {
-		t.Errorf("Class = %v, should not be RateLimitWait when time parsing fails", err.Class)
+		t.Errorf("Class = %v, should not be RateLimitWait when no reset time present", err.Class)
 	}
 	// Should be Unknown since no other pattern matches
 	if err.Class != agents.ErrorClassUnknown {
 		t.Errorf("Class = %v, want %v", err.Class, agents.ErrorClassUnknown)
+	}
+}
+
+func TestClassifier_Classify_UsageLimitWithoutTimezone(t *testing.T) {
+	c := NewClassifier()
+
+	// T-203: When usage limit has a reset time but no timezone, it should still
+	// be classified as RateLimitWait (defaulting to local time).
+	tests := []struct {
+		name   string
+		stderr string
+		stdout string
+	}{
+		{"no timezone simple", "You've hit your limit · resets 3am", ""},
+		{"no timezone pm", "You've hit your limit · resets 5pm", ""},
+		{"no timezone with minutes", "You've hit your limit · resets 3:30am", ""},
+		{"no timezone in stdout", "", "You've hit your limit · resets 12pm"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := c.Classify(1, tt.stderr, tt.stdout, nil)
+			if err.Class != agents.ErrorClassRateLimitWait {
+				t.Errorf("Class = %v, want %v", err.Class, agents.ErrorClassRateLimitWait)
+			}
+			if err.Agent != "claude-code" {
+				t.Errorf("Agent = %q, want %q", err.Agent, "claude-code")
+			}
+			if err.RetryAfter <= 0 {
+				t.Errorf("RetryAfter = %v, want > 0", err.RetryAfter)
+			}
+		})
 	}
 }
 
@@ -216,7 +248,11 @@ func TestParseUsageLimitReset(t *testing.T) {
 		{"timezone abbreviation", "resets 3am (EST)", true},
 		{"full message", "You've hit your limit · resets 3am (Australia/Melbourne)", true},
 		{"no match", "some random error", false},
-		{"missing timezone", "resets 3am", false},
+		{"no timezone simple", "resets 3am", true},
+		{"no timezone pm", "resets 5pm", true},
+		{"no timezone with minutes", "resets 3:30pm", true},
+		{"no timezone with space", "resets 3 am", true},
+		{"no timezone full message", "You've hit your limit · resets 3am", true},
 		{"missing time", "resets (UTC)", false},
 	}
 
