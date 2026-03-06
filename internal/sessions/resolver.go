@@ -186,6 +186,10 @@ func (r *Resolver) ResolvePath(source, sessionID string) (string, error) {
 		if path == "" {
 			return "", fmt.Errorf("session not found: %s", sessionID)
 		}
+		baseDir := filepath.Join(r.homeDir, ".codex", "sessions")
+		if !web.IsPathWithinDir(path, baseDir) {
+			return "", fmt.Errorf("session not found: %s", sessionID)
+		}
 		return path, nil
 	case SourceCopilot:
 		path, err := findCopilotSession(r.homeDir, sessionID)
@@ -193,6 +197,10 @@ func (r *Resolver) ResolvePath(source, sessionID string) (string, error) {
 			return "", err
 		}
 		if path == "" {
+			return "", fmt.Errorf("session not found: %s", sessionID)
+		}
+		baseDir := filepath.Join(r.homeDir, ".copilot", "session-state")
+		if !web.IsPathWithinDir(path, baseDir) {
 			return "", fmt.Errorf("session not found: %s", sessionID)
 		}
 		return path, nil
@@ -256,6 +264,9 @@ func (r *Resolver) findKiroIDEPath(workspaceDir, sessionID string) (string, erro
 		return "", fmt.Errorf("session not found: %s", sessionID)
 	}
 
+	if !web.IsPathWithinDir(bestPath, workspaceDir) {
+		return "", fmt.Errorf("session not found: %s", sessionID)
+	}
 	return bestPath, nil
 }
 
