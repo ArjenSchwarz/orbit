@@ -2,6 +2,8 @@ package codex
 
 import (
 	"context"
+	"os"
+	"path/filepath"
 	"slices"
 	"testing"
 
@@ -291,6 +293,194 @@ func TestAgent_DiscoverSessions(t *testing.T) {
 	}
 	// Empty result is acceptable for non-existent directory
 	_ = sessions
+}
+
+func TestAgent_DiscoverSessions_NestedDirs(t *testing.T) {
+	// Codex sessions are stored in YYYY/MM/DD subdirectories, not flat in the root.
+	// Regression test: DiscoverSessions must find sessions in nested directories.
+	tmpDir := t.TempDir()
+
+	// Create a session file at YYYY/MM/DD/session.jsonl
+	nestedDir := filepath.Join(tmpDir, "2025", "01", "15")
+	if err := os.MkdirAll(nestedDir, 0o755); err != nil {
+		t.Fatalf("failed to create nested dir: %v", err)
+	}
+
+	sessionFile := filepath.Join(nestedDir, "session-abc123.jsonl")
+	if err := os.WriteFile(sessionFile, []byte(`{"type":"session_meta"}`+"\n"), 0o644); err != nil {
+		t.Fatalf("failed to write session file: %v", err)
+	}
+
+	agent := &Agent{
+		config:     agents.AgentConfig{},
+		cliPath:    "codex",
+		sessionDir: tmpDir,
+	}
+
+	sessions, err := agent.DiscoverSessions(context.Background(), "")
+	if err != nil {
+		t.Fatalf("DiscoverSessions() error = %v", err)
+	}
+
+	if len(sessions) != 1 {
+		t.Fatalf("expected 1 session from nested directory, got %d", len(sessions))
+	}
+
+	if sessions[0].Path != sessionFile {
+		t.Errorf("session.Path = %q, want %q", sessions[0].Path, sessionFile)
+	}
+	if sessions[0].Agent != "codex" {
+		t.Errorf("session.Agent = %q, want %q", sessions[0].Agent, "codex")
+	}
+	// ID should have .jsonl stripped (filename without extension)
+	if sessions[0].ID != "session-abc123" {
+		t.Errorf("session.ID = %q, want %q", sessions[0].ID, "session-abc123")
+	}
+}
+
+func TestAgent_DiscoverSessions_MultipleNestedSessions(t *testing.T) {
+	// Verify that sessions across multiple date directories are all discovered.
+	tmpDir := t.TempDir()
+
+	dates := []struct {
+		path string
+		name string
+	}{
+		{"2025/01/15", "session-aaa.jsonl"},
+		{"2025/01/16", "session-bbb.jsonl"},
+		{"2025/02/01", "session-ccc.jsonl"},
+	}
+
+	for _, d := range dates {
+		dir := filepath.Join(tmpDir, d.path)
+		if err := os.MkdirAll(dir, 0o755); err != nil {
+			t.Fatalf("failed to create dir %s: %v", dir, err)
+		}
+		if err := os.WriteFile(filepath.Join(dir, d.name), []byte(`{"type":"session_meta"}`+"\n"), 0o644); err != nil {
+			t.Fatalf("failed to write file: %v", err)
+		}
+	}
+
+	agent := &Agent{
+		config:     agents.AgentConfig{},
+		cliPath:    "codex",
+		sessionDir: tmpDir,
+	}
+
+	sessions, err := agent.DiscoverSessions(context.Background(), "")
+	if err != nil {
+		t.Fatalf("DiscoverSessions() error = %v", err)
+	}
+
+	if len(sessions) != 3 {
+		t.Fatalf("expected 3 sessions from nested directories, got %d", len(sessions))
+	}
+}
+
+func TestAgent_DiscoverSessions_SkipsNonJSONL(t *testing.T) {
+	// Only .jsonl files should be returned, not other file types.
+	tmpDir := t.TempDir()
+
+	nestedDir := filepath.Join(tmpDir, "2025", "01", "15")
+	if err := os.MkdirAll(nestedDir, 0o755); err != nil {
+		t.Fatalf("failed to create nested dir: %v", err)
+	}
+
+	// Create a .jsonl file and a .txt file
+	if err := os.WriteFile(filepath.Join(nestedDir, "session-abc.jsonl"), []byte(`{"type":"session_meta"}`+"\n"), 0o644); err != nil {
+		t.Fatalf("failed to write session file: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(nestedDir, "notes.txt"), []byte("not a session"), 0o644); err != nil {
+		t.Fatalf("failed to write txt file: %v", err)
+	}
+
+	agent := &Agent{
+		config:     agents.AgentConfig{},
+		cliPath:    "codex",
+		sessionDir: tmpDir,
+	}
+
+	sessions, err := agent.DiscoverSessions(context.Background(), "")
+	if err != nil {
+		t.Fatalf("DiscoverSessions() error = %v", err)
+	}
+
+	if len(sessions) != 1 {
+		t.Fatalf("expected 1 session (only .jsonl), got %d", len(sessions))
+	}
+}
+
+func TestAgent_DiscoverSessions_ExtractsUUID(t *testing.T) {
+	// When a filename contains a UUID, the session ID should be the UUID only.
+	tmpDir := t.TempDir()
+
+	nestedDir := filepath.Join(tmpDir, "2025", "01", "15")
+	if err := os.MkdirAll(nestedDir, 0o755); err != nil {
+		t.Fatalf("failed to create nested dir: %v", err)
+	}
+
+	sessionFile := filepath.Join(nestedDir, "session-a1b2c3d4-e5f6-7890-abcd-ef1234567890.jsonl")
+	if err := os.WriteFile(sessionFile, []byte(`{"type":"session_meta"}`+"\n"), 0o644); err != nil {
+		t.Fatalf("failed to write session file: %v", err)
+	}
+
+	agent := &Agent{
+		config:     agents.AgentConfig{},
+		cliPath:    "codex",
+		sessionDir: tmpDir,
+	}
+
+	sessions, err := agent.DiscoverSessions(context.Background(), "")
+	if err != nil {
+		t.Fatalf("DiscoverSessions() error = %v", err)
+	}
+
+	if len(sessions) != 1 {
+		t.Fatalf("expected 1 session, got %d", len(sessions))
+	}
+
+	wantID := "a1b2c3d4-e5f6-7890-abcd-ef1234567890"
+	if sessions[0].ID != wantID {
+		t.Errorf("session.ID = %q, want UUID %q", sessions[0].ID, wantID)
+	}
+}
+
+func TestAgent_DiscoverSessions_SkipsEmptyFiles(t *testing.T) {
+	// Zero-size files should be skipped (incomplete or in-progress sessions).
+	tmpDir := t.TempDir()
+
+	nestedDir := filepath.Join(tmpDir, "2025", "01", "15")
+	if err := os.MkdirAll(nestedDir, 0o755); err != nil {
+		t.Fatalf("failed to create nested dir: %v", err)
+	}
+
+	// Create an empty .jsonl file
+	if err := os.WriteFile(filepath.Join(nestedDir, "empty-session.jsonl"), []byte{}, 0o644); err != nil {
+		t.Fatalf("failed to write empty file: %v", err)
+	}
+	// Create a non-empty .jsonl file
+	if err := os.WriteFile(filepath.Join(nestedDir, "valid-session.jsonl"), []byte(`{"type":"session_meta"}`+"\n"), 0o644); err != nil {
+		t.Fatalf("failed to write valid file: %v", err)
+	}
+
+	agent := &Agent{
+		config:     agents.AgentConfig{},
+		cliPath:    "codex",
+		sessionDir: tmpDir,
+	}
+
+	sessions, err := agent.DiscoverSessions(context.Background(), "")
+	if err != nil {
+		t.Fatalf("DiscoverSessions() error = %v", err)
+	}
+
+	if len(sessions) != 1 {
+		t.Fatalf("expected 1 session (empty file skipped), got %d", len(sessions))
+	}
+
+	if sessions[0].ID != "valid-session" {
+		t.Errorf("session.ID = %q, want %q", sessions[0].ID, "valid-session")
+	}
 }
 
 func TestAgent_Version(t *testing.T) {

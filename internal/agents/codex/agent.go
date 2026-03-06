@@ -4,9 +4,12 @@ package codex
 import (
 	"bytes"
 	"context"
+	"io/fs"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
+	"strings"
 
 	"github.com/arjenschwarz/orbit/internal/agents"
 )
@@ -16,14 +19,18 @@ var _ agents.Agent = (*Agent)(nil)
 
 const defaultPrompt = "Run /next-task --phase and when complete run /commit"
 
+// uuidPattern matches standard UUID format for extracting session IDs from filenames.
+var uuidPattern = regexp.MustCompile(`(?i)[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}`)
+
 func init() {
 	agents.Register("codex", New)
 }
 
 // Agent implements the agents.Agent interface for Codex.
 type Agent struct {
-	config  agents.AgentConfig
-	cliPath string
+	config     agents.AgentConfig
+	cliPath    string
+	sessionDir string // override for testing; empty means use DefaultSessionDir()
 }
 
 // New creates a new Codex agent.
@@ -71,14 +78,17 @@ func (a *Agent) DefaultSessionDir() string {
 
 // DiscoverSessions lists sessions for a given project directory.
 func (a *Agent) DiscoverSessions(ctx context.Context, projectDir string) ([]agents.SessionInfo, error) {
-	sessionDir := a.DefaultSessionDir()
+	sessionDir := a.sessionDir
+	if sessionDir == "" {
+		sessionDir = a.DefaultSessionDir()
+	}
 	if sessionDir == "" {
 		return nil, nil
 	}
 
-	// Sessions may be stored in ~/.codex/sessions/
-	entries, err := os.ReadDir(sessionDir)
-	if err != nil {
+	// Codex sessions are stored in YYYY/MM/DD subdirectories under ~/.codex/sessions/.
+	// Walk the tree to find all .jsonl session files.
+	if _, err := os.Stat(sessionDir); err != nil {
 		if os.IsNotExist(err) {
 			return nil, nil
 		}
@@ -86,23 +96,42 @@ func (a *Agent) DiscoverSessions(ctx context.Context, projectDir string) ([]agen
 	}
 
 	var sessions []agents.SessionInfo
-	for _, entry := range entries {
-		if entry.IsDir() {
-			continue
+	err := filepath.WalkDir(sessionDir, func(path string, d fs.DirEntry, err error) error {
+		if err != nil {
+			// Skip inaccessible entries (e.g., permission denied) and continue walking.
+			return nil
+		}
+		if d.IsDir() || !strings.HasSuffix(d.Name(), ".jsonl") {
+			return nil
 		}
 
-		info, err := entry.Info()
-		if err != nil {
-			continue
+		info, infoErr := d.Info()
+		if infoErr != nil {
+			return nil
+		}
+
+		if info.Size() == 0 {
+			return nil
+		}
+
+		// Strip .jsonl extension and extract UUID if present, consistent with sessions/lister.go.
+		filename := d.Name()
+		sessionID := strings.TrimSuffix(filename, ".jsonl")
+		if match := uuidPattern.FindString(filename); match != "" {
+			sessionID = match
 		}
 
 		sessions = append(sessions, agents.SessionInfo{
-			ID:        entry.Name(),
+			ID:        sessionID,
 			Agent:     "codex",
-			Path:      filepath.Join(sessionDir, entry.Name()),
+			Path:      path,
 			CreatedAt: info.ModTime(),
 			Size:      info.Size(),
 		})
+		return nil
+	})
+	if err != nil {
+		return nil, err
 	}
 
 	return sessions, nil
