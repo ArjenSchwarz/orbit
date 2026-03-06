@@ -67,10 +67,53 @@ func (l *Lister) ListAll(projectPath string) ([]SessionInfo, []ListWarning, erro
 }
 
 // listClaude returns all Claude sessions for a project.
+// When projectPath is empty, returns sessions from all projects.
 func (l *Lister) listClaude(projectPath string) ([]SessionInfo, error) {
-	claudeProjectPath := claudecode.BuildProjectPath(projectPath)
-	projectDir := filepath.Join(l.homeDir, ".claude", "projects", claudeProjectPath)
+	projectsRoot := filepath.Join(l.homeDir, ".claude", "projects")
 
+	if projectPath == "" {
+		return l.listClaudeAllProjects(projectsRoot)
+	}
+
+	claudeProjectPath := claudecode.BuildProjectPath(projectPath)
+	projectDir := filepath.Join(projectsRoot, claudeProjectPath)
+
+	return l.listClaudeDir(projectDir)
+}
+
+// listClaudeAllProjects iterates over all project subdirectories and collects sessions.
+func (l *Lister) listClaudeAllProjects(projectsRoot string) ([]SessionInfo, error) {
+	if _, err := os.Stat(projectsRoot); os.IsNotExist(err) {
+		return nil, nil
+	}
+
+	entries, err := os.ReadDir(projectsRoot)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read projects directory: %w", err)
+	}
+
+	var allSessions []SessionInfo
+	for _, entry := range entries {
+		if !entry.IsDir() {
+			continue
+		}
+		projectDir := filepath.Join(projectsRoot, entry.Name())
+		sessions, err := l.listClaudeDir(projectDir)
+		if err != nil {
+			// Individual project directory failures (e.g. permission denied) are
+			// intentionally skipped so that sessions from other projects are still
+			// returned. This parallels how ListAll collects per-source warnings
+			// rather than stopping on the first source failure.
+			continue
+		}
+		allSessions = append(allSessions, sessions...)
+	}
+
+	return allSessions, nil
+}
+
+// listClaudeDir returns all Claude sessions from a single project directory.
+func (l *Lister) listClaudeDir(projectDir string) ([]SessionInfo, error) {
 	if _, err := os.Stat(projectDir); os.IsNotExist(err) {
 		return nil, nil
 	}
