@@ -1916,68 +1916,59 @@ func (c *exitCodeCapturingClassifier) Classify(exitCode int, stderr, stdout stri
 func TestClassifyFromAgent_PassesExitCode(t *testing.T) {
 	t.Parallel()
 
-	// Register a test classifier factory that creates a fresh instance per call.
-	// classifyFromAgent calls GetClassifier once, so each subtest gets its own
-	// classify closure with its own classifier instance.
-	const testAgent = "exit-code-test-agent"
-	var currentClassifier *exitCodeCapturingClassifier
-	agents.RegisterClassifier(testAgent, func() agents.ErrorClassifier {
-		currentClassifier = &exitCodeCapturingClassifier{}
-		return currentClassifier
-	})
-
-	tests := []struct {
-		name         string
+	tests := map[string]struct {
 		result       *agents.RunResult
 		err          error
 		wantExitCode int
 	}{
-		{
-			name:         "exit code 42 from result",
+		"exit code 42 from result": {
 			result:       &agents.RunResult{ExitCode: 42, IsError: true, Errors: []string{"failed"}},
 			err:          nil,
 			wantExitCode: 42,
 		},
-		{
-			name:         "exit code 0 with error flag",
+		"exit code 0 with error flag": {
 			result:       &agents.RunResult{ExitCode: 0, IsError: true, Errors: []string{"failed"}},
 			err:          nil,
 			wantExitCode: 0,
 		},
-		{
-			name:         "exit code 137 (killed) with error",
+		"exit code 137 (killed) with error": {
 			result:       &agents.RunResult{ExitCode: 137, Stderr: "killed"},
 			err:          errors.New("process killed"),
 			wantExitCode: 137,
 		},
-		{
-			name:         "exit code 2 from result with error",
+		"exit code 2 from result with error": {
 			result:       &agents.RunResult{ExitCode: 2, Stderr: "misuse"},
 			err:          errors.New("misuse of shell"),
 			wantExitCode: 2,
 		},
-		{
-			name:         "nil result defaults to 1",
+		"nil result defaults to 1": {
 			result:       nil,
 			err:          errors.New("agent binary not found"),
 			wantExitCode: 1,
 		},
 	}
 
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			// Each call to classifyFromAgent invokes GetClassifier, which creates
-			// a fresh classifier instance via the factory registered above.
-			classify := classifyFromAgent(testAgent)
-			classifier := currentClassifier
+	for name, tc := range tests {
+		t.Run(name, func(t *testing.T) {
+			// Register a per-subtest classifier with a unique agent name
+			// to avoid shared mutable state and global registry pollution.
+			agentName := "exit-code-test-" + name
+			var classifier *exitCodeCapturingClassifier
+			agents.RegisterClassifier(agentName, func() agents.ErrorClassifier {
+				classifier = &exitCodeCapturingClassifier{}
+				return classifier
+			})
+			t.Cleanup(func() { agents.UnregisterClassifier(agentName) })
 
-			classified := classify(tt.result, tt.err)
+			classify := classifyFromAgent(agentName)
+
+			classified := classify(tc.result, tc.err)
 			if classified == nil {
 				t.Fatal("expected non-nil ClassifiedError")
 			}
-			if classifier.capturedExitCode != tt.wantExitCode {
+			if classifier.capturedExitCode != tc.wantExitCode {
 				t.Errorf("exit code passed to Classify = %d, want %d",
-					classifier.capturedExitCode, tt.wantExitCode)
+					classifier.capturedExitCode, tc.wantExitCode)
 			}
 		})
 	}
@@ -1989,34 +1980,30 @@ func TestClassifyFromAgent_PassesExitCode(t *testing.T) {
 func TestDirectClassify_PassesExitCode(t *testing.T) {
 	t.Parallel()
 
-	tests := []struct {
-		name         string
+	tests := map[string]struct {
 		result       *agents.RunResult
 		err          error
 		wantExitCode int
 	}{
-		{
-			name:         "result with exit code 42",
+		"result with exit code 42": {
 			result:       &agents.RunResult{ExitCode: 42, Stderr: "timeout"},
 			err:          errors.New("timeout"),
 			wantExitCode: 42,
 		},
-		{
-			name:         "result with exit code 0 and IsError",
+		"result with exit code 0 and IsError": {
 			result:       &agents.RunResult{ExitCode: 0, IsError: true, Errors: []string{"failed"}},
 			err:          nil,
 			wantExitCode: 0,
 		},
-		{
-			name:         "nil result defaults to 1",
+		"nil result defaults to 1": {
 			result:       nil,
 			err:          errors.New("binary not found"),
 			wantExitCode: 1,
 		},
 	}
 
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
+	for name, tc := range tests {
+		t.Run(name, func(t *testing.T) {
 			classifier := &exitCodeCapturingClassifier{}
 			o := &Orbit{
 				config:          Config{},
@@ -2024,13 +2011,13 @@ func TestDirectClassify_PassesExitCode(t *testing.T) {
 				errorClassifier: classifier,
 			}
 
-			classified := o.classifyRunError(tt.result, tt.err)
+			classified := o.classifyRunError(tc.result, tc.err)
 			if classified == nil {
 				t.Fatal("expected non-nil ClassifiedError")
 			}
-			if classifier.capturedExitCode != tt.wantExitCode {
+			if classifier.capturedExitCode != tc.wantExitCode {
 				t.Errorf("exit code passed to Classify = %d, want %d",
-					classifier.capturedExitCode, tt.wantExitCode)
+					classifier.capturedExitCode, tc.wantExitCode)
 			}
 		})
 	}
