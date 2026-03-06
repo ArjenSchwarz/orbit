@@ -48,6 +48,11 @@ The `parseCreatedTime` function handles multiple timestamp formats: RFC3339, RFC
 
 **Gotcha**: If no `msg_` files exist in the session directory (or all fail to read/unmarshal), the `CreatedAt` will be zero unless there's an explicit fallback to directory modTime after the msg_ file loop. (Fixed in T-273.)
 
+## Kiro IDE path resolution
+
+`resolveKiroIDE` and `ResolvePath(SourceKiroIDE)` both delegate to `findKiroIDEPath(workspaceDir, sessionID)` for scanning `.chat` files. The `IsPathWithinDir` check is inside the scan loop (not after it) so that symlinked files pointing outside the workspace are skipped without shadowing legitimate files. This is important because the scan selects the file with the most chat messages -- a symlink with more messages must not prevent a valid file from being returned.
+
+Note: `ResolvePath` for Codex and Copilot does not include `IsPathWithinDir` validation (unlike their `Resolve` counterparts). This is a pre-existing gap.
 ## Kiro IDE execution detail actions
 
 When a `costPath` (execution detail file path) is provided, the Kiro IDE parser reads the `actions` array from the execution detail file and converts them to `tool_use`/`tool_result` entry pairs. This produces much richer transcripts than the `.chat` file alone, which only has conversational messages.

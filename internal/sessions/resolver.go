@@ -128,55 +128,9 @@ func (r *Resolver) resolveKiroIDE(sessionID string) (*ResolvedSession, error) {
 		return nil, fmt.Errorf("session not found: %s", sessionID)
 	}
 
-	entries, err := os.ReadDir(workspaceDir)
+	bestPath, err := r.findKiroIDEPath(workspaceDir, sessionID)
 	if err != nil {
-		return nil, fmt.Errorf("read kiro ide workspace: %w", err)
-	}
-
-	var bestPath string
-	var bestCount int
-	var bestMtime time.Time
-
-	for _, entry := range entries {
-		if entry.IsDir() || !strings.HasSuffix(entry.Name(), ".chat") {
-			continue
-		}
-
-		path := filepath.Join(workspaceDir, entry.Name())
-		data, err := os.ReadFile(path)
-		if err != nil {
-			continue
-		}
-
-		var header kiroIDEChatHeader
-		if err := json.Unmarshal(data, &header); err != nil {
-			continue
-		}
-
-		if header.ExecutionID != sessionID {
-			continue
-		}
-
-		info, err := entry.Info()
-		if err != nil {
-			continue
-		}
-
-		count := len(header.Chat)
-		mtime := info.ModTime()
-		if bestPath == "" || count > bestCount || (count == bestCount && mtime.After(bestMtime)) {
-			bestPath = path
-			bestCount = count
-			bestMtime = mtime
-		}
-	}
-
-	if bestPath == "" {
-		return nil, fmt.Errorf("session not found: %s", sessionID)
-	}
-
-	if !web.IsPathWithinDir(bestPath, workspaceDir) {
-		return nil, fmt.Errorf("session not found: %s", sessionID)
+		return nil, err
 	}
 
 	f, err := os.Open(bestPath)
@@ -245,17 +199,9 @@ func (r *Resolver) ResolvePath(source, sessionID string) (string, error) {
 	case SourceKiroCLI:
 		return "", fmt.Errorf("kiro-cli sessions are SQLite-backed and have no file path")
 	case SourceKiroIDE:
-		// Resolve to find the best .chat file path
-		resolved, err := r.resolveKiroIDE(sessionID)
-		if err != nil {
-			return "", err
-		}
-		// We opened a file — close it, we just need the path
-		_ = resolved.Reader.Close()
-		// Re-derive the path (same logic as resolveKiroIDE)
 		workspaceDir, err := transcript.KiroIDEWorkspaceDir(r.projectPath)
 		if err != nil {
-			return "", err
+			return "", fmt.Errorf("session not found: %s", sessionID)
 		}
 		return r.findKiroIDEPath(workspaceDir, sessionID)
 	default:
@@ -264,10 +210,13 @@ func (r *Resolver) ResolvePath(source, sessionID string) (string, error) {
 }
 
 // findKiroIDEPath finds the best .chat file path for a Kiro IDE session.
+// Each candidate is validated with IsPathWithinDir inside the scan loop,
+// so symlinks pointing outside the workspace are skipped without shadowing
+// legitimate files.
 func (r *Resolver) findKiroIDEPath(workspaceDir, sessionID string) (string, error) {
 	entries, err := os.ReadDir(workspaceDir)
 	if err != nil {
-		return "", err
+		return "", fmt.Errorf("read kiro ide workspace: %w", err)
 	}
 
 	var bestPath string
@@ -279,6 +228,9 @@ func (r *Resolver) findKiroIDEPath(workspaceDir, sessionID string) (string, erro
 			continue
 		}
 		path := filepath.Join(workspaceDir, entry.Name())
+		if !web.IsPathWithinDir(path, workspaceDir) {
+			continue
+		}
 		data, err := os.ReadFile(path)
 		if err != nil {
 			continue
@@ -303,6 +255,7 @@ func (r *Resolver) findKiroIDEPath(workspaceDir, sessionID string) (string, erro
 	if bestPath == "" {
 		return "", fmt.Errorf("session not found: %s", sessionID)
 	}
+
 	return bestPath, nil
 }
 
