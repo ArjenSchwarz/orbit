@@ -602,6 +602,20 @@ func (m *Manager) Finalize(ctx context.Context, variantID int) error {
 	return m.Cleanup(ctx, 0) // Remove all including the finalized one
 }
 
+// SetTasksFile stores the tasks file path (relative to repo root) in metadata.
+// This is used by status to find the correct tasks file in each worktree.
+func (m *Manager) SetTasksFile(relPath string) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	if m.metadata == nil {
+		return errors.New("no metadata to update")
+	}
+
+	m.metadata.TasksFileRel = relPath
+	return m.saveLocked()
+}
+
 // GetMetadata returns a copy of the current metadata (for status display).
 // Returns nil if no metadata is loaded.
 func (m *Manager) GetMetadata() *VariantsMetadata {

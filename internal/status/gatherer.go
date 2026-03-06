@@ -18,11 +18,12 @@ import (
 
 // Gatherer collects status information for variants.
 type Gatherer struct {
-	git        variants.GitClient
-	specName   string
-	specDir    string // Path to spec directory in main repo (e.g., "specs/feature")
-	baseCommit string
-	repoRoot   string
+	git          variants.GitClient
+	specName     string
+	specDir      string // Path to spec directory in main repo (e.g., "specs/feature")
+	baseCommit   string
+	repoRoot     string
+	tasksFileRel string // Tasks file path relative to repo root (from metadata); empty means auto-detect
 }
 
 // NewGatherer creates a Gatherer for the given spec.
@@ -34,6 +35,12 @@ func NewGatherer(git variants.GitClient, specName, specDir, baseCommit, repoRoot
 		baseCommit: baseCommit,
 		repoRoot:   repoRoot,
 	}
+}
+
+// SetTasksFileRel sets the tasks file path relative to the repo root.
+// When set, gatherTaskProgress uses this path instead of auto-detecting.
+func (g *Gatherer) SetTasksFileRel(rel string) {
+	g.tasksFileRel = rel
 }
 
 // GatherAllVariants collects status information for all variants concurrently.
@@ -208,8 +215,10 @@ func (g *Gatherer) gatherKiroLastAction(ctx context.Context, v *variants.Variant
 
 // gatherTaskProgress retrieves task progress via rune CLI.
 func (g *Gatherer) gatherTaskProgress(worktreePath string) *TaskProgress {
-	// Construct path to tasks.md within the variant's worktree
-	tasksFile := filepath.Join(worktreePath, "specs", g.specName, "tasks.md")
+	tasksFile := g.resolveTasksFile(worktreePath)
+	if tasksFile == "" {
+		return nil // No tasks file found
+	}
 
 	// Create a rune client for this specific tasks file
 	runeClient := rune.NewClient(tasksFile)
@@ -241,6 +250,32 @@ func getActiveSessionID(summary *logs.Summary) string {
 		return summary.PostCompletion.SessionID
 	}
 	return ""
+}
+
+// resolveTasksFile determines the tasks file path for a worktree.
+// If tasksFileRel is set (from metadata), uses that path directly.
+// Otherwise falls back to detecting tasks.md or TASKS.md in the standard location.
+func (g *Gatherer) resolveTasksFile(worktreePath string) string {
+	// Use stored path from metadata if available
+	if g.tasksFileRel != "" {
+		candidate := filepath.Join(worktreePath, g.tasksFileRel)
+		if _, err := os.Stat(candidate); err == nil {
+			return candidate
+		}
+	}
+
+	// Fall back to auto-detection: try both tasks.md and TASKS.md
+	candidates := []string{
+		filepath.Join(worktreePath, "specs", g.specName, "tasks.md"),
+		filepath.Join(worktreePath, "specs", g.specName, "TASKS.md"),
+	}
+	for _, candidate := range candidates {
+		if _, err := os.Stat(candidate); err == nil {
+			return candidate
+		}
+	}
+
+	return "" // No tasks file found
 }
 
 // GetLiveTranscriptPath returns the path to the live Claude transcript.

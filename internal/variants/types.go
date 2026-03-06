@@ -46,6 +46,7 @@ type VariantsMetadata struct {
 	BaseCommit     string     `json:"base_commit"`
 	OriginalBranch string     `json:"original_branch"`
 	StartedAt      time.Time  `json:"started_at"`
+	TasksFileRel   string     `json:"tasks_file_rel,omitempty"` // Tasks file path relative to repo root
 	Variants       []*Variant `json:"variants"`
 }
 
