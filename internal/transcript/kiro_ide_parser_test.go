@@ -886,3 +886,349 @@ func TestParseKiroIDEFallsBackToChatWhenNoActions(t *testing.T) {
 		t.Errorf("entry 1 type = %q, want %q", result.Entries[1].Type, "assistant")
 	}
 }
+
+// Tests for session-level timestamp and model metadata extraction (Kiro IDE).
+// Kiro IDE sessions have a single metadata block with StartTime (ms epoch) and ModelID.
+// The first entry gets Timestamp from StartTime, all assistant entries get Model from ModelID.
+
+func TestConvertKiroIDEToEntries_TimestampOnFirstEntry(t *testing.T) {
+	// StartTime 1768694401000 ms = 2026-01-18T00:00:01Z
+	chatFile := &KiroIDEChatFile{
+		Chat: []KiroIDEMessage{
+			{Role: "human", Content: "Hello"},
+			{Role: "bot", Content: "Hi there"},
+			{Role: "human", Content: "Another question"},
+		},
+		Metadata: &KiroIDEMetadata{
+			ModelID:   "claude-sonnet-4-20250514",
+			StartTime: 1768694401000,
+		},
+	}
+
+	entries, warnings := convertKiroIDEToEntries(chatFile)
+	if len(warnings) != 0 {
+		t.Errorf("expected 0 warnings, got %d", len(warnings))
+	}
+	if len(entries) != 3 {
+		t.Fatalf("expected 3 entries, got %d", len(entries))
+	}
+
+	// First entry gets timestamp from metadata.StartTime
+	want := "2026-01-18T00:00:01Z"
+	if entries[0].Timestamp != want {
+		t.Errorf("first entry timestamp: got %q, want %q", entries[0].Timestamp, want)
+	}
+
+	// Subsequent entries have no timestamp
+	if entries[1].Timestamp != "" {
+		t.Errorf("second entry timestamp: got %q, want empty", entries[1].Timestamp)
+	}
+	if entries[2].Timestamp != "" {
+		t.Errorf("third entry timestamp: got %q, want empty", entries[2].Timestamp)
+	}
+}
+
+func TestConvertKiroIDEToEntries_ModelOnAssistantOnly(t *testing.T) {
+	chatFile := &KiroIDEChatFile{
+		Chat: []KiroIDEMessage{
+			{Role: "human", Content: "Hello"},
+			{Role: "bot", Content: "Hi there"},
+			{Role: "human", Content: "More"},
+			{Role: "bot", Content: "Sure"},
+		},
+		Metadata: &KiroIDEMetadata{
+			ModelID:   "claude-sonnet-4-20250514",
+			StartTime: 1768694401000,
+		},
+	}
+
+	entries, _ := convertKiroIDEToEntries(chatFile)
+	if len(entries) != 4 {
+		t.Fatalf("expected 4 entries, got %d", len(entries))
+	}
+
+	// User entries must NOT have Model set
+	if entries[0].Model != "" {
+		t.Errorf("user entry 0 model: got %q, want empty", entries[0].Model)
+	}
+	if entries[2].Model != "" {
+		t.Errorf("user entry 2 model: got %q, want empty", entries[2].Model)
+	}
+
+	// Assistant entries must have Model set
+	if entries[1].Model != "claude-sonnet-4-20250514" {
+		t.Errorf("assistant entry 1 model: got %q, want %q", entries[1].Model, "claude-sonnet-4-20250514")
+	}
+	if entries[3].Model != "claude-sonnet-4-20250514" {
+		t.Errorf("assistant entry 3 model: got %q, want %q", entries[3].Model, "claude-sonnet-4-20250514")
+	}
+}
+
+func TestConvertKiroIDEToEntries_NilMetadata(t *testing.T) {
+	// When metadata is nil, no timestamp or model should be set
+	chatFile := &KiroIDEChatFile{
+		Chat: []KiroIDEMessage{
+			{Role: "human", Content: "Hello"},
+			{Role: "bot", Content: "Hi"},
+		},
+		Metadata: nil,
+	}
+
+	entries, _ := convertKiroIDEToEntries(chatFile)
+	if len(entries) != 2 {
+		t.Fatalf("expected 2 entries, got %d", len(entries))
+	}
+
+	if entries[0].Timestamp != "" {
+		t.Errorf("entry 0 timestamp: got %q, want empty", entries[0].Timestamp)
+	}
+	if entries[1].Model != "" {
+		t.Errorf("entry 1 model: got %q, want empty", entries[1].Model)
+	}
+}
+
+func TestConvertKiroIDEToEntries_ZeroStartTime(t *testing.T) {
+	// Zero StartTime should produce no timestamp
+	chatFile := &KiroIDEChatFile{
+		Chat: []KiroIDEMessage{
+			{Role: "human", Content: "Hello"},
+			{Role: "bot", Content: "Hi"},
+		},
+		Metadata: &KiroIDEMetadata{
+			ModelID:   "some-model",
+			StartTime: 0,
+		},
+	}
+
+	entries, _ := convertKiroIDEToEntries(chatFile)
+	if entries[0].Timestamp != "" {
+		t.Errorf("entry 0 timestamp with zero StartTime: got %q, want empty", entries[0].Timestamp)
+	}
+}
+
+func TestConvertKiroIDEToEntries_EmptyModelID(t *testing.T) {
+	// Empty ModelID should produce no model on assistant entries
+	chatFile := &KiroIDEChatFile{
+		Chat: []KiroIDEMessage{
+			{Role: "bot", Content: "Hi"},
+		},
+		Metadata: &KiroIDEMetadata{
+			ModelID:   "",
+			StartTime: 1768694401000,
+		},
+	}
+
+	entries, _ := convertKiroIDEToEntries(chatFile)
+	if len(entries) != 1 {
+		t.Fatalf("expected 1 entry, got %d", len(entries))
+	}
+	if entries[0].Model != "" {
+		t.Errorf("assistant model with empty ModelID: got %q, want empty", entries[0].Model)
+	}
+}
+
+func TestConvertKiroIDEActionsToEntries_TimestampOnFirstEntry(t *testing.T) {
+	chatFile := &KiroIDEChatFile{
+		Chat: []KiroIDEMessage{
+			{Role: "human", Content: "<identity>system</identity>"},
+			{Role: "human", Content: "Fix the bug"},
+		},
+		Metadata: &KiroIDEMetadata{
+			ModelID:   "claude-sonnet-4-20250514",
+			StartTime: 1768694401000,
+		},
+	}
+
+	actions := []KiroIDEAction{
+		{ActionID: "s1", ActionType: "say", ActionState: "Success", Output: map[string]any{"message": "On it."}},
+		{ActionID: "r1", ActionType: "readFiles", ActionState: "Accepted", Input: map[string]any{"files": []any{map[string]any{"path": "main.go"}}}},
+	}
+
+	entries, _ := convertKiroIDEActionsToEntries(actions, chatFile)
+	if len(entries) < 2 {
+		t.Fatalf("expected at least 2 entries, got %d", len(entries))
+	}
+
+	// First entry (user message from chat) gets timestamp
+	want := "2026-01-18T00:00:01Z"
+	if entries[0].Timestamp != want {
+		t.Errorf("first entry timestamp: got %q, want %q", entries[0].Timestamp, want)
+	}
+
+	// Subsequent entries have no timestamp
+	for i := 1; i < len(entries); i++ {
+		if entries[i].Timestamp != "" {
+			t.Errorf("entry %d timestamp: got %q, want empty", i, entries[i].Timestamp)
+		}
+	}
+}
+
+func TestConvertKiroIDEActionsToEntries_ModelOnAssistantOnly(t *testing.T) {
+	chatFile := &KiroIDEChatFile{
+		Chat: []KiroIDEMessage{
+			{Role: "human", Content: "Fix it"},
+		},
+		Metadata: &KiroIDEMetadata{
+			ModelID:   "claude-sonnet-4-20250514",
+			StartTime: 1768694401000,
+		},
+	}
+
+	actions := []KiroIDEAction{
+		{ActionID: "s1", ActionType: "say", ActionState: "Success", Output: map[string]any{"message": "Done."}},
+		{ActionID: "r1", ActionType: "readFiles", ActionState: "Accepted", Input: map[string]any{"files": []any{map[string]any{"path": "main.go"}}}},
+	}
+
+	entries, _ := convertKiroIDEActionsToEntries(actions, chatFile)
+	// Expected: user("Fix it"), assistant(say), assistant(tool_use), user(tool_result)
+	if len(entries) != 4 {
+		t.Fatalf("expected 4 entries, got %d", len(entries))
+	}
+
+	// User entries must NOT have Model
+	if entries[0].Model != "" {
+		t.Errorf("user entry 0 model: got %q, want empty", entries[0].Model)
+	}
+	if entries[3].Model != "" {
+		t.Errorf("tool_result entry 3 model: got %q, want empty", entries[3].Model)
+	}
+
+	// Assistant entries must have Model
+	if entries[1].Model != "claude-sonnet-4-20250514" {
+		t.Errorf("say entry 1 model: got %q, want %q", entries[1].Model, "claude-sonnet-4-20250514")
+	}
+	if entries[2].Model != "claude-sonnet-4-20250514" {
+		t.Errorf("tool_use entry 2 model: got %q, want %q", entries[2].Model, "claude-sonnet-4-20250514")
+	}
+}
+
+func TestConvertKiroIDEActionsToEntries_NilMetadata(t *testing.T) {
+	chatFile := &KiroIDEChatFile{
+		Chat: []KiroIDEMessage{
+			{Role: "human", Content: "Hello"},
+		},
+		Metadata: nil,
+	}
+
+	actions := []KiroIDEAction{
+		{ActionID: "s1", ActionType: "say", ActionState: "Success", Output: map[string]any{"message": "Hi."}},
+	}
+
+	entries, _ := convertKiroIDEActionsToEntries(actions, chatFile)
+	for i, e := range entries {
+		if e.Timestamp != "" {
+			t.Errorf("entry %d timestamp: got %q, want empty", i, e.Timestamp)
+		}
+		if e.Model != "" {
+			t.Errorf("entry %d model: got %q, want empty", i, e.Model)
+		}
+	}
+}
+
+func TestParseKiroIDE_ChatPathTimestampAndModel(t *testing.T) {
+	// End-to-end test through ParseKiroIDE (chat path, no cost file)
+	input := `{
+		"executionId": "exec-meta",
+		"chat": [
+			{"role": "human", "content": "Hello"},
+			{"role": "bot", "content": "Hi there"},
+			{"role": "human", "content": "More"}
+		],
+		"metadata": {"modelId": "claude-sonnet-4-20250514", "startTime": 1768694401000, "endTime": 1768694500000}
+	}`
+
+	result, err := ParseKiroIDE(strings.NewReader(input))
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if len(result.Entries) != 3 {
+		t.Fatalf("expected 3 entries, got %d", len(result.Entries))
+	}
+
+	// First entry: timestamp set, no model (user)
+	wantTS := "2026-01-18T00:00:01Z"
+	if result.Entries[0].Timestamp != wantTS {
+		t.Errorf("entry 0 timestamp: got %q, want %q", result.Entries[0].Timestamp, wantTS)
+	}
+	if result.Entries[0].Model != "" {
+		t.Errorf("entry 0 (user) model: got %q, want empty", result.Entries[0].Model)
+	}
+
+	// Second entry: no timestamp, model set (assistant)
+	if result.Entries[1].Timestamp != "" {
+		t.Errorf("entry 1 timestamp: got %q, want empty", result.Entries[1].Timestamp)
+	}
+	if result.Entries[1].Model != "claude-sonnet-4-20250514" {
+		t.Errorf("entry 1 model: got %q, want %q", result.Entries[1].Model, "claude-sonnet-4-20250514")
+	}
+
+	// Third entry: no timestamp, no model (user)
+	if result.Entries[2].Timestamp != "" {
+		t.Errorf("entry 2 timestamp: got %q, want empty", result.Entries[2].Timestamp)
+	}
+	if result.Entries[2].Model != "" {
+		t.Errorf("entry 2 model: got %q, want empty", result.Entries[2].Model)
+	}
+}
+
+func TestParseKiroIDEWithCostPath_ActionPathTimestampAndModel(t *testing.T) {
+	// End-to-end test through ParseKiroIDEWithCostPath (action path)
+	dir := t.TempDir()
+	costPath := filepath.Join(dir, "detail.json")
+	err := os.WriteFile(costPath, []byte(`{
+		"executionId": "exec-1",
+		"usageSummary": [
+			{"unit": "credit", "unitPlural": "credits", "usage": 0.05}
+		],
+		"actions": [
+			{
+				"type": "AgentExecutionAction",
+				"executionId": "exec-1",
+				"actionId": "s1",
+				"actionType": "say",
+				"actionState": "Success",
+				"output": {"message": "I'll help."}
+			}
+		]
+	}`), 0o644)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	input := `{
+		"executionId": "exec-1",
+		"chat": [
+			{"role": "human", "content": "<identity>system</identity>"},
+			{"role": "human", "content": "Fix it"}
+		],
+		"metadata": {"modelId": "claude-sonnet-4-20250514", "startTime": 1768694401000, "endTime": 1768694500000}
+	}`
+
+	result, err := ParseKiroIDEWithCostPath(strings.NewReader(input), costPath)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	// Action path: user("Fix it") + say("I'll help.")
+	if len(result.Entries) != 2 {
+		t.Fatalf("expected 2 entries, got %d", len(result.Entries))
+	}
+
+	// First entry (user): timestamp set, no model
+	wantTS := "2026-01-18T00:00:01Z"
+	if result.Entries[0].Timestamp != wantTS {
+		t.Errorf("entry 0 timestamp: got %q, want %q", result.Entries[0].Timestamp, wantTS)
+	}
+	if result.Entries[0].Model != "" {
+		t.Errorf("entry 0 (user) model: got %q, want empty", result.Entries[0].Model)
+	}
+
+	// Second entry (assistant say): no timestamp, model set
+	if result.Entries[1].Timestamp != "" {
+		t.Errorf("entry 1 timestamp: got %q, want empty", result.Entries[1].Timestamp)
+	}
+	if result.Entries[1].Model != "claude-sonnet-4-20250514" {
+		t.Errorf("entry 1 model: got %q, want %q", result.Entries[1].Model, "claude-sonnet-4-20250514")
+	}
+}

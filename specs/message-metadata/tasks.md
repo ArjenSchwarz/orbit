@@ -131,7 +131,7 @@ references:
   - Requirements: [1.6](requirements.md#1.6), [2.3](requirements.md#2.3)
   - References: internal/transcript/kiro_parser.go
 
-- [ ] 12. Write tests for Kiro IDE session-level timestamp and model <!-- id:03oa0ur -->
+- [x] 12. Write tests for Kiro IDE session-level timestamp and model <!-- id:03oa0ur -->
   - Add tests to kiro_ide_parser_test.go for both chat and action conversion paths
   - Verify first entry gets Timestamp from KiroIDEMetadata.StartTime (ms epoch → RFC3339)
   - Verify subsequent entries have no Timestamp
