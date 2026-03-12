@@ -18,7 +18,7 @@ references:
 
 ## Core Helpers
 
-- [ ] 2. Write tests for metadata formatting helpers <!-- id:03oa0uh -->
+- [x] 2. Write tests for metadata formatting helpers <!-- id:03oa0uh -->
   - Create metadata_test.go with table-driven tests (map-based)
   - Test FormatTimestampMarkdown: valid RFC3339 → local TZ RFC3339, empty → empty, invalid → empty
   - Test FormatTimestampHTML: valid → <time datetime> element with RFC3339 fallback, empty → empty
@@ -30,7 +30,7 @@ references:
   - Requirements: [1.1](requirements.md#1.1), [1.2](requirements.md#1.2), [1.3](requirements.md#1.3), [1.4](requirements.md#1.4), [1.5](requirements.md#1.5), [3.1](requirements.md#3.1), [3.3](requirements.md#3.3), [3.4](requirements.md#3.4)
   - References: internal/transcript/metadata_test.go
 
-- [ ] 3. Implement metadata formatting helpers <!-- id:03oa0ui -->
+- [x] 3. Implement metadata formatting helpers <!-- id:03oa0ui -->
   - Create metadata.go with FormatTimestampMarkdown, FormatTimestampHTML, FormatMessageMetaMarkdown, FormatMessageMetaHTML
   - FormatTimestampMarkdown: parse RFC3339, format in local TZ as RFC3339
   - FormatTimestampHTML: emit <time datetime=UTC> with RFC3339 fallback text
