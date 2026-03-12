@@ -108,27 +108,30 @@ func stripProjectDir(filePath, projectDir string) string {
 // renderGroup represents a group of related entries for rendering.
 // This enables grouping consecutive Read/Edit tool calls into a single block.
 type renderGroup struct {
-	Type    string     // "user", "assistant", "read_group", or "edit_group"
-	Entries []Entry    // Original entries (for user/assistant)
-	Reads   []readItem // Grouped Read calls (for read_group)
-	Edits   []editItem // Grouped Edit calls (for edit_group)
+	Type      string     // "user", "assistant", "read_group", or "edit_group"
+	Entries   []Entry    // Original entries (for user/assistant)
+	Reads     []readItem // Grouped Read calls (for read_group)
+	Edits     []editItem // Grouped Edit calls (for edit_group)
+	Timestamp string     // First entry's timestamp for group header display
 }
 
 // readItem represents a single Read tool call with its result.
 type readItem struct {
-	FilePath string // The file path being read
-	Content  string // The file contents (from tool_result)
-	IsError  bool   // Whether the read failed
-	ToolID   string // Tool use ID for tracking
+	FilePath  string // The file path being read
+	Content   string // The file contents (from tool_result)
+	IsError   bool   // Whether the read failed
+	ToolID    string // Tool use ID for tracking
+	Timestamp string // From source entry, for group header display
 }
 
 // editItem represents a single Edit tool call with its result.
 type editItem struct {
-	FilePath string      // The file path being edited
-	Patch    []PatchHunk // The structured patch from tool result
-	Content  string      // Fallback content when no patch (error messages, legacy format)
-	IsError  bool        // Whether the edit failed
-	ToolID   string      // Tool use ID for tracking
+	FilePath  string      // The file path being edited
+	Patch     []PatchHunk // The structured patch from tool result
+	Content   string      // Fallback content when no patch (error messages, legacy format)
+	IsError   bool        // Whether the edit failed
+	ToolID    string      // Tool use ID for tracking
+	Timestamp string      // From source entry, for group header display
 }
 
 // toolResultInfo stores tool_result information for matching.
@@ -173,8 +176,9 @@ func preprocessEntries(entries []Entry) []renderGroup {
 	flushReadGroup := func() {
 		if len(currentReadGroup) > 0 {
 			groups = append(groups, renderGroup{
-				Type:  "read_group",
-				Reads: currentReadGroup,
+				Type:      "read_group",
+				Reads:     currentReadGroup,
+				Timestamp: currentReadGroup[0].Timestamp,
 			})
 			currentReadGroup = nil
 		}
@@ -183,8 +187,9 @@ func preprocessEntries(entries []Entry) []renderGroup {
 	flushEditGroup := func() {
 		if len(currentEditGroup) > 0 {
 			groups = append(groups, renderGroup{
-				Type:  "edit_group",
-				Edits: currentEditGroup,
+				Type:      "edit_group",
+				Edits:     currentEditGroup,
+				Timestamp: currentEditGroup[0].Timestamp,
 			})
 			currentEditGroup = nil
 		}
@@ -288,8 +293,9 @@ func extractReadItems(entry *Entry, resultMap map[string]toolResultInfo, usedIDs
 		if item.Type == "tool_use" && item.Name == "Read" {
 			filePath := extractFilePath(item.Input)
 			readItem := readItem{
-				FilePath: filePath,
-				ToolID:   item.ID,
+				FilePath:  filePath,
+				ToolID:    item.ID,
+				Timestamp: entry.Timestamp,
 			}
 
 			// Look up the result
@@ -362,8 +368,9 @@ func extractEditItems(entry *Entry, resultMap map[string]toolResultInfo, usedIDs
 		if item.Type == "tool_use" && item.Name == "Edit" {
 			filePath := extractFilePath(item.Input)
 			edit := editItem{
-				FilePath: filePath,
-				ToolID:   item.ID,
+				FilePath:  filePath,
+				ToolID:    item.ID,
+				Timestamp: entry.Timestamp,
 			}
 
 			// Look up the result

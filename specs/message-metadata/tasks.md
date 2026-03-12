@@ -8,7 +8,7 @@ references:
 
 ## Foundation
 
-- [ ] 1. Add Model field to Entry struct and Timestamp to grouping structs <!-- id:03oa0ug -->
+- [x] 1. Add Model field to Entry struct and Timestamp to grouping structs <!-- id:03oa0ug -->
   - Modify types.go: add Model string field with json:"-" tag to Entry struct after Timestamp
   - Modify grouping.go: add Timestamp string field to renderGroup, readItem, and editItem structs
   - Type-only changes — no behaviour change, exempt from TDD requirement

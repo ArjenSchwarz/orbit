@@ -22,6 +22,7 @@ type Entry struct {
 	Type            string         `json:"type"`
 	Message         *Message       `json:"message,omitempty"`
 	Timestamp       string         `json:"timestamp,omitempty"`
+	Model           string         `json:"-"` // Not serialized; populated by parsers
 	SessionID       string         `json:"sessionId,omitempty"`
 	Cwd             string         `json:"cwd,omitempty"`             // Working directory for this entry
 	IsMeta          bool           `json:"isMeta,omitempty"`          // Meta entries are internal Claude markers
