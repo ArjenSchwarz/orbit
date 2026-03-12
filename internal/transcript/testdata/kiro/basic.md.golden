@@ -2,13 +2,13 @@
 
 ---
 
-## 👤 User
+## 👤 User · 2026-01-18T10:00:00Z
 
 List all files in the current directory
 
 ---
 
-## 🤖 Assistant
+## 🤖 Assistant · claude-sonnet
 
 I'll list the files in the current directory for you.
 
@@ -38,7 +38,7 @@ README.md
 
 </details>
 
-## 🤖 Assistant
+## 🤖 Assistant · claude-sonnet
 
 The current directory contains:
 - file1.txt

@@ -167,7 +167,7 @@ references:
   - Requirements: [1.1](requirements.md#1.1), [1.2](requirements.md#1.2), [3.1](requirements.md#3.1), [3.3](requirements.md#3.3), [3.5](requirements.md#3.5), [3.6](requirements.md#3.6), [4.1](requirements.md#4.1)
   - References: internal/transcript/markdown_test.go, internal/transcript/markdown.go
 
-- [ ] 15. Implement Markdown metadata rendering <!-- id:03oa0uu -->
+- [x] 15. Implement Markdown metadata rendering <!-- id:03oa0uu -->
   - In formatUserMessage: append FormatMessageMetaMarkdown(entry.Timestamp, "") to header
   - In formatAssistantMessage: append FormatMessageMetaMarkdown(entry.Timestamp, entry.Model) to header
   - In formatSlashCommand: append FormatMessageMetaMarkdown(entry.Timestamp, "") to header
