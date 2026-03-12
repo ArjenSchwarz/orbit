@@ -65,7 +65,7 @@ references:
 
 ## Parser Changes
 
-- [ ] 6. Write tests for Codex model extraction <!-- id:03oa0ul -->
+- [x] 6. Write tests for Codex model extraction <!-- id:03oa0ul -->
   - Add test case to codex_parser_test.go verifying Model is extracted from session_meta
   - Extend or create test fixture with session_meta containing a model field
   - Verify Model is set only on assistant entries, not user entries
