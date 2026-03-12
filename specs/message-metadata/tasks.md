@@ -154,7 +154,7 @@ references:
 
 ## Rendering
 
-- [ ] 14. Write tests for Markdown metadata rendering <!-- id:03oa0ut -->
+- [x] 14. Write tests for Markdown metadata rendering <!-- id:03oa0ut -->
   - Add tests to markdown_test.go for metadata in message headers
   - Test user message header includes " · timestamp" suffix
   - Test assistant message header includes " · timestamp · model" suffix
