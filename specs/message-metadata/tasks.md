@@ -44,7 +44,7 @@ references:
 
 ## Grouping
 
-- [ ] 4. Write tests for grouping timestamp propagation <!-- id:03oa0uj -->
+- [x] 4. Write tests for grouping timestamp propagation <!-- id:03oa0uj -->
   - Add tests to verify extractReadItems and extractEditItems carry entry.Timestamp to item.Timestamp
   - Test preprocessEntries sets renderGroup.Timestamp from first item in each group
   - Test that a group of 3 reads uses the first read timestamp on the group
