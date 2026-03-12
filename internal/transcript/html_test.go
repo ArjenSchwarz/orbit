@@ -1234,3 +1234,344 @@ func TestRenderNavigationHTML_HTMLEscaping(t *testing.T) {
 	assert.Contains(t, result, "&amp;", "expected escaped HTML entities")
 	assert.Contains(t, result, "&lt;", "expected escaped HTML entities")
 }
+
+// --- HTML Metadata Rendering Tests (Task 16) ---
+
+func TestRenderHTML_UserMessageWithTimestamp(t *testing.T) {
+	entries := []Entry{
+		{
+			Type:      "user",
+			Timestamp: "2026-03-12T03:32:05Z",
+			Message: &Message{
+				Role: "user",
+				Content: []ContentItem{
+					{Type: "text", Text: "Hello"},
+				},
+			},
+		},
+	}
+
+	result := RenderHTML(entries, RenderOptions{})
+
+	assert.Contains(t, result, `class="message-meta"`, "expected metadata span in user header")
+	assert.Contains(t, result, `<time datetime="2026-03-12T03:32:05Z"`, "expected time element with datetime attr")
+	assert.Contains(t, result, `>2026-03-12T03:32:05Z</time>`, "expected RFC3339 fallback text in time element")
+	// User messages should NOT show model
+	assert.NotContains(t, result, `<span>claude-opus</span>`, "user messages should not show model")
+}
+
+func TestRenderHTML_AssistantMessageWithTimestampAndModel(t *testing.T) {
+	entries := []Entry{
+		{
+			Type:      "assistant",
+			Timestamp: "2026-03-12T03:32:05Z",
+			Model:     "claude-opus",
+			Message: &Message{
+				Role: "assistant",
+				Content: []ContentItem{
+					{Type: "text", Text: "Hello!"},
+				},
+			},
+		},
+	}
+
+	result := RenderHTML(entries, RenderOptions{})
+
+	assert.Contains(t, result, `class="message-meta"`, "expected metadata span in assistant header")
+	assert.Contains(t, result, `<time datetime="2026-03-12T03:32:05Z"`, "expected time element")
+	assert.Contains(t, result, `<span>claude-opus</span>`, "expected model span")
+	assert.Contains(t, result, `class="meta-separator"`, "expected separator between timestamp and model")
+}
+
+func TestRenderHTML_AssistantMessageTimestampOnly(t *testing.T) {
+	entries := []Entry{
+		{
+			Type:      "assistant",
+			Timestamp: "2026-03-12T03:32:05Z",
+			Message: &Message{
+				Role: "assistant",
+				Content: []ContentItem{
+					{Type: "text", Text: "Hello!"},
+				},
+			},
+		},
+	}
+
+	result := RenderHTML(entries, RenderOptions{})
+
+	assert.Contains(t, result, `class="message-meta"`, "expected metadata span")
+	assert.Contains(t, result, `<time datetime=`, "expected time element")
+	assert.NotContains(t, result, `class="meta-separator"`, "no separator when only timestamp present")
+}
+
+func TestRenderHTML_NoMetadataRendersCleanHeader(t *testing.T) {
+	entries := []Entry{
+		{
+			Type: "user",
+			Message: &Message{
+				Role: "user",
+				Content: []ContentItem{
+					{Type: "text", Text: "Hello"},
+				},
+			},
+		},
+		{
+			Type: "assistant",
+			Message: &Message{
+				Role: "assistant",
+				Content: []ContentItem{
+					{Type: "text", Text: "Hi!"},
+				},
+			},
+		},
+	}
+
+	result := RenderHTML(entries, RenderOptions{})
+
+	// Headers should render without metadata spans when no timestamp/model
+	assert.NotContains(t, result, `class="message-meta"`, "no metadata span when no metadata available")
+	assert.NotContains(t, result, `<time `, "no time element when no timestamp")
+	// But headers themselves should still be present
+	assert.Contains(t, result, "👤", "expected user icon")
+	assert.Contains(t, result, "🤖", "expected assistant icon")
+}
+
+func TestRenderHTML_SlashCommandWithTimestamp(t *testing.T) {
+	entries := []Entry{
+		{
+			Type:      "user",
+			Timestamp: "2026-03-12T03:32:05Z",
+			Message: &Message{
+				Role: "user",
+				Content: []ContentItem{
+					{Type: "text", Text: "/help"},
+				},
+			},
+		},
+	}
+
+	result := RenderHTML(entries, RenderOptions{})
+
+	assert.Contains(t, result, `class="message-meta"`, "expected metadata span in slash command header")
+	assert.Contains(t, result, `<time datetime=`, "expected time element in slash command")
+}
+
+func TestRenderHTML_ReadGroupWithTimestamp(t *testing.T) {
+	// Create entries that will be grouped as a read group by preprocessEntries.
+	// A read group is: assistant entry with tool_use Read, followed by user entry with tool_result.
+	entries := []Entry{
+		{
+			Type:      "assistant",
+			Timestamp: "2026-03-12T03:32:05Z",
+			Message: &Message{
+				Role: "assistant",
+				Content: []ContentItem{
+					{
+						Type: "tool_use",
+						ID:   "read-1",
+						Name: "Read",
+						Input: map[string]any{
+							"file_path": "/tmp/test.go",
+						},
+					},
+				},
+			},
+		},
+		{
+			Type:      "user",
+			Timestamp: "2026-03-12T03:32:06Z",
+			Message: &Message{
+				Role: "user",
+				Content: []ContentItem{
+					{
+						Type:      "tool_result",
+						ToolUseID: "read-1",
+						Content:   "file contents here",
+					},
+				},
+			},
+		},
+	}
+
+	result := RenderHTML(entries, RenderOptions{})
+
+	// The read group header should contain metadata from the first entry's timestamp
+	assert.Contains(t, result, `class="message-meta"`, "expected metadata span in read group header")
+	assert.Contains(t, result, `<time datetime=`, "expected time element in read group")
+}
+
+func TestRenderHTML_EditGroupWithTimestamp(t *testing.T) {
+	entries := []Entry{
+		{
+			Type:      "assistant",
+			Timestamp: "2026-03-12T03:32:05Z",
+			Message: &Message{
+				Role: "assistant",
+				Content: []ContentItem{
+					{
+						Type: "tool_use",
+						ID:   "edit-1",
+						Name: "Edit",
+						Input: map[string]any{
+							"file_path": "/tmp/test.go",
+							"new_string": "new content",
+							"old_string": "old content",
+						},
+					},
+				},
+			},
+		},
+		{
+			Type:      "user",
+			Timestamp: "2026-03-12T03:32:06Z",
+			Message: &Message{
+				Role: "user",
+				Content: []ContentItem{
+					{
+						Type:      "tool_result",
+						ToolUseID: "edit-1",
+						Content:   "ok",
+					},
+				},
+			},
+		},
+	}
+
+	result := RenderHTML(entries, RenderOptions{})
+
+	assert.Contains(t, result, `class="message-meta"`, "expected metadata span in edit group header")
+	assert.Contains(t, result, `<time datetime=`, "expected time element in edit group")
+}
+
+func TestRenderHTML_TimeElementHasValidDatetimeAttr(t *testing.T) {
+	entries := []Entry{
+		{
+			Type:      "assistant",
+			Timestamp: "2026-03-12T14:32:05+11:00",
+			Model:     "gpt-4",
+			Message: &Message{
+				Role: "assistant",
+				Content: []ContentItem{
+					{Type: "text", Text: "Response"},
+				},
+			},
+		},
+	}
+
+	result := RenderHTML(entries, RenderOptions{})
+
+	// datetime attribute should be UTC
+	assert.Contains(t, result, `datetime="2026-03-12T03:32:05Z"`, "datetime attr should be UTC ISO 8601")
+	// Fallback text should be local timezone RFC3339
+	assert.Contains(t, result, `>2026-03-12T03:32:05Z</time>`, "fallback text should be RFC3339")
+}
+
+func TestRenderHTML_StandaloneContainsFormatLocalDatesScript(t *testing.T) {
+	entries := []Entry{
+		{
+			Type:      "user",
+			Timestamp: "2026-03-12T03:32:05Z",
+			Message: &Message{
+				Role: "user",
+				Content: []ContentItem{
+					{Type: "text", Text: "Hello"},
+				},
+			},
+		},
+	}
+
+	result := RenderHTML(entries, RenderOptions{})
+
+	assert.Contains(t, result, "<script>", "standalone HTML should contain inline script")
+	assert.Contains(t, result, "Intl.DateTimeFormat", "script should use Intl.DateTimeFormat for locale formatting")
+	assert.Contains(t, result, `querySelectorAll`, "script should find time elements")
+	assert.Contains(t, result, `datetime`, "script should read datetime attribute")
+}
+
+func TestRenderHTMLFragment_NoStandaloneScript(t *testing.T) {
+	entries := []Entry{
+		{
+			Type:      "user",
+			Timestamp: "2026-03-12T03:32:05Z",
+			Message: &Message{
+				Role: "user",
+				Content: []ContentItem{
+					{Type: "text", Text: "Hello"},
+				},
+			},
+		},
+	}
+
+	result := RenderHTMLFragment(entries, RenderOptions{})
+
+	// Fragment should NOT include the standalone script — the web layout provides its own
+	assert.NotContains(t, result, "<script>", "fragment should not contain inline script")
+}
+
+func TestRenderHTML_MetadataConsistentAcrossMessageTypes(t *testing.T) {
+	// Verify that metadata styling is consistent: all message types use the same
+	// message-meta class and time element structure (requirement 3.5).
+	ts := "2026-03-12T03:32:05Z"
+	entries := []Entry{
+		{
+			Type:      "user",
+			Timestamp: ts,
+			Message: &Message{
+				Role: "user",
+				Content: []ContentItem{
+					{Type: "text", Text: "Question"},
+				},
+			},
+		},
+		{
+			Type:      "assistant",
+			Timestamp: ts,
+			Model:     "claude-opus",
+			Message: &Message{
+				Role: "assistant",
+				Content: []ContentItem{
+					{Type: "text", Text: "Answer"},
+				},
+			},
+		},
+	}
+
+	result := RenderHTML(entries, RenderOptions{})
+
+	// Both user and assistant should use the same message-meta class
+	metaCount := strings.Count(result, `class="message-meta"`)
+	assert.Equal(t, 2, metaCount, "expected message-meta span in both user and assistant headers")
+
+	// Both should use <time> elements
+	timeCount := strings.Count(result, `<time datetime=`)
+	assert.Equal(t, 2, timeCount, "expected time element in both headers")
+}
+
+func TestRenderHTML_ModelHTMLEscaping(t *testing.T) {
+	entries := []Entry{
+		{
+			Type:      "assistant",
+			Timestamp: "2026-03-12T03:32:05Z",
+			Model:     `model<script>alert("xss")</script>`,
+			Message: &Message{
+				Role: "assistant",
+				Content: []ContentItem{
+					{Type: "text", Text: "Response"},
+				},
+			},
+		},
+	}
+
+	result := RenderHTML(entries, RenderOptions{})
+
+	assert.NotContains(t, result, `<script>alert`, "model name should be HTML-escaped")
+	assert.Contains(t, result, `&lt;script&gt;`, "expected escaped model name")
+}
+
+func TestRenderHTML_CSSContainsMetadataStyles(t *testing.T) {
+	entries := []Entry{}
+	result := RenderHTML(entries, RenderOptions{})
+
+	assert.Contains(t, result, ".message-meta", "CSS should contain message-meta class")
+	assert.Contains(t, result, ".meta-separator", "CSS should contain meta-separator class")
+}

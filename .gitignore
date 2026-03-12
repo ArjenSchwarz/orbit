@@ -13,3 +13,4 @@ testlog.html
 
 # Rapid property test failure files
 **/testdata/rapid/**/*.fail
+.kiro/

@@ -179,7 +179,7 @@ references:
   - Requirements: [1.1](requirements.md#1.1), [1.2](requirements.md#1.2), [3.1](requirements.md#3.1), [3.3](requirements.md#3.3), [3.5](requirements.md#3.5), [3.6](requirements.md#3.6)
   - References: internal/transcript/markdown.go
 
-- [ ] 16. Write tests for HTML metadata rendering <!-- id:03oa0uv -->
+- [x] 16. Write tests for HTML metadata rendering <!-- id:03oa0uv -->
   - Add tests to html_test.go for metadata in HTML message headers
   - Test user header contains <span class=message-meta> with <time> element
   - Test assistant header contains <time> and model span
