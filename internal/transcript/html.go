@@ -65,6 +65,23 @@ header h1 {
 }
 `
 
+// standaloneDateFormatScript is the inline JavaScript for locale-aware timestamp
+// formatting in standalone HTML documents. The web interface (apsis serve) has its
+// own formatLocalDates in layout.html, but standalone documents need this self-contained IIFE.
+const standaloneDateFormatScript = `<script>
+(function() {
+    var fmt = new Intl.DateTimeFormat(undefined, {
+        day: 'numeric', month: 'short', year: 'numeric',
+        hour: 'numeric', minute: '2-digit'
+    });
+    document.querySelectorAll('time[datetime]').forEach(function(el) {
+        var d = new Date(el.getAttribute('datetime'));
+        if (!isNaN(d)) el.textContent = fmt.format(d);
+    });
+})();
+</script>
+`
+
 // mdConverter is the shared goldmark markdown converter instance.
 var mdConverter = goldmark.New(
 	goldmark.WithExtensions(extension.GFM),
@@ -142,22 +159,7 @@ func RenderHTML(entries []Entry, opts RenderOptions) string {
 		sb.WriteString(renderNavigationHTML(opts.Navigation))
 	}
 
-	// Inline script for locale-aware timestamp formatting in standalone HTML.
-	// The web interface (apsis serve) has its own formatLocalDates in layout.html,
-	// but standalone documents need this self-contained IIFE.
-	sb.WriteString(`<script>
-(function() {
-    var fmt = new Intl.DateTimeFormat(undefined, {
-        day: 'numeric', month: 'short', year: 'numeric',
-        hour: 'numeric', minute: '2-digit'
-    });
-    document.querySelectorAll('time[datetime]').forEach(function(el) {
-        var d = new Date(el.getAttribute('datetime'));
-        if (!isNaN(d)) el.textContent = fmt.format(d);
-    });
-})();
-</script>
-`)
+	sb.WriteString(standaloneDateFormatScript)
 
 	sb.WriteString("</body>\n")
 	sb.WriteString("</html>\n")

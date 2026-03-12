@@ -178,6 +178,13 @@ func TestFormatMessageMetaHTML(t *testing.T) {
 			model:     "",
 			wantEmpty: true,
 		},
+		"model with special characters is HTML-escaped": {
+			timestamp: "",
+			model:     "<script>alert('xss')</script>",
+			want: `<span class="message-meta">` +
+				`<span>&lt;script&gt;alert(&#39;xss&#39;)&lt;/script&gt;</span>` +
+				`</span>`,
+		},
 	}
 
 	for name, tc := range tests {
