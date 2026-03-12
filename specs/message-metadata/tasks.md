@@ -75,7 +75,7 @@ references:
   - Requirements: [2.3](requirements.md#2.3)
   - References: internal/transcript/codex_parser_test.go, internal/transcript/codex_parser.go
 
-- [ ] 7. Implement Codex model extraction <!-- id:03oa0um -->
+- [x] 7. Implement Codex model extraction <!-- id:03oa0um -->
   - Add Model string with json:model tag to CodexSessionMeta in codex_types.go
   - Add model string field to codexParser struct
   - In processSessionMeta: store meta.Model in parser state

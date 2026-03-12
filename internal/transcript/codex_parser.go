@@ -11,6 +11,7 @@ import (
 // codexParser maintains state while parsing Codex JSONL.
 type codexParser struct {
 	sessionID     string
+	model         string // Model from session_meta, set on assistant entries
 	entries       []Entry
 	warnings      []ParseWarning
 	functionCalls map[string]*pendingCall // call_id -> pending function_call
@@ -109,6 +110,7 @@ func (p *codexParser) processSessionMeta(entry *CodexEntry) error {
 		return fmt.Errorf("failed to parse session_meta payload: %v", err)
 	}
 	p.sessionID = meta.ID
+	p.model = meta.Model
 	return nil
 }
 
@@ -330,6 +332,7 @@ func (p *codexParser) ensureAssistantEntry(timestamp string) {
 		p.currentEntry = &Entry{
 			Type:      "assistant",
 			Timestamp: timestamp,
+			Model:     p.model,
 			SessionID: p.sessionID,
 			Message: &Message{
 				Role:    "assistant",
