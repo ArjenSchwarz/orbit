@@ -85,7 +85,7 @@ references:
   - Requirements: [2.3](requirements.md#2.3)
   - References: internal/transcript/codex_types.go, internal/transcript/codex_parser.go
 
-- [ ] 8. Write tests for Copilot timestamp and model extraction <!-- id:03oa0un -->
+- [x] 8. Write tests for Copilot timestamp and model extraction <!-- id:03oa0un -->
   - Add/extend test in copilot parser tests verifying Entry.Timestamp is populated
   - Add session.model_change event to test fixture
   - Verify Model is set on assistant entries from model_change event
@@ -96,7 +96,7 @@ references:
   - Requirements: [1.6](requirements.md#1.6), [2.3](requirements.md#2.3)
   - References: internal/transcript/copilot_parser.go
 
-- [ ] 9. Implement Copilot timestamp and model extraction <!-- id:03oa0uo -->
+- [x] 9. Implement Copilot timestamp and model extraction <!-- id:03oa0uo -->
   - Add Model string with json:model,omitempty tag to CopilotData in copilot_types.go
   - Add currentModel and currentTurnTimestamp variables in convertCopilotToEntries
   - Handle session.model_change in second pass: set currentModel = event.Data.Model
@@ -108,7 +108,7 @@ references:
   - Requirements: [1.6](requirements.md#1.6), [2.3](requirements.md#2.3)
   - References: internal/transcript/copilot_types.go, internal/transcript/copilot_parser.go
 
-- [ ] 10. Write tests for Kiro CLI timestamp and model extraction <!-- id:03oa0up -->
+- [x] 10. Write tests for Kiro CLI timestamp and model extraction <!-- id:03oa0up -->
   - Add tests to kiro_parser_test.go verifying timestamps and model are extracted
   - Verify user entry Timestamp from KiroUserMessage.Timestamp
   - Verify assistant entry Timestamp from RequestStartTimestampMs (ms epoch → RFC3339)
@@ -119,7 +119,7 @@ references:
   - Requirements: [1.6](requirements.md#1.6), [2.3](requirements.md#2.3)
   - References: internal/transcript/kiro_parser_test.go, internal/transcript/kiro_parser.go
 
-- [ ] 11. Implement Kiro CLI timestamp and model extraction <!-- id:03oa0uq -->
+- [x] 11. Implement Kiro CLI timestamp and model extraction <!-- id:03oa0uq -->
   - In convertKiroUserMessage: accept *string timestamp param, set Entry.Timestamp on returned entries
   - In convertKiroAssistantMessage: accept *KiroRequestMetadata param
   - Set Entry.Timestamp from RequestStartTimestampMs via time.UnixMilli(ms).UTC().Format(time.RFC3339)
