@@ -72,6 +72,8 @@ func convertKiroIDEToEntries(chatFile *KiroIDEChatFile) ([]Entry, []ParseWarning
 	entries := make([]Entry, 0, len(chatFile.Chat))
 	warnings := make([]ParseWarning, 0)
 
+	sessionTimestamp, modelID := extractKiroIDESessionMetadata(chatFile)
+
 	for i, msg := range chatFile.Chat {
 		// Skip messages with empty role
 		if msg.Role == "" {
@@ -105,7 +107,8 @@ func convertKiroIDEToEntries(chatFile *KiroIDEChatFile) ([]Entry, []ParseWarning
 			})
 		case "bot":
 			entries = append(entries, Entry{
-				Type: "assistant",
+				Type:  "assistant",
+				Model: modelID,
 				Message: &Message{
 					Role: "assistant",
 					Content: []ContentItem{
@@ -129,6 +132,11 @@ func convertKiroIDEToEntries(chatFile *KiroIDEChatFile) ([]Entry, []ParseWarning
 				Message: fmt.Sprintf("unknown role %q in chat message", msg.Role),
 			})
 		}
+	}
+
+	// Set timestamp on first entry only (session-level start time)
+	if len(entries) > 0 && sessionTimestamp != "" {
+		entries[0].Timestamp = sessionTimestamp
 	}
 
 	return entries, warnings
@@ -159,6 +167,8 @@ func convertKiroIDEActionsToEntries(actions []KiroIDEAction, chatFile *KiroIDECh
 	entries := make([]Entry, 0, len(actions))
 	warnings := make([]ParseWarning, 0)
 
+	sessionTimestamp, modelID := extractKiroIDESessionMetadata(chatFile)
+
 	// Extract user messages from chat (non-system-prompt human messages)
 	userMessages := extractKiroIDEUserMessages(chatFile)
 
@@ -174,12 +184,14 @@ func convertKiroIDEActionsToEntries(actions []KiroIDEAction, chatFile *KiroIDECh
 		case "say":
 			entry := convertKiroIDESayAction(&action)
 			if entry != nil {
+				entry.Model = modelID
 				entries = append(entries, *entry)
 			}
 
 		case "taskStatus":
 			entry := convertKiroIDETaskStatusAction(&action)
 			if entry != nil {
+				entry.Model = modelID
 				entries = append(entries, *entry)
 			}
 
@@ -192,9 +204,11 @@ func convertKiroIDEActionsToEntries(actions []KiroIDEAction, chatFile *KiroIDECh
 		case "readFiles", "replace", "create", "append", "runCommand", "search":
 			toolUse, toolResult := convertKiroIDEToolAction(&action)
 			if toolUse != nil {
+				toolUse.Model = modelID
 				entries = append(entries, *toolUse)
 			}
 			if toolResult != nil {
+				// tool_result entries are "user" type — no model
 				entries = append(entries, *toolResult)
 			}
 
@@ -206,11 +220,26 @@ func convertKiroIDEActionsToEntries(actions []KiroIDEAction, chatFile *KiroIDECh
 		}
 	}
 
+	// Set timestamp on first entry only (session-level start time)
+	if len(entries) > 0 && sessionTimestamp != "" {
+		entries[0].Timestamp = sessionTimestamp
+	}
+
 	return entries, warnings
 }
 
 // extractKiroIDEUserMessages extracts user prompt messages from the chat file,
 // filtering system prompts and empty content.
+// extractKiroIDESessionMetadata returns the session-level timestamp and model ID
+// from the chat file metadata. Returns empty strings if metadata is nil or values are absent.
+func extractKiroIDESessionMetadata(chatFile *KiroIDEChatFile) (timestamp, modelID string) {
+	if chatFile.Metadata != nil {
+		timestamp = formatUnixMilliTimestamp(chatFile.Metadata.StartTime)
+		modelID = chatFile.Metadata.ModelID
+	}
+	return
+}
+
 func extractKiroIDEUserMessages(chatFile *KiroIDEChatFile) []Entry {
 	var entries []Entry
 	for i, msg := range chatFile.Chat {

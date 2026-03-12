@@ -53,7 +53,7 @@ func convertKiroToEntries(session *KiroSession) ([]Entry, []ParseWarning) {
 
 		// Process assistant message
 		if historyEntry.Assistant != nil {
-			assistantEntries := convertKiroAssistantMessage(historyEntry.Assistant)
+			assistantEntries := convertKiroAssistantMessage(historyEntry.Assistant, historyEntry.RequestMetadata)
 			entries = append(entries, assistantEntries...)
 		}
 	}
@@ -65,10 +65,17 @@ func convertKiroToEntries(session *KiroSession) ([]Entry, []ParseWarning) {
 func convertKiroUserMessage(userMsg *KiroUserMessage) []Entry {
 	var entries []Entry
 
+	// Resolve user timestamp (may be nil)
+	var ts string
+	if userMsg.Timestamp != nil {
+		ts = *userMsg.Timestamp
+	}
+
 	if userMsg.Content.Prompt != nil {
 		// Regular user prompt
 		entries = append(entries, Entry{
-			Type: "user",
+			Type:      "user",
+			Timestamp: ts,
 			Message: &Message{
 				Role: "user",
 				Content: []ContentItem{
@@ -109,7 +116,8 @@ func convertKiroUserMessage(userMsg *KiroUserMessage) []Entry {
 		}
 		if len(resultItems) > 0 {
 			entries = append(entries, Entry{
-				Type: "user",
+				Type:      "user",
+				Timestamp: ts,
 				Message: &Message{
 					Role:    "user",
 					Content: resultItems,
@@ -122,17 +130,29 @@ func convertKiroUserMessage(userMsg *KiroUserMessage) []Entry {
 }
 
 // convertKiroAssistantMessage converts a Kiro assistant message to Entry format.
-func convertKiroAssistantMessage(assistantMsg *KiroAssistantMessage) []Entry {
+// metadata is used to extract timestamp (from RequestStartTimestampMs) and model (from ModelID).
+func convertKiroAssistantMessage(assistantMsg *KiroAssistantMessage, metadata *KiroRequestMetadata) []Entry {
 	var entries []Entry
+
+	// Extract timestamp and model from request metadata
+	var ts, model string
+	if metadata != nil {
+		ts = formatUnixMilliTimestamp(metadata.RequestStartTimestampMs)
+		model = metadata.ModelID
+	}
 
 	if assistantMsg.ToolUse != nil {
 		entry := convertKiroToolUse(assistantMsg.ToolUse)
+		entry.Timestamp = ts
+		entry.Model = model
 		entries = append(entries, entry)
 	}
 
 	if assistantMsg.TextResponse != nil {
 		entries = append(entries, Entry{
-			Type: "assistant",
+			Type:      "assistant",
+			Timestamp: ts,
+			Model:     model,
 			Message: &Message{
 				Role: "assistant",
 				Content: []ContentItem{
@@ -148,7 +168,9 @@ func convertKiroAssistantMessage(assistantMsg *KiroAssistantMessage) []Entry {
 	// Response is another text-only variant (same structure as TextResponse)
 	if assistantMsg.Response != nil {
 		entries = append(entries, Entry{
-			Type: "assistant",
+			Type:      "assistant",
+			Timestamp: ts,
+			Model:     model,
 			Message: &Message{
 				Role: "assistant",
 				Content: []ContentItem{

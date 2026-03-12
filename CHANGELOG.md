@@ -7,8 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Add spec for message metadata feature (T-403): per-message timestamps and model identifiers in Apsis transcript rendering for both Markdown and HTML output, covering all 5 agent formats (Claude, Codex, Copilot, Kiro CLI, Kiro IDE)
+
 ### Fixed
 
+- Fix message metadata alignment in HTML transcript: timestamps now right-align in the message header instead of sitting against the role label
 - Fix Copilot session listing missing sessions when project path contains symlinks by normalizing paths with `EvalSymlinks` + `Clean` before comparison, matching the existing Codex behavior (T-290)
 - Fix OpenCode `DiscoverSessions` leaving `CreatedAt` as zero time when no `msg_` files are present or when timestamp parsing yields zero; now falls back to directory modification time
 

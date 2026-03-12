@@ -797,3 +797,90 @@ func TestParseCodexJSONL_EmptyJSONObjectArguments(t *testing.T) {
 	require.True(t, ok, "Input should be a map")
 	assert.Empty(t, inputMap)
 }
+
+func TestParseCodexJSONL_ModelExtraction(t *testing.T) {
+	// session_meta with model field should populate Model on assistant entries only
+	input := `{"timestamp":"2026-01-04T13:22:15.725Z","type":"session_meta","payload":{"id":"test-session","model":"o3-mini"}}
+{"timestamp":"2026-01-04T13:22:16.000Z","type":"response_item","payload":{"type":"message","role":"user","content":[{"type":"input_text","text":"Hello"}]}}
+{"timestamp":"2026-01-04T13:22:17.000Z","type":"response_item","payload":{"type":"message","role":"assistant","content":[{"type":"output_text","text":"Hi there!"}]}}`
+
+	result, err := ParseCodexJSONL(strings.NewReader(input))
+	require.NoError(t, err)
+	require.Len(t, result.Entries, 2)
+
+	// User entry must NOT have model set
+	assert.Equal(t, "user", result.Entries[0].Type)
+	assert.Empty(t, result.Entries[0].Model, "user entries should not have model")
+
+	// Assistant entry must have model set
+	assert.Equal(t, "assistant", result.Entries[1].Type)
+	assert.Equal(t, "o3-mini", result.Entries[1].Model)
+}
+
+func TestParseCodexJSONL_ModelExtraction_NoModelField(t *testing.T) {
+	// session_meta without model field — backward compatibility
+	input := `{"timestamp":"2026-01-04T13:22:15.725Z","type":"session_meta","payload":{"id":"test-session"}}
+{"timestamp":"2026-01-04T13:22:17.000Z","type":"response_item","payload":{"type":"message","role":"assistant","content":[{"type":"output_text","text":"Hi"}]}}`
+
+	result, err := ParseCodexJSONL(strings.NewReader(input))
+	require.NoError(t, err)
+	require.Len(t, result.Entries, 1)
+
+	assert.Equal(t, "assistant", result.Entries[0].Type)
+	assert.Empty(t, result.Entries[0].Model, "model should be empty when not in session_meta")
+}
+
+func TestParseCodexJSONL_ModelExtraction_EventMsgEntries(t *testing.T) {
+	// Model should also be set on assistant entries created via event_msg (agent_reasoning, agent_message)
+	input := `{"timestamp":"2026-01-04T13:22:15.725Z","type":"session_meta","payload":{"id":"test-session","model":"gpt-4o"}}
+{"timestamp":"2026-01-04T13:22:16.000Z","type":"event_msg","payload":{"type":"agent_reasoning","text":"Thinking..."}}
+{"timestamp":"2026-01-04T13:22:17.000Z","type":"event_msg","payload":{"type":"agent_message","message":"Done."}}`
+
+	result, err := ParseCodexJSONL(strings.NewReader(input))
+	require.NoError(t, err)
+	require.Len(t, result.Entries, 1) // consolidated into one assistant entry
+
+	assert.Equal(t, "assistant", result.Entries[0].Type)
+	assert.Equal(t, "gpt-4o", result.Entries[0].Model)
+}
+
+func TestParseCodexJSONL_ModelExtraction_FunctionCallEntries(t *testing.T) {
+	// Model should be set on assistant entries containing function calls
+	input := `{"timestamp":"2026-01-04T13:22:15.725Z","type":"session_meta","payload":{"id":"test-session","model":"o3-mini"}}
+{"timestamp":"2026-01-04T13:22:16.000Z","type":"response_item","payload":{"type":"function_call","name":"shell_command","arguments":"{\"command\":\"ls\"}","call_id":"call_1"}}
+{"timestamp":"2026-01-04T13:22:17.000Z","type":"response_item","payload":{"type":"function_call_output","call_id":"call_1","output":"file.txt"}}`
+
+	result, err := ParseCodexJSONL(strings.NewReader(input))
+	require.NoError(t, err)
+	require.Len(t, result.Entries, 1)
+
+	assert.Equal(t, "assistant", result.Entries[0].Type)
+	assert.Equal(t, "o3-mini", result.Entries[0].Model)
+}
+
+func TestParseCodexJSONL_ModelExtraction_TimestampsPreserved(t *testing.T) {
+	// Verify that model extraction doesn't interfere with existing timestamp extraction
+	input := `{"timestamp":"2026-01-04T13:22:15.725Z","type":"session_meta","payload":{"id":"test-session","model":"o3-mini"}}
+{"timestamp":"2026-01-04T13:22:16.000Z","type":"response_item","payload":{"type":"message","role":"user","content":[{"type":"input_text","text":"Hello"}]}}
+{"timestamp":"2026-01-04T13:22:17.000Z","type":"response_item","payload":{"type":"message","role":"assistant","content":[{"type":"output_text","text":"Hi"}]}}`
+
+	result, err := ParseCodexJSONL(strings.NewReader(input))
+	require.NoError(t, err)
+	require.Len(t, result.Entries, 2)
+
+	assert.Equal(t, "2026-01-04T13:22:16.000Z", result.Entries[0].Timestamp)
+	assert.Equal(t, "2026-01-04T13:22:17.000Z", result.Entries[1].Timestamp)
+}
+
+func TestParseCodexJSONL_ModelExtraction_ValidFixture(t *testing.T) {
+	// The existing valid fixture has no model field — all entries should have empty Model
+	data, err := os.ReadFile(filepath.Join("testdata", "codex_valid.jsonl"))
+	require.NoError(t, err)
+
+	result, err := ParseCodexJSONL(bytes.NewReader(data))
+	require.NoError(t, err)
+
+	for i, entry := range result.Entries {
+		assert.Empty(t, entry.Model, "entry %d should have empty model (fixture has no model in session_meta)", i)
+	}
+}

@@ -45,4 +45,5 @@ type CodexSessionMeta struct {
 	ID        string `json:"id"`
 	Timestamp string `json:"timestamp"`
 	Cwd       string `json:"cwd"`
+	Model     string `json:"model"`
 }

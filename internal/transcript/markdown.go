@@ -104,9 +104,9 @@ func RenderEntries(entries []Entry, toolMeta map[string]ToolMeta, skillDescripti
 				sb.WriteString(formatAssistantMessage(&group.Entries[i], workingMeta, skillDescriptions))
 			}
 		case "read_group":
-			sb.WriteString(formatReadGroup(group.Reads, projectDir))
+			sb.WriteString(formatReadGroup(group.Reads, projectDir, group.Timestamp))
 		case "edit_group":
-			sb.WriteString(formatEditGroup(group.Edits, projectDir))
+			sb.WriteString(formatEditGroup(group.Edits, projectDir, group.Timestamp))
 		}
 	}
 
@@ -187,13 +187,15 @@ func BuildToolMeta(entries []Entry) map[string]ToolMeta {
 }
 
 // formatReadGroup formats a group of consecutive Read tool calls as a single block.
-func formatReadGroup(reads []readItem, projectDir string) string {
+func formatReadGroup(reads []readItem, projectDir string, timestamp string) string {
 	if len(reads) == 0 {
 		return ""
 	}
 
 	var sb strings.Builder
-	sb.WriteString("## 🤖 Assistant\n\n")
+	sb.WriteString("## 🤖 Assistant")
+	sb.WriteString(FormatMessageMetaMarkdown(timestamp, ""))
+	sb.WriteString("\n\n")
 
 	for _, read := range reads {
 		icon := "✅"
@@ -220,13 +222,15 @@ func formatReadGroup(reads []readItem, projectDir string) string {
 }
 
 // formatEditGroup formats a group of consecutive Edit tool calls as a single block.
-func formatEditGroup(edits []editItem, projectDir string) string {
+func formatEditGroup(edits []editItem, projectDir string, timestamp string) string {
 	if len(edits) == 0 {
 		return ""
 	}
 
 	var sb strings.Builder
-	sb.WriteString("## 🤖 Assistant\n\n")
+	sb.WriteString("## 🤖 Assistant")
+	sb.WriteString(FormatMessageMetaMarkdown(timestamp, ""))
+	sb.WriteString("\n\n")
 
 	for _, edit := range edits {
 		icon := "✅"
@@ -303,7 +307,9 @@ func formatUserMessage(entry *Entry, toolMeta map[string]toolMetadata, skillDesc
 	}
 
 	if hasText {
-		sb.WriteString("## 👤 User\n\n")
+		sb.WriteString("## 👤 User")
+		sb.WriteString(FormatMessageMetaMarkdown(entry.Timestamp, ""))
+		sb.WriteString("\n\n")
 	}
 
 	for _, item := range entry.Message.Content {
@@ -353,7 +359,9 @@ func formatSlashCommand(entry *Entry, skillDescriptions map[string]string) strin
 	}
 
 	var sb strings.Builder
-	sb.WriteString("## 👤 User\n\n")
+	sb.WriteString("## 👤 User")
+	sb.WriteString(FormatMessageMetaMarkdown(entry.Timestamp, ""))
+	sb.WriteString("\n\n")
 
 	if description != "" {
 		// Render as collapsible with description
@@ -413,7 +421,9 @@ func formatAssistantMessage(entry *Entry, toolMeta map[string]toolMetadata, skil
 	}
 
 	var sb strings.Builder
-	sb.WriteString("## 🤖 Assistant\n\n")
+	sb.WriteString("## 🤖 Assistant")
+	sb.WriteString(FormatMessageMetaMarkdown(entry.Timestamp, entry.Model))
+	sb.WriteString("\n\n")
 	sb.WriteString(content.String())
 	sb.WriteString("---\n\n")
 	return sb.String()

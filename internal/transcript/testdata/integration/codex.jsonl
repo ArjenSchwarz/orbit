@@ -1,0 +1,3 @@
+{"timestamp":"2026-03-10T09:00:00Z","type":"session_meta","payload":{"id":"codex-integration-test","timestamp":"2026-03-10T09:00:00Z","cwd":"/test","model":"o3-mini"}}
+{"timestamp":"2026-03-10T09:00:01Z","type":"response_item","payload":{"type":"message","role":"user","content":[{"type":"input_text","text":"List files"}]}}
+{"timestamp":"2026-03-10T09:00:05Z","type":"response_item","payload":{"type":"message","role":"assistant","content":[{"type":"output_text","text":"Here are the files in the directory."}]}}

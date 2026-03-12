@@ -504,3 +504,410 @@ func TestExtractKiroCredits(t *testing.T) {
 		})
 	}
 }
+
+func TestParseKiro_UserTimestampExtraction(t *testing.T) {
+	ts := "2026-01-17T12:00:01Z"
+	input := `{
+		"conversation_id": "test-ts",
+		"history": [
+			{
+				"user": {
+					"additional_context": "",
+					"content": {"Prompt": {"prompt": "hello"}},
+					"timestamp": "` + ts + `",
+					"images": []
+				},
+				"assistant": {
+					"TextResponse": {"content": "hi"}
+				},
+				"request_metadata": {
+					"request_id": "r1",
+					"request_start_timestamp_ms": 1768694401000,
+					"stream_end_timestamp_ms": 1768694402000,
+					"model_id": "some-model",
+					"message_id": "m1",
+					"user_prompt_length": 5,
+					"response_size": 2,
+					"chat_conversation_type": "chat",
+					"tool_use_ids_and_names": [],
+					"message_meta_tags": []
+				}
+			}
+		]
+	}`
+
+	result, err := ParseKiro(strings.NewReader(input))
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	// First entry is user prompt
+	if result.Entries[0].Type != "user" {
+		t.Fatalf("expected user entry, got %s", result.Entries[0].Type)
+	}
+	if result.Entries[0].Timestamp != ts {
+		t.Errorf("user timestamp: got %q, want %q", result.Entries[0].Timestamp, ts)
+	}
+}
+
+func TestParseKiro_AssistantTimestampFromRequestMetadata(t *testing.T) {
+	input := `{
+		"conversation_id": "test-ts",
+		"history": [
+			{
+				"user": {
+					"additional_context": "",
+					"content": {"Prompt": {"prompt": "hello"}},
+					"timestamp": "2026-01-17T12:00:01Z",
+					"images": []
+				},
+				"assistant": {
+					"TextResponse": {"content": "hi"}
+				},
+				"request_metadata": {
+					"request_id": "r1",
+					"request_start_timestamp_ms": 1768694401000,
+					"stream_end_timestamp_ms": 1768694402000,
+					"model_id": "some-model",
+					"message_id": "m1",
+					"user_prompt_length": 5,
+					"response_size": 2,
+					"chat_conversation_type": "chat",
+					"tool_use_ids_and_names": [],
+					"message_meta_tags": []
+				}
+			}
+		]
+	}`
+
+	result, err := ParseKiro(strings.NewReader(input))
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	// Find assistant entry
+	var assistant *Entry
+	for i := range result.Entries {
+		if result.Entries[i].Type == "assistant" {
+			assistant = &result.Entries[i]
+			break
+		}
+	}
+	if assistant == nil {
+		t.Fatal("no assistant entry found")
+	}
+
+	// 1768694401000 ms = 2026-01-18T00:00:01Z
+	want := "2026-01-18T00:00:01Z"
+	if assistant.Timestamp != want {
+		t.Errorf("assistant timestamp: got %q, want %q", assistant.Timestamp, want)
+	}
+}
+
+func TestParseKiro_AssistantModelFromRequestMetadata(t *testing.T) {
+	input := `{
+		"conversation_id": "test-model",
+		"history": [
+			{
+				"user": {
+					"additional_context": "",
+					"content": {"Prompt": {"prompt": "hello"}},
+					"timestamp": null,
+					"images": []
+				},
+				"assistant": {
+					"TextResponse": {"content": "hi"}
+				},
+				"request_metadata": {
+					"request_id": "r1",
+					"request_start_timestamp_ms": 1768694401000,
+					"stream_end_timestamp_ms": 1768694402000,
+					"model_id": "claude-sonnet-4-20250514",
+					"message_id": "m1",
+					"user_prompt_length": 5,
+					"response_size": 2,
+					"chat_conversation_type": "chat",
+					"tool_use_ids_and_names": [],
+					"message_meta_tags": []
+				}
+			}
+		]
+	}`
+
+	result, err := ParseKiro(strings.NewReader(input))
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	var assistant *Entry
+	for i := range result.Entries {
+		if result.Entries[i].Type == "assistant" {
+			assistant = &result.Entries[i]
+			break
+		}
+	}
+	if assistant == nil {
+		t.Fatal("no assistant entry found")
+	}
+
+	if assistant.Model != "claude-sonnet-4-20250514" {
+		t.Errorf("assistant model: got %q, want %q", assistant.Model, "claude-sonnet-4-20250514")
+	}
+}
+
+func TestParseKiro_ZeroTimestampMs(t *testing.T) {
+	// Zero RequestStartTimestampMs should produce no timestamp
+	input := `{
+		"conversation_id": "test-zero-ts",
+		"history": [
+			{
+				"user": {
+					"additional_context": "",
+					"content": {"Prompt": {"prompt": "hello"}},
+					"timestamp": null,
+					"images": []
+				},
+				"assistant": {
+					"TextResponse": {"content": "hi"}
+				},
+				"request_metadata": {
+					"request_id": "r1",
+					"request_start_timestamp_ms": 0,
+					"stream_end_timestamp_ms": 0,
+					"model_id": "some-model",
+					"message_id": "m1",
+					"user_prompt_length": 5,
+					"response_size": 2,
+					"chat_conversation_type": "chat",
+					"tool_use_ids_and_names": [],
+					"message_meta_tags": []
+				}
+			}
+		]
+	}`
+
+	result, err := ParseKiro(strings.NewReader(input))
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	var assistant *Entry
+	for i := range result.Entries {
+		if result.Entries[i].Type == "assistant" {
+			assistant = &result.Entries[i]
+			break
+		}
+	}
+	if assistant == nil {
+		t.Fatal("no assistant entry found")
+	}
+
+	if assistant.Timestamp != "" {
+		t.Errorf("expected empty timestamp for zero ms, got %q", assistant.Timestamp)
+	}
+}
+
+func TestParseKiro_NegativeTimestampMs(t *testing.T) {
+	// Negative RequestStartTimestampMs should produce no timestamp
+	input := `{
+		"conversation_id": "test-neg-ts",
+		"history": [
+			{
+				"user": {
+					"additional_context": "",
+					"content": {"Prompt": {"prompt": "hello"}},
+					"timestamp": null,
+					"images": []
+				},
+				"assistant": {
+					"TextResponse": {"content": "hi"}
+				},
+				"request_metadata": {
+					"request_id": "r1",
+					"request_start_timestamp_ms": -1,
+					"stream_end_timestamp_ms": 0,
+					"model_id": "some-model",
+					"message_id": "m1",
+					"user_prompt_length": 5,
+					"response_size": 2,
+					"chat_conversation_type": "chat",
+					"tool_use_ids_and_names": [],
+					"message_meta_tags": []
+				}
+			}
+		]
+	}`
+
+	result, err := ParseKiro(strings.NewReader(input))
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	var assistant *Entry
+	for i := range result.Entries {
+		if result.Entries[i].Type == "assistant" {
+			assistant = &result.Entries[i]
+			break
+		}
+	}
+	if assistant == nil {
+		t.Fatal("no assistant entry found")
+	}
+
+	if assistant.Timestamp != "" {
+		t.Errorf("expected empty timestamp for negative ms, got %q", assistant.Timestamp)
+	}
+}
+
+func TestParseKiro_NoRequestMetadata(t *testing.T) {
+	// Without request_metadata, assistant entries should have no timestamp or model
+	input := `{
+		"conversation_id": "test-no-meta",
+		"history": [
+			{
+				"user": {
+					"additional_context": "",
+					"content": {"Prompt": {"prompt": "hello"}},
+					"timestamp": null,
+					"images": []
+				},
+				"assistant": {
+					"TextResponse": {"content": "hi"}
+				}
+			}
+		]
+	}`
+
+	result, err := ParseKiro(strings.NewReader(input))
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	var assistant *Entry
+	for i := range result.Entries {
+		if result.Entries[i].Type == "assistant" {
+			assistant = &result.Entries[i]
+			break
+		}
+	}
+	if assistant == nil {
+		t.Fatal("no assistant entry found")
+	}
+
+	if assistant.Timestamp != "" {
+		t.Errorf("expected empty timestamp without metadata, got %q", assistant.Timestamp)
+	}
+	if assistant.Model != "" {
+		t.Errorf("expected empty model without metadata, got %q", assistant.Model)
+	}
+}
+
+func TestParseKiro_NullUserTimestamp(t *testing.T) {
+	// null timestamp on user message should produce empty timestamp
+	input := `{
+		"conversation_id": "test-null-ts",
+		"history": [
+			{
+				"user": {
+					"additional_context": "",
+					"content": {"Prompt": {"prompt": "hello"}},
+					"timestamp": null,
+					"images": []
+				}
+			}
+		]
+	}`
+
+	result, err := ParseKiro(strings.NewReader(input))
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if result.Entries[0].Timestamp != "" {
+		t.Errorf("expected empty timestamp for null, got %q", result.Entries[0].Timestamp)
+	}
+}
+
+func TestParseKiro_UserModelNotSet(t *testing.T) {
+	// User entries should never have Model set, even when request_metadata has model_id
+	input := `{
+		"conversation_id": "test-user-model",
+		"history": [
+			{
+				"user": {
+					"additional_context": "",
+					"content": {"Prompt": {"prompt": "hello"}},
+					"timestamp": "2026-01-17T12:00:01Z",
+					"images": []
+				},
+				"assistant": {
+					"TextResponse": {"content": "hi"}
+				},
+				"request_metadata": {
+					"request_id": "r1",
+					"request_start_timestamp_ms": 1768694401000,
+					"stream_end_timestamp_ms": 1768694402000,
+					"model_id": "claude-sonnet-4-20250514",
+					"message_id": "m1",
+					"user_prompt_length": 5,
+					"response_size": 2,
+					"chat_conversation_type": "chat",
+					"tool_use_ids_and_names": [],
+					"message_meta_tags": []
+				}
+			}
+		]
+	}`
+
+	result, err := ParseKiro(strings.NewReader(input))
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	for _, entry := range result.Entries {
+		if entry.Type == "user" && entry.Model != "" {
+			t.Errorf("user entry should not have model, got %q", entry.Model)
+		}
+	}
+}
+
+func TestParseKiro_ToolUseResultsGetUserTimestamp(t *testing.T) {
+	// Tool use results (user entries) should also get the user timestamp
+	ts := "2026-01-17T12:00:05Z"
+	input := `{
+		"conversation_id": "test-tool-ts",
+		"history": [
+			{
+				"user": {
+					"additional_context": "",
+					"content": {
+						"ToolUseResults": {
+							"tool_use_results": [
+								{
+									"tool_use_id": "tool-1",
+									"content": [{"Text": "output"}],
+									"status": "Success"
+								}
+							]
+						}
+					},
+					"timestamp": "` + ts + `",
+					"images": []
+				}
+			}
+		]
+	}`
+
+	result, err := ParseKiro(strings.NewReader(input))
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if len(result.Entries) != 1 {
+		t.Fatalf("expected 1 entry, got %d", len(result.Entries))
+	}
+
+	if result.Entries[0].Timestamp != ts {
+		t.Errorf("tool result entry timestamp: got %q, want %q", result.Entries[0].Timestamp, ts)
+	}
+}

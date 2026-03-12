@@ -74,13 +74,19 @@ func convertCopilotToEntries(events []CopilotEvent) []Entry {
 	// Second pass: generate entries
 	var currentTurnContent []ContentItem
 	var inAssistantTurn bool
+	var currentModel string
+	var currentTurnTimestamp string
 
 	for _, event := range events {
 		switch event.Type {
+		case "session.model_change":
+			currentModel = event.Data.Model
+
 		case "user.message":
 			// User message
 			entries = append(entries, Entry{
-				Type: "user",
+				Type:      "user",
+				Timestamp: event.Timestamp,
 				Message: &Message{
 					Role: "user",
 					Content: []ContentItem{
@@ -95,6 +101,7 @@ func convertCopilotToEntries(events []CopilotEvent) []Entry {
 		case "assistant.turn_start":
 			inAssistantTurn = true
 			currentTurnContent = nil
+			currentTurnTimestamp = event.Timestamp
 
 		case "assistant.message":
 			// Add thinking content first (if present)
@@ -127,7 +134,9 @@ func convertCopilotToEntries(events []CopilotEvent) []Entry {
 			if inAssistantTurn && len(currentTurnContent) > 0 {
 				// Generate assistant entry with the collected content
 				entry := Entry{
-					Type: "assistant",
+					Type:      "assistant",
+					Timestamp: currentTurnTimestamp,
+					Model:     currentModel,
 					Message: &Message{
 						Role:    "assistant",
 						Content: currentTurnContent,

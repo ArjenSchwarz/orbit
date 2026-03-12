@@ -49,6 +49,9 @@ type CopilotData struct {
 	Success       bool                  `json:"success,omitempty"`
 	Result        *CopilotToolResult    `json:"result,omitempty"`
 	ToolTelemetry *CopilotToolTelemetry `json:"toolTelemetry,omitempty"`
+
+	// session.model_change fields
+	Model string `json:"model,omitempty"`
 }
 
 // CopilotAttachment represents a file attachment in a user message.

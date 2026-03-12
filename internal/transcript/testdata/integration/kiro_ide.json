@@ -1,0 +1,10 @@
+{
+  "executionId": "kiro-ide-integration-test",
+  "chat": [
+    {"role": "human", "content": "Hello"},
+    {"role": "bot", "content": "Hi there!"},
+    {"role": "human", "content": "What is Go?"},
+    {"role": "bot", "content": "Go is a programming language."}
+  ],
+  "metadata": {"modelId": "claude-sonnet-4", "startTime": 1741572000000, "endTime": 1741572060000}
+}
