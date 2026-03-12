@@ -53,7 +53,7 @@ references:
   - Requirements: [3.6](requirements.md#3.6)
   - References: internal/transcript/grouping.go
 
-- [ ] 5. Implement grouping timestamp propagation <!-- id:03oa0uk -->
+- [x] 5. Implement grouping timestamp propagation <!-- id:03oa0uk -->
   - In extractReadItems: set readItem.Timestamp = entry.Timestamp
   - In extractEditItems: set editItem.Timestamp = entry.Timestamp
   - In flushReadGroup: set renderGroup.Timestamp = currentReadGroup[0].Timestamp
