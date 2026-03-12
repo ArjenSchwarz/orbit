@@ -142,7 +142,7 @@ references:
   - Requirements: [1.6](requirements.md#1.6), [1.7](requirements.md#1.7), [2.3](requirements.md#2.3)
   - References: internal/transcript/kiro_ide_parser_test.go, internal/transcript/kiro_ide_parser.go
 
-- [ ] 13. Implement Kiro IDE session-level timestamp and model <!-- id:03oa0us -->
+- [x] 13. Implement Kiro IDE session-level timestamp and model <!-- id:03oa0us -->
   - In convertKiroIDEToEntries: after building entries, set first entry Timestamp from metadata.StartTime via time.UnixMilli(ms).UTC().Format(time.RFC3339)
   - Set Model from metadata.ModelID on all assistant entries only
   - Apply same logic in convertKiroIDEActionsToEntries
