@@ -191,7 +191,7 @@ references:
   - Requirements: [1.1](requirements.md#1.1), [1.3](requirements.md#1.3), [1.4](requirements.md#1.4), [3.2](requirements.md#3.2), [3.4](requirements.md#3.4), [3.5](requirements.md#3.5), [3.6](requirements.md#3.6), [4.1](requirements.md#4.1)
   - References: internal/transcript/html_test.go, internal/transcript/html.go
 
-- [ ] 17. Implement HTML metadata rendering, CSS, and standalone JS <!-- id:03oa0uw -->
+- [x] 17. Implement HTML metadata rendering, CSS, and standalone JS <!-- id:03oa0uw -->
   - Update all <div class=message-header> locations in html.go to include FormatMessageMetaHTML output
   - User messages and slash commands: timestamp only (empty model)
   - Assistant messages: timestamp and model

@@ -407,6 +407,22 @@ details.read-item:last-child {
     }
 }
 
+/* Message metadata (timestamps, model) */
+.message-meta {
+    margin-left: auto;
+    font-size: 0.8rem;
+    font-weight: 400;
+    color: var(--text-secondary);
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+}
+
+.meta-separator {
+    color: var(--text-secondary);
+    opacity: 0.5;
+}
+
 /* Navigation */
 .transcript-nav {
     display: flex;

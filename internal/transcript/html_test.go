@@ -301,8 +301,8 @@ func TestRenderHTML_HTMLEscaping(t *testing.T) {
 
 	result := RenderHTML(entries, RenderOptions{})
 
-	// Should escape HTML entities
-	assert.NotContains(t, result, "<script>", "script tag should be escaped")
+	// User-provided content should be escaped — the XSS payload must not appear as raw HTML
+	assert.NotContains(t, result, "<script>alert", "user-provided script content should be escaped")
 	assert.Contains(t, result, "&lt;script&gt;", "expected escaped script tag")
 }
 

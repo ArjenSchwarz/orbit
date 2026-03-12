@@ -142,6 +142,23 @@ func RenderHTML(entries []Entry, opts RenderOptions) string {
 		sb.WriteString(renderNavigationHTML(opts.Navigation))
 	}
 
+	// Inline script for locale-aware timestamp formatting in standalone HTML.
+	// The web interface (apsis serve) has its own formatLocalDates in layout.html,
+	// but standalone documents need this self-contained IIFE.
+	sb.WriteString(`<script>
+(function() {
+    var fmt = new Intl.DateTimeFormat(undefined, {
+        day: 'numeric', month: 'short', year: 'numeric',
+        hour: 'numeric', minute: '2-digit'
+    });
+    document.querySelectorAll('time[datetime]').forEach(function(el) {
+        var d = new Date(el.getAttribute('datetime'));
+        if (!isNaN(d)) el.textContent = fmt.format(d);
+    });
+})();
+</script>
+`)
+
 	sb.WriteString("</body>\n")
 	sb.WriteString("</html>\n")
 
@@ -260,6 +277,11 @@ func formatReadGroupHTML(reads []readItem, projectDir string) string {
 	sb.WriteString("            <div class=\"message-header\">\n")
 	sb.WriteString("                <span class=\"icon\">🤖</span>\n")
 	sb.WriteString("                <span>Assistant</span>\n")
+	if meta := FormatMessageMetaHTML(reads[0].Timestamp, ""); meta != "" {
+		sb.WriteString("                ")
+		sb.WriteString(meta)
+		sb.WriteString("\n")
+	}
 	sb.WriteString("            </div>\n")
 	sb.WriteString("            <div class=\"message-content\">\n")
 
@@ -302,6 +324,11 @@ func formatEditGroupHTML(edits []editItem, projectDir string) string {
 	sb.WriteString("            <div class=\"message-header\">\n")
 	sb.WriteString("                <span class=\"icon\">🤖</span>\n")
 	sb.WriteString("                <span>Assistant</span>\n")
+	if meta := FormatMessageMetaHTML(edits[0].Timestamp, ""); meta != "" {
+		sb.WriteString("                ")
+		sb.WriteString(meta)
+		sb.WriteString("\n")
+	}
 	sb.WriteString("            </div>\n")
 	sb.WriteString("            <div class=\"message-content\">\n")
 
@@ -392,6 +419,11 @@ func formatUserMessageHTML(entry *Entry, toolMeta map[string]toolMetadata, skill
 		sb.WriteString("            <div class=\"message-header\">\n")
 		sb.WriteString("                <span class=\"icon\">👤</span>\n")
 		sb.WriteString("                <span>User</span>\n")
+		if meta := FormatMessageMetaHTML(entry.Timestamp, ""); meta != "" {
+			sb.WriteString("                ")
+			sb.WriteString(meta)
+			sb.WriteString("\n")
+		}
 		sb.WriteString("            </div>\n")
 		sb.WriteString("            <div class=\"message-content\">\n")
 	}
@@ -449,6 +481,11 @@ func formatSlashCommandHTML(entry *Entry, skillDescriptions map[string]string) s
 	sb.WriteString("            <div class=\"message-header\">\n")
 	sb.WriteString("                <span class=\"icon\">👤</span>\n")
 	sb.WriteString("                <span>User</span>\n")
+	if meta := FormatMessageMetaHTML(entry.Timestamp, ""); meta != "" {
+		sb.WriteString("                ")
+		sb.WriteString(meta)
+		sb.WriteString("\n")
+	}
 	sb.WriteString("            </div>\n")
 	sb.WriteString("            <div class=\"message-content\">\n")
 
@@ -548,6 +585,11 @@ func formatAssistantMessageHTML(entry *Entry, toolMeta map[string]toolMetadata, 
 	sb.WriteString("            <div class=\"message-header\">\n")
 	sb.WriteString("                <span class=\"icon\">🤖</span>\n")
 	sb.WriteString("                <span>Assistant</span>\n")
+	if meta := FormatMessageMetaHTML(entry.Timestamp, entry.Model); meta != "" {
+		sb.WriteString("                ")
+		sb.WriteString(meta)
+		sb.WriteString("\n")
+	}
 	sb.WriteString("            </div>\n")
 	sb.WriteString("            <div class=\"message-content\">\n")
 
