@@ -13,6 +13,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Fix message metadata alignment in HTML transcript: timestamps now right-align in the message header instead of sitting against the role label
 - Fix Copilot session listing missing sessions when project path contains symlinks by normalizing paths with `EvalSymlinks` + `Clean` before comparison, matching the existing Codex behavior (T-290)
 - Fix OpenCode `DiscoverSessions` leaving `CreatedAt` as zero time when no `msg_` files are present or when timestamp parsing yields zero; now falls back to directory modification time
 

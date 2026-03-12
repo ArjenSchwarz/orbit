@@ -65,6 +65,10 @@
     font-size: 1.2rem;
 }
 
+.message-role {
+    flex: 1;
+}
+
 /* Message metadata (timestamps, model) */
 .message-meta {
     margin-left: auto;
