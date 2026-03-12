@@ -1,0 +1,29 @@
+{
+  "conversation_id": "kiro-integration-test",
+  "next_message": null,
+  "history": [
+    {
+      "user": {
+        "additional_context": "",
+        "env_context": null,
+        "content": {"Prompt": {"prompt": "Hello"}},
+        "timestamp": "2026-03-10T09:00:00.000Z",
+        "images": null
+      },
+      "assistant": {
+        "ToolUse": {
+          "message_id": "msg-001",
+          "content": "Hi there!",
+          "tool_uses": []
+        }
+      },
+      "request_metadata": {
+        "request_id": "req-001",
+        "message_id": "msg-001",
+        "model_id": "claude-sonnet-4",
+        "chat_conversation_type": "ToolUse",
+        "request_start_timestamp_ms": 1741572000000
+      }
+    }
+  ]
+}

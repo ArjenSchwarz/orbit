@@ -1,0 +1,2 @@
+{"type":"user","timestamp":"2026-03-10T09:00:00+11:00","message":{"role":"user","content":[{"type":"text","text":"Hello, what can you help me with?"}]}}
+{"type":"assistant","timestamp":"2026-03-10T09:00:05+11:00","message":{"role":"assistant","content":[{"type":"text","text":"I can help with coding tasks, file operations, and more."}]}}

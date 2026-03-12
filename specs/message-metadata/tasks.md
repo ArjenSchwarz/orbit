@@ -206,7 +206,7 @@ references:
 
 ## Integration
 
-- [ ] 18. Write end-to-end integration tests <!-- id:03oa0ux -->
+- [x] 18. Write end-to-end integration tests <!-- id:03oa0ux -->
   - Create integration tests that parse sample transcripts and render to Markdown and HTML
   - Test Claude transcript: timestamps appear in output, no model (req 2.4)
   - Test Codex transcript: timestamps and model appear

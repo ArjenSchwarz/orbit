@@ -1,0 +1,6 @@
+{"type":"session.start","data":{"sessionId":"copilot-integration-test","version":1,"producer":"copilot-agent","copilotVersion":"0.1.0","startTime":"2026-03-10T09:00:00Z"},"id":"evt-001","timestamp":"2026-03-10T09:00:00Z","parentId":null}
+{"type":"session.model_change","data":{"model":"gpt-4o"},"id":"evt-002","timestamp":"2026-03-10T09:00:01Z","parentId":"evt-001"}
+{"type":"user.message","data":{"content":"Hello","transformedContent":"Hello","attachments":[]},"id":"evt-003","timestamp":"2026-03-10T09:00:02Z","parentId":"evt-002"}
+{"type":"assistant.turn_start","data":{"turnId":"0"},"id":"evt-004","timestamp":"2026-03-10T09:00:03Z","parentId":"evt-003"}
+{"type":"assistant.message","data":{"messageId":"msg-001","content":"Hi there!","toolRequests":[]},"id":"evt-005","timestamp":"2026-03-10T09:00:05Z","parentId":"evt-004"}
+{"type":"assistant.turn_end","data":{"turnId":"0"},"id":"evt-006","timestamp":"2026-03-10T09:00:05Z","parentId":"evt-005"}
