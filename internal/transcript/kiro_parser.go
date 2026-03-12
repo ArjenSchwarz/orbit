@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"io"
 	"strings"
-	"time"
 )
 
 // ParseKiro parses a Kiro session JSON file and returns the result.
@@ -138,9 +137,7 @@ func convertKiroAssistantMessage(assistantMsg *KiroAssistantMessage, metadata *K
 	// Extract timestamp and model from request metadata
 	var ts, model string
 	if metadata != nil {
-		if metadata.RequestStartTimestampMs > 0 {
-			ts = time.UnixMilli(metadata.RequestStartTimestampMs).UTC().Format(time.RFC3339)
-		}
+		ts = formatUnixMilliTimestamp(metadata.RequestStartTimestampMs)
 		model = metadata.ModelID
 	}
 

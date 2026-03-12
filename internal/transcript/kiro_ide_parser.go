@@ -6,7 +6,6 @@ import (
 	"io"
 	"os"
 	"strings"
-	"time"
 )
 
 // ParseKiroIDE parses a Kiro IDE .chat JSON file and returns the result without cost data.
@@ -73,14 +72,7 @@ func convertKiroIDEToEntries(chatFile *KiroIDEChatFile) ([]Entry, []ParseWarning
 	entries := make([]Entry, 0, len(chatFile.Chat))
 	warnings := make([]ParseWarning, 0)
 
-	// Extract session-level metadata
-	var sessionTimestamp, modelID string
-	if chatFile.Metadata != nil {
-		if chatFile.Metadata.StartTime > 0 {
-			sessionTimestamp = time.UnixMilli(chatFile.Metadata.StartTime).UTC().Format(time.RFC3339)
-		}
-		modelID = chatFile.Metadata.ModelID
-	}
+	sessionTimestamp, modelID := extractKiroIDESessionMetadata(chatFile)
 
 	for i, msg := range chatFile.Chat {
 		// Skip messages with empty role
@@ -175,14 +167,7 @@ func convertKiroIDEActionsToEntries(actions []KiroIDEAction, chatFile *KiroIDECh
 	entries := make([]Entry, 0, len(actions))
 	warnings := make([]ParseWarning, 0)
 
-	// Extract session-level metadata
-	var sessionTimestamp, modelID string
-	if chatFile.Metadata != nil {
-		if chatFile.Metadata.StartTime > 0 {
-			sessionTimestamp = time.UnixMilli(chatFile.Metadata.StartTime).UTC().Format(time.RFC3339)
-		}
-		modelID = chatFile.Metadata.ModelID
-	}
+	sessionTimestamp, modelID := extractKiroIDESessionMetadata(chatFile)
 
 	// Extract user messages from chat (non-system-prompt human messages)
 	userMessages := extractKiroIDEUserMessages(chatFile)
@@ -245,6 +230,16 @@ func convertKiroIDEActionsToEntries(actions []KiroIDEAction, chatFile *KiroIDECh
 
 // extractKiroIDEUserMessages extracts user prompt messages from the chat file,
 // filtering system prompts and empty content.
+// extractKiroIDESessionMetadata returns the session-level timestamp and model ID
+// from the chat file metadata. Returns empty strings if metadata is nil or values are absent.
+func extractKiroIDESessionMetadata(chatFile *KiroIDEChatFile) (timestamp, modelID string) {
+	if chatFile.Metadata != nil {
+		timestamp = formatUnixMilliTimestamp(chatFile.Metadata.StartTime)
+		modelID = chatFile.Metadata.ModelID
+	}
+	return
+}
+
 func extractKiroIDEUserMessages(chatFile *KiroIDEChatFile) []Entry {
 	var entries []Entry
 	for i, msg := range chatFile.Chat {

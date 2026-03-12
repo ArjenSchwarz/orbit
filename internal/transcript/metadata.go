@@ -7,19 +7,37 @@ import (
 	"time"
 )
 
-// FormatTimestampMarkdown parses an RFC3339 timestamp and re-formats it
-// in the system's local timezone as RFC3339.
-// Returns empty string if the timestamp is empty or unparseable.
-func FormatTimestampMarkdown(ts string) string {
+// parseTimestamp parses an RFC3339 or RFC3339Nano timestamp string.
+func parseTimestamp(ts string) (time.Time, bool) {
 	if ts == "" {
-		return ""
+		return time.Time{}, false
 	}
 	t, err := time.Parse(time.RFC3339Nano, ts)
 	if err != nil {
 		t, err = time.Parse(time.RFC3339, ts)
 		if err != nil {
-			return ""
+			return time.Time{}, false
 		}
+	}
+	return t, true
+}
+
+// formatUnixMilliTimestamp converts epoch milliseconds to an RFC3339 UTC string.
+// Returns empty string for zero or negative values.
+func formatUnixMilliTimestamp(ms int64) string {
+	if ms <= 0 {
+		return ""
+	}
+	return time.UnixMilli(ms).UTC().Format(time.RFC3339)
+}
+
+// FormatTimestampMarkdown parses an RFC3339 timestamp and re-formats it
+// in the system's local timezone as RFC3339.
+// Returns empty string if the timestamp is empty or unparseable.
+func FormatTimestampMarkdown(ts string) string {
+	t, ok := parseTimestamp(ts)
+	if !ok {
+		return ""
 	}
 	return t.In(time.Local).Format(time.RFC3339)
 }
@@ -28,15 +46,9 @@ func FormatTimestampMarkdown(ts string) string {
 // and a server-rendered RFC3339 fallback.
 // Returns empty string if the timestamp is empty or unparseable.
 func FormatTimestampHTML(ts string) string {
-	if ts == "" {
+	t, ok := parseTimestamp(ts)
+	if !ok {
 		return ""
-	}
-	t, err := time.Parse(time.RFC3339Nano, ts)
-	if err != nil {
-		t, err = time.Parse(time.RFC3339, ts)
-		if err != nil {
-			return ""
-		}
 	}
 	utc := t.UTC().Format(time.RFC3339)
 	local := t.In(time.Local).Format(time.RFC3339)

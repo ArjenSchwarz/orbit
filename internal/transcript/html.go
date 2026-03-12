@@ -266,6 +266,15 @@ func renderNavigationHTML(nav *NavigationContext) string {
 	return sb.String()
 }
 
+// writeMessageMetaHTML appends the metadata span to a message header if metadata is available.
+func writeMessageMetaHTML(sb *strings.Builder, timestamp, model string) {
+	if meta := FormatMessageMetaHTML(timestamp, model); meta != "" {
+		sb.WriteString("                ")
+		sb.WriteString(meta)
+		sb.WriteString("\n")
+	}
+}
+
 // formatReadGroupHTML formats a group of consecutive Read tool calls as HTML.
 func formatReadGroupHTML(reads []readItem, projectDir string) string {
 	if len(reads) == 0 {
@@ -277,11 +286,7 @@ func formatReadGroupHTML(reads []readItem, projectDir string) string {
 	sb.WriteString("            <div class=\"message-header\">\n")
 	sb.WriteString("                <span class=\"icon\">🤖</span>\n")
 	sb.WriteString("                <span>Assistant</span>\n")
-	if meta := FormatMessageMetaHTML(reads[0].Timestamp, ""); meta != "" {
-		sb.WriteString("                ")
-		sb.WriteString(meta)
-		sb.WriteString("\n")
-	}
+	writeMessageMetaHTML(&sb, reads[0].Timestamp, "")
 	sb.WriteString("            </div>\n")
 	sb.WriteString("            <div class=\"message-content\">\n")
 
@@ -324,11 +329,7 @@ func formatEditGroupHTML(edits []editItem, projectDir string) string {
 	sb.WriteString("            <div class=\"message-header\">\n")
 	sb.WriteString("                <span class=\"icon\">🤖</span>\n")
 	sb.WriteString("                <span>Assistant</span>\n")
-	if meta := FormatMessageMetaHTML(edits[0].Timestamp, ""); meta != "" {
-		sb.WriteString("                ")
-		sb.WriteString(meta)
-		sb.WriteString("\n")
-	}
+	writeMessageMetaHTML(&sb, edits[0].Timestamp, "")
 	sb.WriteString("            </div>\n")
 	sb.WriteString("            <div class=\"message-content\">\n")
 
@@ -419,11 +420,7 @@ func formatUserMessageHTML(entry *Entry, toolMeta map[string]toolMetadata, skill
 		sb.WriteString("            <div class=\"message-header\">\n")
 		sb.WriteString("                <span class=\"icon\">👤</span>\n")
 		sb.WriteString("                <span>User</span>\n")
-		if meta := FormatMessageMetaHTML(entry.Timestamp, ""); meta != "" {
-			sb.WriteString("                ")
-			sb.WriteString(meta)
-			sb.WriteString("\n")
-		}
+		writeMessageMetaHTML(&sb, entry.Timestamp, "")
 		sb.WriteString("            </div>\n")
 		sb.WriteString("            <div class=\"message-content\">\n")
 	}
@@ -481,11 +478,7 @@ func formatSlashCommandHTML(entry *Entry, skillDescriptions map[string]string) s
 	sb.WriteString("            <div class=\"message-header\">\n")
 	sb.WriteString("                <span class=\"icon\">👤</span>\n")
 	sb.WriteString("                <span>User</span>\n")
-	if meta := FormatMessageMetaHTML(entry.Timestamp, ""); meta != "" {
-		sb.WriteString("                ")
-		sb.WriteString(meta)
-		sb.WriteString("\n")
-	}
+	writeMessageMetaHTML(&sb, entry.Timestamp, "")
 	sb.WriteString("            </div>\n")
 	sb.WriteString("            <div class=\"message-content\">\n")
 
@@ -585,11 +578,7 @@ func formatAssistantMessageHTML(entry *Entry, toolMeta map[string]toolMetadata, 
 	sb.WriteString("            <div class=\"message-header\">\n")
 	sb.WriteString("                <span class=\"icon\">🤖</span>\n")
 	sb.WriteString("                <span>Assistant</span>\n")
-	if meta := FormatMessageMetaHTML(entry.Timestamp, entry.Model); meta != "" {
-		sb.WriteString("                ")
-		sb.WriteString(meta)
-		sb.WriteString("\n")
-	}
+	writeMessageMetaHTML(&sb, entry.Timestamp, entry.Model)
 	sb.WriteString("            </div>\n")
 	sb.WriteString("            <div class=\"message-content\">\n")
 
