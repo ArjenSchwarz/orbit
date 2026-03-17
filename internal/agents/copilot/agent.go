@@ -71,13 +71,14 @@ func (a *Agent) DefaultSessionDir() string {
 }
 
 // DiscoverSessions lists sessions for a given project directory.
+// Copilot sessions are stored as directories under ~/.copilot/session-state/{sessionID}/
+// with events.jsonl containing the session transcript.
 func (a *Agent) DiscoverSessions(ctx context.Context, projectDir string) ([]agents.SessionInfo, error) {
 	sessionDir := a.DefaultSessionDir()
 	if sessionDir == "" {
 		return nil, nil
 	}
 
-	// Sessions may be stored in ~/.copilot/session-state/
 	entries, err := os.ReadDir(sessionDir)
 	if err != nil {
 		if os.IsNotExist(err) {
@@ -88,19 +89,20 @@ func (a *Agent) DiscoverSessions(ctx context.Context, projectDir string) ([]agen
 
 	var sessions []agents.SessionInfo
 	for _, entry := range entries {
-		if entry.IsDir() {
+		if !entry.IsDir() {
 			continue
 		}
 
-		info, err := entry.Info()
-		if err != nil {
+		eventsPath := filepath.Join(sessionDir, entry.Name(), "events.jsonl")
+		info, err := os.Stat(eventsPath)
+		if err != nil || info.Size() == 0 {
 			continue
 		}
 
 		sessions = append(sessions, agents.SessionInfo{
 			ID:        entry.Name(),
 			Agent:     "copilot",
-			Path:      filepath.Join(sessionDir, entry.Name()),
+			Path:      eventsPath,
 			CreatedAt: info.ModTime(),
 			Size:      info.Size(),
 		})
