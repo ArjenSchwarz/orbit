@@ -219,6 +219,9 @@ func FormatLastAction(entry *Entry) string {
 // are replaced with "..." so the total rune count remains maxRunes.
 // This avoids splitting multibyte UTF-8 sequences that byte-based slicing would break.
 func truncateRunes(s string, maxRunes int) string {
+	if maxRunes < 3 {
+		maxRunes = 3
+	}
 	if utf8.RuneCountInString(s) <= maxRunes {
 		return s
 	}

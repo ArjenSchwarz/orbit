@@ -525,3 +525,27 @@ func TestFormatLastAction_UTF8Safety(t *testing.T) {
 		t.Errorf("FormatLastAction produced invalid UTF-8: %q", got)
 	}
 }
+
+func TestTruncateRunes_SmallMaxRunes(t *testing.T) {
+	tests := []struct {
+		name     string
+		input    string
+		max      int
+		expected string
+	}{
+		{"maxRunes=0 clamps to 3", "abcdef", 0, "..."},
+		{"maxRunes=1 clamps to 3", "abcdef", 1, "..."},
+		{"maxRunes=2 clamps to 3", "abcdef", 2, "..."},
+		{"maxRunes=3 keeps nothing plus ellipsis", "abcdef", 3, "..."},
+		{"maxRunes=4 keeps one rune", "abcdef", 4, "a..."},
+		{"short string below clamped max", "ab", 0, "ab"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := truncateRunes(tt.input, tt.max)
+			if got != tt.expected {
+				t.Errorf("truncateRunes(%q, %d) = %q, want %q", tt.input, tt.max, got, tt.expected)
+			}
+		})
+	}
+}
