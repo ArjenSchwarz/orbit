@@ -2,6 +2,8 @@ package claudecode
 
 import (
 	"context"
+	"os"
+	"path/filepath"
 	"slices"
 	"testing"
 
@@ -386,6 +388,94 @@ func TestAgent_ArgOrder(t *testing.T) {
 				t.Errorf("-p should come before --output-format: prompt at %d, output-format at %d", promptPos, outputFormatPos)
 			}
 		})
+	}
+}
+
+// setupFakeSessionDir creates a temporary directory mimicking ~/.claude/projects/
+// with multiple project hash folders, each containing .jsonl session files.
+// Returns the temp dir and a cleanup function.
+func setupFakeSessionDir(t *testing.T) string {
+	t.Helper()
+	base := t.TempDir()
+
+	// Create two project hash directories matching BuildProjectPath output.
+	// Project A: /Users/alice/projectA → -Users-alice-projectA
+	projAHash := "-Users-alice-projectA"
+	// Project B: /Users/bob/projectB → -Users-bob-projectB
+	projBHash := "-Users-bob-projectB"
+
+	for _, ph := range []string{projAHash, projBHash} {
+		dir := filepath.Join(base, ph)
+		if err := os.MkdirAll(dir, 0o755); err != nil {
+			t.Fatal(err)
+		}
+		// Write a dummy .jsonl file in each.
+		if err := os.WriteFile(filepath.Join(dir, "session1.jsonl"), []byte(`{}`), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	return base
+}
+
+// TestDiscoverSessions_FiltersbyProjectDir verifies that when projectDir is
+// provided, only sessions for that project are returned (bug T-396).
+func TestDiscoverSessions_FiltersByProjectDir(t *testing.T) {
+	base := setupFakeSessionDir(t)
+
+	agent := &Agent{
+		config:  agents.AgentConfig{},
+		cliPath: "claude",
+		// Override the session dir via a wrapper — we'll test the exported method
+		// by temporarily replacing DefaultSessionDir logic.
+	}
+	// We need to override DefaultSessionDir. Since it's a method, we'll test
+	// discoverSessionsIn directly (the helper we'll create), but for now test
+	// through the public method by creating an agent with a custom session dir.
+	// The simplest approach: create a testable agent that returns our temp dir.
+	sessions, err := discoverSessionsIn(context.Background(), base, "/Users/alice/projectA")
+	if err != nil {
+		t.Fatalf("discoverSessionsIn() error = %v", err)
+	}
+
+	// Should only return sessions from projectA's hash folder.
+	if len(sessions) != 1 {
+		t.Fatalf("expected 1 session for projectA, got %d", len(sessions))
+	}
+	if sessions[0].Project != "-Users-alice-projectA" {
+		t.Errorf("expected project %q, got %q", "-Users-alice-projectA", sessions[0].Project)
+	}
+
+	_ = agent // suppress unused
+}
+
+// TestDiscoverSessions_NoProjectDir_ReturnsAll verifies that when projectDir
+// is empty, sessions from all projects are returned.
+func TestDiscoverSessions_NoProjectDir_ReturnsAll(t *testing.T) {
+	base := setupFakeSessionDir(t)
+
+	sessions, err := discoverSessionsIn(context.Background(), base, "")
+	if err != nil {
+		t.Fatalf("discoverSessionsIn() error = %v", err)
+	}
+
+	if len(sessions) != 2 {
+		t.Fatalf("expected 2 sessions (all projects), got %d", len(sessions))
+	}
+}
+
+// TestDiscoverSessions_ProjectDir_NonexistentProject verifies that when
+// projectDir points to a project with no sessions, an empty result is returned.
+func TestDiscoverSessions_ProjectDir_NonexistentProject(t *testing.T) {
+	base := setupFakeSessionDir(t)
+
+	sessions, err := discoverSessionsIn(context.Background(), base, "/Users/nobody/nonexistent")
+	if err != nil {
+		t.Fatalf("discoverSessionsIn() error = %v", err)
+	}
+
+	if len(sessions) != 0 {
+		t.Fatalf("expected 0 sessions for nonexistent project, got %d", len(sessions))
 	}
 }
 
