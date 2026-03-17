@@ -23,8 +23,9 @@ func init() {
 
 // Agent implements the agents.Agent interface for GitHub Copilot.
 type Agent struct {
-	config  agents.AgentConfig
-	cliPath string
+	config     agents.AgentConfig
+	cliPath    string
+	sessionDir string // override for testing; empty uses DefaultSessionDir()
 }
 
 // New creates a new Copilot agent.
@@ -74,7 +75,10 @@ func (a *Agent) DefaultSessionDir() string {
 // Copilot sessions are stored as directories under ~/.copilot/session-state/{sessionID}/
 // with events.jsonl containing the session transcript.
 func (a *Agent) DiscoverSessions(ctx context.Context, projectDir string) ([]agents.SessionInfo, error) {
-	sessionDir := a.DefaultSessionDir()
+	sessionDir := a.sessionDir
+	if sessionDir == "" {
+		sessionDir = a.DefaultSessionDir()
+	}
 	if sessionDir == "" {
 		return nil, nil
 	}
