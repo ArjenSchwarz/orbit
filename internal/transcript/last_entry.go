@@ -7,6 +7,7 @@ import (
 	"io"
 	"os"
 	"sync"
+	"unicode/utf8"
 )
 
 const (
@@ -153,16 +154,13 @@ func IsDisplayableEntry(e *Entry) bool {
 }
 
 // FormatToolUse formats a tool_use content item for display.
-// Returns format: "{ToolName}: {key_input}" with truncation to 60 chars.
+// Returns format: "{ToolName}: {key_input}" with truncation to 60 runes.
 func FormatToolUse(name string, input any) string {
 	keyInput := extractKeyInput(input)
 	if keyInput == "" {
 		return name
 	}
-	// Truncate to 60 characters per requirement 3.6
-	if len(keyInput) > 60 {
-		keyInput = keyInput[:57] + "..."
-	}
+	keyInput = truncateRunes(keyInput, 60)
 	return fmt.Sprintf("%s: %s", name, keyInput)
 }
 
@@ -210,14 +208,24 @@ func FormatLastAction(entry *Entry) string {
 	// Second pass: fall back to text
 	for _, c := range entry.Message.Content {
 		if c.Type == "text" && c.Text != "" {
-			text := c.Text
-			// Truncate to 80 chars per requirement 3.7
-			if len(text) > 80 {
-				return text[:77] + "..."
-			}
-			return text
+			return truncateRunes(c.Text, 80)
 		}
 	}
 
 	return ""
+}
+
+// truncateRunes truncates s to maxRunes runes. If truncated, the last 3 runes
+// are replaced with "..." so the total rune count remains maxRunes.
+// This avoids splitting multibyte UTF-8 sequences that byte-based slicing would break.
+func truncateRunes(s string, maxRunes int) string {
+	if maxRunes < 3 {
+		maxRunes = 3
+	}
+	if utf8.RuneCountInString(s) <= maxRunes {
+		return s
+	}
+	// Keep maxRunes-3 runes, then append "..."
+	runes := []rune(s)
+	return string(runes[:maxRunes-3]) + "..."
 }
