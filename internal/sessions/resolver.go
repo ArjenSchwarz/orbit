@@ -294,12 +294,17 @@ func (r *Resolver) openFileSession(path, source, sessionID string) (*ResolvedSes
 	}, nil
 }
 
-// findCodexSession searches ~/.codex/sessions/ for a session by UUID.
+// findCodexSession searches ~/.codex/sessions/ for a session by UUID or
+// filename-based ID. UUID IDs are matched against UUID substrings in filenames.
+// Non-UUID IDs are matched against the full basename without the .jsonl extension,
+// which is the same format that listCodex returns for files without a UUID.
 func findCodexSession(homeDir, sessionID string) (string, error) {
-	if len(sessionID) != 36 || !uuidPattern.MatchString(sessionID) {
+	// Reject IDs containing path separators or traversal sequences.
+	if strings.ContainsAny(sessionID, "/\\") || strings.Contains(sessionID, "..") {
 		return "", nil
 	}
 
+	isUUID := len(sessionID) == 36 && uuidPattern.MatchString(sessionID)
 	normalizedID := strings.ToLower(sessionID)
 	codexDir := filepath.Join(homeDir, ".codex", "sessions")
 
@@ -318,9 +323,19 @@ func findCodexSession(homeDir, sessionID string) (string, error) {
 		}
 
 		filename := filepath.Base(path)
-		if match := uuidPattern.FindString(filename); strings.ToLower(match) == normalizedID {
-			foundPath = path
-			return filepath.SkipAll
+
+		if isUUID {
+			// Match UUID substring within the filename.
+			if match := uuidPattern.FindString(filename); strings.ToLower(match) == normalizedID {
+				foundPath = path
+				return filepath.SkipAll
+			}
+		} else {
+			// Match the full basename (without .jsonl) for non-UUID IDs.
+			if strings.ToLower(strings.TrimSuffix(filename, ".jsonl")) == normalizedID {
+				foundPath = path
+				return filepath.SkipAll
+			}
 		}
 		return nil
 	})
