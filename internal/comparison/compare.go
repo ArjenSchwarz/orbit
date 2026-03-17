@@ -90,7 +90,18 @@ func (c *Comparator) CompareUnified(ctx context.Context, input ComparisonInput) 
 		}
 	}
 
-	result, err := c.runComparison(ctx, originalPrompt, len(input.Variants))
+	// Use the maximum variant ID (not the count) so that non-contiguous IDs
+	// are validated correctly. When variant 2 fails in a 3-variant run,
+	// only variants 1 and 3 are compared — the AI must be allowed to
+	// recommend variant 3, not capped at len(input.Variants)=2.
+	maxVariantID := 0
+	for _, v := range input.Variants {
+		if v.ID > maxVariantID {
+			maxVariantID = v.ID
+		}
+	}
+
+	result, err := c.runComparison(ctx, originalPrompt, maxVariantID)
 	if err != nil && input.OutputPath != "" {
 		// The agent may have written the comparison file before the session
 		// failed (e.g., timeout, malformed response). Check for it.

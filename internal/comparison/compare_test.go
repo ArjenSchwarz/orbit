@@ -1667,3 +1667,118 @@ func TestIntegration_GracefulDegradation_WhitespaceOnlyFields(t *testing.T) {
 		}
 	}
 }
+
+// TestCompareUnified_NonContiguousVariantIDs verifies that when only a subset
+// of variants are compared (e.g., variants 1 and 3 because variant 2 failed),
+// the recommendation correctly uses the original variant IDs.
+// This is a regression test for T-507: when variant 2 fails in a 3-variant run,
+// the comparison should accept variant 3 as a valid recommendation rather than
+// rejecting it and allowing 2 (the failed variant) to be returned.
+func TestCompareUnified_NonContiguousVariantIDs(t *testing.T) {
+	// AI recommends variant 3 - the second successful variant in a run
+	// where variant 2 failed and only 1 and 3 are compared.
+	aiResponse := `{
+		"recommendation": 3,
+		"confidence": "high",
+		"summary": "Variant 3 has better test coverage and cleaner architecture.",
+		"file_analyses": [
+			{
+				"path": "internal/handler.go",
+				"variants": {"1": "Basic implementation", "3": "Better separation"},
+				"preference": 3
+			}
+		],
+		"observations": ["Variant 3 handles edge cases better"]
+	}`
+
+	runner := &mockPromptRunner{response: aiResponse}
+	comp := NewComparator(runner, "")
+
+	ctx := context.Background()
+	// Only variants 1 and 3 are passed (variant 2 was filtered out as failed)
+	input := ComparisonInput{
+		SpecName: "test-feature",
+		Variants: []VariantData{
+			{ID: 1, CommitMessages: []string{"implement feature"}},
+			{ID: 3, CommitMessages: []string{"alternative implementation"}},
+		},
+	}
+
+	result, err := comp.CompareUnified(ctx, input)
+	if err != nil {
+		t.Fatalf("CompareUnified() should accept variant 3 as valid recommendation, got error: %v", err)
+	}
+
+	if result.Recommendation != 3 {
+		t.Errorf("expected recommendation 3 (original variant ID), got %d", result.Recommendation)
+	}
+}
+
+// TestParseAndValidate_NonContiguousVariantIDs verifies that parseAndValidate
+// correctly validates variant IDs against the maximum ID, not the count.
+func TestParseAndValidate_NonContiguousVariantIDs(t *testing.T) {
+	comp := NewComparator(nil, "")
+
+	tests := []struct {
+		name           string
+		recommendation int
+		numVariants    int
+		wantErr        bool
+	}{
+		// With max variant ID 3 (variants 1, 3 compared), recommendation 3 is valid
+		{"variant 3 valid with max ID 3", 3, 3, false},
+		// Recommendation 4 is out of range
+		{"variant 4 invalid with max ID 3", 4, 3, true},
+		// Recommendation 2 is valid (even though variant 2 was filtered, it's in range)
+		{"variant 2 valid with max ID 3", 2, 3, false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			json := `{
+				"recommendation": ` + itoa(tt.recommendation) + `,
+				"confidence": "high",
+				"summary": "test",
+				"file_analyses": [],
+				"observations": []
+			}`
+
+			result, err := comp.parseAndValidate(json, tt.numVariants)
+			if tt.wantErr {
+				if err == nil {
+					t.Fatal("expected error for out-of-range recommendation, got nil")
+				}
+			} else {
+				if err != nil {
+					t.Fatalf("expected no error, got: %v", err)
+				}
+				if result.Recommendation != tt.recommendation {
+					t.Errorf("expected recommendation %d, got %d", tt.recommendation, result.Recommendation)
+				}
+			}
+		})
+	}
+}
+
+// TestValidateLearnings_NonContiguousVariantIDs verifies that learnings with
+// non-contiguous variant IDs are correctly validated.
+func TestValidateLearnings_NonContiguousVariantIDs(t *testing.T) {
+	learnings := []VariantLearning{
+		{
+			VariantID:      3,
+			Category:       LearningCategoryCodePattern,
+			Title:          "Good pattern",
+			Rationale:      "Useful technique",
+			FileReferences: []string{"file.go:1"},
+		},
+	}
+
+	// With maxVariantID=3, variant 3 should be valid
+	result := validateLearnings(learnings, 3)
+	if len(result) != 1 {
+		t.Fatalf("expected 1 valid learning with maxVariantID=3, got %d", len(result))
+	}
+	if result[0].VariantID != 3 {
+		t.Errorf("expected learning variant_id 3, got %d", result[0].VariantID)
+	}
+}
