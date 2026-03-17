@@ -5,6 +5,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"log"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -120,9 +121,11 @@ func discoverSessionsIn(_ context.Context, sessionDir, projectDir string) ([]age
 		if !entry.IsDir() {
 			continue
 		}
-		// Skip unreadable project directories (e.g. permission denied) and continue.
 		found, err := readProjectSessions(filepath.Join(sessionDir, entry.Name()), entry.Name())
 		if err != nil {
+			// Skip unreadable project directories and continue scanning others.
+			// Log the error so the behaviour is diagnosable (e.g. permission denied).
+			log.Printf("[claude-code] skipping project directory %s: %v", entry.Name(), err)
 			continue
 		}
 		sessions = append(sessions, found...)

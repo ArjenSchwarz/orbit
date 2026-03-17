@@ -406,16 +406,18 @@ func setupFakeSessionDir(t *testing.T) string {
 		if err := os.MkdirAll(dir, 0o755); err != nil {
 			t.Fatal(err)
 		}
-		// Write a dummy .jsonl file in each.
-		if err := os.WriteFile(filepath.Join(dir, "session1.jsonl"), []byte(`{}`), 0o644); err != nil {
-			t.Fatal(err)
+		// Write two dummy .jsonl files in each to verify multi-session handling.
+		for _, name := range []string{"session1.jsonl", "session2.jsonl"} {
+			if err := os.WriteFile(filepath.Join(dir, name), []byte(`{}`), 0o644); err != nil {
+				t.Fatal(err)
+			}
 		}
 	}
 
 	return base
 }
 
-// TestDiscoverSessions_FiltersbyProjectDir verifies that when projectDir is
+// TestDiscoverSessions_FiltersByProjectDir verifies that when projectDir is
 // provided, only sessions for that project are returned (bug T-396).
 func TestDiscoverSessions_FiltersByProjectDir(t *testing.T) {
 	t.Parallel()
@@ -428,11 +430,13 @@ func TestDiscoverSessions_FiltersByProjectDir(t *testing.T) {
 
 	// Should only return sessions from projectA's hash folder.
 	wantProject := BuildProjectPath("/Users/alice/projectA")
-	if len(sessions) != 1 {
-		t.Fatalf("expected 1 session for projectA, got %d", len(sessions))
+	if len(sessions) != 2 {
+		t.Fatalf("expected 2 sessions for projectA, got %d", len(sessions))
 	}
-	if sessions[0].Project != wantProject {
-		t.Errorf("expected project %q, got %q", wantProject, sessions[0].Project)
+	for _, s := range sessions {
+		if s.Project != wantProject {
+			t.Errorf("expected project %q, got %q", wantProject, s.Project)
+		}
 	}
 }
 
@@ -447,8 +451,8 @@ func TestDiscoverSessions_NoProjectDir_ReturnsAll(t *testing.T) {
 		t.Fatalf("discoverSessionsIn() error = %v", err)
 	}
 
-	if len(sessions) != 2 {
-		t.Fatalf("expected 2 sessions (all projects), got %d", len(sessions))
+	if len(sessions) != 4 {
+		t.Fatalf("expected 4 sessions (2 per project × 2 projects), got %d", len(sessions))
 	}
 }
 
