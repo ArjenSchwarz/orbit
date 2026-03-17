@@ -181,6 +181,101 @@ func TestResolveCodexInvalidUUID(t *testing.T) {
 	}
 }
 
+// TestResolveCodexNonUUIDFilename verifies that Codex sessions whose filenames
+// don't contain a UUID can still be resolved by the filename-based ID that
+// listCodex returns (basename without .jsonl).
+func TestResolveCodexNonUUIDFilename(t *testing.T) {
+	homeDir := t.TempDir()
+	projectPath := t.TempDir()
+
+	createdAt := time.Date(2025, 3, 10, 9, 0, 0, 0, time.UTC)
+	codexDir := filepath.Join(homeDir, ".codex", "sessions",
+		createdAt.Format("2006"), createdAt.Format("01"), createdAt.Format("02"))
+	if err := os.MkdirAll(codexDir, 0755); err != nil {
+		t.Fatalf("failed to create dir: %v", err)
+	}
+
+	// Create a session file whose name has no UUID — listCodex returns
+	// "events" as the session ID for this file.
+	meta := map[string]any{
+		"type":      "session_meta",
+		"timestamp": createdAt.Format(time.RFC3339),
+		"payload": map[string]any{
+			"id":  "events",
+			"cwd": projectPath,
+		},
+	}
+	data, _ := json.Marshal(meta)
+	filePath := filepath.Join(codexDir, "events.jsonl")
+	if err := os.WriteFile(filePath, append(data, '\n'), 0644); err != nil {
+		t.Fatalf("failed to write file: %v", err)
+	}
+
+	resolver := newTestResolver(projectPath, homeDir)
+	resolved, err := resolver.Resolve(SourceCodex, "events")
+	if err != nil {
+		t.Fatalf("expected non-UUID ID to resolve, got error: %v", err)
+	}
+	defer func() { _ = resolved.Reader.Close() }()
+
+	if resolved.Metadata.Source != SourceCodex {
+		t.Errorf("source = %q, want %q", resolved.Metadata.Source, SourceCodex)
+	}
+	if resolved.Metadata.ID != "events" {
+		t.Errorf("id = %q, want %q", resolved.Metadata.ID, "events")
+	}
+}
+
+// TestResolveCodexNonUUIDWithPrefix tests filenames like "session-something.jsonl"
+// where the name contains "session-" prefix but no UUID.
+func TestResolveCodexNonUUIDWithPrefix(t *testing.T) {
+	homeDir := t.TempDir()
+	projectPath := t.TempDir()
+
+	createdAt := time.Date(2025, 3, 10, 9, 0, 0, 0, time.UTC)
+	codexDir := filepath.Join(homeDir, ".codex", "sessions",
+		createdAt.Format("2006"), createdAt.Format("01"), createdAt.Format("02"))
+	if err := os.MkdirAll(codexDir, 0755); err != nil {
+		t.Fatalf("failed to create dir: %v", err)
+	}
+
+	meta := map[string]any{
+		"type":      "session_meta",
+		"timestamp": createdAt.Format(time.RFC3339),
+		"payload": map[string]any{
+			"id":  "session-local",
+			"cwd": projectPath,
+		},
+	}
+	data, _ := json.Marshal(meta)
+	filePath := filepath.Join(codexDir, "session-local.jsonl")
+	if err := os.WriteFile(filePath, append(data, '\n'), 0644); err != nil {
+		t.Fatalf("failed to write file: %v", err)
+	}
+
+	resolver := newTestResolver(projectPath, homeDir)
+	resolved, err := resolver.Resolve(SourceCodex, "session-local")
+	if err != nil {
+		t.Fatalf("expected prefixed non-UUID ID to resolve, got error: %v", err)
+	}
+	defer func() { _ = resolved.Reader.Close() }()
+
+	if resolved.Metadata.ID != "session-local" {
+		t.Errorf("id = %q, want %q", resolved.Metadata.ID, "session-local")
+	}
+}
+
+// TestResolveCodexNonUUIDPathTraversal ensures filename-based resolution does
+// not allow path traversal (e.g., "../../etc/passwd" as session ID).
+func TestResolveCodexNonUUIDPathTraversal(t *testing.T) {
+	homeDir := t.TempDir()
+	resolver := newTestResolver(t.TempDir(), homeDir)
+	_, err := resolver.Resolve(SourceCodex, "../../etc/passwd")
+	if err == nil {
+		t.Fatal("expected error for path traversal attempt in non-UUID ID")
+	}
+}
+
 func TestResolveCopilotSession(t *testing.T) {
 	homeDir := t.TempDir()
 	projectPath := t.TempDir()
