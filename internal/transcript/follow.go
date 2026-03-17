@@ -262,7 +262,11 @@ func readAndHashLines(path string, warnWriter io.Writer) ([]lineWithHash, error)
 		// Try to parse to detect incomplete JSON
 		var entry Entry
 		if err := json.Unmarshal(line, &entry); err != nil {
-			// Mark as pending bad line - might be incomplete (EOF) or corrupt (mid-file)
+			// If there's already a pending bad line, it's provably mid-file
+			// (this new line follows it), so warn about it now.
+			if pendingBadLine != nil {
+				_, _ = fmt.Fprintf(warnWriter, "warning: line %d: skipping malformed JSON\n", pendingLineNum)
+			}
 			pendingBadLine = bytes.Clone(line)
 			pendingLineNum = lineNum
 			continue

@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 // syncBuffer is a thread-safe buffer for concurrent read/write in tests.
@@ -288,6 +289,58 @@ this is not valid JSON at all
 
 	// Should have warning for corrupt mid-file line
 	assert.Contains(t, warnBuf.String(), "line 2", "expected warning about line 2, got: %s", warnBuf.String())
+}
+
+// Regression tests for T-462: consecutive malformed lines must each produce a warning.
+func TestReadAndHashLines_ConsecutiveMalformedLines(t *testing.T) {
+	t.Parallel()
+
+	tmpDir := t.TempDir()
+	tmpFile := filepath.Join(tmpDir, "test.jsonl")
+
+	// Three consecutive corrupt lines (2, 3, 4) followed by a valid line
+	content := `{"type":"user","message":{"role":"user","content":"hello"}}
+not valid json line two
+also broken line three
+still broken line four
+{"type":"assistant","message":{"role":"assistant","content":[{"type":"text","text":"world"}]}}
+`
+	require.NoError(t, os.WriteFile(tmpFile, []byte(content), 0644))
+
+	var warnBuf bytes.Buffer
+	lines, err := readAndHashLines(tmpFile, &warnBuf)
+	require.NoError(t, err)
+	require.Len(t, lines, 2, "expected 2 valid lines (lines 1 and 5)")
+
+	// Must warn about EACH corrupt mid-file line, not just the last one
+	warnings := warnBuf.String()
+	assert.Contains(t, warnings, "line 2", "missing warning for line 2")
+	assert.Contains(t, warnings, "line 3", "missing warning for line 3")
+	assert.Contains(t, warnings, "line 4", "missing warning for line 4")
+}
+
+func TestReadAndHashLines_ConsecutiveMalformedAtEnd(t *testing.T) {
+	t.Parallel()
+
+	tmpDir := t.TempDir()
+	tmpFile := filepath.Join(tmpDir, "test.jsonl")
+
+	// Two corrupt lines at the end; line 2 is definitely mid-file (line 3 follows it)
+	// so it must produce a warning even though line 3 is also bad.
+	content := `{"type":"user","message":{"role":"user","content":"hello"}}
+corrupt mid-file line
+{"incomplete": true`
+	require.NoError(t, os.WriteFile(tmpFile, []byte(content), 0644))
+
+	var warnBuf bytes.Buffer
+	lines, err := readAndHashLines(tmpFile, &warnBuf)
+	require.NoError(t, err)
+	require.Len(t, lines, 1, "only line 1 is valid")
+
+	// Line 2 is corrupt mid-file (line 3 exists after it) — must warn
+	// Line 3 is the final line — may be incomplete, no warning required
+	warnings := warnBuf.String()
+	assert.Contains(t, warnings, "line 2", "missing warning for corrupt mid-file line 2")
 }
 
 func TestReadAndHashLines_EmptyFile(t *testing.T) {
