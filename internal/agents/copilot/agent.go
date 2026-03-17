@@ -7,9 +7,11 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"time"
 
 	"github.com/arjenschwarz/orbit/internal/agents"
 	"github.com/arjenschwarz/orbit/internal/cost"
+	"gopkg.in/yaml.v3"
 )
 
 // Compile-time interface check.
@@ -23,8 +25,9 @@ func init() {
 
 // Agent implements the agents.Agent interface for GitHub Copilot.
 type Agent struct {
-	config  agents.AgentConfig
-	cliPath string
+	config     agents.AgentConfig
+	cliPath    string
+	sessionDir string // override for testing; empty uses DefaultSessionDir()
 }
 
 // New creates a new Copilot agent.
@@ -71,10 +74,13 @@ func (a *Agent) DefaultSessionDir() string {
 }
 
 // DiscoverSessions lists sessions for a given project directory.
-// Copilot sessions are stored as directories under ~/.copilot/session-state/{sessionID}/
-// with events.jsonl containing the session transcript.
+// Copilot stores sessions as directories under ~/.copilot/session-state/<session-id>/
+// containing events.jsonl and workspace.yaml.
 func (a *Agent) DiscoverSessions(ctx context.Context, projectDir string) ([]agents.SessionInfo, error) {
-	sessionDir := a.DefaultSessionDir()
+	sessionDir := a.sessionDir
+	if sessionDir == "" {
+		sessionDir = a.DefaultSessionDir()
+	}
 	if sessionDir == "" {
 		return nil, nil
 	}
@@ -93,22 +99,82 @@ func (a *Agent) DiscoverSessions(ctx context.Context, projectDir string) ([]agen
 			continue
 		}
 
-		eventsPath := filepath.Join(sessionDir, entry.Name(), "events.jsonl")
-		info, err := os.Stat(eventsPath)
-		if err != nil || info.Size() == 0 {
+		sessionPath := filepath.Join(sessionDir, entry.Name())
+		eventsPath := filepath.Join(sessionPath, "events.jsonl")
+		workspacePath := filepath.Join(sessionPath, "workspace.yaml")
+
+		// Verify events.jsonl exists and is non-empty.
+		eventsInfo, err := os.Stat(eventsPath)
+		if err != nil || eventsInfo.Size() == 0 {
 			continue
+		}
+
+		// Parse workspace.yaml to filter by project directory.
+		ws, err := parseCopilotWorkspace(workspacePath)
+		if err != nil || ws == nil {
+			continue
+		}
+
+		matchPath := ws.GitRoot
+		if matchPath == "" {
+			matchPath = ws.Cwd
+		}
+		if projectDir != "" && matchPath != "" && normalizePath(matchPath) != normalizePath(projectDir) {
+			continue
+		}
+
+		var createdAt time.Time
+		if ws.CreatedAt != nil {
+			createdAt = *ws.CreatedAt
+		} else {
+			createdAt = eventsInfo.ModTime()
 		}
 
 		sessions = append(sessions, agents.SessionInfo{
 			ID:        entry.Name(),
 			Agent:     "copilot",
 			Path:      eventsPath,
-			CreatedAt: info.ModTime(),
-			Size:      info.Size(),
+			CreatedAt: createdAt,
+			Size:      eventsInfo.Size(),
 		})
 	}
 
 	return sessions, nil
+}
+
+// copilotWorkspace represents the parsed contents of a Copilot workspace.yaml file.
+type copilotWorkspace struct {
+	ID        string     `yaml:"id"`
+	Cwd       string     `yaml:"cwd"`
+	GitRoot   string     `yaml:"git_root"`
+	CreatedAt *time.Time `yaml:"created_at"`
+}
+
+// parseCopilotWorkspace parses a Copilot workspace.yaml file.
+func parseCopilotWorkspace(path string) (*copilotWorkspace, error) {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil, nil
+		}
+		return nil, err
+	}
+
+	var ws copilotWorkspace
+	if err := yaml.Unmarshal(data, &ws); err != nil {
+		return nil, nil
+	}
+
+	return &ws, nil
+}
+
+// normalizePath resolves symlinks and cleans a file path for reliable comparison.
+func normalizePath(p string) string {
+	resolved, err := filepath.EvalSymlinks(p)
+	if err != nil {
+		return filepath.Clean(p)
+	}
+	return filepath.Clean(resolved)
 }
 
 // Run executes a prompt in a new session.

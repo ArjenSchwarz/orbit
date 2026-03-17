@@ -2,8 +2,12 @@ package copilot
 
 import (
 	"context"
+	"fmt"
+	"os"
+	"path/filepath"
 	"slices"
 	"testing"
+	"time"
 
 	"github.com/arjenschwarz/orbit/internal/agents"
 )
@@ -320,6 +324,177 @@ func TestAgent_Resume_IgnoresSessionID(t *testing.T) {
 		if args1[i] != args2[i] {
 			t.Errorf("Arg mismatch at position %d: %q vs %q", i, args1[i], args2[i])
 		}
+	}
+}
+
+// setupCopilotSession creates a Copilot session directory with events.jsonl and workspace.yaml.
+func setupCopilotSession(t *testing.T, homeDir, projectPath, sessionID string, createdAt time.Time) {
+	t.Helper()
+	sessionDir := filepath.Join(homeDir, ".copilot", "session-state", sessionID)
+	if err := os.MkdirAll(sessionDir, 0755); err != nil {
+		t.Fatalf("failed to create session dir: %v", err)
+	}
+
+	eventsData := `{"type":"event","data":"test"}` + "\n"
+	if err := os.WriteFile(filepath.Join(sessionDir, "events.jsonl"), []byte(eventsData), 0644); err != nil {
+		t.Fatalf("failed to write events file: %v", err)
+	}
+
+	yamlContent := fmt.Sprintf("id: %s\ncwd: %s\ngit_root: %s\ncreated_at: %s\n",
+		sessionID, projectPath, projectPath, createdAt.Format(time.RFC3339))
+	if err := os.WriteFile(filepath.Join(sessionDir, "workspace.yaml"), []byte(yamlContent), 0644); err != nil {
+		t.Fatalf("failed to write workspace file: %v", err)
+	}
+}
+
+// TestDiscoverSessions_FindsDirectorySessions verifies that DiscoverSessions
+// correctly scans per-session directories containing events.jsonl and workspace.yaml,
+// rather than skipping directories (the bug described in T-408).
+func TestDiscoverSessions_FindsDirectorySessions(t *testing.T) {
+	homeDir := t.TempDir()
+	projectPath := t.TempDir()
+
+	t1 := time.Date(2025, 1, 15, 14, 30, 0, 0, time.UTC)
+	sessionID := "12345678-1234-1234-1234-123456789abc"
+
+	setupCopilotSession(t, homeDir, projectPath, sessionID, t1)
+
+	agent := &Agent{config: agents.AgentConfig{}, cliPath: "copilot", sessionDir: filepath.Join(homeDir, ".copilot", "session-state")}
+
+	sessions, err := agent.DiscoverSessions(context.Background(), projectPath)
+	if err != nil {
+		t.Fatalf("DiscoverSessions() error = %v", err)
+	}
+
+	if len(sessions) != 1 {
+		t.Fatalf("expected 1 session, got %d", len(sessions))
+	}
+
+	s := sessions[0]
+	if s.ID != sessionID {
+		t.Errorf("session.ID = %q, want %q", s.ID, sessionID)
+	}
+	if s.Agent != "copilot" {
+		t.Errorf("session.Agent = %q, want %q", s.Agent, "copilot")
+	}
+	if s.Size == 0 {
+		t.Error("session.Size should be > 0")
+	}
+}
+
+// TestDiscoverSessions_SkipsEmptyEvents verifies sessions with empty events.jsonl are excluded.
+func TestDiscoverSessions_SkipsEmptyEvents(t *testing.T) {
+	homeDir := t.TempDir()
+	projectPath := t.TempDir()
+	sessionDir := filepath.Join(homeDir, ".copilot", "session-state", "empty-session")
+	if err := os.MkdirAll(sessionDir, 0755); err != nil {
+		t.Fatal(err)
+	}
+	// Empty events.jsonl
+	if err := os.WriteFile(filepath.Join(sessionDir, "events.jsonl"), []byte{}, 0644); err != nil {
+		t.Fatal(err)
+	}
+	yamlContent := fmt.Sprintf("id: empty-session\ncwd: %s\ngit_root: %s\n", projectPath, projectPath)
+	if err := os.WriteFile(filepath.Join(sessionDir, "workspace.yaml"), []byte(yamlContent), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	agent := &Agent{config: agents.AgentConfig{}, cliPath: "copilot", sessionDir: filepath.Join(homeDir, ".copilot", "session-state")}
+
+	sessions, err := agent.DiscoverSessions(context.Background(), projectPath)
+	if err != nil {
+		t.Fatalf("DiscoverSessions() error = %v", err)
+	}
+
+	if len(sessions) != 0 {
+		t.Errorf("expected 0 sessions for empty events.jsonl, got %d", len(sessions))
+	}
+}
+
+// TestDiscoverSessions_FiltersProjectDir verifies that only sessions matching
+// the requested projectDir are returned.
+func TestDiscoverSessions_FiltersProjectDir(t *testing.T) {
+	homeDir := t.TempDir()
+	projectA := t.TempDir()
+	projectB := t.TempDir()
+
+	t1 := time.Date(2025, 3, 1, 10, 0, 0, 0, time.UTC)
+	setupCopilotSession(t, homeDir, projectA, "session-a", t1)
+	setupCopilotSession(t, homeDir, projectB, "session-b", t1)
+
+	agent := &Agent{config: agents.AgentConfig{}, cliPath: "copilot", sessionDir: filepath.Join(homeDir, ".copilot", "session-state")}
+
+	sessionsA, err := agent.DiscoverSessions(context.Background(), projectA)
+	if err != nil {
+		t.Fatalf("DiscoverSessions() error = %v", err)
+	}
+	if len(sessionsA) != 1 {
+		t.Fatalf("expected 1 session for projectA, got %d", len(sessionsA))
+	}
+	if sessionsA[0].ID != "session-a" {
+		t.Errorf("session.ID = %q, want %q", sessionsA[0].ID, "session-a")
+	}
+
+	sessionsB, err := agent.DiscoverSessions(context.Background(), projectB)
+	if err != nil {
+		t.Fatalf("DiscoverSessions() error = %v", err)
+	}
+	if len(sessionsB) != 1 {
+		t.Fatalf("expected 1 session for projectB, got %d", len(sessionsB))
+	}
+	if sessionsB[0].ID != "session-b" {
+		t.Errorf("session.ID = %q, want %q", sessionsB[0].ID, "session-b")
+	}
+}
+
+// TestDiscoverSessions_SkipsMissingEvents verifies sessions without events.jsonl are skipped.
+func TestDiscoverSessions_SkipsMissingEvents(t *testing.T) {
+	homeDir := t.TempDir()
+	projectPath := t.TempDir()
+	sessionDir := filepath.Join(homeDir, ".copilot", "session-state", "no-events")
+	if err := os.MkdirAll(sessionDir, 0755); err != nil {
+		t.Fatal(err)
+	}
+	// Only workspace.yaml, no events.jsonl
+	yamlContent := fmt.Sprintf("id: no-events\ncwd: %s\ngit_root: %s\n", projectPath, projectPath)
+	if err := os.WriteFile(filepath.Join(sessionDir, "workspace.yaml"), []byte(yamlContent), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	agent := &Agent{config: agents.AgentConfig{}, cliPath: "copilot", sessionDir: filepath.Join(homeDir, ".copilot", "session-state")}
+
+	sessions, err := agent.DiscoverSessions(context.Background(), projectPath)
+	if err != nil {
+		t.Fatalf("DiscoverSessions() error = %v", err)
+	}
+
+	if len(sessions) != 0 {
+		t.Errorf("expected 0 sessions for missing events.jsonl, got %d", len(sessions))
+	}
+}
+
+// TestDiscoverSessions_UsesCreatedAtFromWorkspace verifies that the CreatedAt
+// field is populated from workspace.yaml when available.
+func TestDiscoverSessions_UsesCreatedAtFromWorkspace(t *testing.T) {
+	homeDir := t.TempDir()
+	projectPath := t.TempDir()
+
+	createdAt := time.Date(2025, 6, 15, 9, 30, 0, 0, time.UTC)
+	setupCopilotSession(t, homeDir, projectPath, "ts-session", createdAt)
+
+	agent := &Agent{config: agents.AgentConfig{}, cliPath: "copilot", sessionDir: filepath.Join(homeDir, ".copilot", "session-state")}
+
+	sessions, err := agent.DiscoverSessions(context.Background(), projectPath)
+	if err != nil {
+		t.Fatalf("DiscoverSessions() error = %v", err)
+	}
+
+	if len(sessions) != 1 {
+		t.Fatalf("expected 1 session, got %d", len(sessions))
+	}
+
+	if !sessions[0].CreatedAt.Equal(createdAt) {
+		t.Errorf("CreatedAt = %v, want %v", sessions[0].CreatedAt, createdAt)
 	}
 }
 
