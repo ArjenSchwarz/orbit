@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"unicode/utf8"
 )
 
 func TestGetLastDisplayableEntry(t *testing.T) {
@@ -258,6 +259,18 @@ func TestFormatToolUse(t *testing.T) {
 			input:  map[string]any{"count": 42, "enabled": true},
 			expect: "Numbers",
 		},
+		{
+			name:   "truncation preserves multibyte emoji runes",
+			tool:   "Read",
+			input:  map[string]any{"file_path": "/projects/🚀🌍🎉🔥💡🌈⭐🎯🏆🎨/very/deeply/nested/path/that/goes/even/further/into/deep/dirs/file.go"},
+			expect: "Read: /projects/🚀🌍🎉🔥💡🌈⭐🎯🏆🎨/very/deeply/nested/path/that/goes/ev...",
+		},
+		{
+			name:   "truncation preserves multibyte CJK characters",
+			tool:   "Read",
+			input:  map[string]any{"file_path": "/home/用户/文档/项目/源代码/测试文件夹/非常长的中文路径名称/更多的嵌套目录层级/还有很深很深的一层/最终文件.go"},
+			expect: "Read: /home/用户/文档/项目/源代码/测试文件夹/非常长的中文路径名称/更多的嵌套目录层级/还有很深很深的一层/最...",
+		},
 	}
 
 	for _, tt := range tests {
@@ -358,6 +371,18 @@ func TestFormatLastAction(t *testing.T) {
 				},
 			},
 			expect: "",
+		},
+		{
+			name: "text truncation preserves multibyte emoji runes at 80 chars",
+			entry: &Entry{
+				Message: &Message{
+					Role: "assistant",
+					Content: []ContentItem{
+						{Type: "text", Text: "🚀🌍🎉🔥💡🌈⭐🎯🏆🎨 This is a response with emoji at the start that exceeds the eighty character limit significantly"},
+					},
+				},
+			},
+			expect: "🚀🌍🎉🔥💡🌈⭐🎯🏆🎨 This is a response with emoji at the start that exceeds the eighty...",
 		},
 	}
 
@@ -469,5 +494,34 @@ func TestIsDisplayableEntry(t *testing.T) {
 				t.Errorf("IsDisplayableEntry() = %v, want %v", got, tt.expect)
 			}
 		})
+	}
+}
+
+// TestFormatToolUse_UTF8Safety verifies that truncation never produces invalid UTF-8.
+// This is the regression test for T-372: byte-based truncation can split multibyte runes.
+func TestFormatToolUse_UTF8Safety(t *testing.T) {
+	// Input with emoji (4 bytes each) that exceeds 60 runes
+	emojiPath := "/path/" + strings.Repeat("🚀", 60) // 60 emoji = 60 runes but 240+ bytes
+	got := FormatToolUse("Read", map[string]any{"file_path": emojiPath})
+	if !utf8.ValidString(got) {
+		t.Errorf("FormatToolUse produced invalid UTF-8: %q", got)
+	}
+}
+
+// TestFormatLastAction_UTF8Safety verifies that text truncation never produces invalid UTF-8.
+func TestFormatLastAction_UTF8Safety(t *testing.T) {
+	// Text with CJK characters (3 bytes each) that exceeds 80 runes
+	longText := strings.Repeat("日本語", 30) // 90 runes, 270 bytes
+	entry := &Entry{
+		Message: &Message{
+			Role: "assistant",
+			Content: []ContentItem{
+				{Type: "text", Text: longText},
+			},
+		},
+	}
+	got := FormatLastAction(entry)
+	if !utf8.ValidString(got) {
+		t.Errorf("FormatLastAction produced invalid UTF-8: %q", got)
 	}
 }
