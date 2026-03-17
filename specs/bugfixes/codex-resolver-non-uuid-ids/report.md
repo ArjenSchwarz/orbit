@@ -46,7 +46,7 @@ Codex sessions whose filenames don't contain a UUID (e.g., `events.jsonl`, `sess
 ## Regression Test
 
 **Test file:** `internal/sessions/resolver_test.go`
-**Test names:** `TestResolveCodexNonUUIDFilename`, `TestResolveCodexNonUUIDWithPrefix`, `TestResolveCodexNonUUIDPathTraversal`
+**Test names:** `TestResolveCodexNonUUID` (table-driven with `plain` and `prefix` subtests), `TestResolveCodexNonUUIDPathTraversal`
 
 **What they verify:**
 - A file named `events.jsonl` (no UUID) can be resolved by ID `events`

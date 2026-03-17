@@ -217,7 +217,10 @@ func TestResolveCodexNonUUID(t *testing.T) {
 					"cwd": projectPath,
 				},
 			}
-			data, _ := json.Marshal(meta)
+			data, err := json.Marshal(meta)
+			if err != nil {
+				t.Fatalf("failed to marshal meta: %v", err)
+			}
 			filePath := filepath.Join(codexDir, tc.filename)
 			if err := os.WriteFile(filePath, append(data, '\n'), 0644); err != nil {
 				t.Fatalf("failed to write file: %v", err)
