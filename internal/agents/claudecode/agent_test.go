@@ -1,7 +1,8 @@
 package claudecode
 
 import (
-	"context"
+	"os"
+	"path/filepath"
 	"slices"
 	"testing"
 
@@ -293,7 +294,7 @@ func TestAgent_DiscoverSessions(t *testing.T) {
 	agent := New(agents.AgentConfig{})
 
 	// Should not error on non-existent directory
-	sessions, err := agent.DiscoverSessions(context.Background(), "/nonexistent/path")
+	sessions, err := agent.DiscoverSessions(t.Context(), "/nonexistent/path")
 	if err != nil {
 		t.Errorf("DiscoverSessions() error = %v", err)
 	}
@@ -386,6 +387,88 @@ func TestAgent_ArgOrder(t *testing.T) {
 				t.Errorf("-p should come before --output-format: prompt at %d, output-format at %d", promptPos, outputFormatPos)
 			}
 		})
+	}
+}
+
+// setupFakeSessionDir creates a temporary directory mimicking ~/.claude/projects/
+// with multiple project hash folders, each containing .jsonl session files.
+// Returns the temp dir and a cleanup function.
+func setupFakeSessionDir(t *testing.T) string {
+	t.Helper()
+	base := t.TempDir()
+
+	// Derive hash names from BuildProjectPath to stay in sync with encoding changes.
+	projAHash := BuildProjectPath("/Users/alice/projectA")
+	projBHash := BuildProjectPath("/Users/bob/projectB")
+
+	for _, ph := range []string{projAHash, projBHash} {
+		dir := filepath.Join(base, ph)
+		if err := os.MkdirAll(dir, 0o755); err != nil {
+			t.Fatal(err)
+		}
+		// Write two dummy .jsonl files in each to verify multi-session handling.
+		for _, name := range []string{"session1.jsonl", "session2.jsonl"} {
+			if err := os.WriteFile(filepath.Join(dir, name), []byte(`{}`), 0o644); err != nil {
+				t.Fatal(err)
+			}
+		}
+	}
+
+	return base
+}
+
+// TestDiscoverSessions_FiltersByProjectDir verifies that when projectDir is
+// provided, only sessions for that project are returned (bug T-396).
+func TestDiscoverSessions_FiltersByProjectDir(t *testing.T) {
+	t.Parallel()
+	base := setupFakeSessionDir(t)
+
+	sessions, err := discoverSessionsIn(t.Context(), base, "/Users/alice/projectA")
+	if err != nil {
+		t.Fatalf("discoverSessionsIn() error = %v", err)
+	}
+
+	// Should only return sessions from projectA's hash folder.
+	wantProject := BuildProjectPath("/Users/alice/projectA")
+	if len(sessions) != 2 {
+		t.Fatalf("expected 2 sessions for projectA, got %d", len(sessions))
+	}
+	for _, s := range sessions {
+		if s.Project != wantProject {
+			t.Errorf("expected project %q, got %q", wantProject, s.Project)
+		}
+	}
+}
+
+// TestDiscoverSessions_NoProjectDir_ReturnsAll verifies that when projectDir
+// is empty, sessions from all projects are returned.
+func TestDiscoverSessions_NoProjectDir_ReturnsAll(t *testing.T) {
+	t.Parallel()
+	base := setupFakeSessionDir(t)
+
+	sessions, err := discoverSessionsIn(t.Context(), base, "")
+	if err != nil {
+		t.Fatalf("discoverSessionsIn() error = %v", err)
+	}
+
+	if len(sessions) != 4 {
+		t.Fatalf("expected 4 sessions (2 per project × 2 projects), got %d", len(sessions))
+	}
+}
+
+// TestDiscoverSessions_ProjectDir_NonexistentProject verifies that when
+// projectDir points to a project with no sessions, an empty result is returned.
+func TestDiscoverSessions_ProjectDir_NonexistentProject(t *testing.T) {
+	t.Parallel()
+	base := setupFakeSessionDir(t)
+
+	sessions, err := discoverSessionsIn(t.Context(), base, "/Users/nobody/nonexistent")
+	if err != nil {
+		t.Fatalf("discoverSessionsIn() error = %v", err)
+	}
+
+	if len(sessions) != 0 {
+		t.Fatalf("expected 0 sessions for nonexistent project, got %d", len(sessions))
 	}
 }
 

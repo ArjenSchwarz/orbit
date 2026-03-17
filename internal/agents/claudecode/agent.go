@@ -5,6 +5,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"log"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -85,13 +86,28 @@ func BuildProjectPath(projectPath string) string {
 }
 
 // DiscoverSessions lists sessions for a given project directory.
+// When projectDir is non-empty, only sessions for that project's hashed folder
+// are returned. When empty, sessions from all projects are returned.
 func (a *Agent) DiscoverSessions(ctx context.Context, projectDir string) ([]agents.SessionInfo, error) {
 	sessionDir := a.DefaultSessionDir()
 	if sessionDir == "" {
 		return nil, nil
 	}
 
-	// Sessions are stored in ~/.claude/projects/<project-hash>/*.jsonl
+	return discoverSessionsIn(ctx, sessionDir, projectDir)
+}
+
+// discoverSessionsIn scans sessionDir for Claude session files. When projectDir
+// is non-empty, only the matching hashed project folder is scanned; otherwise
+// all project folders are scanned. Extracted for testability.
+func discoverSessionsIn(_ context.Context, sessionDir, projectDir string) ([]agents.SessionInfo, error) {
+	if projectDir != "" {
+		// Only scan the single matching project hash folder.
+		hashName := BuildProjectPath(projectDir)
+		return readProjectSessions(filepath.Join(sessionDir, hashName), hashName)
+	}
+
+	// No filter — scan all project directories.
 	entries, err := os.ReadDir(sessionDir)
 	if err != nil {
 		if os.IsNotExist(err) {
@@ -105,32 +121,48 @@ func (a *Agent) DiscoverSessions(ctx context.Context, projectDir string) ([]agen
 		if !entry.IsDir() {
 			continue
 		}
+		found, err := readProjectSessions(filepath.Join(sessionDir, entry.Name()), entry.Name())
+		if err != nil {
+			// Skip unreadable project directories and continue scanning others.
+			// Log the error so the behaviour is diagnosable (e.g. permission denied).
+			log.Printf("[claude-code] skipping project directory %s: %v", entry.Name(), err)
+			continue
+		}
+		sessions = append(sessions, found...)
+	}
 
-		projectPath := filepath.Join(sessionDir, entry.Name())
-		files, err := os.ReadDir(projectPath)
+	return sessions, nil
+}
+
+// readProjectSessions reads all .jsonl session files from a single project directory.
+func readProjectSessions(projectPath, projectName string) ([]agents.SessionInfo, error) {
+	files, err := os.ReadDir(projectPath)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil, nil
+		}
+		return nil, err
+	}
+
+	var sessions []agents.SessionInfo
+	for _, file := range files {
+		if filepath.Ext(file.Name()) != ".jsonl" {
+			continue
+		}
+
+		info, err := file.Info()
 		if err != nil {
 			continue
 		}
 
-		for _, file := range files {
-			if filepath.Ext(file.Name()) != ".jsonl" {
-				continue
-			}
-
-			info, err := file.Info()
-			if err != nil {
-				continue
-			}
-
-			sessions = append(sessions, agents.SessionInfo{
-				ID:        file.Name(),
-				Agent:     "claude-code",
-				Path:      filepath.Join(projectPath, file.Name()),
-				CreatedAt: info.ModTime(),
-				Size:      info.Size(),
-				Project:   entry.Name(),
-			})
-		}
+		sessions = append(sessions, agents.SessionInfo{
+			ID:        file.Name(),
+			Agent:     "claude-code",
+			Path:      filepath.Join(projectPath, file.Name()),
+			CreatedAt: info.ModTime(),
+			Size:      info.Size(),
+			Project:   projectName,
+		})
 	}
 
 	return sessions, nil
