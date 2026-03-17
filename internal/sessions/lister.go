@@ -262,12 +262,14 @@ func (l *Lister) listCopilot(projectPath string) ([]SessionInfo, error) {
 			continue
 		}
 
-		matchPath := ws.GitRoot
-		if matchPath == "" {
-			matchPath = ws.Cwd
-		}
-		if matchPath != "" && normalizePath(matchPath) != normalizePath(projectPath) {
-			continue
+		if projectPath != "" {
+			matchPath := ws.GitRoot
+			if matchPath == "" {
+				matchPath = ws.Cwd
+			}
+			if matchPath != "" && normalizePath(matchPath) != normalizePath(projectPath) {
+				continue
+			}
 		}
 
 		var createdAt time.Time

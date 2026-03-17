@@ -459,6 +459,54 @@ func TestListAllCodexSessionsEmptyProjectPath(t *testing.T) {
 	}
 }
 
+// TestListAllCopilotSessionsEmptyProjectPath verifies that ListAll returns Copilot
+// sessions when projectPath is empty (no project filtering). This is a regression
+// test for T-374: when projectPath is empty, listCopilot incorrectly compares
+// session paths against an empty string, filtering out all sessions that have a
+// non-empty git_root or cwd.
+func TestListAllCopilotSessionsEmptyProjectPath(t *testing.T) {
+	homeDir := t.TempDir()
+
+	t1 := time.Date(2025, 1, 15, 14, 30, 0, 0, time.UTC)
+	t2 := time.Date(2025, 1, 16, 10, 0, 0, 0, time.UTC)
+	sessionID1 := "aaaaaaaa-1111-2222-3333-444444444444"
+	sessionID2 := "bbbbbbbb-5555-6666-7777-888888888888"
+
+	// Create two sessions associated with different project paths
+	setupCopilotSession(t, homeDir, "/projects/alpha", sessionID1, t1)
+	setupCopilotSession(t, homeDir, "/projects/beta", sessionID2, t2)
+
+	lister := newTestLister(homeDir)
+
+	// Empty projectPath should return ALL Copilot sessions across all projects
+	sessions, _, err := lister.ListAll("")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	var copilotSessions []SessionInfo
+	for _, s := range sessions {
+		if s.Source == SourceCopilot {
+			copilotSessions = append(copilotSessions, s)
+		}
+	}
+
+	if len(copilotSessions) != 2 {
+		t.Fatalf("expected 2 Copilot sessions with empty projectPath, got %d", len(copilotSessions))
+	}
+
+	ids := map[string]bool{}
+	for _, s := range copilotSessions {
+		ids[s.ID] = true
+	}
+	if !ids[sessionID1] {
+		t.Error("missing session from /projects/alpha")
+	}
+	if !ids[sessionID2] {
+		t.Error("missing session from /projects/beta")
+	}
+}
+
 func TestListAllPartialFailure(t *testing.T) {
 	homeDir := t.TempDir()
 	projectPath := t.TempDir()
