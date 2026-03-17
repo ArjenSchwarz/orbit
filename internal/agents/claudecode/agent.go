@@ -120,6 +120,7 @@ func discoverSessionsIn(_ context.Context, sessionDir, projectDir string) ([]age
 		if !entry.IsDir() {
 			continue
 		}
+		// Skip unreadable project directories (e.g. permission denied) and continue.
 		found, err := readProjectSessions(filepath.Join(sessionDir, entry.Name()), entry.Name())
 		if err != nil {
 			continue
