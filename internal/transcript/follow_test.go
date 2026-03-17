@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 // syncBuffer is a thread-safe buffer for concurrent read/write in tests.
@@ -292,6 +293,8 @@ this is not valid JSON at all
 
 // Regression tests for T-462: consecutive malformed lines must each produce a warning.
 func TestReadAndHashLines_ConsecutiveMalformedLines(t *testing.T) {
+	t.Parallel()
+
 	tmpDir := t.TempDir()
 	tmpFile := filepath.Join(tmpDir, "test.jsonl")
 
@@ -302,20 +305,12 @@ also broken line three
 still broken line four
 {"type":"assistant","message":{"role":"assistant","content":[{"type":"text","text":"world"}]}}
 `
-	if err := os.WriteFile(tmpFile, []byte(content), 0644); err != nil {
-		t.Fatalf("failed to create temp file: %v", err)
-	}
+	require.NoError(t, os.WriteFile(tmpFile, []byte(content), 0644))
 
 	var warnBuf bytes.Buffer
 	lines, err := readAndHashLines(tmpFile, &warnBuf)
-	if err != nil {
-		t.Fatalf("readAndHashLines() error: %v", err)
-	}
-
-	// Should have 2 valid lines (lines 1 and 5), all corrupt lines skipped
-	if len(lines) != 2 {
-		t.Fatalf("expected 2 lines, got %d", len(lines))
-	}
+	require.NoError(t, err)
+	require.Len(t, lines, 2, "expected 2 valid lines (lines 1 and 5)")
 
 	// Must warn about EACH corrupt mid-file line, not just the last one
 	warnings := warnBuf.String()
@@ -325,6 +320,8 @@ still broken line four
 }
 
 func TestReadAndHashLines_ConsecutiveMalformedAtEnd(t *testing.T) {
+	t.Parallel()
+
 	tmpDir := t.TempDir()
 	tmpFile := filepath.Join(tmpDir, "test.jsonl")
 
@@ -333,20 +330,12 @@ func TestReadAndHashLines_ConsecutiveMalformedAtEnd(t *testing.T) {
 	content := `{"type":"user","message":{"role":"user","content":"hello"}}
 corrupt mid-file line
 {"incomplete": true`
-	if err := os.WriteFile(tmpFile, []byte(content), 0644); err != nil {
-		t.Fatalf("failed to create temp file: %v", err)
-	}
+	require.NoError(t, os.WriteFile(tmpFile, []byte(content), 0644))
 
 	var warnBuf bytes.Buffer
 	lines, err := readAndHashLines(tmpFile, &warnBuf)
-	if err != nil {
-		t.Fatalf("readAndHashLines() error: %v", err)
-	}
-
-	// Only line 1 is valid
-	if len(lines) != 1 {
-		t.Fatalf("expected 1 line, got %d", len(lines))
-	}
+	require.NoError(t, err)
+	require.Len(t, lines, 1, "only line 1 is valid")
 
 	// Line 2 is corrupt mid-file (line 3 exists after it) — must warn
 	// Line 3 is the final line — may be incomplete, no warning required
