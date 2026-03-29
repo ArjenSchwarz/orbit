@@ -586,4 +586,7 @@ func TestListKiroUsesCreatedAtNotUpdatedAt(t *testing.T) {
 		t.Errorf("session.CreatedAt = %v, want %v (got UpdatedAt instead of CreatedAt)",
 			s.CreatedAt, created)
 	}
+	if s.Size != 1024 {
+		t.Errorf("session.Size = %d, want %d", s.Size, 1024)
+	}
 }
