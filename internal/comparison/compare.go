@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"sort"
 	"strings"
 	"time"
 
@@ -90,18 +91,15 @@ func (c *Comparator) CompareUnified(ctx context.Context, input ComparisonInput) 
 		}
 	}
 
-	// Use the maximum variant ID (not the count) so that non-contiguous IDs
-	// are validated correctly. When variant 2 fails in a 3-variant run,
-	// only variants 1 and 3 are compared — the AI must be allowed to
-	// recommend variant 3, not capped at len(input.Variants)=2.
-	maxVariantID := 0
+	// Build the set of actual variant IDs so validation checks membership,
+	// not just range. With non-contiguous IDs (e.g., {1, 3} when variant 2
+	// failed), a recommendation of 2 must be rejected.
+	validIDs := make(map[int]bool, len(input.Variants))
 	for _, v := range input.Variants {
-		if v.ID > maxVariantID {
-			maxVariantID = v.ID
-		}
+		validIDs[v.ID] = true
 	}
 
-	result, err := c.runComparison(ctx, originalPrompt, maxVariantID)
+	result, err := c.runComparison(ctx, originalPrompt, validIDs)
 	if err != nil && input.OutputPath != "" {
 		// The agent may have written the comparison file before the session
 		// failed (e.g., timeout, malformed response). Check for it.
@@ -132,7 +130,7 @@ func (c *Comparator) loadFallbackResult(path string, modTimeBefore time.Time) (*
 }
 
 // runComparison executes the comparison prompt with retry logic.
-func (c *Comparator) runComparison(ctx context.Context, originalPrompt string, numVariants int) (*Result, error) {
+func (c *Comparator) runComparison(ctx context.Context, originalPrompt string, validIDs map[int]bool) (*Result, error) {
 	prompt := originalPrompt
 
 	for attempt := 0; attempt < c.maxRetries; attempt++ {
@@ -141,7 +139,7 @@ func (c *Comparator) runComparison(ctx context.Context, originalPrompt string, n
 			return nil, fmt.Errorf("claude execution failed: %w", err)
 		}
 
-		result, err := c.parseAndValidate(response.Output, numVariants)
+		result, err := c.parseAndValidate(response.Output, validIDs)
 		if err == nil {
 			return result, nil
 		}
@@ -188,7 +186,8 @@ type resultRaw struct {
 }
 
 // parseAndValidate extracts JSON from Claude response and validates structure.
-func (c *Comparator) parseAndValidate(response string, numVariants int) (*Result, error) {
+// validIDs is the set of variant IDs that actually exist in this comparison.
+func (c *Comparator) parseAndValidate(response string, validIDs map[int]bool) (*Result, error) {
 	jsonStr, err := extractJSON(response)
 	if err != nil {
 		return nil, fmt.Errorf("extract JSON: %w", err)
@@ -228,12 +227,12 @@ func (c *Comparator) parseAndValidate(response string, numVariants int) (*Result
 
 	// Validate learnings (non-fatal) [Req 6.2, 6.4]
 	// Invalid learnings are filtered out; valid ones are kept
-	result.Learnings = validateLearnings(result.Learnings, numVariants)
+	result.Learnings = validateLearnings(result.Learnings, validIDs)
 
-	// Validate required fields with range checks
-	if result.Recommendation < 1 || result.Recommendation > numVariants {
-		return nil, fmt.Errorf("recommendation must be between 1 and %d, got %d",
-			numVariants, result.Recommendation)
+	// Validate recommendation references an actual variant
+	if !validIDs[result.Recommendation] {
+		return nil, fmt.Errorf("recommendation %d is not a valid variant ID (valid: %v)",
+			result.Recommendation, sortedKeys(validIDs))
 	}
 	if result.Confidence == "" {
 		return nil, errors.New("missing required field: confidence")
@@ -291,7 +290,8 @@ func extractJSON(response string) (string, error) {
 
 // validateLearnings filters learnings to include only valid entries and enforces limits.
 // Invalid learnings are logged and discarded. Returns nil if all learnings are invalid.
-func validateLearnings(learnings []VariantLearning, numVariants int) []VariantLearning {
+// validIDs is the set of variant IDs that actually exist in this comparison.
+func validateLearnings(learnings []VariantLearning, validIDs map[int]bool) []VariantLearning {
 	if len(learnings) == 0 {
 		return nil
 	}
@@ -327,8 +327,8 @@ func validateLearnings(learnings []VariantLearning, numVariants int) []VariantLe
 			continue
 		}
 
-		// Validate variant ID
-		if l.VariantID < 1 || l.VariantID > numVariants {
+		// Validate variant ID exists in the actual set
+		if !validIDs[l.VariantID] {
 			log.Printf("Discarding learning %d: invalid variant_id %d", i, l.VariantID)
 			continue
 		}
@@ -366,6 +366,16 @@ func validateLearnings(learnings []VariantLearning, numVariants int) []VariantLe
 		return nil
 	}
 	return valid
+}
+
+// sortedKeys returns the keys of a map[int]bool in ascending order.
+func sortedKeys(m map[int]bool) []int {
+	keys := make([]int, 0, len(m))
+	for k := range m {
+		keys = append(keys, k)
+	}
+	sort.Ints(keys)
+	return keys
 }
 
 // LoadResultFromFile reads a comparison result JSON file and parses it into a Result.
