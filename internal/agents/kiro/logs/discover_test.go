@@ -231,7 +231,7 @@ func TestDiscoverAll_ReturnsAllSessions(t *testing.T) {
 	insertSession(t, db, "/project-b", "session-2", `{}`, now.Add(-time.Hour))
 	insertSession(t, db, "/project-c", "session-3", `{}`, now.Add(-2*time.Hour))
 
-	sessions, err := db.DiscoverAll(context.Background())
+	sessions, err := db.DiscoverAll(t.Context())
 	require.NoError(t, err)
 	assert.Len(t, sessions, 3)
 
@@ -247,7 +247,7 @@ func TestDiscoverAll_ReturnsAllSessions(t *testing.T) {
 func TestDiscoverAll_EmptyDatabase(t *testing.T) {
 	db := createTestDB(t)
 
-	sessions, err := db.DiscoverAll(context.Background())
+	sessions, err := db.DiscoverAll(t.Context())
 	require.NoError(t, err)
 	assert.Empty(t, sessions)
 }
@@ -260,7 +260,7 @@ func TestDiscoverAll_SortsByUpdatedAtDesc(t *testing.T) {
 	insertSessionWithTimes(t, db, "/b", "newest", `{}`, baseTime, baseTime.Add(2*time.Hour))
 	insertSessionWithTimes(t, db, "/c", "middle", `{}`, baseTime, baseTime.Add(time.Hour))
 
-	sessions, err := db.DiscoverAll(context.Background())
+	sessions, err := db.DiscoverAll(t.Context())
 	require.NoError(t, err)
 	require.Len(t, sessions, 3)
 
@@ -277,7 +277,7 @@ func TestDiscoverAll_PopulatesMetadata(t *testing.T) {
 	jsonValue := `{"conversation_id":"test-session","history":[]}`
 	insertSessionWithTimes(t, db, "/my/project", "test-session", jsonValue, created, updated)
 
-	sessions, err := db.DiscoverAll(context.Background())
+	sessions, err := db.DiscoverAll(t.Context())
 	require.NoError(t, err)
 	require.Len(t, sessions, 1)
 
@@ -287,4 +287,20 @@ func TestDiscoverAll_PopulatesMetadata(t *testing.T) {
 	assert.Equal(t, created.UnixMilli(), s.CreatedAt.UnixMilli())
 	assert.Equal(t, updated.UnixMilli(), s.UpdatedAt.UnixMilli())
 	assert.Equal(t, int64(len(jsonValue)), s.Size)
+}
+
+func TestDiscoverAll_DeduplicatesByConversationID(t *testing.T) {
+	db := createTestDB(t)
+
+	baseTime := time.Date(2025, 1, 15, 10, 0, 0, 0, time.UTC)
+	// Same conversation recorded under both a real path and a symlink-resolved path
+	insertSessionWithTimes(t, db, "/projects/myapp", "session-1", `{}`, baseTime, baseTime)
+	insertSessionWithTimes(t, db, "/home/user/projects/myapp", "session-1", `{}`, baseTime, baseTime.Add(time.Hour))
+
+	sessions, err := db.DiscoverAll(t.Context())
+	require.NoError(t, err)
+	assert.Len(t, sessions, 1, "duplicate ConversationID should be deduplicated")
+	assert.Equal(t, "session-1", sessions[0].ConversationID)
+	// Should keep the most recently updated entry
+	assert.Equal(t, baseTime.Add(time.Hour).UnixMilli(), sessions[0].UpdatedAt.UnixMilli())
 }

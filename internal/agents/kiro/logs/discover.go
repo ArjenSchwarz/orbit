@@ -85,6 +85,8 @@ func (d *DB) DiscoverForDirectory(ctx context.Context, dir string) ([]SessionMet
 }
 
 // DiscoverAll returns all sessions across all directories.
+// Deduplicates by ConversationID (keeps most recent UpdatedAt) to handle
+// sessions recorded under both normalized and symlink-resolved paths.
 // Results are sorted by updated_at DESC (most recent first).
 func (d *DB) DiscoverAll(ctx context.Context) ([]SessionMetadata, error) {
 	conn, err := d.openConn(ctx)
@@ -103,7 +105,9 @@ func (d *DB) DiscoverAll(ctx context.Context) ([]SessionMetadata, error) {
 	}
 	defer func() { _ = rows.Close() }()
 
-	var result []SessionMetadata
+	// Deduplicate by ConversationID — same session may appear under both
+	// a normalized path and its symlink-resolved path.
+	seen := make(map[string]SessionMetadata)
 	for rows.Next() {
 		var s SessionMetadata
 		var createdMS, updatedMS int64
@@ -112,12 +116,23 @@ func (d *DB) DiscoverAll(ctx context.Context) ([]SessionMetadata, error) {
 		}
 		s.CreatedAt = time.UnixMilli(createdMS)
 		s.UpdatedAt = time.UnixMilli(updatedMS)
-		result = append(result, s)
+
+		if existing, ok := seen[s.ConversationID]; !ok || s.UpdatedAt.After(existing.UpdatedAt) {
+			seen[s.ConversationID] = s
+		}
 	}
 
 	if err := rows.Err(); err != nil {
 		return nil, classifyError(err)
 	}
+
+	result := make([]SessionMetadata, 0, len(seen))
+	for _, s := range seen {
+		result = append(result, s)
+	}
+	sort.Slice(result, func(i, j int) bool {
+		return result[i].UpdatedAt.After(result[j].UpdatedAt)
+	})
 
 	return result, nil
 }
