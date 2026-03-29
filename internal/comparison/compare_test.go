@@ -294,6 +294,9 @@ func TestParseAndValidate_ValidJSON(t *testing.T) {
 	result, err := comp.parseAndValidate(validJSON, contiguousVariantSet(2))
 	if err != nil {
 		t.Fatalf("parseAndValidate failed: %v", err)
+	}
+
+	if result.Recommendation != 1 {
 		t.Errorf("expected recommendation 1, got %d", result.Recommendation)
 	}
 	if result.Confidence != "high" {
