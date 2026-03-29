@@ -296,6 +296,31 @@ func TestParseTimezoneAbbrev(t *testing.T) {
 	}
 }
 
+// TestParseTimezoneAbbrev_GMTFixedOffset verifies that "GMT" resolves to a
+// fixed UTC+0 location that does not observe DST.  Europe/London switches to
+// BST (UTC+1) in summer, so mapping "gmt" → "Europe/London" produces a wrong
+// offset for half the year.  Regression test for T-516.
+func TestParseTimezoneAbbrev_GMTFixedOffset(t *testing.T) {
+	loc := parseTimezoneAbbrev("GMT")
+	if loc == nil {
+		t.Fatal("parseTimezoneAbbrev(\"GMT\") returned nil")
+	}
+
+	// Pick a date in July when Europe/London observes BST (UTC+1).
+	summer := time.Date(2025, time.July, 1, 12, 0, 0, 0, loc)
+	_, offset := summer.Zone()
+	if offset != 0 {
+		t.Errorf("GMT in summer: got UTC offset %d, want 0 (location resolved to a zone with DST)", offset)
+	}
+
+	// Also verify winter stays at 0 — sanity check.
+	winter := time.Date(2025, time.January, 1, 12, 0, 0, 0, loc)
+	_, offset = winter.Zone()
+	if offset != 0 {
+		t.Errorf("GMT in winter: got UTC offset %d, want 0", offset)
+	}
+}
+
 func TestFormatDuration(t *testing.T) {
 	tests := []struct {
 		name     string
