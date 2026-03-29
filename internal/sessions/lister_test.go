@@ -1,6 +1,7 @@
 package sessions
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -9,6 +10,7 @@ import (
 	"time"
 
 	"github.com/arjenschwarz/orbit/internal/agents/claudecode"
+	"github.com/arjenschwarz/orbit/internal/agents/kiro/logs"
 )
 
 // newTestLister creates a Lister with a custom homeDir for testing.
@@ -539,5 +541,49 @@ func TestListAllPartialFailure(t *testing.T) {
 		if w.Source == SourceClaude || w.Source == SourceCodex || w.Source == SourceCopilot {
 			t.Errorf("unexpected warning for %s: %v", w.Source, w.Err)
 		}
+	}
+}
+
+// TestListKiroUsesCreatedAtNotUpdatedAt is a regression test for T-550:
+// listKiro was mapping SessionMetadata.UpdatedAt to SessionInfo.CreatedAt
+// instead of SessionMetadata.CreatedAt.
+func TestListKiroUsesCreatedAtNotUpdatedAt(t *testing.T) {
+	created := time.Date(2025, 1, 10, 10, 0, 0, 0, time.UTC)
+	updated := time.Date(2025, 1, 20, 14, 30, 0, 0, time.UTC)
+
+	lister := &Lister{
+		homeDir: t.TempDir(),
+		kiroDiscover: func(_ context.Context, _ string) ([]logs.SessionMetadata, error) {
+			return []logs.SessionMetadata{
+				{
+					ConversationID: "kiro-session-1",
+					Directory:      "/my/project",
+					CreatedAt:      created,
+					UpdatedAt:      updated,
+					Size:           1024,
+				},
+			}, nil
+		},
+	}
+
+	sessions, err := lister.listKiro("/my/project")
+	if err != nil {
+		t.Fatalf("listKiro returned error: %v", err)
+	}
+
+	if len(sessions) != 1 {
+		t.Fatalf("expected 1 session, got %d", len(sessions))
+	}
+
+	s := sessions[0]
+	if s.ID != "kiro-session-1" {
+		t.Errorf("session.ID = %q, want %q", s.ID, "kiro-session-1")
+	}
+	if s.Source != SourceKiroCLI {
+		t.Errorf("session.Source = %q, want %q", s.Source, SourceKiroCLI)
+	}
+	if !s.CreatedAt.Equal(created) {
+		t.Errorf("session.CreatedAt = %v, want %v (got UpdatedAt instead of CreatedAt)",
+			s.CreatedAt, created)
 	}
 }
