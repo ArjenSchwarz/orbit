@@ -482,6 +482,9 @@ func getCodexSessionTimestamp(path string) (time.Time, error) {
 			}
 		}
 	}
+	if err := scanner.Err(); err != nil {
+		return time.Time{}, fmt.Errorf("scanning %s: %w", filepath.Base(path), err)
+	}
 
 	info, err := os.Stat(path)
 	if err != nil {
@@ -516,6 +519,9 @@ func getCodexSessionCwd(path string) string {
 			}
 		}
 	}
+	// scanner.Err() intentionally not checked: a scan error (e.g. line
+	// exceeding buffer) is indistinguishable from no session_meta found,
+	// and both result in the same empty-string fallback.
 
 	return ""
 }

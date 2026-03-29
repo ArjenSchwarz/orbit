@@ -530,7 +530,10 @@ func setupCodexSessionWithLeadingLines(t *testing.T, homeDir, projectPath, sessi
 				},
 			},
 		}
-		data, _ := json.Marshal(entry)
+		data, err := json.Marshal(entry)
+		if err != nil {
+			t.Fatalf("json.Marshal: %v", err)
+		}
 		content = append(content, data...)
 		content = append(content, '\n')
 	}
@@ -543,7 +546,10 @@ func setupCodexSessionWithLeadingLines(t *testing.T, homeDir, projectPath, sessi
 			"cwd": projectPath,
 		},
 	}
-	data, _ := json.Marshal(meta)
+	data, err := json.Marshal(meta)
+	if err != nil {
+		t.Fatalf("json.Marshal: %v", err)
+	}
 	content = append(content, data...)
 	content = append(content, '\n')
 
@@ -557,6 +563,7 @@ func setupCodexSessionWithLeadingLines(t *testing.T, homeDir, projectPath, sessi
 // even when session_meta is not the first line in the JSONL file.
 // Regression test for T-644.
 func TestCodexSessionMetaNotFirstLine(t *testing.T) {
+	t.Parallel()
 	homeDir := t.TempDir()
 	projectPath := t.TempDir()
 
@@ -594,6 +601,7 @@ func TestCodexSessionMetaNotFirstLine(t *testing.T) {
 // TestGetCodexSessionCwdScansMultipleLines verifies getCodexSessionCwd scans
 // past non-session_meta lines.
 func TestGetCodexSessionCwdScansMultipleLines(t *testing.T) {
+	t.Parallel()
 	homeDir := t.TempDir()
 
 	ts := time.Date(2025, 6, 1, 12, 0, 0, 0, time.UTC)
@@ -615,6 +623,7 @@ func TestGetCodexSessionCwdScansMultipleLines(t *testing.T) {
 // TestGetCodexSessionTimestampScansMultipleLines verifies getCodexSessionTimestamp
 // scans past non-session_meta lines.
 func TestGetCodexSessionTimestampScansMultipleLines(t *testing.T) {
+	t.Parallel()
 	homeDir := t.TempDir()
 
 	ts := time.Date(2025, 6, 1, 12, 0, 0, 0, time.UTC)
@@ -632,6 +641,40 @@ func TestGetCodexSessionTimestampScansMultipleLines(t *testing.T) {
 	}
 	if !got.Equal(ts) {
 		t.Errorf("getCodexSessionTimestamp() = %v, want %v", got, ts)
+	}
+}
+
+// TestCodexSessionMetaBeyondScanLimit verifies that when session_meta appears
+// after the scan limit, the functions fall back gracefully (mod-time for
+// timestamp, empty string for cwd) rather than scanning the entire file.
+func TestCodexSessionMetaBeyondScanLimit(t *testing.T) {
+	t.Parallel()
+
+	homeDir := t.TempDir()
+	ts := time.Date(2025, 6, 1, 12, 0, 0, 0, time.UTC)
+	sessionID := "beyond-limit-test"
+	projectPath := "/home/user/project"
+
+	// Place session_meta at line 51 (beyond the 50-line limit)
+	setupCodexSessionWithLeadingLines(t, homeDir, projectPath, sessionID, ts, codexMetaScanLimit)
+
+	dir := filepath.Join(homeDir, ".codex", "sessions",
+		ts.Format("2006"), ts.Format("01"), ts.Format("02"))
+	filePath := filepath.Join(dir, fmt.Sprintf("session-%s.jsonl", sessionID))
+
+	// cwd should be empty — session_meta is beyond the scan limit
+	cwd := getCodexSessionCwd(filePath)
+	if cwd != "" {
+		t.Errorf("getCodexSessionCwd() = %q, want empty string (beyond scan limit)", cwd)
+	}
+
+	// timestamp should fall back to file mod-time
+	got, err := getCodexSessionTimestamp(filePath)
+	if err != nil {
+		t.Fatalf("getCodexSessionTimestamp() error: %v", err)
+	}
+	if got.Equal(ts) {
+		t.Errorf("getCodexSessionTimestamp() returned session_meta timestamp %v, expected file mod-time (beyond scan limit)", got)
 	}
 }
 
