@@ -20,6 +20,10 @@ type ExecuteConfig struct {
 	// Env provides additional environment variables to merge with os.Environ().
 	// When nil or empty, the command inherits the current environment unchanged.
 	Env map[string]string
+	// Timeout applies a per-execution timeout via context.WithTimeout.
+	// If > 0, the command is killed when the timeout elapses.
+	// 0 means no timeout (inherit parent context deadline only).
+	Timeout time.Duration
 }
 
 // ExecuteResult holds the raw output from running an agent CLI command.
@@ -43,6 +47,12 @@ type ExecuteResult struct {
 // The caller is responsible for building the args (agent-specific) and
 // post-processing the result (parsing output, extracting costs, etc.).
 func Execute(ctx context.Context, cfg ExecuteConfig) *ExecuteResult {
+	if cfg.Timeout > 0 {
+		var cancel context.CancelFunc
+		ctx, cancel = context.WithTimeout(ctx, cfg.Timeout)
+		defer cancel()
+	}
+
 	cmd := exec.CommandContext(ctx, cfg.CLIPath, cfg.Args...)
 
 	if cfg.WorkDir != "" {
