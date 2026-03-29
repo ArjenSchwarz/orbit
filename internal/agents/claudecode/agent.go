@@ -5,6 +5,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"fmt"
 	"log"
 	"os"
 	"os/exec"
@@ -227,13 +228,22 @@ func (a *Agent) execute(ctx context.Context, opts agents.RunOptions, resume bool
 		Env:     opts.Env,
 	})
 
+	return a.processExecResult(execResult, opts.SessionID)
+}
+
+// processExecResult converts raw CLI execution output into a structured RunResult.
+// It parses JSON output, classifies errors, and ensures non-JSON stdout is surfaced
+// as an error rather than silently treated as success.
+func (a *Agent) processExecResult(execResult *agents.ExecuteResult, sessionID string) (*agents.RunResult, error) {
 	result := &agents.RunResult{
-		SessionID: opts.SessionID,
+		SessionID: sessionID,
 		Duration:  execResult.Duration,
 		ExitCode:  execResult.ExitCode,
 		RawJSON:   execResult.Stdout,
 		Stderr:    string(execResult.Stderr),
 	}
+
+	var parseErr error
 
 	// Parse JSON output if available
 	if len(execResult.Stdout) > 0 {
@@ -259,14 +269,43 @@ func (a *Agent) execute(ctx context.Context, opts agents.RunOptions, resume bool
 					Agent:   "claude-code",
 				}
 			}
+		} else {
+			// Non-JSON stdout: surface as error. RawJSON is already set for debugging.
+			result.IsError = true
+			result.Errors = []string{fmt.Sprintf("invalid JSON output: %s", jsonErr)}
+
+			// Try error classification from raw output — may identify
+			// rate limits, auth errors, or other recognizable patterns.
+			classifier := &Classifier{}
+			classified := classifier.Classify(
+				execResult.ExitCode,
+				string(execResult.Stderr),
+				string(execResult.Stdout),
+				nil,
+			)
+			if classified.Class != agents.ErrorClassUnknown {
+				result.Error = classified
+				parseErr = classified
+			} else {
+				ce := &agents.ClassifiedError{
+					Original: jsonErr,
+					Class:    agents.ErrorClassRetryable,
+					Message:  fmt.Sprintf("claude output was not valid JSON: %s", jsonErr),
+					Agent:    "claude-code",
+				}
+				result.Error = ce
+				parseErr = ce
+			}
 		}
 	}
 
+	// Execution errors take precedence over parse errors.
 	if execResult.Err != nil {
 		result.Error = execResult.Err
+		return result, execResult.Err
 	}
 
-	return result, execResult.Err
+	return result, parseErr
 }
 
 // claudeResult represents the JSON output from claude -p --output-format json.
