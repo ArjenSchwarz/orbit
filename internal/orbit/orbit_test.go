@@ -505,6 +505,120 @@ func TestRunPhase_SessionContinuation_NewSession(t *testing.T) {
 	}
 }
 
+func TestRunPhase_PopulatesTimeoutFromAgentConfig(t *testing.T) {
+	// Regression test for T-584: AgentConfig.Timeout must be propagated to
+	// RunOptions.Timeout so agent execution contexts are time-bounded.
+	scenario := testutil.NewScenario().
+		Success("test-session", 0.0).
+		Build()
+
+	agent := testutil.NewTestAgent(t, "mock", scenario)
+	t.Cleanup(func() { agent.AssertAllConsumed(t) })
+
+	timeout := 30 * time.Second
+	o := &Orbit{
+		config: Config{
+			AgentConfig: agents.AgentConfig{
+				Timeout: timeout,
+			},
+		},
+		agent:           agent,
+		errorClassifier: agents.GetClassifier("claude-code"),
+		logManager:      nil,
+		shutdownCtx:     context.Background(),
+		debug:           debug.New(false, ""),
+	}
+
+	err := o.runPhase(1)
+	if err != nil {
+		t.Fatalf("runPhase() returned error: %v", err)
+	}
+
+	calls := agent.Recorder().Calls()
+	if len(calls) != 1 {
+		t.Fatalf("expected 1 call, got %d", len(calls))
+	}
+	if calls[0].Options.Timeout != timeout {
+		t.Errorf("RunOptions.Timeout = %v, want %v", calls[0].Options.Timeout, timeout)
+	}
+}
+
+func TestRunPrePrompt_PopulatesTimeoutFromAgentConfig(t *testing.T) {
+	// Regression test for T-584: Pre-prompt should also use agent timeout.
+	scenario := testutil.NewScenario().
+		Success("test-session", 0.0).
+		Build()
+
+	agent := testutil.NewTestAgent(t, "mock", scenario)
+	t.Cleanup(func() { agent.AssertAllConsumed(t) })
+
+	timeout := 15 * time.Second
+	o := &Orbit{
+		config: Config{
+			PrePrompt: "Test pre-prompt",
+			AgentConfig: agents.AgentConfig{
+				Timeout: timeout,
+			},
+		},
+		agent:           agent,
+		errorClassifier: agents.GetClassifier("claude-code"),
+		logManager:      nil,
+		shutdownCtx:     context.Background(),
+		debug:           debug.New(false, ""),
+	}
+
+	err := o.runPrePrompt()
+	if err != nil {
+		t.Fatalf("runPrePrompt() returned error: %v", err)
+	}
+
+	calls := agent.Recorder().Calls()
+	if len(calls) != 1 {
+		t.Fatalf("expected 1 call, got %d", len(calls))
+	}
+	if calls[0].Options.Timeout != timeout {
+		t.Errorf("RunOptions.Timeout = %v, want %v", calls[0].Options.Timeout, timeout)
+	}
+}
+
+func TestRunPostPrompt_PopulatesTimeoutFromAgentConfig(t *testing.T) {
+	// Regression test for T-584: Post-prompt should also use agent timeout.
+	scenario := testutil.NewScenario().
+		Success("test-session", 0.0).
+		Build()
+
+	agent := testutil.NewTestAgent(t, "mock", scenario)
+	t.Cleanup(func() { agent.AssertAllConsumed(t) })
+
+	timeout := 20 * time.Second
+	o := &Orbit{
+		config: Config{
+			PostPrompt: "Test post-prompt",
+			AgentConfig: agents.AgentConfig{
+				Timeout: timeout,
+			},
+		},
+		agent:           agent,
+		errorClassifier: agents.GetClassifier("claude-code"),
+		logManager:      nil,
+		shutdownCtx:     context.Background(),
+		debug:           debug.New(false, ""),
+	}
+
+	err := o.runPostPrompt()
+	if err != nil {
+		t.Fatalf("runPostPrompt() returned error: %v", err)
+	}
+
+	calls := agent.Recorder().Calls()
+	if len(calls) != 1 {
+		t.Fatalf("expected 1 call, got %d", len(calls))
+	}
+	if calls[0].Options.Timeout != timeout {
+		t.Errorf("RunOptions.Timeout = %v, want %v", calls[0].Options.Timeout, timeout)
+	}
+}
+
 func TestRunPhase_SessionContinuation_WithLogManager(t *testing.T) {
 	// Create scenario that returns success
 	scenario := testutil.NewScenario().

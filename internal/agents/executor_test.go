@@ -157,6 +157,56 @@ func TestExecute_ContextCancellation(t *testing.T) {
 	}
 }
 
+func TestExecute_TimeoutKillsLongRunningProcess(t *testing.T) {
+	// Regression test for T-584: ExecuteConfig.Timeout should derive a timeout
+	// context that kills the process after the specified duration.
+	result := agents.Execute(context.Background(), agents.ExecuteConfig{
+		CLIPath: "sleep",
+		Args:    []string{"10"},
+		Timeout: 100 * time.Millisecond,
+	})
+
+	if result.Err == nil {
+		t.Fatal("Execute() expected error when Timeout exceeded")
+	}
+	if result.Duration > 2*time.Second {
+		t.Errorf("Duration = %v, expected process killed within ~200ms", result.Duration)
+	}
+}
+
+func TestExecute_ZeroTimeoutDoesNotLimit(t *testing.T) {
+	// Zero timeout should not impose any timeout (existing behavior).
+	result := agents.Execute(context.Background(), agents.ExecuteConfig{
+		CLIPath: "sleep",
+		Args:    []string{"0.05"},
+		Timeout: 0,
+	})
+
+	if result.Err != nil {
+		t.Fatalf("Execute() with zero timeout should succeed, got: %v", result.Err)
+	}
+}
+
+func TestExecute_TimeoutShorterThanParentContext(t *testing.T) {
+	// When ExecuteConfig.Timeout is shorter than the parent context deadline,
+	// the timeout should still fire.
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	result := agents.Execute(ctx, agents.ExecuteConfig{
+		CLIPath: "sleep",
+		Args:    []string{"10"},
+		Timeout: 100 * time.Millisecond,
+	})
+
+	if result.Err == nil {
+		t.Fatal("Execute() expected error when Timeout exceeded")
+	}
+	if result.Duration > 2*time.Second {
+		t.Errorf("Duration = %v, expected process killed by ExecuteConfig.Timeout", result.Duration)
+	}
+}
+
 func TestExecute_Duration(t *testing.T) {
 	result := agents.Execute(context.Background(), agents.ExecuteConfig{
 		CLIPath: "sleep",
