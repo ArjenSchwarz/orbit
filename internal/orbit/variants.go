@@ -271,7 +271,7 @@ func (o *Orbit) runWithVariants(ctx context.Context) error {
 	// Generate report based on outcomes
 	if successCount == 0 {
 		log.Println("All variants failed; generating partial report")
-		return o.generateReport(true)
+		return o.generateReport(ctx, true)
 	}
 
 	if successCount == 1 {
@@ -279,7 +279,7 @@ func (o *Orbit) runWithVariants(ctx context.Context) error {
 		if o.config.AutoConsolidate {
 			log.Println("Skipping auto-consolidation: comparison requires 2+ successful variants")
 		}
-		return o.generateReport(false)
+		return o.generateReport(ctx, false)
 	}
 
 	// Compare multiple successful variants
@@ -289,7 +289,7 @@ func (o *Orbit) runWithVariants(ctx context.Context) error {
 	}
 
 	// Generate report first - auto-consolidation reads the report file
-	if err := o.generateReport(false); err != nil {
+	if err := o.generateReport(ctx, false); err != nil {
 		log.Printf("Report generation failed: %v", err)
 		// Return early if report generation fails - consolidation depends on the report
 		return err

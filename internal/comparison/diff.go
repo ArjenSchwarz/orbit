@@ -25,6 +25,10 @@ func (d *DiffGatherer) GatherDiffs(ctx context.Context, baseCommit string, varia
 	result := make([]VariantData, 0, len(variantList))
 
 	for _, v := range variantList {
+		if err := ctx.Err(); err != nil {
+			return nil, err
+		}
+
 		// Skip non-completed variants
 		if v.Status != variants.StatusCompleted {
 			continue
@@ -56,6 +60,10 @@ func (d *DiffGatherer) GatherSummaries(ctx context.Context, baseCommit string, v
 	result := make([]VariantData, 0, len(variantList))
 
 	for _, v := range variantList {
+		if err := ctx.Err(); err != nil {
+			return nil, err
+		}
+
 		// Skip non-completed variants
 		if v.Status != variants.StatusCompleted {
 			continue
@@ -99,6 +107,10 @@ func (d *DiffGatherer) GatherAll(ctx context.Context, baseCommit string, variant
 	result := make([]VariantData, 0, len(variantList))
 
 	for _, v := range variantList {
+		if err := ctx.Err(); err != nil {
+			return nil, err
+		}
+
 		// Skip non-completed variants
 		if v.Status != variants.StatusCompleted {
 			continue
