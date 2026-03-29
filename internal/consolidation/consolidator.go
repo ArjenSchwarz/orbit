@@ -509,8 +509,9 @@ func (c *Consolidator) runWithRetry(ctx context.Context, prompt string) (*agents
 			return c.config.Agent.Run(ctx, opts)
 		},
 		Classify: func(result *agents.RunResult, err error) *agents.ClassifiedError {
-			// Success check: no error and no result-level error
-			if err == nil && (result == nil || result.Error == nil) {
+			// Success: no error and agent did not report an error condition.
+			// Uses IsError (not result.Error) to match classifyFromAgent behavior.
+			if err == nil && (result == nil || !result.IsError) {
 				return nil
 			}
 

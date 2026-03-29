@@ -902,6 +902,75 @@ func TestRecoveryPartialFailure(t *testing.T) {
 	})
 }
 
+// TestRunWithRetry_IsErrorTreatedAsFailure verifies that runWithRetry treats
+// agent-level IsError=true as a failure even when err==nil and result.Error==nil.
+// Regression test for T-609.
+func TestRunWithRetry_IsErrorTreatedAsFailure(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name    string
+		result  *agents.RunResult
+		wantErr bool
+	}{
+		{
+			name: "IsError true with nil Error should fail",
+			result: &agents.RunResult{
+				SessionID: "test-session",
+				IsError:   true,
+				ExitCode:  0,
+				Output:    "invalid output",
+			},
+			wantErr: true,
+		},
+		{
+			name: "IsError false with nil Error should succeed",
+			result: &agents.RunResult{
+				SessionID: "test-session",
+				IsError:   false,
+				ExitCode:  0,
+				Output:    "valid output",
+			},
+			wantErr: false,
+		},
+		{
+			name:    "nil result should succeed",
+			result:  nil,
+			wantErr: false,
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			tmpDir := t.TempDir()
+			agent := &mockAgent{
+				name:      "test-agent",
+				runResult: tc.result,
+			}
+
+			mgr := createTestManagerWithVariants(t, 2, tmpDir)
+			cfg := Config{
+				SpecName:  "test-spec",
+				SpecDir:   tmpDir,
+				VariantID: 1,
+				Agent:     agent,
+			}
+
+			consolidator, err := NewConsolidator(cfg, mgr)
+			require.NoError(t, err)
+
+			_, err = consolidator.runWithRetry(context.Background(), "test prompt")
+			if tc.wantErr {
+				assert.Error(t, err, "runWithRetry should return error when agent reports IsError=true")
+			} else {
+				assert.NoError(t, err, "runWithRetry should succeed when agent reports no error")
+			}
+		})
+	}
+}
+
 // Helper functions
 
 func createTestManager(t *testing.T, numVariants int) *variants.Manager {
