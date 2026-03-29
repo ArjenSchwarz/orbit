@@ -299,7 +299,7 @@ func (a *Agent) processExecResult(execResult *agents.ExecuteResult, sessionID st
 		}
 	}
 
-	// Execution errors (non-zero exit) take precedence over parse errors.
+	// Execution errors take precedence over parse errors.
 	if execResult.Err != nil {
 		result.Error = execResult.Err
 		return result, execResult.Err

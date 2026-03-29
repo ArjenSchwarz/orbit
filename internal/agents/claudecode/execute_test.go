@@ -132,28 +132,31 @@ func TestProcessExecResult_EmptyStdout_NoError(t *testing.T) {
 }
 
 // TestProcessExecResult_NonJSON_WithRateLimitMessage verifies that non-JSON
-// output containing a rate-limit message is classified as a rate-limit error.
+// output containing a rate-limit message is classified as a rate-limit error
+// when the CLI exits successfully (no exec error to override classification).
 func TestProcessExecResult_NonJSON_WithRateLimitMessage(t *testing.T) {
 	t.Parallel()
 	agent := New(agents.AgentConfig{}).(*Agent)
 
 	execResult := &agents.ExecuteResult{
 		Stdout:   []byte("Error: Rate limit exceeded. Too many requests, please retry after 30s."),
-		ExitCode: 1,
-		Err:      errors.New("exit status 1"),
+		ExitCode: 0,
 	}
 
-	result, _ := agent.processExecResult(execResult, "test-session")
+	result, err := agent.processExecResult(execResult, "test-session")
 
 	if !result.IsError {
 		t.Error("IsError should be true for non-JSON rate limit output")
 	}
-	// The error classifier should recognize the rate-limit pattern in raw output.
+	if err == nil {
+		t.Fatal("expected non-nil error for non-JSON rate limit output")
+	}
 	var ce *agents.ClassifiedError
-	if result.Error != nil && errors.As(result.Error, &ce) {
-		if ce.Class != agents.ErrorClassRetryable {
-			t.Errorf("expected ErrorClassRetryable for rate limit, got %v", ce.Class)
-		}
+	if !errors.As(err, &ce) {
+		t.Fatalf("expected *ClassifiedError, got %T", err)
+	}
+	if ce.Class != agents.ErrorClassRetryable {
+		t.Errorf("expected ErrorClassRetryable for rate limit, got %v", ce.Class)
 	}
 }
 
@@ -252,20 +255,30 @@ func TestProcessExecResult_ExecError_TakesPrecedence(t *testing.T) {
 }
 
 // TestProcessExecResult_NonJSON_AuthError verifies that non-JSON output
-// containing auth error patterns is classified as fatal.
+// containing auth error patterns is classified as fatal when the CLI exits
+// successfully (no exec error to override classification).
 func TestProcessExecResult_NonJSON_AuthError(t *testing.T) {
 	t.Parallel()
 	agent := New(agents.AgentConfig{}).(*Agent)
 
 	execResult := &agents.ExecuteResult{
 		Stdout:   []byte("Error: Not authenticated. Please run 'claude login' first."),
-		ExitCode: 1,
-		Err:      errors.New("exit status 1"),
+		ExitCode: 0,
 	}
 
-	result, _ := agent.processExecResult(execResult, "test-session")
+	result, err := agent.processExecResult(execResult, "test-session")
 
 	if !result.IsError {
 		t.Error("IsError should be true for non-JSON auth error output")
+	}
+	if err == nil {
+		t.Fatal("expected non-nil error for non-JSON auth error output")
+	}
+	var ce *agents.ClassifiedError
+	if !errors.As(err, &ce) {
+		t.Fatalf("expected *ClassifiedError, got %T", err)
+	}
+	if ce.Class != agents.ErrorClassFatal {
+		t.Errorf("expected ErrorClassFatal for auth error, got %v", ce.Class)
 	}
 }
