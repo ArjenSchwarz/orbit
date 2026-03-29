@@ -294,14 +294,23 @@ func (l *Lister) listCopilot(projectPath string) ([]SessionInfo, error) {
 	return sessions, nil
 }
 
-// listKiro returns all Kiro CLI sessions for the current working directory.
+// listKiro returns all Kiro CLI sessions for a project directory.
+// When cwd is empty, returns sessions from all directories.
 func (l *Lister) listKiro(cwd string) ([]SessionInfo, error) {
 	discover := l.kiroDiscover
 	if discover == nil {
 		discover = logs.DiscoverForDirectory
 	}
 
-	kiroSessions, err := discover(context.Background(), cwd)
+	var kiroSessions []logs.SessionMetadata
+	var err error
+
+	if cwd == "" {
+		kiroSessions, err = logs.DiscoverAll(context.Background())
+	} else {
+		kiroSessions, err = discover(context.Background(), cwd)
+	}
+
 	if err != nil {
 		if errors.Is(err, logs.ErrDatabaseNotFound) {
 			return nil, nil

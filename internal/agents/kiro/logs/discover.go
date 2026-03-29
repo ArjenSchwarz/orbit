@@ -30,6 +30,18 @@ func DiscoverForDirectory(ctx context.Context, dir string) ([]SessionMetadata, e
 	return db.DiscoverForDirectory(ctx, dir)
 }
 
+// DiscoverAll returns all sessions across all directories.
+// Results are sorted by updated_at DESC (most recent first).
+//
+// This is a convenience function that uses DefaultDB().
+func DiscoverAll(ctx context.Context) ([]SessionMetadata, error) {
+	db, err := DefaultDB()
+	if err != nil {
+		return nil, err
+	}
+	return db.DiscoverAll(ctx)
+}
+
 // DiscoverForDirectory returns all sessions for the given working directory.
 // Queries both normalized and symlink-resolved paths, deduplicating by ConversationID.
 // Results are sorted by updated_at DESC (most recent first).
@@ -61,6 +73,59 @@ func (d *DB) DiscoverForDirectory(ctx context.Context, dir string) ([]SessionMet
 	}
 
 	// Convert map to slice, sorted by updated_at DESC
+	result := make([]SessionMetadata, 0, len(seen))
+	for _, s := range seen {
+		result = append(result, s)
+	}
+	sort.Slice(result, func(i, j int) bool {
+		return result[i].UpdatedAt.After(result[j].UpdatedAt)
+	})
+
+	return result, nil
+}
+
+// DiscoverAll returns all sessions across all directories.
+// Deduplicates by ConversationID (keeps most recent UpdatedAt) to handle
+// sessions recorded under both normalized and symlink-resolved paths.
+// Results are sorted by updated_at DESC (most recent first).
+func (d *DB) DiscoverAll(ctx context.Context) ([]SessionMetadata, error) {
+	conn, err := d.openConn(ctx)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = conn.Close() }()
+
+	rows, err := conn.QueryContext(ctx, `
+		SELECT conversation_id, key, created_at, updated_at, length(value)
+		FROM conversations_v2
+		ORDER BY updated_at DESC
+	`)
+	if err != nil {
+		return nil, classifyError(err)
+	}
+	defer func() { _ = rows.Close() }()
+
+	// Deduplicate by ConversationID — same session may appear under both
+	// a normalized path and its symlink-resolved path.
+	seen := make(map[string]SessionMetadata)
+	for rows.Next() {
+		var s SessionMetadata
+		var createdMS, updatedMS int64
+		if err := rows.Scan(&s.ConversationID, &s.Directory, &createdMS, &updatedMS, &s.Size); err != nil {
+			return nil, classifyError(err)
+		}
+		s.CreatedAt = time.UnixMilli(createdMS)
+		s.UpdatedAt = time.UnixMilli(updatedMS)
+
+		if existing, ok := seen[s.ConversationID]; !ok || s.UpdatedAt.After(existing.UpdatedAt) {
+			seen[s.ConversationID] = s
+		}
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, classifyError(err)
+	}
+
 	result := make([]SessionMetadata, 0, len(seen))
 	for _, s := range seen {
 		result = append(result, s)
