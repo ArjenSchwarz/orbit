@@ -2,6 +2,7 @@ package consolidation
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"path/filepath"
 	"testing"
@@ -900,6 +901,78 @@ func TestRecoveryPartialFailure(t *testing.T) {
 	t.Run("hasCommitInOutput handles nil result", func(t *testing.T) {
 		assert.False(t, hasCommitInOutput(nil))
 	})
+}
+
+// TestRunWithRetry_IsErrorTreatedAsFailure verifies that runWithRetry treats
+// agent-level IsError=true as a failure even when err==nil and result.Error==nil.
+// Regression test for T-609.
+func TestRunWithRetry_IsErrorTreatedAsFailure(t *testing.T) {
+	t.Parallel()
+
+	tests := map[string]struct {
+		result  *agents.RunResult
+		runErr  error
+		wantErr bool
+	}{
+		"IsError true with nil Error should fail": {
+			result: &agents.RunResult{
+				SessionID: "test-session",
+				IsError:   true,
+				ExitCode:  0,
+				Output:    "invalid output",
+			},
+			wantErr: true,
+		},
+		"IsError false with nil Error should succeed": {
+			result: &agents.RunResult{
+				SessionID: "test-session",
+				IsError:   false,
+				ExitCode:  0,
+				Output:    "valid output",
+			},
+			wantErr: false,
+		},
+		"nil result should succeed": {
+			result:  nil,
+			wantErr: false,
+		},
+		"Go-level error should fail": {
+			result:  &agents.RunResult{SessionID: "test-session", ExitCode: 1},
+			runErr:  fmt.Errorf("agent process exited with code 1"),
+			wantErr: true,
+		},
+	}
+
+	for name, tc := range tests {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			tmpDir := t.TempDir()
+			agent := &mockAgent{
+				name:      "test-agent",
+				runResult: tc.result,
+				runErr:    tc.runErr,
+			}
+
+			mgr := createTestManagerWithVariants(t, 2, tmpDir)
+			cfg := Config{
+				SpecName:  "test-spec",
+				SpecDir:   tmpDir,
+				VariantID: 1,
+				Agent:     agent,
+			}
+
+			consolidator, err := NewConsolidator(cfg, mgr)
+			require.NoError(t, err)
+
+			_, err = consolidator.runWithRetry(context.Background(), "test prompt")
+			if tc.wantErr {
+				assert.Error(t, err, "runWithRetry should return error")
+			} else {
+				assert.NoError(t, err, "runWithRetry should succeed")
+			}
+		})
+	}
 }
 
 // Helper functions
