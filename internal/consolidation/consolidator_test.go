@@ -2,6 +2,7 @@ package consolidation
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"path/filepath"
 	"testing"
@@ -908,13 +909,12 @@ func TestRecoveryPartialFailure(t *testing.T) {
 func TestRunWithRetry_IsErrorTreatedAsFailure(t *testing.T) {
 	t.Parallel()
 
-	tests := []struct {
-		name    string
+	tests := map[string]struct {
 		result  *agents.RunResult
+		runErr  error
 		wantErr bool
 	}{
-		{
-			name: "IsError true with nil Error should fail",
+		"IsError true with nil Error should fail": {
 			result: &agents.RunResult{
 				SessionID: "test-session",
 				IsError:   true,
@@ -923,8 +923,7 @@ func TestRunWithRetry_IsErrorTreatedAsFailure(t *testing.T) {
 			},
 			wantErr: true,
 		},
-		{
-			name: "IsError false with nil Error should succeed",
+		"IsError false with nil Error should succeed": {
 			result: &agents.RunResult{
 				SessionID: "test-session",
 				IsError:   false,
@@ -933,21 +932,26 @@ func TestRunWithRetry_IsErrorTreatedAsFailure(t *testing.T) {
 			},
 			wantErr: false,
 		},
-		{
-			name:    "nil result should succeed",
+		"nil result should succeed": {
 			result:  nil,
 			wantErr: false,
 		},
+		"Go-level error should fail": {
+			result:  &agents.RunResult{SessionID: "test-session", ExitCode: 1},
+			runErr:  fmt.Errorf("agent process exited with code 1"),
+			wantErr: true,
+		},
 	}
 
-	for _, tc := range tests {
-		t.Run(tc.name, func(t *testing.T) {
+	for name, tc := range tests {
+		t.Run(name, func(t *testing.T) {
 			t.Parallel()
 
 			tmpDir := t.TempDir()
 			agent := &mockAgent{
 				name:      "test-agent",
 				runResult: tc.result,
+				runErr:    tc.runErr,
 			}
 
 			mgr := createTestManagerWithVariants(t, 2, tmpDir)
@@ -963,9 +967,9 @@ func TestRunWithRetry_IsErrorTreatedAsFailure(t *testing.T) {
 
 			_, err = consolidator.runWithRetry(context.Background(), "test prompt")
 			if tc.wantErr {
-				assert.Error(t, err, "runWithRetry should return error when agent reports IsError=true")
+				assert.Error(t, err, "runWithRetry should return error")
 			} else {
-				assert.NoError(t, err, "runWithRetry should succeed when agent reports no error")
+				assert.NoError(t, err, "runWithRetry should succeed")
 			}
 		})
 	}
