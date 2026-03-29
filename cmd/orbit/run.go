@@ -204,14 +204,20 @@ func runCommand(args []string) error {
 		parallelValue = true
 	}
 
-	// Resolve max-parallel: CLI flag overrides config if explicitly provided
-	// Since we can't detect if the flag was explicitly set, we only override
-	// if the CLI value differs from the built-in default of 3
+	// Resolve max-parallel: CLI flag overrides config if explicitly provided.
+	// Use fs.Visit to detect whether the flag was actually set on the command line,
+	// so that --max-parallel=3 (matching the default) still overrides config.
+	maxParallelExplicit := false
+	fs.Visit(func(f *flag.Flag) {
+		if f.Name == "max-parallel" {
+			maxParallelExplicit = true
+		}
+	})
 	maxParallelValue := cfg.MaxParallel
-	if *maxParallel != 3 {
+	if maxParallelExplicit {
 		maxParallelValue = *maxParallel
 	}
-	// If config value is 0, use the CLI default
+	// If config value is 0 and flag wasn't explicitly set, use the built-in default
 	if maxParallelValue == 0 {
 		maxParallelValue = *maxParallel
 	}

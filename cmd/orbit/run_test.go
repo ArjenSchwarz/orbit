@@ -1,6 +1,7 @@
 package main
 
 import (
+	"flag"
 	"os"
 	"path/filepath"
 	"strings"
@@ -168,6 +169,156 @@ func TestAutoConsolidate_AllowDirtyFlag(t *testing.T) {
 			// Simulate the flag value being passed to config
 			if tt.allowDirty != tt.wantValue {
 				t.Errorf("allowDirty = %v, want %v", tt.allowDirty, tt.wantValue)
+			}
+		})
+	}
+}
+
+// TestMaxParallel_FlagResolution tests that --max-parallel CLI flag properly overrides config,
+// including the case where the explicit value matches the built-in default (3).
+func TestMaxParallel_FlagResolution(t *testing.T) {
+	tests := []struct {
+		name         string
+		configValue  int
+		flagExplicit bool
+		flagValue    int
+		want         int
+	}{
+		{
+			name:         "config only, no flag",
+			configValue:  8,
+			flagExplicit: false,
+			flagValue:    3, // default
+			want:         8,
+		},
+		{
+			name:         "explicit flag overrides config with non-default",
+			configValue:  8,
+			flagExplicit: true,
+			flagValue:    5,
+			want:         5,
+		},
+		{
+			name:         "explicit flag=3 overrides config (T-585 regression)",
+			configValue:  8,
+			flagExplicit: true,
+			flagValue:    3,
+			want:         3,
+		},
+		{
+			name:         "config 0 falls back to flag default",
+			configValue:  0,
+			flagExplicit: false,
+			flagValue:    3,
+			want:         3,
+		},
+		{
+			name:         "explicit flag=1 overrides config",
+			configValue:  5,
+			flagExplicit: true,
+			flagValue:    1,
+			want:         1,
+		},
+		{
+			name:         "config value used when flag not set",
+			configValue:  10,
+			flagExplicit: false,
+			flagValue:    3,
+			want:         10,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// Simulate the resolution logic from run.go
+			maxParallelValue := tt.configValue
+			if tt.flagExplicit {
+				maxParallelValue = tt.flagValue
+			}
+			if maxParallelValue == 0 {
+				maxParallelValue = tt.flagValue
+			}
+
+			if maxParallelValue != tt.want {
+				t.Errorf("maxParallelValue = %d, want %d", maxParallelValue, tt.want)
+			}
+		})
+	}
+}
+
+// TestMaxParallel_FlagVisitDetection tests that fs.Visit correctly detects
+// an explicitly set --max-parallel flag, even when its value equals the default.
+func TestMaxParallel_FlagVisitDetection(t *testing.T) {
+	tests := []struct {
+		name         string
+		args         []string
+		wantExplicit bool
+		wantValue    int
+	}{
+		{
+			name:         "no flag set",
+			args:         []string{},
+			wantExplicit: false,
+			wantValue:    3, // default
+		},
+		{
+			name:         "explicit non-default value",
+			args:         []string{"--max-parallel", "5"},
+			wantExplicit: true,
+			wantValue:    5,
+		},
+		{
+			name:         "explicit default value (T-585 regression)",
+			args:         []string{"--max-parallel", "3"},
+			wantExplicit: true,
+			wantValue:    3,
+		},
+		{
+			name:         "explicit value with equals syntax",
+			args:         []string{"--max-parallel=7"},
+			wantExplicit: true,
+			wantValue:    7,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			fs := flag.NewFlagSet("test", flag.ContinueOnError)
+			maxParallel := fs.Int("max-parallel", 3, "Maximum parallel variants")
+
+			if err := fs.Parse(tt.args); err != nil {
+				t.Fatalf("failed to parse flags: %v", err)
+			}
+
+			explicit := false
+			fs.Visit(func(f *flag.Flag) {
+				if f.Name == "max-parallel" {
+					explicit = true
+				}
+			})
+
+			if explicit != tt.wantExplicit {
+				t.Errorf("explicit = %v, want %v", explicit, tt.wantExplicit)
+			}
+			if *maxParallel != tt.wantValue {
+				t.Errorf("maxParallel = %d, want %d", *maxParallel, tt.wantValue)
+			}
+
+			// Now simulate the full resolution with a config value of 8
+			configValue := 8
+			resolved := configValue
+			if explicit {
+				resolved = *maxParallel
+			}
+			if resolved == 0 {
+				resolved = *maxParallel
+			}
+
+			if explicit && resolved != tt.wantValue {
+				t.Errorf("resolved = %d, want %d (explicit flag should win)", resolved, tt.wantValue)
+			}
+			if !explicit && resolved != configValue {
+				t.Errorf("resolved = %d, want %d (config should win when flag not set)", resolved, configValue)
 			}
 		})
 	}
