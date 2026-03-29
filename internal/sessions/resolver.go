@@ -144,6 +144,7 @@ func (r *Resolver) resolveKiroIDE(sessionID string) (*ResolvedSession, error) {
 		return nil, err
 	}
 
+	createdAt := kiroIDECreatedAt(f, info.ModTime())
 	costPath := transcript.KiroIDEExecutionDetailPath(workspaceDir, sessionID)
 
 	return &ResolvedSession{
@@ -152,10 +153,24 @@ func (r *Resolver) resolveKiroIDE(sessionID string) (*ResolvedSession, error) {
 			Source:    SourceKiroIDE,
 			ID:        sessionID,
 			Size:      info.Size(),
-			CreatedAt: info.ModTime(),
+			CreatedAt: createdAt,
 			CostPath:  costPath,
 		},
 	}, nil
+}
+
+// kiroIDECreatedAt extracts the startTime from a Kiro IDE .chat file's metadata,
+// matching the behaviour of listKiroIDE. Falls back to modTime if metadata is
+// absent or startTime is zero. Seeks the reader back to the start after parsing.
+func kiroIDECreatedAt(rs io.ReadSeeker, modTime time.Time) time.Time {
+	defer func() { _, _ = rs.Seek(0, io.SeekStart) }()
+	var header kiroIDEChatHeader
+	if err := json.NewDecoder(rs).Decode(&header); err == nil {
+		if header.Metadata != nil && header.Metadata.StartTime > 0 {
+			return time.UnixMilli(header.Metadata.StartTime)
+		}
+	}
+	return modTime
 }
 
 // ResolvePath returns the file path for a session, without opening it.
