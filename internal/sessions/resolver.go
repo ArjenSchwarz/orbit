@@ -163,14 +163,13 @@ func (r *Resolver) resolveKiroIDE(sessionID string) (*ResolvedSession, error) {
 // matching the behaviour of listKiroIDE. Falls back to modTime if metadata is
 // absent or startTime is zero. Seeks the reader back to the start after parsing.
 func kiroIDECreatedAt(rs io.ReadSeeker, modTime time.Time) time.Time {
+	defer func() { _, _ = rs.Seek(0, io.SeekStart) }()
 	var header kiroIDEChatHeader
 	if err := json.NewDecoder(rs).Decode(&header); err == nil {
 		if header.Metadata != nil && header.Metadata.StartTime > 0 {
-			_, _ = rs.Seek(0, io.SeekStart)
 			return time.UnixMilli(header.Metadata.StartTime)
 		}
 	}
-	_, _ = rs.Seek(0, io.SeekStart)
 	return modTime
 }
 
