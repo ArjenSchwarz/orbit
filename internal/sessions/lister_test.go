@@ -507,6 +507,134 @@ func TestListAllCopilotSessionsEmptyProjectPath(t *testing.T) {
 	}
 }
 
+// setupCodexSessionWithLeadingLines creates a Codex session file where
+// session_meta is NOT the first line. Non-meta entries appear before it.
+func setupCodexSessionWithLeadingLines(t *testing.T, homeDir, projectPath, sessionID string, createdAt time.Time, leadingLines int) {
+	t.Helper()
+	dir := filepath.Join(homeDir, ".codex", "sessions",
+		createdAt.Format("2006"), createdAt.Format("01"), createdAt.Format("02"))
+	if err := os.MkdirAll(dir, 0755); err != nil {
+		t.Fatalf("failed to create dir: %v", err)
+	}
+
+	var content []byte
+	for i := range leadingLines {
+		entry := map[string]any{
+			"type":      "response_item",
+			"timestamp": createdAt.Format(time.RFC3339),
+			"payload": map[string]any{
+				"type": "message",
+				"role": "user",
+				"content": []map[string]any{
+					{"type": "input_text", "text": fmt.Sprintf("message %d", i)},
+				},
+			},
+		}
+		data, _ := json.Marshal(entry)
+		content = append(content, data...)
+		content = append(content, '\n')
+	}
+
+	meta := map[string]any{
+		"type":      "session_meta",
+		"timestamp": createdAt.Format(time.RFC3339),
+		"payload": map[string]any{
+			"id":  sessionID,
+			"cwd": projectPath,
+		},
+	}
+	data, _ := json.Marshal(meta)
+	content = append(content, data...)
+	content = append(content, '\n')
+
+	filePath := filepath.Join(dir, fmt.Sprintf("session-%s.jsonl", sessionID))
+	if err := os.WriteFile(filePath, content, 0644); err != nil {
+		t.Fatalf("failed to write session file: %v", err)
+	}
+}
+
+// TestCodexSessionMetaNotFirstLine verifies that Codex sessions are discovered
+// even when session_meta is not the first line in the JSONL file.
+// Regression test for T-644.
+func TestCodexSessionMetaNotFirstLine(t *testing.T) {
+	homeDir := t.TempDir()
+	projectPath := t.TempDir()
+
+	t1 := time.Date(2025, 1, 15, 14, 30, 0, 0, time.UTC)
+	sessionID := "12345678-1234-1234-1234-123456789abc"
+
+	// session_meta is on line 4 (after 3 response_item lines)
+	setupCodexSessionWithLeadingLines(t, homeDir, projectPath, sessionID, t1, 3)
+
+	lister := newTestLister(homeDir)
+	sessions, _, err := lister.ListAll(projectPath)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	var codexSessions []SessionInfo
+	for _, s := range sessions {
+		if s.Source == SourceCodex {
+			codexSessions = append(codexSessions, s)
+		}
+	}
+
+	if len(codexSessions) != 1 {
+		t.Fatalf("expected 1 Codex session (session_meta on line 4), got %d", len(codexSessions))
+	}
+
+	if codexSessions[0].ID != sessionID {
+		t.Errorf("session.ID = %q, want %q", codexSessions[0].ID, sessionID)
+	}
+	if !codexSessions[0].CreatedAt.Equal(t1) {
+		t.Errorf("session.CreatedAt = %v, want %v", codexSessions[0].CreatedAt, t1)
+	}
+}
+
+// TestGetCodexSessionCwdScansMultipleLines verifies getCodexSessionCwd scans
+// past non-session_meta lines.
+func TestGetCodexSessionCwdScansMultipleLines(t *testing.T) {
+	homeDir := t.TempDir()
+
+	ts := time.Date(2025, 6, 1, 12, 0, 0, 0, time.UTC)
+	sessionID := "cwd-scan-test"
+	projectPath := "/home/user/my-project"
+
+	setupCodexSessionWithLeadingLines(t, homeDir, projectPath, sessionID, ts, 5)
+
+	dir := filepath.Join(homeDir, ".codex", "sessions",
+		ts.Format("2006"), ts.Format("01"), ts.Format("02"))
+	filePath := filepath.Join(dir, fmt.Sprintf("session-%s.jsonl", sessionID))
+
+	cwd := getCodexSessionCwd(filePath)
+	if cwd != projectPath {
+		t.Errorf("getCodexSessionCwd() = %q, want %q", cwd, projectPath)
+	}
+}
+
+// TestGetCodexSessionTimestampScansMultipleLines verifies getCodexSessionTimestamp
+// scans past non-session_meta lines.
+func TestGetCodexSessionTimestampScansMultipleLines(t *testing.T) {
+	homeDir := t.TempDir()
+
+	ts := time.Date(2025, 6, 1, 12, 0, 0, 0, time.UTC)
+	sessionID := "ts-scan-test"
+
+	setupCodexSessionWithLeadingLines(t, homeDir, "/some/path", sessionID, ts, 5)
+
+	dir := filepath.Join(homeDir, ".codex", "sessions",
+		ts.Format("2006"), ts.Format("01"), ts.Format("02"))
+	filePath := filepath.Join(dir, fmt.Sprintf("session-%s.jsonl", sessionID))
+
+	got, err := getCodexSessionTimestamp(filePath)
+	if err != nil {
+		t.Fatalf("getCodexSessionTimestamp() error: %v", err)
+	}
+	if !got.Equal(ts) {
+		t.Errorf("getCodexSessionTimestamp() = %v, want %v", got, ts)
+	}
+}
+
 func TestListAllPartialFailure(t *testing.T) {
 	homeDir := t.TempDir()
 	projectPath := t.TempDir()

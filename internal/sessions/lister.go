@@ -454,7 +454,13 @@ func parseCopilotWorkspace(path string) (*copilotWorkspace, error) {
 	return &ws, nil
 }
 
+// codexMetaScanLimit is the maximum number of JSONL lines to scan when
+// searching for the session_meta entry. The entry is typically first but
+// is not guaranteed to be.
+const codexMetaScanLimit = 50
+
 // getCodexSessionTimestamp extracts the timestamp from a Codex session file.
+// It scans up to codexMetaScanLimit lines for the session_meta entry.
 func getCodexSessionTimestamp(path string) (time.Time, error) {
 	f, err := os.Open(path)
 	if err != nil {
@@ -463,7 +469,7 @@ func getCodexSessionTimestamp(path string) (time.Time, error) {
 	defer func() { _ = f.Close() }()
 
 	scanner := bufio.NewScanner(f)
-	if scanner.Scan() {
+	for i := 0; i < codexMetaScanLimit && scanner.Scan(); i++ {
 		var entry struct {
 			Timestamp string `json:"timestamp"`
 			Type      string `json:"type"`
@@ -485,6 +491,7 @@ func getCodexSessionTimestamp(path string) (time.Time, error) {
 }
 
 // getCodexSessionCwd extracts the working directory from a Codex session file.
+// It scans up to codexMetaScanLimit lines for the session_meta entry.
 func getCodexSessionCwd(path string) string {
 	f, err := os.Open(path)
 	if err != nil {
@@ -493,7 +500,7 @@ func getCodexSessionCwd(path string) string {
 	defer func() { _ = f.Close() }()
 
 	scanner := bufio.NewScanner(f)
-	if scanner.Scan() {
+	for i := 0; i < codexMetaScanLimit && scanner.Scan(); i++ {
 		var entry struct {
 			Type    string          `json:"type"`
 			Payload json.RawMessage `json:"payload"`
