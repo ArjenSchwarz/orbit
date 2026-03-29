@@ -243,6 +243,9 @@ func (o *Orbit) generateReport(ctx context.Context, allFailed bool) error {
 
 		variantData, err := diffGatherer.GatherDiffs(ctx, metadata.BaseCommit, variantList)
 		if err != nil {
+			if ctx.Err() != nil {
+				return ctx.Err()
+			}
 			log.Printf("Warning: could not gather diffs for report: %v", err)
 		}
 		for _, vd := range variantData {

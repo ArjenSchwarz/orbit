@@ -2,6 +2,7 @@ package comparison
 
 import (
 	"context"
+	"errors"
 	"testing"
 	"time"
 
@@ -32,7 +33,7 @@ func TestGatherDiffs_RespectsPreCancelledContext(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected error from GatherDiffs with cancelled context, got nil")
 	}
-	if err != context.Canceled {
+	if !errors.Is(err, context.Canceled) {
 		t.Errorf("expected context.Canceled error, got: %v", err)
 	}
 	// With a pre-cancelled context, GatherDiffs should not call GetDiff at all
@@ -60,6 +61,9 @@ func TestGatherDiffs_RespectsExpiredDeadline(t *testing.T) {
 	_, err := gatherer.GatherDiffs(ctx, "abc123", variantList)
 	if err == nil {
 		t.Fatal("expected error from GatherDiffs with expired deadline, got nil")
+	}
+	if !errors.Is(err, context.DeadlineExceeded) {
+		t.Errorf("expected context.DeadlineExceeded error, got: %v", err)
 	}
 }
 
