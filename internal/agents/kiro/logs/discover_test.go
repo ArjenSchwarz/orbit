@@ -220,3 +220,71 @@ func TestDiscoverForDirectory_MultipleSessions(t *testing.T) {
 			sessions[i].UpdatedAt.Equal(sessions[i+1].UpdatedAt))
 	}
 }
+
+// Regression tests for T-534: DiscoverAll returns sessions from all directories.
+
+func TestDiscoverAll_ReturnsAllSessions(t *testing.T) {
+	db := createTestDB(t)
+
+	now := time.Now()
+	insertSession(t, db, "/project-a", "session-1", `{}`, now)
+	insertSession(t, db, "/project-b", "session-2", `{}`, now.Add(-time.Hour))
+	insertSession(t, db, "/project-c", "session-3", `{}`, now.Add(-2*time.Hour))
+
+	sessions, err := db.DiscoverAll(context.Background())
+	require.NoError(t, err)
+	assert.Len(t, sessions, 3)
+
+	ids := make(map[string]bool)
+	for _, s := range sessions {
+		ids[s.ConversationID] = true
+	}
+	assert.True(t, ids["session-1"])
+	assert.True(t, ids["session-2"])
+	assert.True(t, ids["session-3"])
+}
+
+func TestDiscoverAll_EmptyDatabase(t *testing.T) {
+	db := createTestDB(t)
+
+	sessions, err := db.DiscoverAll(context.Background())
+	require.NoError(t, err)
+	assert.Empty(t, sessions)
+}
+
+func TestDiscoverAll_SortsByUpdatedAtDesc(t *testing.T) {
+	db := createTestDB(t)
+
+	baseTime := time.Date(2025, 1, 15, 10, 0, 0, 0, time.UTC)
+	insertSessionWithTimes(t, db, "/a", "oldest", `{}`, baseTime, baseTime)
+	insertSessionWithTimes(t, db, "/b", "newest", `{}`, baseTime, baseTime.Add(2*time.Hour))
+	insertSessionWithTimes(t, db, "/c", "middle", `{}`, baseTime, baseTime.Add(time.Hour))
+
+	sessions, err := db.DiscoverAll(context.Background())
+	require.NoError(t, err)
+	require.Len(t, sessions, 3)
+
+	assert.Equal(t, "newest", sessions[0].ConversationID)
+	assert.Equal(t, "middle", sessions[1].ConversationID)
+	assert.Equal(t, "oldest", sessions[2].ConversationID)
+}
+
+func TestDiscoverAll_PopulatesMetadata(t *testing.T) {
+	db := createTestDB(t)
+
+	created := time.Date(2025, 1, 10, 10, 0, 0, 0, time.UTC)
+	updated := time.Date(2025, 1, 15, 14, 30, 0, 0, time.UTC)
+	jsonValue := `{"conversation_id":"test-session","history":[]}`
+	insertSessionWithTimes(t, db, "/my/project", "test-session", jsonValue, created, updated)
+
+	sessions, err := db.DiscoverAll(context.Background())
+	require.NoError(t, err)
+	require.Len(t, sessions, 1)
+
+	s := sessions[0]
+	assert.Equal(t, "test-session", s.ConversationID)
+	assert.Equal(t, "/my/project", s.Directory)
+	assert.Equal(t, created.UnixMilli(), s.CreatedAt.UnixMilli())
+	assert.Equal(t, updated.UnixMilli(), s.UpdatedAt.UnixMilli())
+	assert.Equal(t, int64(len(jsonValue)), s.Size)
+}
