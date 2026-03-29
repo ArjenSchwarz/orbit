@@ -87,6 +87,7 @@ func (o *Orbit) runVariantPrePrompt(
 	v *variants.Variant,
 	agent agents.Agent,
 	logManager *logs.Manager,
+	timeout time.Duration,
 ) (string, error) {
 	log.Printf("Variant %d: running pre-prompt...", v.ID)
 
@@ -122,6 +123,7 @@ func (o *Orbit) runVariantPrePrompt(
 		Prompt:    o.config.PrePrompt,
 		WorkDir:   v.WorktreePath, // Variant worktree
 		SessionID: sessionID,
+		Timeout:   timeout,
 	}
 
 	var result *agents.RunResult
@@ -588,7 +590,7 @@ func (o *Orbit) runVariant(ctx context.Context, v *variants.Variant) error {
 		if o.config.DryRun {
 			log.Printf("[DRY RUN] Variant %d would execute pre-prompt", v.ID)
 		} else {
-			sessionID, err := o.runVariantPrePrompt(ctx, v, variantAgent, variantLogManager)
+			sessionID, err := o.runVariantPrePrompt(ctx, v, variantAgent, variantLogManager, variantAgentConfig.Timeout)
 			if err != nil {
 				variantErr := fmt.Errorf("pre-prompt failed: %w", err)
 				if updateErr := o.variantManager.UpdateStatus(v.ID, variants.StatusFailed, variantErr); updateErr != nil {
@@ -676,7 +678,7 @@ func (o *Orbit) runVariant(ctx context.Context, v *variants.Variant) error {
 		}
 
 		// Run the phase with retry
-		phaseResult, err := o.runVariantPhaseWithRetry(ctx, v, variantAgent, variantPrompt, continueSessionID)
+		phaseResult, err := o.runVariantPhaseWithRetry(ctx, v, variantAgent, variantPrompt, continueSessionID, variantAgentConfig.Timeout)
 		if err != nil {
 			// Save failed session for debugging
 			if variantLogManager != nil && phaseResult != nil {
@@ -725,7 +727,7 @@ func (o *Orbit) runVariant(ctx context.Context, v *variants.Variant) error {
 	if o.config.PostPrompt != "" {
 		log.Printf("Variant %d: running post-prompt...", v.ID)
 		postStartTime := time.Now()
-		postResult, err := o.runVariantPostCompletion(ctx, v, variantAgent)
+		postResult, err := o.runVariantPostCompletion(ctx, v, variantAgent, variantAgentConfig.Timeout)
 		if err != nil {
 			// Save failed post-prompt session for debugging
 			if variantLogManager != nil && postResult != nil {
@@ -835,7 +837,7 @@ func (o *Orbit) buildVariantPrompt(v *variants.Variant) string {
 
 // runVariantPhaseWithRetry executes a single phase with retry logic.
 // If continueSessionID is non-empty, the first attempt will resume that session (for pre-prompt continuation).
-func (o *Orbit) runVariantPhaseWithRetry(ctx context.Context, v *variants.Variant, agent agents.Agent, prompt string, continueSessionID string) (*agents.RunResult, error) {
+func (o *Orbit) runVariantPhaseWithRetry(ctx context.Context, v *variants.Variant, agent agents.Agent, prompt string, continueSessionID string, timeout time.Duration) (*agents.RunResult, error) {
 	return agents.RunWithRetry(ctx, agents.RetryConfig{
 		MaxRetries: maxRetries,
 		Sleep:      o.sleepFunc(),
@@ -856,6 +858,7 @@ func (o *Orbit) runVariantPhaseWithRetry(ctx context.Context, v *variants.Varian
 				Prompt:    prompt,
 				SessionID: sessionID,
 				WorkDir:   v.WorktreePath,
+				Timeout:   timeout,
 			}
 
 			var result *agents.RunResult
@@ -889,7 +892,7 @@ func (o *Orbit) runVariantPhaseWithRetry(ctx context.Context, v *variants.Varian
 }
 
 // runVariantPostCompletion executes the post-completion command for a variant.
-func (o *Orbit) runVariantPostCompletion(ctx context.Context, v *variants.Variant, agent agents.Agent) (*agents.RunResult, error) {
+func (o *Orbit) runVariantPostCompletion(ctx context.Context, v *variants.Variant, agent agents.Agent, timeout time.Duration) (*agents.RunResult, error) {
 	return agents.RunWithRetry(ctx, agents.RetryConfig{
 		MaxRetries: maxRetries,
 		Sleep:      o.sleepFunc(),
@@ -898,6 +901,7 @@ func (o *Orbit) runVariantPostCompletion(ctx context.Context, v *variants.Varian
 				Prompt:    o.config.PostPrompt,
 				SessionID: uuid.NewString(),
 				WorkDir:   v.WorktreePath,
+				Timeout:   timeout,
 			}
 			return agent.Run(ctx, opts)
 		},

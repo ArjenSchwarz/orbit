@@ -192,6 +192,7 @@ func (o *Orbit) runPrePrompt() error {
 		Prompt:    o.config.PrePrompt,
 		WorkDir:   o.config.WorkingDir,
 		SessionID: sessionID,
+		Timeout:   o.config.AgentConfig.Timeout,
 	}
 
 	var result *agents.RunResult
@@ -295,6 +296,7 @@ func (o *Orbit) runPostPrompt() error {
 		Prompt:    o.config.PostPrompt,
 		WorkDir:   o.config.WorkingDir,
 		SessionID: sessionID,
+		Timeout:   o.config.AgentConfig.Timeout,
 	}
 
 	var result *agents.RunResult
@@ -570,6 +572,7 @@ func (o *Orbit) runPhase(phase int) error {
 		Prompt:    o.config.Command,
 		WorkDir:   o.config.WorkingDir,
 		SessionID: sessionID,
+		Timeout:   o.config.AgentConfig.Timeout,
 	}
 
 	var result *agents.RunResult

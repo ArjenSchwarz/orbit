@@ -225,6 +225,7 @@ func (a *Agent) execute(ctx context.Context, opts agents.RunOptions, resume bool
 		Args:    args,
 		WorkDir: opts.WorkDir,
 		Env:     opts.Env,
+		Timeout: opts.Timeout,
 	})
 
 	result := &agents.RunResult{

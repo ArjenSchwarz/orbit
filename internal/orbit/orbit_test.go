@@ -1936,7 +1936,7 @@ func TestVariantPhaseRetry_NilRunResult(t *testing.T) {
 	// at classifier.Classify(1, result.Stderr, result.Output, result.Errors).
 	// The default classifier returns ErrorClassUnknown (non-retryable), so it
 	// returns the ClassifiedError immediately without retrying.
-	result, err := o.runVariantPhaseWithRetry(context.Background(), v, agent, "test prompt", "")
+	result, err := o.runVariantPhaseWithRetry(context.Background(), v, agent, "test prompt", "", 0)
 	if err == nil {
 		t.Fatal("expected ClassifiedError, got nil")
 	}
@@ -1972,7 +1972,7 @@ func TestVariantPhaseRetry_NilRunResult_AllFail(t *testing.T) {
 
 	// Should not panic, should return a ClassifiedError on first attempt
 	// (default classifier marks unknown errors as non-retryable)
-	_, err := o.runVariantPhaseWithRetry(context.Background(), v, agent, "test prompt", "")
+	_, err := o.runVariantPhaseWithRetry(context.Background(), v, agent, "test prompt", "", 0)
 	if err == nil {
 		t.Fatal("expected error when all attempts fail, got nil")
 	}
@@ -2000,7 +2000,7 @@ func TestVariantPostCompletion_NilRunResult(t *testing.T) {
 
 	// This should NOT panic. Before the fix, it would panic on nil dereference.
 	// Like runVariantPhaseWithRetry, the default classifier returns non-retryable.
-	_, err := o.runVariantPostCompletion(context.Background(), v, agent)
+	_, err := o.runVariantPostCompletion(context.Background(), v, agent, 0)
 	if err == nil {
 		t.Fatal("expected ClassifiedError, got nil")
 	}
