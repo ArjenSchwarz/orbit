@@ -291,12 +291,9 @@ func TestParseAndValidate_ValidJSON(t *testing.T) {
 		"observations": ["Variant 1 has cleaner code"]
 	}`
 
-	result, err := comp.parseAndValidate(validJSON, 2)
+	result, err := comp.parseAndValidate(validJSON, contiguousVariantSet(2))
 	if err != nil {
 		t.Fatalf("parseAndValidate failed: %v", err)
-	}
-
-	if result.Recommendation != 1 {
 		t.Errorf("expected recommendation 1, got %d", result.Recommendation)
 	}
 	if result.Confidence != "high" {
@@ -335,7 +332,7 @@ func TestParseAndValidate_MissingFields(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			_, err := comp.parseAndValidate(tt.json, 2)
+			_, err := comp.parseAndValidate(tt.json, contiguousVariantSet(2))
 			if err == nil {
 				t.Fatal("expected error, got nil")
 			}
@@ -355,7 +352,7 @@ func TestParseAndValidate_InvalidConfidence(t *testing.T) {
 		"summary": "test summary"
 	}`
 
-	_, err := comp.parseAndValidate(json, 2)
+	_, err := comp.parseAndValidate(json, contiguousVariantSet(2))
 	if err == nil {
 		t.Fatal("expected error for invalid confidence, got nil")
 	}
@@ -370,11 +367,11 @@ func TestParseAndValidate_RecommendationOutOfRange(t *testing.T) {
 	tests := []struct {
 		name           string
 		recommendation int
-		numVariants    int
+		validIDs       map[int]bool
 	}{
-		{"recommendation too low", 0, 2},
-		{"recommendation too high", 3, 2},
-		{"negative recommendation", -1, 2},
+		{"recommendation too low", 0, contiguousVariantSet(2)},
+		{"recommendation too high", 3, contiguousVariantSet(2)},
+		{"negative recommendation", -1, contiguousVariantSet(2)},
 	}
 
 	for _, tt := range tests {
@@ -385,12 +382,12 @@ func TestParseAndValidate_RecommendationOutOfRange(t *testing.T) {
 				"summary": "test"
 			}`
 
-			_, err := comp.parseAndValidate(json, tt.numVariants)
+			_, err := comp.parseAndValidate(json, tt.validIDs)
 			if err == nil {
 				t.Fatal("expected error for out-of-range recommendation, got nil")
 			}
-			if !containsString(err.Error(), "recommendation must be between") {
-				t.Errorf("expected range error, got: %v", err)
+			if !containsString(err.Error(), "not a valid variant ID") {
+				t.Errorf("expected variant ID error, got: %v", err)
 			}
 		})
 	}
@@ -592,12 +589,31 @@ func itoa(i int) string {
 	return string(buf[pos:])
 }
 
+// variantSet builds a map[int]bool from a list of variant IDs.
+// Convenience for tests that previously passed numVariants as an int.
+func variantSet(ids ...int) map[int]bool {
+	m := make(map[int]bool, len(ids))
+	for _, id := range ids {
+		m[id] = true
+	}
+	return m
+}
+
+// contiguousVariantSet builds a set {1, 2, ..., n} for tests that used the old numVariants int.
+func contiguousVariantSet(n int) map[int]bool {
+	m := make(map[int]bool, n)
+	for i := 1; i <= n; i++ {
+		m[i] = true
+	}
+	return m
+}
+
 func TestValidateLearnings(t *testing.T) {
 	tests := map[string]struct {
-		input       []VariantLearning
-		numVariants int
-		wantCount   int
-		wantNil     bool
+		input    []VariantLearning
+		validIDs map[int]bool
+		wantCount int
+		wantNil   bool
 	}{
 		"valid learning": {
 			input: []VariantLearning{{
@@ -607,8 +623,8 @@ func TestValidateLearnings(t *testing.T) {
 				Rationale:      "Ensures unique names",
 				FileReferences: []string{"foo_test.go:42"},
 			}},
-			numVariants: 2,
-			wantCount:   1,
+			validIDs:  contiguousVariantSet(2),
+			wantCount: 1,
 		},
 		"missing title": {
 			input: []VariantLearning{{
@@ -616,8 +632,8 @@ func TestValidateLearnings(t *testing.T) {
 				Rationale:      "reason",
 				FileReferences: []string{"file.go"},
 			}},
-			numVariants: 2,
-			wantNil:     true,
+			validIDs: contiguousVariantSet(2),
+			wantNil:  true,
 		},
 		"missing rationale": {
 			input: []VariantLearning{{
@@ -625,8 +641,8 @@ func TestValidateLearnings(t *testing.T) {
 				Title:          "title",
 				FileReferences: []string{"file.go"},
 			}},
-			numVariants: 2,
-			wantNil:     true,
+			validIDs: contiguousVariantSet(2),
+			wantNil:  true,
 		},
 		"missing file references": {
 			input: []VariantLearning{{
@@ -634,8 +650,8 @@ func TestValidateLearnings(t *testing.T) {
 				Title:     "title",
 				Rationale: "reason",
 			}},
-			numVariants: 2,
-			wantNil:     true,
+			validIDs: contiguousVariantSet(2),
+			wantNil:  true,
 		},
 		"empty file references": {
 			input: []VariantLearning{{
@@ -644,18 +660,18 @@ func TestValidateLearnings(t *testing.T) {
 				Rationale:      "reason",
 				FileReferences: []string{},
 			}},
-			numVariants: 2,
-			wantNil:     true,
+			validIDs: contiguousVariantSet(2),
+			wantNil:  true,
 		},
 		"invalid variant ID too high": {
 			input: []VariantLearning{{
-				VariantID:      5, // > numVariants
+				VariantID:      5, // not in validIDs
 				Title:          "title",
 				Rationale:      "reason",
 				FileReferences: []string{"file.go"},
 			}},
-			numVariants: 2,
-			wantNil:     true,
+			validIDs: contiguousVariantSet(2),
+			wantNil:  true,
 		},
 		"invalid variant ID zero": {
 			input: []VariantLearning{{
@@ -664,8 +680,8 @@ func TestValidateLearnings(t *testing.T) {
 				Rationale:      "reason",
 				FileReferences: []string{"file.go"},
 			}},
-			numVariants: 2,
-			wantNil:     true,
+			validIDs: contiguousVariantSet(2),
+			wantNil:  true,
 		},
 		"invalid variant ID negative": {
 			input: []VariantLearning{{
@@ -674,8 +690,8 @@ func TestValidateLearnings(t *testing.T) {
 				Rationale:      "reason",
 				FileReferences: []string{"file.go"},
 			}},
-			numVariants: 2,
-			wantNil:     true,
+			validIDs: contiguousVariantSet(2),
+			wantNil:  true,
 		},
 		"unknown category allowed": {
 			input: []VariantLearning{{
@@ -685,16 +701,16 @@ func TestValidateLearnings(t *testing.T) {
 				Rationale:      "reason",
 				FileReferences: []string{"file.go"},
 			}},
-			numVariants: 2,
-			wantCount:   1,
+			validIDs:  contiguousVariantSet(2),
+			wantCount: 1,
 		},
 		"partial valid": {
 			input: []VariantLearning{
 				{VariantID: 1, Title: "valid", Rationale: "r", FileReferences: []string{"f.go"}},
 				{VariantID: 1, Title: "", Rationale: "r", FileReferences: []string{"f.go"}}, // invalid
 			},
-			numVariants: 2,
-			wantCount:   1,
+			validIDs:  contiguousVariantSet(2),
+			wantCount: 1,
 		},
 		"per-variant limit enforced": {
 			input: func() []VariantLearning {
@@ -709,8 +725,8 @@ func TestValidateLearnings(t *testing.T) {
 				}
 				return learnings
 			}(),
-			numVariants: 2,
-			wantCount:   MaxLearningsPerVariant, // 5
+			validIDs:  contiguousVariantSet(2),
+			wantCount: MaxLearningsPerVariant, // 5
 		},
 		"total limit enforced": {
 			input: func() []VariantLearning {
@@ -726,8 +742,8 @@ func TestValidateLearnings(t *testing.T) {
 				}
 				return learnings
 			}(),
-			numVariants: 6,
-			wantCount:   MaxLearningsTotal, // 20
+			validIDs:  contiguousVariantSet(6),
+			wantCount: MaxLearningsTotal, // 20
 		},
 		"whitespace-only title rejected": {
 			input: []VariantLearning{{
@@ -736,8 +752,8 @@ func TestValidateLearnings(t *testing.T) {
 				Rationale:      "reason",
 				FileReferences: []string{"file.go"},
 			}},
-			numVariants: 2,
-			wantNil:     true,
+			validIDs: contiguousVariantSet(2),
+			wantNil:  true,
 		},
 		"whitespace-only rationale rejected": {
 			input: []VariantLearning{{
@@ -746,24 +762,24 @@ func TestValidateLearnings(t *testing.T) {
 				Rationale:      "  \t  ",
 				FileReferences: []string{"file.go"},
 			}},
-			numVariants: 2,
-			wantNil:     true,
+			validIDs: contiguousVariantSet(2),
+			wantNil:  true,
 		},
 		"nil input": {
-			input:       nil,
-			numVariants: 2,
-			wantNil:     true,
+			input:    nil,
+			validIDs: contiguousVariantSet(2),
+			wantNil:  true,
 		},
 		"empty input": {
-			input:       []VariantLearning{},
-			numVariants: 2,
-			wantNil:     true,
+			input:    []VariantLearning{},
+			validIDs: contiguousVariantSet(2),
+			wantNil:  true,
 		},
 	}
 
 	for name, tc := range tests {
 		t.Run(name, func(t *testing.T) {
-			got := validateLearnings(tc.input, tc.numVariants)
+			got := validateLearnings(tc.input, tc.validIDs)
 			if tc.wantNil {
 				if got != nil {
 					t.Errorf("expected nil, got %v", got)
@@ -785,7 +801,7 @@ func TestValidateLearnings_FileReferenceTruncation(t *testing.T) {
 		FileReferences: []string{"a.go", "b.go", "c.go", "d.go", "e.go", "f.go", "g.go"},
 	}}
 
-	got := validateLearnings(input, 2)
+	got := validateLearnings(input, contiguousVariantSet(2))
 	if got == nil {
 		t.Fatal("expected non-nil result")
 	}
@@ -807,7 +823,7 @@ func TestValidateLearnings_WhitespaceTrimming(t *testing.T) {
 		FileReferences: []string{"file.go"},
 	}}
 
-	got := validateLearnings(input, 2)
+	got := validateLearnings(input, contiguousVariantSet(2))
 	if got == nil {
 		t.Fatal("expected non-nil result")
 	}
@@ -852,7 +868,7 @@ func TestParseAndValidate_WithLearnings(t *testing.T) {
 		]
 	}`
 
-	result, err := comp.parseAndValidate(validJSON, 2)
+	result, err := comp.parseAndValidate(validJSON, contiguousVariantSet(2))
 	if err != nil {
 		t.Fatalf("parseAndValidate failed: %v", err)
 	}
@@ -903,7 +919,7 @@ func TestParseAndValidate_FiltersInvalidLearnings(t *testing.T) {
 		]
 	}`
 
-	result, err := comp.parseAndValidate(jsonWithInvalid, 2)
+	result, err := comp.parseAndValidate(jsonWithInvalid, contiguousVariantSet(2))
 	if err != nil {
 		t.Fatalf("parseAndValidate failed: %v", err)
 	}
@@ -929,7 +945,7 @@ func TestParseAndValidate_NoLearnings(t *testing.T) {
 		"observations": []
 	}`
 
-	result, err := comp.parseAndValidate(jsonWithoutLearnings, 2)
+	result, err := comp.parseAndValidate(jsonWithoutLearnings, contiguousVariantSet(2))
 	if err != nil {
 		t.Fatalf("parseAndValidate failed: %v", err)
 	}
@@ -1007,7 +1023,7 @@ func TestParseAndValidate_MalformedLearnings(t *testing.T) {
 
 	for name, tc := range tests {
 		t.Run(name, func(t *testing.T) {
-			result, err := comp.parseAndValidate(tc.json, 2)
+			result, err := comp.parseAndValidate(tc.json, contiguousVariantSet(2))
 
 			// Core comparison should succeed even with malformed learnings
 			if err != nil {
@@ -1722,15 +1738,17 @@ func TestParseAndValidate_NonContiguousVariantIDs(t *testing.T) {
 	tests := []struct {
 		name           string
 		recommendation int
-		numVariants    int
+		validIDs       map[int]bool
 		wantErr        bool
 	}{
-		// With max variant ID 3 (variants 1, 3 compared), recommendation 3 is valid
-		{"variant 3 valid with max ID 3", 3, 3, false},
-		// Recommendation 4 is out of range
-		{"variant 4 invalid with max ID 3", 4, 3, true},
-		// Recommendation 2 is valid (even though variant 2 was filtered, it's in range)
-		{"variant 2 valid with max ID 3", 2, 3, false},
+		// With variants {1, 3}, recommendation 3 is valid
+		{"variant 3 valid with IDs {1,3}", 3, variantSet(1, 3), false},
+		// Recommendation 4 is not in the set
+		{"variant 4 invalid with IDs {1,3}", 4, variantSet(1, 3), true},
+		// Recommendation 2 is NOT valid — variant 2 doesn't exist
+		{"variant 2 invalid with IDs {1,3}", 2, variantSet(1, 3), true},
+		// Recommendation 1 is valid
+		{"variant 1 valid with IDs {1,3}", 1, variantSet(1, 3), false},
 	}
 
 	for _, tt := range tests {
@@ -1743,10 +1761,10 @@ func TestParseAndValidate_NonContiguousVariantIDs(t *testing.T) {
 				"observations": []
 			}`
 
-			result, err := comp.parseAndValidate(json, tt.numVariants)
+			result, err := comp.parseAndValidate(json, tt.validIDs)
 			if tt.wantErr {
 				if err == nil {
-					t.Fatal("expected error for out-of-range recommendation, got nil")
+					t.Fatal("expected error for invalid recommendation, got nil")
 				}
 			} else {
 				if err != nil {
@@ -1761,7 +1779,7 @@ func TestParseAndValidate_NonContiguousVariantIDs(t *testing.T) {
 }
 
 // TestValidateLearnings_NonContiguousVariantIDs verifies that learnings with
-// non-contiguous variant IDs are correctly validated.
+// non-contiguous variant IDs are correctly validated against the actual set.
 func TestValidateLearnings_NonContiguousVariantIDs(t *testing.T) {
 	learnings := []VariantLearning{
 		{
@@ -1773,10 +1791,10 @@ func TestValidateLearnings_NonContiguousVariantIDs(t *testing.T) {
 		},
 	}
 
-	// With validIDs={3}, variant 3 should be valid
-	result := validateLearnings(learnings, 3)
+	// With validIDs={1, 3}, variant 3 should be valid
+	result := validateLearnings(learnings, variantSet(1, 3))
 	if len(result) != 1 {
-		t.Fatalf("expected 1 valid learning with maxVariantID=3, got %d", len(result))
+		t.Fatalf("expected 1 valid learning with validIDs={1,3}, got %d", len(result))
 	}
 	if result[0].VariantID != 3 {
 		t.Errorf("expected learning variant_id 3, got %d", result[0].VariantID)
@@ -1801,9 +1819,7 @@ func TestParseAndValidate_RejectsNonExistentVariantRecommendation(t *testing.T) 
 	}`
 
 	// With non-contiguous variants {1, 3}, variant 2 does not exist.
-	// parseAndValidate receives maxVariantID=3, but recommendation=2
-	// should be rejected since variant 2 is not in the actual set.
-	_, err := comp.parseAndValidate(jsonStr, 3)
+	_, err := comp.parseAndValidate(jsonStr, variantSet(1, 3))
 	if err == nil {
 		t.Fatal("expected error for recommendation of non-existent variant 2 (only 1 and 3 exist), got nil")
 	}
@@ -1857,9 +1873,8 @@ func TestValidateLearnings_RejectsNonExistentVariantID(t *testing.T) {
 		},
 	}
 
-	// With maxVariantID=3, variant 2 is in range but doesn't exist.
-	// Only the learning for variant 3 should survive.
-	result := validateLearnings(learnings, 3)
+	// Only variants {1, 3} exist. Variant 2 should be rejected.
+	result := validateLearnings(learnings, variantSet(1, 3))
 	if len(result) != 1 {
 		t.Fatalf("expected 1 valid learning (variant 2 should be rejected), got %d", len(result))
 	}

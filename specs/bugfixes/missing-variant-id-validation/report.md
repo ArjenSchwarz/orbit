@@ -63,9 +63,9 @@ Both `parseAndValidate()` and `validateLearnings()` validate variant IDs using a
 ## Verification
 
 **Automated:**
-- [ ] Regression test passes
-- [ ] Full test suite passes
-- [ ] Linters/validators pass
+- [x] Regression test passes
+- [x] Full test suite passes
+- [x] Linters/validators pass (pre-existing issues only)
 
 ## Prevention
 
