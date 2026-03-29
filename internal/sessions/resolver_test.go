@@ -1,6 +1,7 @@
 package sessions
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -10,6 +11,7 @@ import (
 	"time"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 
 	"github.com/arjenschwarz/orbit/internal/agents/claudecode"
 )
@@ -658,4 +660,81 @@ func TestFindKiroIDEPath_SessionNotFound(t *testing.T) {
 		t.Fatal("expected error for nonexistent session")
 	}
 	assert.Contains(t, err.Error(), "session not found")
+}
+
+func TestKiroIDECreatedAt_UsesStartTime(t *testing.T) {
+	// Regression test for T-555: resolveKiroIDE should use metadata.startTime
+	// for CreatedAt instead of file modTime.
+	startTimeMs := int64(1741572000000) // 2025-03-10 06:00:00 UTC
+	chatJSON := mustMarshal(t, map[string]any{
+		"executionId": "test-exec",
+		"chat":        []any{map[string]string{"role": "human", "content": "hello"}},
+		"metadata":    map[string]any{"startTime": startTimeMs},
+	})
+
+	rs := bytes.NewReader(chatJSON)
+	modTime := time.Date(2099, 1, 1, 0, 0, 0, 0, time.UTC) // deliberately different
+
+	got := kiroIDECreatedAt(rs, modTime)
+
+	expected := time.UnixMilli(startTimeMs)
+	require.Equal(t, expected, got, "CreatedAt should use metadata.startTime, not modTime")
+}
+
+func TestKiroIDECreatedAt_FallsBackToModTime(t *testing.T) {
+	// When metadata is absent, CreatedAt should fall back to modTime.
+	chatJSON := mustMarshal(t, map[string]any{
+		"executionId": "test-exec",
+		"chat":        []any{map[string]string{"role": "human", "content": "hello"}},
+	})
+
+	rs := bytes.NewReader(chatJSON)
+	modTime := time.Date(2025, 6, 15, 12, 0, 0, 0, time.UTC)
+
+	got := kiroIDECreatedAt(rs, modTime)
+
+	require.Equal(t, modTime, got, "CreatedAt should fall back to modTime when startTime is absent")
+}
+
+func TestKiroIDECreatedAt_FallsBackWhenStartTimeZero(t *testing.T) {
+	// When startTime is 0, CreatedAt should fall back to modTime.
+	chatJSON := mustMarshal(t, map[string]any{
+		"executionId": "test-exec",
+		"chat":        []any{map[string]string{"role": "human", "content": "hello"}},
+		"metadata":    map[string]any{"startTime": 0},
+	})
+
+	rs := bytes.NewReader(chatJSON)
+	modTime := time.Date(2025, 6, 15, 12, 0, 0, 0, time.UTC)
+
+	got := kiroIDECreatedAt(rs, modTime)
+
+	require.Equal(t, modTime, got, "CreatedAt should fall back to modTime when startTime is 0")
+}
+
+func TestKiroIDECreatedAt_SeeksBackToStart(t *testing.T) {
+	// After parsing, the reader must be seeked back to position 0
+	// so the caller can still read the full file content.
+	chatJSON := mustMarshal(t, map[string]any{
+		"executionId": "test-exec",
+		"chat":        []any{map[string]string{"role": "human", "content": "hello"}},
+		"metadata":    map[string]any{"startTime": int64(1741572000000)},
+	})
+
+	rs := bytes.NewReader(chatJSON)
+	modTime := time.Now()
+
+	_ = kiroIDECreatedAt(rs, modTime)
+
+	// Reader should be back at position 0
+	pos, err := rs.Seek(0, io.SeekCurrent)
+	require.NoError(t, err)
+	require.Equal(t, int64(0), pos, "reader should be seeked back to start after kiroIDECreatedAt")
+}
+
+func mustMarshal(t *testing.T, v any) []byte {
+	t.Helper()
+	data, err := json.Marshal(v)
+	require.NoError(t, err)
+	return data
 }
