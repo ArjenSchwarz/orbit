@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"log"
 	"os"
-	"sort"
 	"strings"
 	"time"
 
@@ -91,9 +90,9 @@ func (c *Comparator) CompareUnified(ctx context.Context, input ComparisonInput) 
 		}
 	}
 
-	// Build the set of actual variant IDs so validation checks membership,
-	// not just range. With non-contiguous IDs (e.g., {1, 3} when variant 2
-	// failed), a recommendation of 2 must be rejected.
+	// Build the set of valid variant IDs from the actual input variants.
+	// This ensures validation rejects IDs that aren't in the compared set
+	// (e.g., variant 2 is rejected when only variants {1, 3} are compared).
 	validIDs := make(map[int]bool, len(input.Variants))
 	for _, v := range input.Variants {
 		validIDs[v.ID] = true
@@ -186,7 +185,6 @@ type resultRaw struct {
 }
 
 // parseAndValidate extracts JSON from Claude response and validates structure.
-// validIDs is the set of variant IDs that actually exist in this comparison.
 func (c *Comparator) parseAndValidate(response string, validIDs map[int]bool) (*Result, error) {
 	jsonStr, err := extractJSON(response)
 	if err != nil {
@@ -229,10 +227,14 @@ func (c *Comparator) parseAndValidate(response string, validIDs map[int]bool) (*
 	// Invalid learnings are filtered out; valid ones are kept
 	result.Learnings = validateLearnings(result.Learnings, validIDs)
 
-	// Validate recommendation references an actual variant
+	// Validate cross-variant improvements (non-fatal)
+	// Invalid improvements are filtered out; valid ones are kept
+	result.CrossVariantImprovements = validateCrossVariantImprovements(result.CrossVariantImprovements, validIDs)
+
+	// Validate required fields against the actual variant ID set
 	if !validIDs[result.Recommendation] {
-		return nil, fmt.Errorf("recommendation %d is not a valid variant ID (valid: %v)",
-			result.Recommendation, sortedKeys(validIDs))
+		return nil, fmt.Errorf("recommendation %d is not in the compared variant set",
+			result.Recommendation)
 	}
 	if result.Confidence == "" {
 		return nil, errors.New("missing required field: confidence")
@@ -290,7 +292,6 @@ func extractJSON(response string) (string, error) {
 
 // validateLearnings filters learnings to include only valid entries and enforces limits.
 // Invalid learnings are logged and discarded. Returns nil if all learnings are invalid.
-// validIDs is the set of variant IDs that actually exist in this comparison.
 func validateLearnings(learnings []VariantLearning, validIDs map[int]bool) []VariantLearning {
 	if len(learnings) == 0 {
 		return nil
@@ -327,9 +328,9 @@ func validateLearnings(learnings []VariantLearning, validIDs map[int]bool) []Var
 			continue
 		}
 
-		// Validate variant ID exists in the actual set
+		// Validate variant ID against the actual compared variant set
 		if !validIDs[l.VariantID] {
-			log.Printf("Discarding learning %d: invalid variant_id %d", i, l.VariantID)
+			log.Printf("Discarding learning %d: variant_id %d not in compared set", i, l.VariantID)
 			continue
 		}
 
@@ -368,14 +369,30 @@ func validateLearnings(learnings []VariantLearning, validIDs map[int]bool) []Var
 	return valid
 }
 
-// sortedKeys returns the keys of a map[int]bool in ascending order.
-func sortedKeys(m map[int]bool) []int {
-	keys := make([]int, 0, len(m))
-	for k := range m {
-		keys = append(keys, k)
+// validateCrossVariantImprovements filters improvements to include only entries
+// with valid source variant IDs. Invalid entries are logged and discarded.
+func validateCrossVariantImprovements(improvements []CrossVariantImprovement, validIDs map[int]bool) []CrossVariantImprovement {
+	if len(improvements) == 0 {
+		return nil
 	}
-	sort.Ints(keys)
-	return keys
+
+	valid := make([]CrossVariantImprovement, 0, len(improvements))
+	for i, imp := range improvements {
+		if !validIDs[imp.SourceVariantID] {
+			log.Printf("Discarding cross-variant improvement %d: source_variant_id %d not in compared set", i, imp.SourceVariantID)
+			continue
+		}
+		if strings.TrimSpace(imp.Description) == "" {
+			log.Printf("Discarding cross-variant improvement %d: missing description", i)
+			continue
+		}
+		valid = append(valid, imp)
+	}
+
+	if len(valid) == 0 {
+		return nil
+	}
+	return valid
 }
 
 // LoadResultFromFile reads a comparison result JSON file and parses it into a Result.
