@@ -221,7 +221,7 @@ func (o *Orbit) runPostConsolidateCommand(ctx context.Context, worktreePath stri
 
 // generateReport creates the HTML comparison report.
 // When allFailed is true, diffs are skipped and the function returns an "all variants failed" error.
-func (o *Orbit) generateReport(allFailed bool) error {
+func (o *Orbit) generateReport(ctx context.Context, allFailed bool) error {
 	if allFailed {
 		log.Println("Generating partial report (all variants failed)...")
 	} else {
@@ -241,7 +241,7 @@ func (o *Orbit) generateReport(allFailed bool) error {
 		gitClient := variants.NewGit(o.config.RepoRoot)
 		diffGatherer := comparison.NewDiffGatherer(gitClient)
 
-		variantData, err := diffGatherer.GatherDiffs(context.Background(), metadata.BaseCommit, variantList)
+		variantData, err := diffGatherer.GatherDiffs(ctx, metadata.BaseCommit, variantList)
 		if err != nil {
 			log.Printf("Warning: could not gather diffs for report: %v", err)
 		}
