@@ -20,9 +20,13 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
+// kiroDiscoverFunc abstracts Kiro session discovery for testing.
+type kiroDiscoverFunc func(ctx context.Context, dir string) ([]logs.SessionMetadata, error)
+
 // Lister discovers sessions from all agent types for a project.
 type Lister struct {
-	homeDir string
+	homeDir      string
+	kiroDiscover kiroDiscoverFunc // nil → logs.DiscoverForDirectory
 }
 
 // NewLister creates a Lister.
@@ -292,7 +296,12 @@ func (l *Lister) listCopilot(projectPath string) ([]SessionInfo, error) {
 
 // listKiro returns all Kiro CLI sessions for the current working directory.
 func (l *Lister) listKiro(cwd string) ([]SessionInfo, error) {
-	kiroSessions, err := logs.DiscoverForDirectory(context.Background(), cwd)
+	discover := l.kiroDiscover
+	if discover == nil {
+		discover = logs.DiscoverForDirectory
+	}
+
+	kiroSessions, err := discover(context.Background(), cwd)
 	if err != nil {
 		if errors.Is(err, logs.ErrDatabaseNotFound) {
 			return nil, nil
@@ -304,7 +313,7 @@ func (l *Lister) listKiro(cwd string) ([]SessionInfo, error) {
 	for i, s := range kiroSessions {
 		result[i] = SessionInfo{
 			ID:        s.ConversationID,
-			CreatedAt: s.UpdatedAt,
+			CreatedAt: s.CreatedAt,
 			Size:      s.Size,
 			Source:    SourceKiroCLI,
 		}
