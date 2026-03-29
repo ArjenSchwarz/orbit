@@ -1773,12 +1773,97 @@ func TestValidateLearnings_NonContiguousVariantIDs(t *testing.T) {
 		},
 	}
 
-	// With maxVariantID=3, variant 3 should be valid
+	// With validIDs={3}, variant 3 should be valid
 	result := validateLearnings(learnings, 3)
 	if len(result) != 1 {
 		t.Fatalf("expected 1 valid learning with maxVariantID=3, got %d", len(result))
 	}
 	if result[0].VariantID != 3 {
 		t.Errorf("expected learning variant_id 3, got %d", result[0].VariantID)
+	}
+}
+
+// T-595: Regression tests for missing variant ID validation.
+// The validator must reject recommendations and learnings that reference
+// variant IDs not present in the actual set of compared variants.
+
+func TestParseAndValidate_RejectsNonExistentVariantRecommendation(t *testing.T) {
+	// Bug: With variants {1, 3}, recommending variant 2 should fail
+	// because variant 2 doesn't exist, even though 2 is in range [1, 3].
+	comp := NewComparator(nil, "")
+
+	jsonStr := `{
+		"recommendation": 2,
+		"confidence": "high",
+		"summary": "Variant 2 is the best.",
+		"file_analyses": [],
+		"observations": []
+	}`
+
+	// With non-contiguous variants {1, 3}, variant 2 does not exist.
+	// parseAndValidate receives maxVariantID=3, but recommendation=2
+	// should be rejected since variant 2 is not in the actual set.
+	_, err := comp.parseAndValidate(jsonStr, 3)
+	if err == nil {
+		t.Fatal("expected error for recommendation of non-existent variant 2 (only 1 and 3 exist), got nil")
+	}
+}
+
+func TestCompareUnified_RejectsNonExistentVariantRecommendation(t *testing.T) {
+	// End-to-end: AI recommends variant 2 which doesn't exist in {1, 3}
+	aiResponse := `{
+		"recommendation": 2,
+		"confidence": "high",
+		"summary": "Variant 2 is the best.",
+		"file_analyses": [],
+		"observations": []
+	}`
+
+	runner := &mockPromptRunner{response: aiResponse}
+	comp := NewComparator(runner, "")
+
+	ctx := context.Background()
+	input := ComparisonInput{
+		SpecName: "test-feature",
+		Variants: []VariantData{
+			{ID: 1, CommitMessages: []string{"implement feature"}},
+			{ID: 3, CommitMessages: []string{"alternative implementation"}},
+		},
+	}
+
+	_, err := comp.CompareUnified(ctx, input)
+	if err == nil {
+		t.Fatal("expected error for recommendation of non-existent variant 2, got nil")
+	}
+}
+
+func TestValidateLearnings_RejectsNonExistentVariantID(t *testing.T) {
+	// Bug: Learning referencing variant 2 should be discarded when only
+	// variants {1, 3} are being compared.
+	learnings := []VariantLearning{
+		{
+			VariantID:      2,
+			Category:       LearningCategoryCodePattern,
+			Title:          "Ghost learning",
+			Rationale:      "From non-existent variant",
+			FileReferences: []string{"file.go:1"},
+		},
+		{
+			VariantID:      3,
+			Category:       LearningCategoryArchitecture,
+			Title:          "Real learning",
+			Rationale:      "From existing variant",
+			FileReferences: []string{"file.go:2"},
+		},
+	}
+
+	// With maxVariantID=3, variant 2 is in range but doesn't exist.
+	// Only the learning for variant 3 should survive.
+	result := validateLearnings(learnings, 3)
+	if len(result) != 1 {
+		t.Fatalf("expected 1 valid learning (variant 2 should be rejected), got %d", len(result))
+	}
+	if result[0].VariantID != 3 {
+		t.Errorf("expected surviving learning to be variant 3, got %d", result[0].VariantID)
 	}
 }
