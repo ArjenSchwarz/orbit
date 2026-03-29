@@ -164,7 +164,7 @@ func parseTimezoneAbbrev(abbrev string) *time.Location {
 		"cdt":  "America/Chicago",
 		"est":  "America/New_York",
 		"edt":  "America/New_York",
-		"gmt":  "Europe/London",
+		"gmt":  "UTC",
 		"bst":  "Europe/London",
 		"utc":  "UTC",
 		"aest": "Australia/Sydney",
