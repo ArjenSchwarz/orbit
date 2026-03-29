@@ -1867,6 +1867,13 @@ func TestValidateCrossVariantImprovements(t *testing.T) {
 			validIDs:  idSet(1, 2),
 			wantCount: 0,
 		},
+		"whitespace-only description rejected": {
+			improvements: []CrossVariantImprovement{
+				{SourceVariantID: 1, Description: "   ", Rationale: "r", Priority: "medium"},
+			},
+			validIDs:  idSet(1, 2),
+			wantCount: 0,
+		},
 		"empty input": {
 			improvements: []CrossVariantImprovement{},
 			validIDs:     idSet(1, 2),

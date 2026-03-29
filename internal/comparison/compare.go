@@ -373,7 +373,7 @@ func validateLearnings(learnings []VariantLearning, validIDs map[int]bool) []Var
 // with valid source variant IDs. Invalid entries are logged and discarded.
 func validateCrossVariantImprovements(improvements []CrossVariantImprovement, validIDs map[int]bool) []CrossVariantImprovement {
 	if len(improvements) == 0 {
-		return improvements
+		return nil
 	}
 
 	valid := make([]CrossVariantImprovement, 0, len(improvements))
@@ -382,13 +382,16 @@ func validateCrossVariantImprovements(improvements []CrossVariantImprovement, va
 			log.Printf("Discarding cross-variant improvement %d: source_variant_id %d not in compared set", i, imp.SourceVariantID)
 			continue
 		}
-		if imp.Description == "" {
+		if strings.TrimSpace(imp.Description) == "" {
 			log.Printf("Discarding cross-variant improvement %d: missing description", i)
 			continue
 		}
 		valid = append(valid, imp)
 	}
 
+	if len(valid) == 0 {
+		return nil
+	}
 	return valid
 }
 
