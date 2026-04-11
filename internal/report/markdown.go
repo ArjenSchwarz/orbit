@@ -73,7 +73,7 @@ func (g *Generator) generateMarkdownReport(data *ReportData) error {
 		builder.Section("Key Observations", func(b *output.Builder) {
 			var observations strings.Builder
 			for _, obs := range data.Comparison.Observations {
-				observations.WriteString(fmt.Sprintf("- %s\n", obs))
+				fmt.Fprintf(&observations, "- %s\n", obs)
 			}
 			b.Raw(output.FormatMarkdown, []byte(observations.String()))
 		})
@@ -139,10 +139,10 @@ func (g *Generator) generateMarkdownReport(data *ReportData) error {
 				learnings := learningsByVariant[variantID]
 				// Build header with agent name if available (improvement from V3)
 				var header strings.Builder
-				header.WriteString(fmt.Sprintf("Variant %d", variantID))
+				fmt.Fprintf(&header, "Variant %d", variantID)
 				for _, v := range data.Variants {
 					if v.ID == variantID && v.Agent != "" {
-						header.WriteString(fmt.Sprintf(" (%s)", v.Agent))
+						fmt.Fprintf(&header, " (%s)", v.Agent)
 						break
 					}
 				}
@@ -229,9 +229,9 @@ func (g *Generator) generateMarkdownReport(data *ReportData) error {
 func (g *Generator) buildFrontMatter(data *ReportData) string {
 	var sb strings.Builder
 	sb.WriteString("---\n")
-	sb.WriteString(fmt.Sprintf("title: \"Comparison Report: %s\"\n", data.SpecName))
-	sb.WriteString(fmt.Sprintf("generated_at: %s\n", data.GeneratedAt.Format(time.RFC3339)))
-	sb.WriteString(fmt.Sprintf("base_commit: %s\n", data.BaseCommit))
+	fmt.Fprintf(&sb, "title: \"Comparison Report: %s\"\n", data.SpecName)
+	fmt.Fprintf(&sb, "generated_at: %s\n", data.GeneratedAt.Format(time.RFC3339))
+	fmt.Fprintf(&sb, "base_commit: %s\n", data.BaseCommit)
 
 	// Add variant commits for staleness detection
 	if len(data.VariantCommits) > 0 {
@@ -243,7 +243,7 @@ func (g *Generator) buildFrontMatter(data *ReportData) string {
 		}
 		slices.Sort(ids)
 		for _, id := range ids {
-			sb.WriteString(fmt.Sprintf("  %d: %s\n", id, data.VariantCommits[id]))
+			fmt.Fprintf(&sb, "  %d: %s\n", id, data.VariantCommits[id])
 		}
 	}
 	sb.WriteString("---\n\n")

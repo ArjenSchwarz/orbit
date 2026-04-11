@@ -176,7 +176,7 @@ func TestServeCommand_VersionFlag(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	assert.Contains(t, buf.String(), "apsis serve version", "expected version output, got: %s", buf.String())
+	assert.Contains(t, buf.String(), "apsis serve dev", "expected version output, got: %s", buf.String())
 }
 
 func TestServeCommand_HelpFlag(t *testing.T) {

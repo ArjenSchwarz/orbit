@@ -23,8 +23,12 @@ import (
 	"github.com/arjenschwarz/orbit/internal/transcript"
 )
 
-// version is set at build time via -ldflags
-var version = "dev"
+// Build-time variables set via -ldflags.
+var (
+	version   = "dev"
+	buildTime = "unknown"
+	gitCommit = "unknown"
+)
 
 // Config holds CLI configuration.
 type Config struct {
@@ -87,7 +91,7 @@ func serveCommand(args []string) error {
 	}
 
 	if *showVersion {
-		fmt.Printf("apsis serve version %s\n", version)
+		fmt.Printf("apsis serve %s (commit: %s, built: %s)\n", version, gitCommit, buildTime)
 		return nil
 	}
 
@@ -255,7 +259,7 @@ Examples:
 func run(cfg *Config) (int, error) {
 	// Handle --version
 	if cfg.Version {
-		fmt.Printf("apsis version %s\n", version)
+		fmt.Printf("apsis %s (commit: %s, built: %s)\n", version, gitCommit, buildTime)
 		return 0, nil
 	}
 

@@ -14,7 +14,7 @@ This repository contains two related CLI tools for working with AI coding agents
 ```bash
 make build          # Build both binaries (orbit and apsis)
 make build-orbit    # Build orbit only
-make build-apsis    # Build apsis only (with version injection)
+make build-apsis    # Build apsis only
 make test           # Run all tests (~10s total)
 make test-short     # Run tests with -short flag
 make test-verbose   # Run tests with verbose output

@@ -67,9 +67,9 @@ type SessionEntry struct {
 	Phase      int       `json:"phase"`
 	SessionID  string    `json:"session_id"`
 	DurationMS int64     `json:"duration_ms"`
-	CostUSD    float64   `json:"cost_usd"`              // Kept for backward compat
-	CostValue  float64   `json:"cost_value,omitempty"`  // NEW: actual cost value
-	CostUnit   string    `json:"cost_unit,omitempty"`   // NEW: unit type ("USD", "credits", "premium_requests")
+	CostUSD    float64   `json:"cost_usd"`             // Kept for backward compat
+	CostValue  float64   `json:"cost_value,omitempty"` // NEW: actual cost value
+	CostUnit   string    `json:"cost_unit,omitempty"`  // NEW: unit type ("USD", "credits", "premium_requests")
 	NumTurns   int       `json:"num_turns"`
 	StartedAt  time.Time `json:"started_at"`
 	EndedAt    time.Time `json:"ended_at"`
@@ -117,8 +117,8 @@ type Summary struct {
 	CompletedAt     *time.Time     `json:"completed_at,omitempty"`
 	Status          string         `json:"status"`
 	PhasesCompleted int            `json:"phases_completed"`
-	TotalCostUSD    float64        `json:"total_cost_usd"`            // Kept for backward compat
-	CostTotals      *cost.Totals   `json:"cost_totals,omitempty"`     // NEW: aggregated costs by unit
+	TotalCostUSD    float64        `json:"total_cost_usd"`        // Kept for backward compat
+	CostTotals      *cost.Totals   `json:"cost_totals,omitempty"` // NEW: aggregated costs by unit
 	TotalDurationMS int64          `json:"total_duration_ms"`
 	Sessions        []SessionEntry `json:"sessions"`
 	Error           string         `json:"error,omitempty"`
@@ -128,9 +128,9 @@ type Summary struct {
 	RunNumber      int                  `json:"run_number"`
 	BranchName     string               `json:"branch_name,omitempty"`
 	// Fields for pre-prompt and shell command tracking
-	PrePrompt   *PrePromptState     `json:"pre_prompt,omitempty"`
-	PreCommand  *ShellCommandState  `json:"pre_command,omitempty"`
-	PostCommand *ShellCommandState  `json:"post_command,omitempty"`
+	PrePrompt   *PrePromptState    `json:"pre_prompt,omitempty"`
+	PreCommand  *ShellCommandState `json:"pre_command,omitempty"`
+	PostCommand *ShellCommandState `json:"post_command,omitempty"`
 }
 
 // GetCostTotals returns aggregated costs, computing from sessions if needed.
@@ -1056,18 +1056,18 @@ func (m *Manager) generateMarkdownIndex() string {
 
 	// Run metadata
 	sb.WriteString("## Run Information\n\n")
-	sb.WriteString(fmt.Sprintf("- **Branch:** %s\n", m.summary.BranchName))
-	sb.WriteString(fmt.Sprintf("- **Status:** %s\n", m.summary.Status))
-	sb.WriteString(fmt.Sprintf("- **Started:** %s\n", m.summary.StartedAt.Format(time.RFC3339)))
+	fmt.Fprintf(&sb, "- **Branch:** %s\n", m.summary.BranchName)
+	fmt.Fprintf(&sb, "- **Status:** %s\n", m.summary.Status)
+	fmt.Fprintf(&sb, "- **Started:** %s\n", m.summary.StartedAt.Format(time.RFC3339))
 	if m.summary.CompletedAt != nil {
-		sb.WriteString(fmt.Sprintf("- **Completed:** %s\n", m.summary.CompletedAt.Format(time.RFC3339)))
+		fmt.Fprintf(&sb, "- **Completed:** %s\n", m.summary.CompletedAt.Format(time.RFC3339))
 		duration := m.summary.CompletedAt.Sub(m.summary.StartedAt)
-		sb.WriteString(fmt.Sprintf("- **Total Duration:** %s\n", duration.Round(time.Second)))
+		fmt.Fprintf(&sb, "- **Total Duration:** %s\n", duration.Round(time.Second))
 	}
-	sb.WriteString(fmt.Sprintf("- **Phases Completed:** %d\n", m.summary.PhasesCompleted))
-	sb.WriteString(fmt.Sprintf("- **Total Cost:** %s\n", cost.FormatTotals(m.summary.GetCostTotals())))
+	fmt.Fprintf(&sb, "- **Phases Completed:** %d\n", m.summary.PhasesCompleted)
+	fmt.Fprintf(&sb, "- **Total Cost:** %s\n", cost.FormatTotals(m.summary.GetCostTotals()))
 	if m.summary.Error != "" {
-		sb.WriteString(fmt.Sprintf("- **Error:** %s\n", m.summary.Error))
+		fmt.Fprintf(&sb, "- **Error:** %s\n", m.summary.Error)
 	}
 	sb.WriteString("\n")
 
@@ -1078,10 +1078,10 @@ func (m *Manager) generateMarkdownIndex() string {
 			statusIcon = "❌"
 		}
 		sb.WriteString("### Pre-Command\n\n")
-		sb.WriteString(fmt.Sprintf("- %s **Command:** `%s`\n", statusIcon, m.summary.PreCommand.Command))
-		sb.WriteString(fmt.Sprintf("- **Exit Code:** %d\n", m.summary.PreCommand.ExitCode))
-		sb.WriteString(fmt.Sprintf("- **Duration:** %s\n",
-			time.Duration(m.summary.PreCommand.DurationMS*int64(time.Millisecond)).Round(time.Second)))
+		fmt.Fprintf(&sb, "- %s **Command:** `%s`\n", statusIcon, m.summary.PreCommand.Command)
+		fmt.Fprintf(&sb, "- **Exit Code:** %d\n", m.summary.PreCommand.ExitCode)
+		fmt.Fprintf(&sb, "- **Duration:** %s\n",
+			time.Duration(m.summary.PreCommand.DurationMS*int64(time.Millisecond)).Round(time.Second))
 		sb.WriteString("\n")
 	}
 
@@ -1092,7 +1092,7 @@ func (m *Manager) generateMarkdownIndex() string {
 
 	for _, phase := range phases {
 		sessions := phaseMap[phase]
-		sb.WriteString(fmt.Sprintf("### Phase %d\n\n", phase))
+		fmt.Fprintf(&sb, "### Phase %d\n\n", phase)
 
 		for _, session := range sessions {
 			runLabel := ""
@@ -1106,15 +1106,15 @@ func (m *Manager) generateMarkdownIndex() string {
 			}
 
 			costValue, costUnit := session.GetCost()
-			sb.WriteString(fmt.Sprintf("- %s **Session%s** - Cost: %s, Duration: %s, Turns: %d\n",
+			fmt.Fprintf(&sb, "- %s **Session%s** - Cost: %s, Duration: %s, Turns: %d\n",
 				statusIcon, runLabel, cost.FormatWithPrecision(costValue, costUnit, 4),
 				time.Duration(session.DurationMS*int64(time.Millisecond)).Round(time.Second),
-				session.NumTurns))
+				session.NumTurns)
 
 			// Links to transcript files
 			mdFile := m.phaseFileName(phase, "transcript.md")
 			htmlFile := m.phaseFileName(phase, "transcript.html")
-			sb.WriteString(fmt.Sprintf("  - [Markdown](%s) | [HTML](%s)\n", mdFile, htmlFile))
+			fmt.Fprintf(&sb, "  - [Markdown](%s) | [HTML](%s)\n", mdFile, htmlFile)
 		}
 		sb.WriteString("\n")
 	}
@@ -1128,15 +1128,15 @@ func (m *Manager) generateMarkdownIndex() string {
 				statusIcon = "❌"
 			}
 			costValue, costUnit := session.GetCost()
-			sb.WriteString(fmt.Sprintf("- %s **Session** - Cost: %s, Duration: %s, Turns: %d\n",
+			fmt.Fprintf(&sb, "- %s **Session** - Cost: %s, Duration: %s, Turns: %d\n",
 				statusIcon, cost.FormatWithPrecision(costValue, costUnit, 4),
 				time.Duration(session.DurationMS*int64(time.Millisecond)).Round(time.Second),
-				session.NumTurns))
+				session.NumTurns)
 
 			baseName := m.postCompletionFileName()
 			mdFile := baseName + "-transcript.md"
 			htmlFile := baseName + "-transcript.html"
-			sb.WriteString(fmt.Sprintf("  - [Markdown](%s) | [HTML](%s)\n", mdFile, htmlFile))
+			fmt.Fprintf(&sb, "  - [Markdown](%s) | [HTML](%s)\n", mdFile, htmlFile)
 			sb.WriteString("\n")
 			break
 		}
@@ -1149,10 +1149,10 @@ func (m *Manager) generateMarkdownIndex() string {
 			statusIcon = "❌"
 		}
 		sb.WriteString("### Post-Command\n\n")
-		sb.WriteString(fmt.Sprintf("- %s **Command:** `%s`\n", statusIcon, m.summary.PostCommand.Command))
-		sb.WriteString(fmt.Sprintf("- **Exit Code:** %d\n", m.summary.PostCommand.ExitCode))
-		sb.WriteString(fmt.Sprintf("- **Duration:** %s\n",
-			time.Duration(m.summary.PostCommand.DurationMS*int64(time.Millisecond)).Round(time.Second)))
+		fmt.Fprintf(&sb, "- %s **Command:** `%s`\n", statusIcon, m.summary.PostCommand.Command)
+		fmt.Fprintf(&sb, "- **Exit Code:** %d\n", m.summary.PostCommand.ExitCode)
+		fmt.Fprintf(&sb, "- **Duration:** %s\n",
+			time.Duration(m.summary.PostCommand.DurationMS*int64(time.Millisecond)).Round(time.Second))
 		sb.WriteString("\n")
 	}
 
@@ -1170,14 +1170,14 @@ func (m *Manager) generateHTMLIndex() string {
 	sb.WriteString("<head>\n")
 	sb.WriteString("    <meta charset=\"UTF-8\">\n")
 	sb.WriteString("    <meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\">\n")
-	sb.WriteString(fmt.Sprintf("    <title>%s</title>\n", title))
+	fmt.Fprintf(&sb, "    <title>%s</title>\n", title)
 	sb.WriteString("    <style>\n")
 	sb.WriteString(indexCSS)
 	sb.WriteString("    </style>\n")
 	sb.WriteString("</head>\n")
 	sb.WriteString("<body>\n")
 	sb.WriteString("    <header>\n")
-	sb.WriteString(fmt.Sprintf("        <h1>%s</h1>\n", title))
+	fmt.Fprintf(&sb, "        <h1>%s</h1>\n", title)
 	sb.WriteString("    </header>\n")
 	sb.WriteString("    <main>\n")
 
@@ -1185,7 +1185,7 @@ func (m *Manager) generateHTMLIndex() string {
 	sb.WriteString("        <section class=\"run-info\">\n")
 	sb.WriteString("            <h2>Run Information</h2>\n")
 	sb.WriteString("            <dl>\n")
-	sb.WriteString(fmt.Sprintf("                <dt>Branch</dt><dd>%s</dd>\n", html.EscapeString(m.summary.BranchName)))
+	fmt.Fprintf(&sb, "                <dt>Branch</dt><dd>%s</dd>\n", html.EscapeString(m.summary.BranchName))
 
 	statusClass := "success"
 	switch m.summary.Status {
@@ -1194,25 +1194,25 @@ func (m *Manager) generateHTMLIndex() string {
 	case "running":
 		statusClass = "running"
 	}
-	sb.WriteString(fmt.Sprintf("                <dt>Status</dt><dd class=\"status %s\">%s</dd>\n",
-		statusClass, html.EscapeString(m.summary.Status)))
+	fmt.Fprintf(&sb, "                <dt>Status</dt><dd class=\"status %s\">%s</dd>\n",
+		statusClass, html.EscapeString(m.summary.Status))
 
-	sb.WriteString(fmt.Sprintf("                <dt>Started</dt><dd>%s</dd>\n",
-		m.summary.StartedAt.Format(time.RFC3339)))
+	fmt.Fprintf(&sb, "                <dt>Started</dt><dd>%s</dd>\n",
+		m.summary.StartedAt.Format(time.RFC3339))
 	if m.summary.CompletedAt != nil {
-		sb.WriteString(fmt.Sprintf("                <dt>Completed</dt><dd>%s</dd>\n",
-			m.summary.CompletedAt.Format(time.RFC3339)))
+		fmt.Fprintf(&sb, "                <dt>Completed</dt><dd>%s</dd>\n",
+			m.summary.CompletedAt.Format(time.RFC3339))
 		duration := m.summary.CompletedAt.Sub(m.summary.StartedAt)
-		sb.WriteString(fmt.Sprintf("                <dt>Total Duration</dt><dd>%s</dd>\n",
-			duration.Round(time.Second)))
+		fmt.Fprintf(&sb, "                <dt>Total Duration</dt><dd>%s</dd>\n",
+			duration.Round(time.Second))
 	}
-	sb.WriteString(fmt.Sprintf("                <dt>Phases Completed</dt><dd>%d</dd>\n",
-		m.summary.PhasesCompleted))
-	sb.WriteString(fmt.Sprintf("                <dt>Total Cost</dt><dd>%s</dd>\n",
-		cost.FormatTotals(m.summary.GetCostTotals())))
+	fmt.Fprintf(&sb, "                <dt>Phases Completed</dt><dd>%d</dd>\n",
+		m.summary.PhasesCompleted)
+	fmt.Fprintf(&sb, "                <dt>Total Cost</dt><dd>%s</dd>\n",
+		cost.FormatTotals(m.summary.GetCostTotals()))
 	if m.summary.Error != "" {
-		sb.WriteString(fmt.Sprintf("                <dt>Error</dt><dd class=\"error-text\">%s</dd>\n",
-			html.EscapeString(m.summary.Error)))
+		fmt.Fprintf(&sb, "                <dt>Error</dt><dd class=\"error-text\">%s</dd>\n",
+			html.EscapeString(m.summary.Error))
 	}
 	sb.WriteString("            </dl>\n")
 	sb.WriteString("        </section>\n")
@@ -1227,13 +1227,13 @@ func (m *Manager) generateHTMLIndex() string {
 			statusIcon = "❌"
 			cardClass += " error"
 		}
-		sb.WriteString(fmt.Sprintf("            <div class=\"%s\">\n", cardClass))
-		sb.WriteString(fmt.Sprintf("                <div class=\"command-header\">%s <code>%s</code></div>\n",
-			statusIcon, html.EscapeString(m.summary.PreCommand.Command)))
+		fmt.Fprintf(&sb, "            <div class=\"%s\">\n", cardClass)
+		fmt.Fprintf(&sb, "                <div class=\"command-header\">%s <code>%s</code></div>\n",
+			statusIcon, html.EscapeString(m.summary.PreCommand.Command))
 		sb.WriteString("                <div class=\"command-stats\">\n")
-		sb.WriteString(fmt.Sprintf("                    <span>Exit Code: %d</span>\n", m.summary.PreCommand.ExitCode))
-		sb.WriteString(fmt.Sprintf("                    <span>Duration: %s</span>\n",
-			time.Duration(m.summary.PreCommand.DurationMS*int64(time.Millisecond)).Round(time.Second)))
+		fmt.Fprintf(&sb, "                    <span>Exit Code: %d</span>\n", m.summary.PreCommand.ExitCode)
+		fmt.Fprintf(&sb, "                    <span>Duration: %s</span>\n",
+			time.Duration(m.summary.PreCommand.DurationMS*int64(time.Millisecond)).Round(time.Second))
 		sb.WriteString("                </div>\n")
 		sb.WriteString("            </div>\n")
 		sb.WriteString("        </section>\n")
@@ -1248,7 +1248,7 @@ func (m *Manager) generateHTMLIndex() string {
 	for _, phase := range phases {
 		sessions := phaseMap[phase]
 		sb.WriteString("            <div class=\"phase\">\n")
-		sb.WriteString(fmt.Sprintf("                <h3>Phase %d</h3>\n", phase))
+		fmt.Fprintf(&sb, "                <h3>Phase %d</h3>\n", phase)
 
 		for _, session := range sessions {
 			runLabel := ""
@@ -1263,22 +1263,22 @@ func (m *Manager) generateHTMLIndex() string {
 				cardClass += " error"
 			}
 
-			sb.WriteString(fmt.Sprintf("                <div class=\"%s\">\n", cardClass))
-			sb.WriteString(fmt.Sprintf("                    <div class=\"session-header\">%s Session%s</div>\n",
-				statusIcon, runLabel))
+			fmt.Fprintf(&sb, "                <div class=\"%s\">\n", cardClass)
+			fmt.Fprintf(&sb, "                    <div class=\"session-header\">%s Session%s</div>\n",
+				statusIcon, runLabel)
 			sb.WriteString("                    <div class=\"session-stats\">\n")
 			costValue, costUnit := session.GetCost()
-			sb.WriteString(fmt.Sprintf("                        <span>Cost: %s</span>\n", cost.FormatWithPrecision(costValue, costUnit, 4)))
-			sb.WriteString(fmt.Sprintf("                        <span>Duration: %s</span>\n",
-				time.Duration(session.DurationMS*int64(time.Millisecond)).Round(time.Second)))
-			sb.WriteString(fmt.Sprintf("                        <span>Turns: %d</span>\n", session.NumTurns))
+			fmt.Fprintf(&sb, "                        <span>Cost: %s</span>\n", cost.FormatWithPrecision(costValue, costUnit, 4))
+			fmt.Fprintf(&sb, "                        <span>Duration: %s</span>\n",
+				time.Duration(session.DurationMS*int64(time.Millisecond)).Round(time.Second))
+			fmt.Fprintf(&sb, "                        <span>Turns: %d</span>\n", session.NumTurns)
 			sb.WriteString("                    </div>\n")
 			sb.WriteString("                    <div class=\"session-links\">\n")
 
 			mdFile := m.phaseFileName(phase, "transcript.md")
 			htmlFile := m.phaseFileName(phase, "transcript.html")
-			sb.WriteString(fmt.Sprintf("                        <a href=\"%s\">📄 Markdown</a>\n", mdFile))
-			sb.WriteString(fmt.Sprintf("                        <a href=\"%s\">🌐 HTML</a>\n", htmlFile))
+			fmt.Fprintf(&sb, "                        <a href=\"%s\">📄 Markdown</a>\n", mdFile)
+			fmt.Fprintf(&sb, "                        <a href=\"%s\">🌐 HTML</a>\n", htmlFile)
 			sb.WriteString("                    </div>\n")
 			sb.WriteString("                </div>\n")
 		}
@@ -1298,22 +1298,22 @@ func (m *Manager) generateHTMLIndex() string {
 				cardClass += " error"
 			}
 
-			sb.WriteString(fmt.Sprintf("                <div class=\"%s\">\n", cardClass))
-			sb.WriteString(fmt.Sprintf("                    <div class=\"session-header\">%s Session</div>\n", statusIcon))
+			fmt.Fprintf(&sb, "                <div class=\"%s\">\n", cardClass)
+			fmt.Fprintf(&sb, "                    <div class=\"session-header\">%s Session</div>\n", statusIcon)
 			sb.WriteString("                    <div class=\"session-stats\">\n")
 			costValue, costUnit := session.GetCost()
-			sb.WriteString(fmt.Sprintf("                        <span>Cost: %s</span>\n", cost.FormatWithPrecision(costValue, costUnit, 4)))
-			sb.WriteString(fmt.Sprintf("                        <span>Duration: %s</span>\n",
-				time.Duration(session.DurationMS*int64(time.Millisecond)).Round(time.Second)))
-			sb.WriteString(fmt.Sprintf("                        <span>Turns: %d</span>\n", session.NumTurns))
+			fmt.Fprintf(&sb, "                        <span>Cost: %s</span>\n", cost.FormatWithPrecision(costValue, costUnit, 4))
+			fmt.Fprintf(&sb, "                        <span>Duration: %s</span>\n",
+				time.Duration(session.DurationMS*int64(time.Millisecond)).Round(time.Second))
+			fmt.Fprintf(&sb, "                        <span>Turns: %d</span>\n", session.NumTurns)
 			sb.WriteString("                    </div>\n")
 			sb.WriteString("                    <div class=\"session-links\">\n")
 
 			baseName := m.postCompletionFileName()
 			mdFile := baseName + "-transcript.md"
 			htmlFile := baseName + "-transcript.html"
-			sb.WriteString(fmt.Sprintf("                        <a href=\"%s\">📄 Markdown</a>\n", mdFile))
-			sb.WriteString(fmt.Sprintf("                        <a href=\"%s\">🌐 HTML</a>\n", htmlFile))
+			fmt.Fprintf(&sb, "                        <a href=\"%s\">📄 Markdown</a>\n", mdFile)
+			fmt.Fprintf(&sb, "                        <a href=\"%s\">🌐 HTML</a>\n", htmlFile)
 			sb.WriteString("                    </div>\n")
 			sb.WriteString("                </div>\n")
 			sb.WriteString("            </div>\n")
@@ -1333,13 +1333,13 @@ func (m *Manager) generateHTMLIndex() string {
 			statusIcon = "❌"
 			cardClass += " error"
 		}
-		sb.WriteString(fmt.Sprintf("            <div class=\"%s\">\n", cardClass))
-		sb.WriteString(fmt.Sprintf("                <div class=\"command-header\">%s <code>%s</code></div>\n",
-			statusIcon, html.EscapeString(m.summary.PostCommand.Command)))
+		fmt.Fprintf(&sb, "            <div class=\"%s\">\n", cardClass)
+		fmt.Fprintf(&sb, "                <div class=\"command-header\">%s <code>%s</code></div>\n",
+			statusIcon, html.EscapeString(m.summary.PostCommand.Command))
 		sb.WriteString("                <div class=\"command-stats\">\n")
-		sb.WriteString(fmt.Sprintf("                    <span>Exit Code: %d</span>\n", m.summary.PostCommand.ExitCode))
-		sb.WriteString(fmt.Sprintf("                    <span>Duration: %s</span>\n",
-			time.Duration(m.summary.PostCommand.DurationMS*int64(time.Millisecond)).Round(time.Second)))
+		fmt.Fprintf(&sb, "                    <span>Exit Code: %d</span>\n", m.summary.PostCommand.ExitCode)
+		fmt.Fprintf(&sb, "                    <span>Duration: %s</span>\n",
+			time.Duration(m.summary.PostCommand.DurationMS*int64(time.Millisecond)).Round(time.Second))
 		sb.WriteString("                </div>\n")
 		sb.WriteString("            </div>\n")
 		sb.WriteString("        </section>\n")

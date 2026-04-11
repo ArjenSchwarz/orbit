@@ -8,7 +8,11 @@ import (
 	"strings"
 )
 
-var version = "dev"
+var (
+	version   = "dev"
+	buildTime = "unknown"
+	gitCommit = "unknown"
+)
 
 // knownSubcommands lists all valid subcommands.
 var knownSubcommands = map[string]bool{
@@ -32,7 +36,7 @@ func main() {
 			printUsage()
 			return
 		case "--version", "-v":
-			fmt.Println("orbit", version)
+			fmt.Printf("orbit %s (commit: %s, built: %s)\n", version, gitCommit, buildTime)
 			return
 		}
 	}

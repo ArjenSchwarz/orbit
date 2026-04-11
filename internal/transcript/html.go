@@ -116,7 +116,7 @@ func RenderHTML(entries []Entry, opts RenderOptions) string {
 	sb.WriteString("<head>\n")
 	sb.WriteString("    <meta charset=\"UTF-8\">\n")
 	sb.WriteString("    <meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\">\n")
-	sb.WriteString(fmt.Sprintf("    <title>%s</title>\n", stdhtml.EscapeString(title)))
+	fmt.Fprintf(&sb, "    <title>%s</title>\n", stdhtml.EscapeString(title))
 	sb.WriteString("    <style>\n")
 	sb.WriteString(transcriptCSS)
 	sb.WriteString(standaloneCSS)
@@ -126,18 +126,18 @@ func RenderHTML(entries []Entry, opts RenderOptions) string {
 
 	// Header
 	sb.WriteString("    <header>\n")
-	sb.WriteString(fmt.Sprintf("        <h1>%s</h1>\n", stdhtml.EscapeString(title)))
+	fmt.Fprintf(&sb, "        <h1>%s</h1>\n", stdhtml.EscapeString(title))
 	if opts.SessionID != "" {
-		sb.WriteString(fmt.Sprintf("        <p class=\"session-id\">Session ID: <code>%s</code></p>\n",
-			stdhtml.EscapeString(opts.SessionID)))
+		fmt.Fprintf(&sb, "        <p class=\"session-id\">Session ID: <code>%s</code></p>\n",
+			stdhtml.EscapeString(opts.SessionID))
 	}
 	if opts.TotalCost != nil && *opts.TotalCost >= 0.005 {
 		unit := opts.CostUnit
 		if unit == "" {
 			unit = "credits"
 		}
-		sb.WriteString(fmt.Sprintf("        <p class=\"session-cost\">Cost: %.2f %s</p>\n",
-			*opts.TotalCost, stdhtml.EscapeString(unit)))
+		fmt.Fprintf(&sb, "        <p class=\"session-cost\">Cost: %.2f %s</p>\n",
+			*opts.TotalCost, stdhtml.EscapeString(unit))
 	}
 	sb.WriteString("    </header>\n")
 
@@ -244,22 +244,22 @@ func renderNavigationHTML(nav *NavigationContext) string {
 
 	// Previous link
 	if nav.PrevURL != "" {
-		sb.WriteString(fmt.Sprintf("        <a href=\"%s\" class=\"nav-prev\">%s</a>\n",
-			stdhtml.EscapeString(nav.PrevURL), stdhtml.EscapeString(nav.PrevText)))
+		fmt.Fprintf(&sb, "        <a href=\"%s\" class=\"nav-prev\">%s</a>\n",
+			stdhtml.EscapeString(nav.PrevURL), stdhtml.EscapeString(nav.PrevText))
 	} else {
 		sb.WriteString("        <span class=\"nav-spacer\"></span>\n")
 	}
 
 	// Back link (center)
 	if nav.BackURL != "" {
-		sb.WriteString(fmt.Sprintf("        <a href=\"%s\" class=\"nav-back\">%s</a>\n",
-			stdhtml.EscapeString(nav.BackURL), stdhtml.EscapeString(nav.BackText)))
+		fmt.Fprintf(&sb, "        <a href=\"%s\" class=\"nav-back\">%s</a>\n",
+			stdhtml.EscapeString(nav.BackURL), stdhtml.EscapeString(nav.BackText))
 	}
 
 	// Next link
 	if nav.NextURL != "" {
-		sb.WriteString(fmt.Sprintf("        <a href=\"%s\" class=\"nav-next\">%s</a>\n",
-			stdhtml.EscapeString(nav.NextURL), stdhtml.EscapeString(nav.NextText)))
+		fmt.Fprintf(&sb, "        <a href=\"%s\" class=\"nav-next\">%s</a>\n",
+			stdhtml.EscapeString(nav.NextURL), stdhtml.EscapeString(nav.NextText))
 	} else {
 		sb.WriteString("        <span class=\"nav-spacer\"></span>\n")
 	}
@@ -300,8 +300,8 @@ func formatReadGroupHTML(reads []readItem, projectDir string) string {
 
 		displayPath := stripProjectDir(read.FilePath, projectDir)
 		sb.WriteString("                <details class=\"tool-collapsible read-item\">\n")
-		sb.WriteString(fmt.Sprintf("                    <summary><span class=\"icon\">%s</span> 🔧 Read: <code>%s</code></summary>\n",
-			icon, stdhtml.EscapeString(displayPath)))
+		fmt.Fprintf(&sb, "                    <summary><span class=\"icon\">%s</span> 🔧 Read: <code>%s</code></summary>\n",
+			icon, stdhtml.EscapeString(displayPath))
 		sb.WriteString("                    <div class=\"tool-content\">\n")
 
 		if read.Content != "" {
@@ -343,8 +343,8 @@ func formatEditGroupHTML(edits []editItem, projectDir string) string {
 
 		displayPath := stripProjectDir(edit.FilePath, projectDir)
 		sb.WriteString("                <details class=\"tool-collapsible read-item\">\n")
-		sb.WriteString(fmt.Sprintf("                    <summary><span class=\"icon\">%s</span> 🔧 Edit: <code>%s</code></summary>\n",
-			icon, stdhtml.EscapeString(displayPath)))
+		fmt.Fprintf(&sb, "                    <summary><span class=\"icon\">%s</span> 🔧 Edit: <code>%s</code></summary>\n",
+			icon, stdhtml.EscapeString(displayPath))
 		sb.WriteString("                    <div class=\"tool-content\">\n")
 
 		if len(edit.Patch) > 0 {
@@ -360,8 +360,8 @@ func formatEditGroupHTML(edits []editItem, projectDir string) string {
 							lineClass = "deletion"
 						}
 					}
-					sb.WriteString(fmt.Sprintf("                            <span class=\"patch-line %s\">%s</span>\n",
-						lineClass, stdhtml.EscapeString(line)))
+					fmt.Fprintf(&sb, "                            <span class=\"patch-line %s\">%s</span>\n",
+						lineClass, stdhtml.EscapeString(line))
 				}
 			}
 			sb.WriteString("                        </div>\n")
@@ -487,8 +487,8 @@ func formatSlashCommandHTML(entry *Entry, skillDescriptions map[string]string) s
 	if description != "" {
 		// Render as collapsible with description
 		sb.WriteString("                <details class=\"tool-collapsible\">\n")
-		sb.WriteString(fmt.Sprintf("                    <summary><span class=\"icon\">⚡</span> /%s</summary>\n",
-			stdhtml.EscapeString(commandName)))
+		fmt.Fprintf(&sb, "                    <summary><span class=\"icon\">⚡</span> /%s</summary>\n",
+			stdhtml.EscapeString(commandName))
 		sb.WriteString("                    <div class=\"tool-content\">\n")
 		sb.WriteString("                        <div class=\"markdown-content\">\n")
 		sb.WriteString(markdownToHTML(description))
@@ -497,8 +497,8 @@ func formatSlashCommandHTML(entry *Entry, skillDescriptions map[string]string) s
 		sb.WriteString("                </details>\n")
 	} else {
 		// Simple format without description
-		sb.WriteString(fmt.Sprintf("                <div class=\"tool-use\"><span class=\"icon\">⚡</span> /%s</div>\n",
-			stdhtml.EscapeString(commandName)))
+		fmt.Fprintf(&sb, "                <div class=\"tool-use\"><span class=\"icon\">⚡</span> /%s</div>\n",
+			stdhtml.EscapeString(commandName))
 	}
 
 	sb.WriteString("            </div>\n")
@@ -672,8 +672,8 @@ func formatToolUseHTML(item *ContentItem, toolMeta map[string]toolMetadata, skil
 		if skillDesc != "" {
 			var sb strings.Builder
 			sb.WriteString("                <details class=\"tool-collapsible\">\n")
-			sb.WriteString(fmt.Sprintf("                    <summary><span class=\"icon\">🔧</span> %s</summary>\n",
-				stdhtml.EscapeString(summary)))
+			fmt.Fprintf(&sb, "                    <summary><span class=\"icon\">🔧</span> %s</summary>\n",
+				stdhtml.EscapeString(summary))
 			sb.WriteString("                    <div class=\"tool-content\">\n")
 			sb.WriteString("                        <div class=\"markdown-content\">\n")
 			sb.WriteString(markdownToHTML(skillDesc))
@@ -696,8 +696,8 @@ func formatToolUseHTML(item *ContentItem, toolMeta map[string]toolMetadata, skil
 		}
 
 		sb.WriteString("                <details class=\"tool-collapsible\">\n")
-		sb.WriteString(fmt.Sprintf("                    <summary><span class=\"icon\">🔧</span> %s</summary>\n",
-			stdhtml.EscapeString(summary)))
+		fmt.Fprintf(&sb, "                    <summary><span class=\"icon\">🔧</span> %s</summary>\n",
+			stdhtml.EscapeString(summary))
 		sb.WriteString("                    <div class=\"tool-content\">\n")
 		if len(inputJSON) > 0 {
 			sb.WriteString("                        <pre><code>")
@@ -747,9 +747,9 @@ func formatToolResultHTML(item *ContentItem, toolMeta map[string]toolMetadata) s
 		sb.WriteString("            </div>\n")
 		sb.WriteString("            <div class=\"message-content\">\n")
 
-		sb.WriteString(fmt.Sprintf("                <details class=\"tool-collapsible%s\">\n", errorClass))
-		sb.WriteString(fmt.Sprintf("                    <summary><span class=\"icon\">%s</span> 🤖🔧 %s</summary>\n",
-			icon, stdhtml.EscapeString(meta.Summary)))
+		fmt.Fprintf(&sb, "                <details class=\"tool-collapsible%s\">\n", errorClass)
+		fmt.Fprintf(&sb, "                    <summary><span class=\"icon\">%s</span> 🤖🔧 %s</summary>\n",
+			icon, stdhtml.EscapeString(meta.Summary))
 		sb.WriteString("                    <div class=\"tool-content\">\n")
 
 		// Render prompt
@@ -790,9 +790,9 @@ func formatToolResultHTML(item *ContentItem, toolMeta map[string]toolMetadata) s
 		if item.IsError {
 			errorClass = " error"
 		}
-		sb.WriteString(fmt.Sprintf("                <details class=\"tool-collapsible%s\">\n", errorClass))
-		sb.WriteString(fmt.Sprintf("                    <summary><span class=\"icon\">%s</span> %s</summary>\n",
-			icon, stdhtml.EscapeString(meta.Summary)))
+		fmt.Fprintf(&sb, "                <details class=\"tool-collapsible%s\">\n", errorClass)
+		fmt.Fprintf(&sb, "                    <summary><span class=\"icon\">%s</span> %s</summary>\n",
+			icon, stdhtml.EscapeString(meta.Summary))
 		sb.WriteString("                    <div class=\"tool-content\">\n")
 		sb.WriteString("                        <pre><code>")
 		sb.WriteString(stdhtml.EscapeString(content))
@@ -829,9 +829,9 @@ func formatToolResultHTML(item *ContentItem, toolMeta map[string]toolMetadata) s
 		sb.WriteString("            </div>\n")
 		sb.WriteString("            <div class=\"message-content\">\n")
 
-		sb.WriteString(fmt.Sprintf("                <details class=\"tool-collapsible%s\"%s>\n", errorClass, openAttr))
-		sb.WriteString(fmt.Sprintf("                    <summary><span class=\"icon\">%s</span> 🔧 %s</summary>\n",
-			icon, stdhtml.EscapeString(summaryText)))
+		fmt.Fprintf(&sb, "                <details class=\"tool-collapsible%s\"%s>\n", errorClass, openAttr)
+		fmt.Fprintf(&sb, "                    <summary><span class=\"icon\">%s</span> 🔧 %s</summary>\n",
+			icon, stdhtml.EscapeString(summaryText))
 		sb.WriteString("                    <div class=\"tool-content\">\n")
 
 		// Render tool-specific input
@@ -862,9 +862,9 @@ func formatToolResultHTML(item *ContentItem, toolMeta map[string]toolMetadata) s
 		if item.IsError {
 			summaryText = "Tool Error"
 		}
-		sb.WriteString(fmt.Sprintf("                <details class=\"tool-collapsible%s\">\n", errorClass))
-		sb.WriteString(fmt.Sprintf("                    <summary><span class=\"icon\">%s</span> %s</summary>\n",
-			icon, summaryText))
+		fmt.Fprintf(&sb, "                <details class=\"tool-collapsible%s\">\n", errorClass)
+		fmt.Fprintf(&sb, "                    <summary><span class=\"icon\">%s</span> %s</summary>\n",
+			icon, summaryText)
 		sb.WriteString("                    <div class=\"tool-content\">\n")
 		sb.WriteString("                        <pre><code>")
 		sb.WriteString(stdhtml.EscapeString(content))
@@ -898,29 +898,29 @@ func formatToolInputHTML(name string, input any) string {
 	case "Write":
 		if path, ok := inputMap["file_path"].(string); ok {
 			sb.WriteString("                        <div class=\"tool-input-section\">\n")
-			sb.WriteString(fmt.Sprintf("                            <strong>File:</strong> <code>%s</code>\n",
-				stdhtml.EscapeString(path)))
+			fmt.Fprintf(&sb, "                            <strong>File:</strong> <code>%s</code>\n",
+				stdhtml.EscapeString(path))
 			sb.WriteString("                        </div>\n")
 		}
 	case "Edit":
 		if path, ok := inputMap["file_path"].(string); ok {
 			sb.WriteString("                        <div class=\"tool-input-section\">\n")
-			sb.WriteString(fmt.Sprintf("                            <strong>File:</strong> <code>%s</code>\n",
-				stdhtml.EscapeString(path)))
+			fmt.Fprintf(&sb, "                            <strong>File:</strong> <code>%s</code>\n",
+				stdhtml.EscapeString(path))
 			sb.WriteString("                        </div>\n")
 		}
 	case "Glob":
 		if pattern, ok := inputMap["pattern"].(string); ok {
 			sb.WriteString("                        <div class=\"tool-input-section\">\n")
-			sb.WriteString(fmt.Sprintf("                            <strong>Pattern:</strong> <code>%s</code>\n",
-				stdhtml.EscapeString(pattern)))
+			fmt.Fprintf(&sb, "                            <strong>Pattern:</strong> <code>%s</code>\n",
+				stdhtml.EscapeString(pattern))
 			sb.WriteString("                        </div>\n")
 		}
 	case "Grep":
 		if pattern, ok := inputMap["pattern"].(string); ok {
 			sb.WriteString("                        <div class=\"tool-input-section\">\n")
-			sb.WriteString(fmt.Sprintf("                            <strong>Pattern:</strong> <code>%s</code>\n",
-				stdhtml.EscapeString(pattern)))
+			fmt.Fprintf(&sb, "                            <strong>Pattern:</strong> <code>%s</code>\n",
+				stdhtml.EscapeString(pattern))
 			sb.WriteString("                        </div>\n")
 		}
 	case "TodoWrite":
@@ -938,8 +938,8 @@ func formatToolInputHTML(name string, input any) string {
 					case "completed":
 						checkbox = "[x]"
 					}
-					sb.WriteString(fmt.Sprintf("                                <li>%s %s</li>\n",
-						checkbox, stdhtml.EscapeString(content)))
+					fmt.Fprintf(&sb, "                                <li>%s %s</li>\n",
+						checkbox, stdhtml.EscapeString(content))
 				}
 			}
 			sb.WriteString("                            </ul>\n")

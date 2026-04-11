@@ -31,17 +31,17 @@ func (pb *PromptBuilder) Build() string {
 	var sb strings.Builder
 
 	// Header
-	sb.WriteString(fmt.Sprintf("You are consolidating improvements into variant %d for the %q feature.\n\n", pb.variantID, pb.specName))
+	fmt.Fprintf(&sb, "You are consolidating improvements into variant %d for the %q feature.\n\n", pb.variantID, pb.specName)
 
 	// Context section
 	sb.WriteString("## Context\n")
-	sb.WriteString(fmt.Sprintf("- Comparison report: %s\n", pb.reportPath))
-	sb.WriteString(fmt.Sprintf("- Chosen variant worktree: %s\n", pb.worktreePaths[pb.variantID]))
+	fmt.Fprintf(&sb, "- Comparison report: %s\n", pb.reportPath)
+	fmt.Fprintf(&sb, "- Chosen variant worktree: %s\n", pb.worktreePaths[pb.variantID])
 
 	// List other variant worktrees
 	otherWorktrees := pb.getOtherWorktrees()
 	if len(otherWorktrees) > 0 {
-		sb.WriteString(fmt.Sprintf("- Other variant worktrees: %s\n", strings.Join(otherWorktrees, ", ")))
+		fmt.Fprintf(&sb, "- Other variant worktrees: %s\n", strings.Join(otherWorktrees, ", "))
 	}
 	sb.WriteString("\n")
 
@@ -61,7 +61,7 @@ func (pb *PromptBuilder) Build() string {
    - If adopting: implement it in the chosen variant, adapting to fit existing patterns
 3. Commit all changes as a single commit with EXACTLY this message format:
 `)
-	sb.WriteString(fmt.Sprintf("   feat(consolidate): Apply improvements from variants X, Y to variant %d for %s\n", pb.variantID, pb.specName))
+	fmt.Fprintf(&sb, "   feat(consolidate): Apply improvements from variants X, Y to variant %d for %s\n", pb.variantID, pb.specName)
 	sb.WriteString(`   (Replace X, Y with actual source variant numbers)
 4. Output a report (see format below)
 

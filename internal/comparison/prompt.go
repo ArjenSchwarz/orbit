@@ -78,7 +78,7 @@ func buildComparisonPrompt(input ComparisonInput) string {
 	}
 
 	// Header
-	sb.WriteString(fmt.Sprintf("You are comparing %d implementation variants of the specification \"%s\".\n\n", len(input.Variants), input.SpecName))
+	fmt.Fprintf(&sb, "You are comparing %d implementation variants of the specification \"%s\".\n\n", len(input.Variants), input.SpecName)
 
 	if !input.IncludeDiff {
 		sb.WriteString("Note: Full diffs are too large to include. Use the commit messages, change statistics, and changelogs to understand each implementation.\n\n")
@@ -94,9 +94,9 @@ func buildComparisonPrompt(input ComparisonInput) string {
 	// Variant details section
 	for _, v := range input.Variants {
 		if v.Agent != "" {
-			sb.WriteString(fmt.Sprintf("## Variant %d (Agent: %s)\n\n", v.ID, v.Agent))
+			fmt.Fprintf(&sb, "## Variant %d (Agent: %s)\n\n", v.ID, v.Agent)
 		} else {
-			sb.WriteString(fmt.Sprintf("## Variant %d\n\n", v.ID))
+			fmt.Fprintf(&sb, "## Variant %d\n\n", v.ID)
 		}
 
 		// Change statistics (always included)
@@ -110,7 +110,7 @@ func buildComparisonPrompt(input ComparisonInput) string {
 		sb.WriteString("### Commits\n")
 		if len(v.CommitMessages) > 0 {
 			for _, msg := range v.CommitMessages {
-				sb.WriteString(fmt.Sprintf("- %s\n", msg))
+				fmt.Fprintf(&sb, "- %s\n", msg)
 			}
 		} else {
 			sb.WriteString("- (no commits)\n")
@@ -149,14 +149,14 @@ func buildComparisonPrompt(input ComparisonInput) string {
 			if agent == "" {
 				agent = "-"
 			}
-			sb.WriteString(fmt.Sprintf("| %d | %s | %s | %d |\n", v.ID, agent, duration, v.Metrics.NumTurns))
+			fmt.Fprintf(&sb, "| %d | %s | %s | %d |\n", v.ID, agent, duration, v.Metrics.NumTurns)
 		}
 	} else {
 		sb.WriteString("| Variant | Duration | Turns |\n")
 		sb.WriteString("|---------|----------|-------|\n")
 		for _, v := range input.Variants {
 			duration := formatDuration(v.Metrics.Duration)
-			sb.WriteString(fmt.Sprintf("| %d | %s | %d |\n", v.ID, duration, v.Metrics.NumTurns))
+			fmt.Fprintf(&sb, "| %d | %s | %d |\n", v.ID, duration, v.Metrics.NumTurns)
 		}
 	}
 	sb.WriteString("\n")
@@ -238,9 +238,9 @@ func buildComparisonPrompt(input ComparisonInput) string {
 	sb.WriteString("IMPORTANT: Output ONLY valid JSON. Do not include any text before or after the JSON.\n")
 
 	if input.OutputPath != "" {
-		sb.WriteString(fmt.Sprintf("\nADDITIONALLY: Write the JSON result to the file `%s`. "+
+		fmt.Fprintf(&sb, "\nADDITIONALLY: Write the JSON result to the file `%s`. "+
 			"This is critical — write the file BEFORE outputting the JSON to stdout. "+
-			"The file must contain only the valid JSON object, nothing else.\n", input.OutputPath))
+			"The file must contain only the valid JSON object, nothing else.\n", input.OutputPath)
 	}
 
 	return sb.String()

@@ -42,10 +42,10 @@ func RenderMarkdown(entries []Entry, opts RenderOptions) string {
 	if title == "" {
 		title = "Session Transcript"
 	}
-	sb.WriteString(fmt.Sprintf("# %s\n\n", title))
+	fmt.Fprintf(&sb, "# %s\n\n", title)
 
 	if opts.SessionID != "" {
-		sb.WriteString(fmt.Sprintf("**Session ID:** `%s`\n\n", opts.SessionID))
+		fmt.Fprintf(&sb, "**Session ID:** `%s`\n\n", opts.SessionID)
 	}
 
 	if opts.TotalCost != nil && *opts.TotalCost >= 0.005 {
@@ -53,7 +53,7 @@ func RenderMarkdown(entries []Entry, opts RenderOptions) string {
 		if unit == "" {
 			unit = "credits"
 		}
-		sb.WriteString(fmt.Sprintf("**Cost:** %.2f %s\n\n", *opts.TotalCost, unit))
+		fmt.Fprintf(&sb, "**Cost:** %.2f %s\n\n", *opts.TotalCost, unit)
 	}
 
 	sb.WriteString("---\n\n")
@@ -205,8 +205,8 @@ func formatReadGroup(reads []readItem, projectDir string, timestamp string) stri
 
 		displayPath := stripProjectDir(read.FilePath, projectDir)
 		sb.WriteString("<details>\n")
-		sb.WriteString(fmt.Sprintf("<summary>%s 🔧 Read: <code>%s</code></summary>\n\n",
-			icon, html.EscapeString(displayPath)))
+		fmt.Fprintf(&sb, "<summary>%s 🔧 Read: <code>%s</code></summary>\n\n",
+			icon, html.EscapeString(displayPath))
 
 		if read.Content != "" {
 			sb.WriteString("```\n")
@@ -240,8 +240,8 @@ func formatEditGroup(edits []editItem, projectDir string, timestamp string) stri
 
 		displayPath := stripProjectDir(edit.FilePath, projectDir)
 		sb.WriteString("<details>\n")
-		sb.WriteString(fmt.Sprintf("<summary>%s 🔧 Edit: <code>%s</code></summary>\n\n",
-			icon, html.EscapeString(displayPath)))
+		fmt.Fprintf(&sb, "<summary>%s 🔧 Edit: <code>%s</code></summary>\n\n",
+			icon, html.EscapeString(displayPath))
 
 		if len(edit.Patch) > 0 {
 			sb.WriteString("```patch\n")
@@ -366,12 +366,12 @@ func formatSlashCommand(entry *Entry, skillDescriptions map[string]string) strin
 	if description != "" {
 		// Render as collapsible with description
 		sb.WriteString("<details>\n")
-		sb.WriteString(fmt.Sprintf("<summary>⚡ /%s</summary>\n\n", commandName))
+		fmt.Fprintf(&sb, "<summary>⚡ /%s</summary>\n\n", commandName)
 		sb.WriteString(description)
 		sb.WriteString("\n\n</details>\n\n")
 	} else {
 		// Simple format without description
-		sb.WriteString(fmt.Sprintf("⚡ `/%s`\n\n", commandName))
+		fmt.Fprintf(&sb, "⚡ `/%s`\n\n", commandName)
 	}
 
 	sb.WriteString("---\n\n")
@@ -481,7 +481,7 @@ func formatToolUse(item *ContentItem, toolMeta map[string]toolMetadata, skillDes
 		if skillDesc != "" {
 			var sb strings.Builder
 			sb.WriteString("<details>\n")
-			sb.WriteString(fmt.Sprintf("<summary>🔧 %s</summary>\n\n", escapeSummary(summary)))
+			fmt.Fprintf(&sb, "<summary>🔧 %s</summary>\n\n", escapeSummary(summary))
 			sb.WriteString(skillDesc)
 			sb.WriteString("\n\n</details>\n\n")
 			return sb.String()
@@ -499,7 +499,7 @@ func formatToolUse(item *ContentItem, toolMeta map[string]toolMetadata, skillDes
 		}
 
 		sb.WriteString("<details>\n")
-		sb.WriteString(fmt.Sprintf("<summary>🔧 %s</summary>\n\n", escapeSummary(summary)))
+		fmt.Fprintf(&sb, "<summary>🔧 %s</summary>\n\n", escapeSummary(summary))
 		if len(inputJSON) > 0 {
 			sb.WriteString("```json\n")
 			sb.WriteString(string(inputJSON))
@@ -535,7 +535,7 @@ func formatToolResult(item *ContentItem, toolMeta map[string]toolMetadata) strin
 	// For subagent Task, render combined Prompt/Result with robot emoji
 	if found && meta.IsSubagent {
 		sb.WriteString("<details>\n")
-		sb.WriteString(fmt.Sprintf("<summary>%s 🤖🔧 %s</summary>\n\n", icon, escapeSummary(meta.Summary)))
+		fmt.Fprintf(&sb, "<summary>%s 🤖🔧 %s</summary>\n\n", icon, escapeSummary(meta.Summary))
 
 		// Render prompt
 		if meta.Prompt != "" {
@@ -561,7 +561,7 @@ func formatToolResult(item *ContentItem, toolMeta map[string]toolMetadata) strin
 	// For non-subagent Task, render just the result
 	if found && meta.Name == "Task" {
 		sb.WriteString("<details>\n")
-		sb.WriteString(fmt.Sprintf("<summary>%s %s</summary>\n\n", icon, escapeSummary(meta.Summary)))
+		fmt.Fprintf(&sb, "<summary>%s %s</summary>\n\n", icon, escapeSummary(meta.Summary))
 		sb.WriteString("```\n")
 		sb.WriteString(content)
 		sb.WriteString("\n```\n\n")
@@ -583,8 +583,8 @@ func formatToolResult(item *ContentItem, toolMeta map[string]toolMetadata) strin
 			openAttr = " open"
 		}
 
-		sb.WriteString(fmt.Sprintf("<details%s>\n", openAttr))
-		sb.WriteString(fmt.Sprintf("<summary>%s %s</summary>\n\n", icon, escapeSummary(summaryText)))
+		fmt.Fprintf(&sb, "<details%s>\n", openAttr)
+		fmt.Fprintf(&sb, "<summary>%s %s</summary>\n\n", icon, escapeSummary(summaryText))
 
 		// Render tool-specific input
 		sb.WriteString(formatToolInput(meta.Name, meta.Input))
@@ -739,19 +739,19 @@ func formatToolInput(name string, input any) string {
 		}
 	case "Write":
 		if path, ok := inputMap["file_path"].(string); ok {
-			sb.WriteString(fmt.Sprintf("**File:** `%s`\n\n", path))
+			fmt.Fprintf(&sb, "**File:** `%s`\n\n", path)
 		}
 	case "Edit":
 		if path, ok := inputMap["file_path"].(string); ok {
-			sb.WriteString(fmt.Sprintf("**File:** `%s`\n\n", path))
+			fmt.Fprintf(&sb, "**File:** `%s`\n\n", path)
 		}
 	case "Glob":
 		if pattern, ok := inputMap["pattern"].(string); ok {
-			sb.WriteString(fmt.Sprintf("**Pattern:** `%s`\n\n", pattern))
+			fmt.Fprintf(&sb, "**Pattern:** `%s`\n\n", pattern)
 		}
 	case "Grep":
 		if pattern, ok := inputMap["pattern"].(string); ok {
-			sb.WriteString(fmt.Sprintf("**Pattern:** `%s`\n\n", pattern))
+			fmt.Fprintf(&sb, "**Pattern:** `%s`\n\n", pattern)
 		}
 	case "TodoWrite":
 		if todos, ok := inputMap["todos"].([]any); ok {
@@ -766,7 +766,7 @@ func formatToolInput(name string, input any) string {
 					case "completed":
 						checkbox = "[x]"
 					}
-					sb.WriteString(fmt.Sprintf("- %s %s\n", checkbox, content))
+					fmt.Fprintf(&sb, "- %s %s\n", checkbox, content)
 				}
 			}
 			sb.WriteString("\n")

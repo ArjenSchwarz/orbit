@@ -47,8 +47,8 @@ func CreateTasksFile(t testing.TB, phases int) string {
 	sb.WriteString("# Test Tasks\n\n")
 	for i := range phases {
 		phaseNum := i + 1
-		sb.WriteString(fmt.Sprintf("## Phase %d: Test Phase %d\n\n", phaseNum, phaseNum))
-		sb.WriteString(fmt.Sprintf("- [ ] %d.1 Task %d.1\n", phaseNum, phaseNum))
+		fmt.Fprintf(&sb, "## Phase %d: Test Phase %d\n\n", phaseNum, phaseNum)
+		fmt.Fprintf(&sb, "- [ ] %d.1 Task %d.1\n", phaseNum, phaseNum)
 		sb.WriteString("\n")
 	}
 

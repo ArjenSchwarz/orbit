@@ -47,11 +47,11 @@ orbit --verbose --log-dir ./logs
 # Preview without executing
 orbit --dry-run
 
-# With custom commands
-orbit --command "Run /next-task --phase" --post-command "Run all tests"
+# With custom prompts
+orbit --command "Run /next-task --phase" --post-prompt "Run all tests"
 
 # Skip the post-completion review
-orbit --no-post-command
+orbit --no-post-prompt
 ```
 
 ## Options
@@ -67,11 +67,11 @@ orbit --no-post-command
 | `--centralized-log` | `true` | Enable centralized logging to `~/.orbit/logs/` |
 | `--dry-run` | `false` | Show what would be executed without running |
 | `--command` | see below | Custom prompt for agent phases |
-| `--post-command` | see below | Command to run after all tasks complete |
-| `--no-post-command` | `false` | Skip the post-completion command |
+| `--post-prompt` | see below | AI prompt to run after all tasks complete |
+| `--no-post-prompt` | `false` | Skip the post-completion prompt |
 | `--date-subdirs` | `false` | Use date-based subdirectories for logs |
 | `--no-continue-session` | `false` | Start fresh sessions instead of resuming |
-| `--version` | - | Show version and exit |
+| `--version` | - | Show version, commit, and build time |
 
 ### Agent Selection
 
@@ -94,14 +94,14 @@ orbit --no-post-command
 | `--no-auto-consolidate` | - | Disable auto-consolidation when enabled via config |
 | `--allow-dirty` | `false` | Allow consolidation on worktrees with uncommitted changes |
 
-### Default Commands
+### Default Prompts
 
 The default phase command is:
 ```
 Run /next-task --phase and when complete run /commit
 ```
 
-The default post-completion command is:
+The default post-prompt is:
 ```
 Review the implementation to verify it meets the requirements and all tests pass. If issues are found, fix them.
 ```
@@ -127,7 +127,7 @@ Example `.orbit.yaml`:
 
 ```yaml
 command: "Run /next-task --phase and when complete run /commit"
-post-command: "Run tests and verify everything works"
+post-prompt: "Run tests and verify everything works"
 date_subdirs: false      # Use flat .orbit/ directory (default)
 continue_session: true   # Resume unfinished sessions (default)
 agent: claude-code       # Default agent alias
@@ -178,10 +178,10 @@ agents:
     auto-approve: false
 ```
 
-To disable the post-completion command in config, set it to an empty string:
+To disable the post-completion prompt in config, set it to an empty string:
 
 ```yaml
-post-command: ""
+post-prompt: ""
 ```
 
 To use date-based subdirectories (legacy mode):
@@ -195,7 +195,7 @@ date_subdirs: true
 | Variable | Description |
 |----------|-------------|
 | `ORBIT_COMMAND` | Override the phase command |
-| `ORBIT_POST_COMMAND` | Override the post-completion command (empty string disables) |
+| `ORBIT_POST_PROMPT` | Override the post-completion prompt (empty string disables) |
 | `ORBIT_DATE_SUBDIRS` | Use date-based subdirectories (`true`/`false`) |
 | `ORBIT_CONTINUE_SESSION` | Enable session continuation (`true`/`false`) |
 | `ORBIT_CENTRALIZED_LOG` | Enable centralized logging to `~/.orbit/logs/` (`true`/`false`) |
@@ -204,8 +204,8 @@ date_subdirs: true
 Setting an environment variable to an empty string explicitly overrides config file values:
 
 ```bash
-# Disable post-command even if config files set one
-ORBIT_POST_COMMAND="" orbit
+# Disable post-prompt even if config files set one
+ORBIT_POST_PROMPT="" orbit
 
 # Use empty command (not recommended, but supported)
 ORBIT_COMMAND="" orbit
@@ -215,8 +215,8 @@ ORBIT_COMMAND="" orbit
 
 Configuration is resolved in this order (highest priority first):
 
-1. CLI flags (`--command`, `--post-command`, `--no-post-command`)
-2. Environment variables (`ORBIT_COMMAND`, `ORBIT_POST_COMMAND`)
+1. CLI flags (`--command`, `--post-prompt`, `--no-post-prompt`)
+2. Environment variables (`ORBIT_COMMAND`, `ORBIT_POST_PROMPT`)
 3. Project config (`.orbit.yaml` in working directory)
 4. Home config (`~/.orbit.yaml`)
 5. Built-in defaults
@@ -1073,7 +1073,7 @@ apsis --list -p /path/to/project
 | `-p, --project <path>` | Project directory (default: current directory) |
 | `-f, --format <format>` | Output format: `md`, `markdown`, `html`, `json` (default: `md`) |
 | `-F, --follow` | Follow mode: continuously monitor file for new entries (stdout only, markdown only) |
-| `-v, --version` | Show version |
+| `-v, --version` | Show version, commit, and build time |
 | `-h, --help` | Show help |
 
 ## Output Formats
