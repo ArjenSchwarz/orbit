@@ -497,6 +497,56 @@ Better error handling in the API endpoints.
 		err := c.checkEmptyImprovements(context.Background())
 		assert.NoError(t, err)
 	})
+
+	// Regression: T-710 — when the report ends exactly with the
+	// "# Improvements from Other Variants" header (no trailing content),
+	// strings.Cut returns after="" and the previous slice afterHeader[1:]
+	// panicked with "slice bounds out of range [1:0]". Expected behaviour
+	// is to return ErrNoImprovements without panicking.
+	t.Run("returns error without panicking when header is terminal section", func(t *testing.T) {
+		tmpDir := t.TempDir()
+		compDir := filepath.Join(tmpDir, "comparison-report")
+		require.NoError(t, os.MkdirAll(compDir, 0755))
+
+		// Report ending with the header itself, no trailing newline or content.
+		reportContent := `# Comparison Report
+
+## Recommendation
+Variant 1 is recommended.
+
+# Improvements from Other Variants`
+		require.NoError(t, os.WriteFile(filepath.Join(compDir, "report.md"), []byte(reportContent), 0644))
+
+		c := &Consolidator{
+			config: Config{
+				SpecDir: tmpDir,
+			},
+		}
+
+		err := c.checkEmptyImprovements(context.Background())
+		assert.ErrorIs(t, err, ErrNoImprovements)
+	})
+
+	// Regression: T-710 — guard against any short suffix after the header
+	// that could trigger out-of-range slicing. Header followed by only a
+	// newline must also return ErrNoImprovements without panicking.
+	t.Run("returns error without panicking when header is followed only by newline", func(t *testing.T) {
+		tmpDir := t.TempDir()
+		compDir := filepath.Join(tmpDir, "comparison-report")
+		require.NoError(t, os.MkdirAll(compDir, 0755))
+
+		reportContent := "# Comparison Report\n\n# Improvements from Other Variants\n"
+		require.NoError(t, os.WriteFile(filepath.Join(compDir, "report.md"), []byte(reportContent), 0644))
+
+		c := &Consolidator{
+			config: Config{
+				SpecDir: tmpDir,
+			},
+		}
+
+		err := c.checkEmptyImprovements(context.Background())
+		assert.ErrorIs(t, err, ErrNoImprovements)
+	})
 }
 
 func TestConsolidator_checkCleanState(t *testing.T) {

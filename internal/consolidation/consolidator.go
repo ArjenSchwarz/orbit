@@ -294,9 +294,17 @@ func (c *Consolidator) checkEmptyImprovements(ctx context.Context) error {
 	// Get content after the header
 	afterHeader := after
 
-	// Find the next section (# heading at start of line)
-	nextSection := strings.Index(afterHeader[1:], "\n# ")
-	if nextSection != -1 {
+	// If the report ends with the header itself, there is nothing to
+	// inspect — treat as no improvements rather than panicking on the
+	// slice below. (T-710)
+	if afterHeader == "" {
+		return ErrNoImprovements
+	}
+
+	// Find the next section (# heading at start of line). Search the full
+	// remaining content; strings.Cut already stripped the matched header,
+	// so we cannot accidentally re-match it here.
+	if nextSection := strings.Index(afterHeader, "\n# "); nextSection != -1 {
 		afterHeader = afterHeader[:nextSection+1]
 	}
 
