@@ -903,13 +903,12 @@ func TestRecoveryPartialFailure(t *testing.T) {
 	})
 }
 
-// deadlineCapturingAgent records the deadline of every Run/Resume context for
-// inspection. Used by T-679 regression tests to verify the consolidator wraps
+// deadlineCapturingAgent records whether every Run/Resume context carries a
+// deadline. Used by T-679 regression tests to verify the consolidator wraps
 // agent invocations with a deadline so they can't hang indefinitely.
 type deadlineCapturingAgent struct {
 	name        string
 	result      *agents.RunResult
-	deadlines   []time.Time
 	hasDeadline []bool
 }
 
@@ -922,8 +921,7 @@ func (a *deadlineCapturingAgent) DiscoverSessions(_ context.Context, _ string) (
 	return nil, nil
 }
 func (a *deadlineCapturingAgent) Run(ctx context.Context, _ agents.RunOptions) (*agents.RunResult, error) {
-	dl, ok := ctx.Deadline()
-	a.deadlines = append(a.deadlines, dl)
+	_, ok := ctx.Deadline()
 	a.hasDeadline = append(a.hasDeadline, ok)
 	return a.result, nil
 }
