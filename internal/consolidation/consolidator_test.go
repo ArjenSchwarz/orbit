@@ -497,6 +497,77 @@ Better error handling in the API endpoints.
 		err := c.checkEmptyImprovements(context.Background())
 		assert.NoError(t, err)
 	})
+
+	// Regression: T-710 — when the report ends exactly with the
+	// "# Improvements from Other Variants" header (no trailing content),
+	// strings.Cut returns after="" and the previous slice afterHeader[1:]
+	// panicked with "slice bounds out of range [1:0]". Expected behaviour
+	// is to return ErrNoImprovements without panicking.
+	t.Run("returns error without panicking when header is terminal section", func(t *testing.T) {
+		tmpDir := t.TempDir()
+		compDir := filepath.Join(tmpDir, "comparison-report")
+		require.NoError(t, os.MkdirAll(compDir, 0755))
+
+		// Report ending with the header itself, no trailing newline or content.
+		reportContent := `# Comparison Report
+
+## Recommendation
+Variant 1 is recommended.
+
+# Improvements from Other Variants`
+		require.NoError(t, os.WriteFile(filepath.Join(compDir, "report.md"), []byte(reportContent), 0644))
+
+		c := &Consolidator{
+			config: Config{
+				SpecDir: tmpDir,
+			},
+		}
+
+		err := c.checkEmptyImprovements(context.Background())
+		assert.ErrorIs(t, err, ErrNoImprovements)
+	})
+
+	// Header followed only by a newline yields an empty trailing section.
+	// This is not a panic path (`"\n"[1:]` is valid) but verifies the empty
+	// section is reported as ErrNoImprovements.
+	t.Run("returns error when header is followed only by newline", func(t *testing.T) {
+		tmpDir := t.TempDir()
+		compDir := filepath.Join(tmpDir, "comparison-report")
+		require.NoError(t, os.MkdirAll(compDir, 0755))
+
+		reportContent := "# Comparison Report\n\n# Improvements from Other Variants\n"
+		require.NoError(t, os.WriteFile(filepath.Join(compDir, "report.md"), []byte(reportContent), 0644))
+
+		c := &Consolidator{
+			config: Config{
+				SpecDir: tmpDir,
+			},
+		}
+
+		err := c.checkEmptyImprovements(context.Background())
+		assert.ErrorIs(t, err, ErrNoImprovements)
+	})
+
+	// Header followed immediately by another top-level heading: the
+	// "Improvements" section has no body, so we should report no
+	// improvements without inspecting the next section's content.
+	t.Run("returns error when header is immediately followed by next top-level heading", func(t *testing.T) {
+		tmpDir := t.TempDir()
+		compDir := filepath.Join(tmpDir, "comparison-report")
+		require.NoError(t, os.MkdirAll(compDir, 0755))
+
+		reportContent := "# Comparison Report\n\n# Improvements from Other Variants\n# Next Section\nirrelevant body\n"
+		require.NoError(t, os.WriteFile(filepath.Join(compDir, "report.md"), []byte(reportContent), 0644))
+
+		c := &Consolidator{
+			config: Config{
+				SpecDir: tmpDir,
+			},
+		}
+
+		err := c.checkEmptyImprovements(context.Background())
+		assert.ErrorIs(t, err, ErrNoImprovements)
+	})
 }
 
 func TestConsolidator_checkCleanState(t *testing.T) {
