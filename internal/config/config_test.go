@@ -2696,12 +2696,30 @@ func TestParsePositiveInt_AcceptsValidValue(t *testing.T) {
 	}
 }
 
+// silenceStderr redirects os.Stderr to /dev/null for the duration of the
+// test so the expected "Warning: ORBIT_…" lines from rejected env values
+// do not pollute go test output. The original stderr is restored on cleanup.
+func silenceStderr(t *testing.T) {
+	t.Helper()
+	devNull, err := os.OpenFile(os.DevNull, os.O_WRONLY, 0)
+	if err != nil {
+		t.Fatalf("opening os.DevNull: %v", err)
+	}
+	original := os.Stderr
+	os.Stderr = devNull
+	t.Cleanup(func() {
+		os.Stderr = original
+		_ = devNull.Close()
+	})
+}
+
 func TestLoad_ServePortRejectsTrailingChars(t *testing.T) {
 	tmpDir := t.TempDir()
 	homeDir := t.TempDir()
 
 	t.Setenv("HOME", homeDir)
 	t.Setenv("ORBIT_SERVE_PORT", "9000abc")
+	silenceStderr(t)
 
 	cfg := Load(tmpDir)
 
@@ -2718,6 +2736,7 @@ func TestLoad_VariantCountRejectsTrailingChars(t *testing.T) {
 
 	t.Setenv("HOME", homeDir)
 	t.Setenv("ORBIT_VARIANT_COUNT", "3oops")
+	silenceStderr(t)
 
 	cfg := Load(tmpDir)
 
@@ -2734,6 +2753,7 @@ func TestLoad_MaxParallelRejectsTrailingChars(t *testing.T) {
 
 	t.Setenv("HOME", homeDir)
 	t.Setenv("ORBIT_MAX_PARALLEL", "5junk")
+	silenceStderr(t)
 
 	cfg := Load(tmpDir)
 
