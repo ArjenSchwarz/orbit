@@ -2705,7 +2705,8 @@ func TestParsePositiveInt_AcceptsValidValue(t *testing.T) {
 //
 // This swaps the logger's writer rather than os.Stderr so it does not
 // race with anything else in the process that holds a reference to the
-// original os.Stderr.
+// original os.Stderr. The standard logger's writer is still global state,
+// so callers must not run with t.Parallel().
 func silenceLog(t *testing.T) {
 	t.Helper()
 	original := log.Writer()
