@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -597,7 +598,7 @@ func TestListAllCopilotSessionsInvalidWorkspace(t *testing.T) {
 
 	lister := newTestLister(homeDir)
 
-	sessions, _, err := lister.ListAll("")
+	sessions, warnings, err := lister.ListAll("")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -614,6 +615,21 @@ func TestListAllCopilotSessionsInvalidWorkspace(t *testing.T) {
 	}
 	if copilotSessions[0].ID != sessionID {
 		t.Errorf("session.ID = %q, want %q", copilotSessions[0].ID, sessionID)
+	}
+
+	// Verify a warning was emitted for the unparseable workspace.yaml so the
+	// listing is observable even though the session is still returned.
+	var copilotWarnings []ListWarning
+	for _, w := range warnings {
+		if w.Source == SourceCopilot {
+			copilotWarnings = append(copilotWarnings, w)
+		}
+	}
+	if len(copilotWarnings) == 0 {
+		t.Fatal("expected a ListWarning for invalid workspace.yaml, got none")
+	}
+	if !strings.Contains(copilotWarnings[0].Err.Error(), sessionID) {
+		t.Errorf("warning %q does not reference session ID %q", copilotWarnings[0].Err.Error(), sessionID)
 	}
 }
 

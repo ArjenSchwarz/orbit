@@ -115,7 +115,13 @@ func (a *Agent) DiscoverSessions(ctx context.Context, projectDir string) ([]agen
 		// caller did not request a project filter, the session is still
 		// a valid resumable session and must be returned. Only skip when
 		// we have no metadata AND a project filter is requested.
-		ws, _ := parseCopilotWorkspace(workspacePath)
+		// DiscoverSessions has no warnings channel (unlike sessions.Lister),
+		// so parse errors are emitted via debugLog rather than being
+		// completely invisible.
+		ws, parseErr := parseCopilotWorkspace(workspacePath)
+		if parseErr != nil {
+			debugLog("Failed to parse workspace.yaml for session %s: %v", entry.Name(), parseErr)
+		}
 
 		if projectDir != "" {
 			if ws == nil {

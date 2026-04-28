@@ -37,6 +37,7 @@ This was the subject of T-146 — `listClaude` previously called `BuildProjectPa
 - Returns `(nil, error)` when the file exists but cannot be read or parsed (callers may surface a warning).
 
 Callers must distinguish "missing metadata" from "invalid session". A session with valid non-empty `events.jsonl` is a valid session even when `workspace.yaml` is missing or malformed; metadata is only needed when filtering by project path. T-701 was caused by the previous `if err != nil || ws == nil { continue }` guard which conflated the two.
+
 ## Codex session structure
 
 Sessions stored in `~/.codex/sessions/YYYY/MM/DD/session-{uuid}.jsonl`.
