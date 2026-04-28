@@ -2595,11 +2595,8 @@ func TestLoad_AutoConsolidate_ProjectOverridesHome(t *testing.T) {
 	}
 }
 
-// Regression tests for T-654: parsePort and parsePositiveInt previously used
-// fmt.Sscanf("%d", ...), which accepts a numeric prefix and ignores trailing
-// characters. Values like "8080abc" or "3oops" were silently accepted as 8080
-// and 3 respectively. Strict parsing should reject any non-numeric trailing
-// or leading characters.
+// parsePort and parsePositiveInt must reject any input that is not a complete
+// unsigned base-10 integer (no whitespace, sign prefixes, or trailing chars).
 
 func TestParsePort_RejectsTrailingCharacters(t *testing.T) {
 	cases := []string{
@@ -2610,9 +2607,12 @@ func TestParsePort_RejectsTrailingCharacters(t *testing.T) {
 		"8080\n",
 		"0x1F90",
 		"8080garbage",
+		"+8080",
+		"-8080",
+		"",
 	}
 	for _, in := range cases {
-		t.Run(in, func(t *testing.T) {
+		t.Run(fmt.Sprintf("input=%q", in), func(t *testing.T) {
 			if _, err := parsePort(in); err == nil {
 				t.Errorf("parsePort(%q) should have returned an error", in)
 			}
@@ -2621,12 +2621,35 @@ func TestParsePort_RejectsTrailingCharacters(t *testing.T) {
 }
 
 func TestParsePort_AcceptsValidPort(t *testing.T) {
-	got, err := parsePort("8080")
-	if err != nil {
-		t.Fatalf("parsePort(\"8080\") returned error: %v", err)
+	cases := []struct {
+		in   string
+		want int
+	}{
+		{"1", 1},
+		{"8080", 8080},
+		{"65535", 65535},
 	}
-	if got != 8080 {
-		t.Errorf("parsePort(\"8080\") = %d, want 8080", got)
+	for _, c := range cases {
+		t.Run(c.in, func(t *testing.T) {
+			got, err := parsePort(c.in)
+			if err != nil {
+				t.Fatalf("parsePort(%q) returned error: %v", c.in, err)
+			}
+			if got != c.want {
+				t.Errorf("parsePort(%q) = %d, want %d", c.in, got, c.want)
+			}
+		})
+	}
+}
+
+func TestParsePort_RejectsOutOfRange(t *testing.T) {
+	cases := []string{"0", "65536", "100000"}
+	for _, in := range cases {
+		t.Run(in, func(t *testing.T) {
+			if _, err := parsePort(in); err == nil {
+				t.Errorf("parsePort(%q) should have returned an error", in)
+			}
+		})
 	}
 }
 
@@ -2638,9 +2661,12 @@ func TestParsePositiveInt_RejectsTrailingCharacters(t *testing.T) {
 		"3.0",
 		"3\n",
 		"3abc",
+		"+3",
+		"-3",
+		"",
 	}
 	for _, in := range cases {
-		t.Run(in, func(t *testing.T) {
+		t.Run(fmt.Sprintf("input=%q", in), func(t *testing.T) {
 			if _, err := parsePositiveInt(in); err == nil {
 				t.Errorf("parsePositiveInt(%q) should have returned an error", in)
 			}
@@ -2649,12 +2675,24 @@ func TestParsePositiveInt_RejectsTrailingCharacters(t *testing.T) {
 }
 
 func TestParsePositiveInt_AcceptsValidValue(t *testing.T) {
-	got, err := parsePositiveInt("3")
-	if err != nil {
-		t.Fatalf("parsePositiveInt(\"3\") returned error: %v", err)
+	cases := []struct {
+		in   string
+		want int
+	}{
+		{"0", 0},
+		{"3", 3},
+		{"100", 100},
 	}
-	if got != 3 {
-		t.Errorf("parsePositiveInt(\"3\") = %d, want 3", got)
+	for _, c := range cases {
+		t.Run(c.in, func(t *testing.T) {
+			got, err := parsePositiveInt(c.in)
+			if err != nil {
+				t.Fatalf("parsePositiveInt(%q) returned error: %v", c.in, err)
+			}
+			if got != c.want {
+				t.Errorf("parsePositiveInt(%q) = %d, want %d", c.in, got, c.want)
+			}
+		})
 	}
 }
 
@@ -2667,8 +2705,7 @@ func TestLoad_ServePortRejectsTrailingChars(t *testing.T) {
 
 	cfg := Load(tmpDir)
 
-	// Bug: 9000abc was previously accepted as 9000. With the fix, the value
-	// is rejected and the default is used.
+	// Malformed values are rejected; ServePort falls back to the default.
 	if cfg.ServePort != DefaultServePort {
 		t.Errorf("expected default ServePort %d for ORBIT_SERVE_PORT=%q, got %d",
 			DefaultServePort, "9000abc", cfg.ServePort)
@@ -2684,8 +2721,7 @@ func TestLoad_VariantCountRejectsTrailingChars(t *testing.T) {
 
 	cfg := Load(tmpDir)
 
-	// Bug: 3oops was previously accepted as 3. With the fix, the value is
-	// rejected and the default (0 — feature disabled) is used.
+	// Malformed values are rejected; VariantCount stays at 0 (feature disabled).
 	if cfg.VariantCount != 0 {
 		t.Errorf("expected VariantCount 0 for ORBIT_VARIANT_COUNT=%q, got %d",
 			"3oops", cfg.VariantCount)
@@ -2701,8 +2737,7 @@ func TestLoad_MaxParallelRejectsTrailingChars(t *testing.T) {
 
 	cfg := Load(tmpDir)
 
-	// Bug: 5junk was previously accepted as 5. With the fix, the value is
-	// rejected and the default (DefaultMaxParallel) is used.
+	// Malformed values are rejected; MaxParallel falls back to the default.
 	if cfg.MaxParallel != DefaultMaxParallel {
 		t.Errorf("expected MaxParallel %d for ORBIT_MAX_PARALLEL=%q, got %d",
 			DefaultMaxParallel, "5junk", cfg.MaxParallel)

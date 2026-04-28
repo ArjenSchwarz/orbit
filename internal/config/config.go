@@ -310,8 +310,9 @@ func Load(workingDir string) *Config {
 		if port, err := parsePort(envServePort); err == nil {
 			servePort = port
 			envUsed = true
+		} else {
+			fmt.Fprintf(os.Stderr, "Warning: ORBIT_SERVE_PORT=%q ignored: %v\n", envServePort, err)
 		}
-		// Invalid port values are silently ignored (use config/default)
 	}
 	if envServeBind, exists := os.LookupEnv("ORBIT_SERVE_BIND"); exists {
 		serveBind = envServeBind
@@ -330,6 +331,8 @@ func Load(workingDir string) *Config {
 		if count, err := parsePositiveInt(envVariantCount); err == nil {
 			variantCount = count
 			envUsed = true
+		} else {
+			fmt.Fprintf(os.Stderr, "Warning: ORBIT_VARIANT_COUNT=%q ignored: %v\n", envVariantCount, err)
 		}
 	}
 	if envParallel, exists := os.LookupEnv("ORBIT_PARALLEL"); exists {
@@ -340,6 +343,8 @@ func Load(workingDir string) *Config {
 		if max, err := parsePositiveInt(envMaxParallel); err == nil {
 			maxParallel = max
 			envUsed = true
+		} else {
+			fmt.Fprintf(os.Stderr, "Warning: ORBIT_MAX_PARALLEL=%q ignored: %v\n", envMaxParallel, err)
 		}
 	}
 	if envBranchPrefix, exists := os.LookupEnv("ORBIT_BRANCH_PREFIX"); exists {
@@ -410,9 +415,12 @@ func Load(workingDir string) *Config {
 }
 
 // parsePort attempts to parse a string as a valid port number.
-// The entire string must be a base-10 integer; leading/trailing whitespace,
-// sign prefixes, or any non-digit suffix are rejected (see T-654).
+// The entire string must be unsigned base-10 digits; leading/trailing
+// whitespace, sign prefixes, and any non-digit suffix are rejected.
 func parsePort(s string) (int, error) {
+	if s == "" || s[0] == '+' || s[0] == '-' {
+		return 0, fmt.Errorf("invalid port %q: must be unsigned base-10 digits", s)
+	}
 	port, err := strconv.Atoi(s)
 	if err != nil {
 		return 0, fmt.Errorf("invalid port %q: %w", s, err)
@@ -424,15 +432,15 @@ func parsePort(s string) (int, error) {
 }
 
 // parsePositiveInt attempts to parse a string as a non-negative integer.
-// The entire string must be a base-10 integer; leading/trailing whitespace,
-// sign prefixes, or any non-digit suffix are rejected (see T-654).
+// The entire string must be unsigned base-10 digits; leading/trailing
+// whitespace, sign prefixes, and any non-digit suffix are rejected.
 func parsePositiveInt(s string) (int, error) {
+	if s == "" || s[0] == '+' || s[0] == '-' {
+		return 0, fmt.Errorf("invalid integer %q: must be unsigned base-10 digits", s)
+	}
 	n, err := strconv.Atoi(s)
 	if err != nil {
 		return 0, fmt.Errorf("invalid integer %q: %w", s, err)
-	}
-	if n < 0 {
-		return 0, fmt.Errorf("value must be non-negative: %d", n)
 	}
 	return n, nil
 }
