@@ -418,6 +418,9 @@ func Load(workingDir string) *Config {
 // The entire string must be unsigned base-10 digits; leading/trailing
 // whitespace, sign prefixes, and any non-digit suffix are rejected.
 func parsePort(s string) (int, error) {
+	// strconv.Atoi accepts a leading '+' or '-' (it wraps ParseInt with base 10).
+	// Reject those explicitly so port values are required to be plain unsigned
+	// digits — do not remove without also switching to ParseUint.
 	if s == "" || s[0] == '+' || s[0] == '-' {
 		return 0, fmt.Errorf("invalid port %q: must be unsigned base-10 digits", s)
 	}
@@ -435,6 +438,9 @@ func parsePort(s string) (int, error) {
 // The entire string must be unsigned base-10 digits; leading/trailing
 // whitespace, sign prefixes, and any non-digit suffix are rejected.
 func parsePositiveInt(s string) (int, error) {
+	// strconv.Atoi accepts a leading '+' or '-' (it wraps ParseInt with base 10).
+	// Reject those explicitly so the value is required to be plain unsigned
+	// digits — do not remove without also switching to ParseUint.
 	if s == "" || s[0] == '+' || s[0] == '-' {
 		return 0, fmt.Errorf("invalid integer %q: must be unsigned base-10 digits", s)
 	}
