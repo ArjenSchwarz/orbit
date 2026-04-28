@@ -956,14 +956,20 @@ func (o *Orbit) runVariantPostCompletion(
 				result, err = agent.Run(ctx, opts)
 			}
 
+			// Reconcile the agent-returned session id even when the call
+			// failed: a retry needs StartPostCompletion to surface the most
+			// recent id, otherwise we resume into an already-dead session.
+			// Guard against empty SessionID so we don't overwrite the stored
+			// id with "" when the agent omits it.
+			if logManager != nil && result != nil && result.SessionID != "" && result.SessionID != sessionID {
+				o.debug.Log("Variant %d: post-completion session id changed: expected=%s got=%s",
+					v.ID, sessionID, result.SessionID)
+				logManager.ReconcilePostCompletionSessionID(result.SessionID)
+			}
+
+			// Only clear in-progress state on a clean success — a retryable
+			// failure must keep the entry so the next attempt can resume it.
 			if err == nil && result != nil && !result.IsError && logManager != nil {
-				// Guard against empty SessionID so we don't overwrite the
-				// stored id with "" when the agent omits it on success.
-				if result.SessionID != "" && result.SessionID != sessionID {
-					o.debug.Log("Variant %d: post-completion session id changed: expected=%s got=%s",
-						v.ID, sessionID, result.SessionID)
-					logManager.ReconcilePostCompletionSessionID(result.SessionID)
-				}
 				if completeErr := logManager.CompletePostCompletion(); completeErr != nil {
 					o.debug.Log("Variant %d: failed to complete post-completion in log manager: %v", v.ID, completeErr)
 				}

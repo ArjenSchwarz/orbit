@@ -2399,3 +2399,85 @@ func TestVariantPostCompletion_FallsBackToFreshSessionOnInvalid(t *testing.T) {
 		t.Errorf("expected post_completion to be cleared after success, still set: %+v", pc)
 	}
 }
+
+// TestVariantPostCompletion_ReconcilesSessionIDOnRetryableError verifies that
+// when the agent returns a retryable error with a session id different from
+// the one we asked for, runVariantPostCompletion still calls
+// ReconcilePostCompletionSessionID. Without that, the next retry would resume
+// the original (likely dead) session id rather than the one the agent
+// actually ended up using.
+func TestVariantPostCompletion_ReconcilesSessionIDOnRetryableError(t *testing.T) {
+	// Force the claude-code classifier so a retryable error is classified as
+	// ErrorClassRetryable (the default classifier marks everything fatal).
+	_ = agents.GetClassifier("claude-code")
+
+	clock := testutil.NewFakeClock(time.Now())
+
+	tmpDir := t.TempDir()
+	logManager, err := logs.NewManagerWithOptions(tmpDir, "variant-1", tmpDir, logs.ManagerOptions{UseSubdirs: false})
+	if err != nil {
+		t.Fatalf("NewManagerWithOptions: %v", err)
+	}
+
+	// First call: retryable error but result reports a different agent session
+	// id (the reconcile path should pick this up). Second call: success on
+	// the reconciled id. Custom is used so we can attach a SessionID to the
+	// retryable error result, which the canned RetryableError builder omits.
+	const reconciledID = "agent-reported-id"
+	scenario := testutil.NewScenario().
+		Custom(func(_ *testutil.AgentCall) *testutil.CallResponse {
+			return &testutil.CallResponse{
+				Result: &agents.RunResult{
+					SessionID: reconciledID,
+					ExitCode:  1,
+					IsError:   true,
+					Stderr:    "connection timeout",
+					Errors:    []string{"connection timeout"},
+				},
+				ErrorClass: agents.ErrorClassRetryable,
+			}
+		}).
+		Success(reconciledID, 0.01).
+		Build()
+
+	agent := testutil.NewTestAgent(t, "claude-code", scenario, testutil.WithClock(clock))
+	t.Cleanup(func() { agent.AssertAllConsumed(t) })
+
+	o := &Orbit{
+		config: Config{
+			PostPrompt:      "review implementation",
+			ContinueSession: true,
+			Clock:           clock,
+		},
+		debug: debug.New(false, ""),
+	}
+
+	v := &variants.Variant{
+		ID:           1,
+		WorktreePath: tmpDir,
+	}
+
+	result, runErr := o.runVariantPostCompletion(t.Context(), v, agent, logManager, 0)
+	if runErr != nil {
+		t.Fatalf("runVariantPostCompletion failed: %v", runErr)
+	}
+	if result == nil {
+		t.Fatal("expected non-nil result")
+	}
+
+	calls := agent.Recorder().Calls()
+	if len(calls) != 2 {
+		t.Fatalf("expected 2 agent calls, got %d", len(calls))
+	}
+
+	// On the second attempt, StartPostCompletion must have surfaced the
+	// reconciled id so Resume targets the right session — proving reconcile
+	// happened despite the first call returning IsError=true.
+	if calls[1].Method != "Resume" {
+		t.Errorf("call 1: expected Resume after retry, got %q", calls[1].Method)
+	}
+	if calls[1].SessionID != reconciledID {
+		t.Errorf("call 1: expected reconciled session id %q, got %q",
+			reconciledID, calls[1].SessionID)
+	}
+}
