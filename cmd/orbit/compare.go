@@ -5,8 +5,10 @@ import (
 	"flag"
 	"fmt"
 	"os"
+	"os/signal"
 	"path/filepath"
 	"strings"
+	"syscall"
 	"time"
 
 	"github.com/arjenschwarz/orbit/internal/agents"
@@ -20,7 +22,20 @@ import (
 
 // compareCommand executes the orbit compare subcommand.
 // It regenerates the comparison report for existing variant worktrees.
+//
+// The function installs a SIGINT/SIGTERM-aware context so a Ctrl+C while
+// gathering diffs or running the comparison agent stops the work promptly
+// instead of blocking on long-running git or agent calls.
 func compareCommand(args []string) error {
+	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer cancel()
+	return runCompare(ctx, args)
+}
+
+// runCompare implements the orbit compare subcommand using the provided context.
+// Extracted from compareCommand so tests can drive it with a controlled context
+// (e.g., to verify cancellation is honored before any git or agent work runs).
+func runCompare(ctx context.Context, args []string) error {
 	fs := flag.NewFlagSet("compare", flag.ExitOnError)
 
 	compareCmd := fs.String("compare-command", "", "Custom comparison command (not yet supported)")
@@ -110,8 +125,14 @@ func compareCommand(args []string) error {
 
 	fmt.Printf("Comparing %d variants for spec: %s\n\n", len(completedVariants), specName)
 
-	// Collect all variant data (diffs + summaries)
-	ctx := context.Background()
+	// Honor cancellation before doing any work.
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+
+	// Collect all variant data (diffs + summaries) using the cancellable context
+	// so a SIGINT during git diff collection stops promptly instead of blocking
+	// until completion (T-683).
 	fmt.Println("\n  Gathering variant data...")
 	diffGatherer := comparison.NewDiffGatherer(git)
 	variantData, err := diffGatherer.GatherAll(ctx, metadata.BaseCommit, completedVariants)
