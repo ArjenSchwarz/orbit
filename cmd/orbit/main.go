@@ -2,6 +2,7 @@
 package main
 
 import (
+	"flag"
 	"fmt"
 	"log"
 	"os"
@@ -110,10 +111,29 @@ func isKnownSubcommand(arg string) bool {
 	return knownSubcommands[arg]
 }
 
-// reorderArgs moves flags before positional arguments.
-// Go's flag package stops parsing at the first non-flag argument,
-// so we need to reorder to support "cmd arg --flag value" syntax.
-func reorderArgs(args []string) []string {
+// boolFlag matches the unexported flag.boolFlag interface used by the standard
+// flag package to identify boolean flags. We rely on the same duck-typed
+// IsBoolFlag method so we can correctly detect bool flags registered on a
+// FlagSet without consuming the next token as a value.
+type boolFlag interface {
+	IsBoolFlag() bool
+}
+
+// reorderArgs moves flags before positional arguments so that a FlagSet can
+// parse them. Go's flag package stops parsing at the first non-flag argument,
+// so reordering supports "cmd positional --flag value" syntax.
+//
+// When fs is non-nil, the FlagSet is consulted to determine whether a flag
+// takes a value. Boolean flags never consume the following token, so a
+// positional argument that follows "--rollback" or "--force" is preserved as
+// a positional rather than being absorbed as the flag's value. This matters
+// for subcommands like "orbit consolidate --rollback my-feature" where the
+// previous heuristic would incorrectly bind "my-feature" to "--rollback".
+//
+// When fs is nil (or the flag is unknown), reorderArgs falls back to the
+// original heuristic: consume the next token as the flag's value if it
+// doesn't start with "-" and the flag isn't already in "--flag=value" form.
+func reorderArgs(fs *flag.FlagSet, args []string) []string {
 	var flags []string
 	var positional []string
 
@@ -122,11 +142,14 @@ func reorderArgs(args []string) []string {
 		arg := args[i]
 		if strings.HasPrefix(arg, "-") {
 			flags = append(flags, arg)
-			// Check if this flag has a value (not a boolean flag)
-			// Heuristic: if next arg exists and doesn't start with -, it's a value
+			// "--flag=value" form already carries its value inline.
+			if strings.Contains(arg, "=") {
+				i++
+				continue
+			}
+			// Decide whether to consume the next token as this flag's value.
 			if i+1 < len(args) && !strings.HasPrefix(args[i+1], "-") {
-				// Check if it's a flag=value format
-				if !strings.Contains(arg, "=") {
+				if flagTakesValue(fs, arg) {
 					i++
 					flags = append(flags, args[i])
 				}
@@ -138,6 +161,29 @@ func reorderArgs(args []string) []string {
 	}
 
 	return append(flags, positional...)
+}
+
+// flagTakesValue reports whether the flag named in arg (e.g. "--rollback" or
+// "-force") expects a value to follow it. Boolean flags do not. When the
+// FlagSet is nil or the flag is unknown, the function returns true so the
+// previous, less-strict behaviour is preserved for unrecognised flags — the
+// FlagSet will surface a useful error during Parse.
+func flagTakesValue(fs *flag.FlagSet, arg string) bool {
+	if fs == nil {
+		return true
+	}
+	name := strings.TrimLeft(arg, "-")
+	if name == "" {
+		return true
+	}
+	f := fs.Lookup(name)
+	if f == nil {
+		return true
+	}
+	if bf, ok := f.Value.(boolFlag); ok && bf.IsBoolFlag() {
+		return false
+	}
+	return true
 }
 
 // printUsage displays the top-level help message.
