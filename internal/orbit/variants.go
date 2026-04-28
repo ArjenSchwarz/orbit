@@ -727,7 +727,7 @@ func (o *Orbit) runVariant(ctx context.Context, v *variants.Variant) error {
 	if o.config.PostPrompt != "" {
 		log.Printf("Variant %d: running post-prompt...", v.ID)
 		postStartTime := time.Now()
-		postResult, err := o.runVariantPostCompletion(ctx, v, variantAgent, variantAgentConfig.Timeout)
+		postResult, err := o.runVariantPostCompletion(ctx, v, variantAgent, variantLogManager, variantAgentConfig.Timeout)
 		if err != nil {
 			// Save failed post-prompt session for debugging
 			if variantLogManager != nil && postResult != nil {
@@ -892,18 +892,91 @@ func (o *Orbit) runVariantPhaseWithRetry(ctx context.Context, v *variants.Varian
 }
 
 // runVariantPostCompletion executes the post-completion command for a variant.
-func (o *Orbit) runVariantPostCompletion(ctx context.Context, v *variants.Variant, agent agents.Agent, timeout time.Duration) (*agents.RunResult, error) {
+//
+// Coordinates the variant log manager so post-prompt mirrors the single-run
+// lifecycle (StartPostCompletion → Resume/Run → ReconcilePostCompletionSessionID
+// → CompletePostCompletion). Without this coordination, variant post-prompt
+// loses phase context across resumed runs and silently bypasses the
+// post-completion lifecycle (T-715).
+func (o *Orbit) runVariantPostCompletion(
+	ctx context.Context,
+	v *variants.Variant,
+	agent agents.Agent,
+	logManager *logs.Manager,
+	timeout time.Duration,
+) (*agents.RunResult, error) {
 	return agents.RunWithRetry(ctx, agents.RetryConfig{
 		MaxRetries: maxRetries,
 		Sleep:      o.sleepFunc(),
 		Execute: func(ctx context.Context, _ int) (*agents.RunResult, error) {
+			var sessionID string
+			var isResume bool
+			if logManager != nil {
+				var err error
+				sessionID, isResume, err = logManager.StartPostCompletion(o.config.ContinueSession)
+				if err != nil {
+					log.Printf("Warning: variant %d failed to start post-completion in log manager: %v", v.ID, err)
+					o.debug.Log("Variant %d: failed to start post-completion in log manager: %v", v.ID, err)
+					sessionID = uuid.NewString()
+					isResume = false
+				} else {
+					o.debug.Log("Variant %d: post-completion session %s (resume=%v)", v.ID, sessionID, isResume)
+				}
+			} else {
+				sessionID = uuid.NewString()
+				isResume = false
+			}
+
 			opts := agents.RunOptions{
 				Prompt:    o.config.PostPrompt,
-				SessionID: uuid.NewString(),
+				SessionID: sessionID,
 				WorkDir:   v.WorktreePath,
 				Timeout:   timeout,
 			}
-			return agent.Run(ctx, opts)
+
+			var result *agents.RunResult
+			var err error
+			if isResume {
+				result, err = agent.Resume(ctx, sessionID, opts)
+				// Fall back to a fresh session when the agent reports the
+				// resumed session is gone — otherwise the retry loop would
+				// keep hitting the same dead session.
+				if err != nil && isSessionInvalidError(result) {
+					o.debug.Log("Variant %d: post-completion resume failed, starting fresh session", v.ID)
+					log.Printf("Variant %d: post-completion session resume failed, starting fresh session", v.ID)
+					sessionID = uuid.NewString()
+					if logManager != nil {
+						if setErr := logManager.SetPostCompletionSessionID(sessionID); setErr != nil {
+							o.debug.Log("Variant %d: failed to update post-completion session id: %v", v.ID, setErr)
+						}
+					}
+					opts.SessionID = sessionID
+					result, err = agent.Run(ctx, opts)
+				}
+			} else {
+				result, err = agent.Run(ctx, opts)
+			}
+
+			// Reconcile the agent-returned session id even when the call
+			// failed: a retry needs StartPostCompletion to surface the most
+			// recent id, otherwise we resume into an already-dead session.
+			// Guard against empty SessionID so we don't overwrite the stored
+			// id with "" when the agent omits it.
+			if logManager != nil && result != nil && result.SessionID != "" && result.SessionID != sessionID {
+				o.debug.Log("Variant %d: post-completion session id changed: expected=%s got=%s",
+					v.ID, sessionID, result.SessionID)
+				logManager.ReconcilePostCompletionSessionID(result.SessionID)
+			}
+
+			// Only clear in-progress state on a clean success — a retryable
+			// failure must keep the entry so the next attempt can resume it.
+			if err == nil && result != nil && !result.IsError && logManager != nil {
+				if completeErr := logManager.CompletePostCompletion(); completeErr != nil {
+					o.debug.Log("Variant %d: failed to complete post-completion in log manager: %v", v.ID, completeErr)
+				}
+			}
+
+			return result, err
 		},
 		Classify: classifyFromAgent(agent.Name()),
 		OnRetry: func(attempt, maxRetries int, classified *agents.ClassifiedError, backoff time.Duration) {
