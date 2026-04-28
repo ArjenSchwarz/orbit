@@ -11,7 +11,7 @@ import (
 // DefaultTimeout is the maximum duration for a single consolidation agent
 // invocation. This bounds both the consolidation prompt (runWithRetry) and the
 // post-prompt (runPostPrompt) so a stalled API connection or hung session can
-// never run indefinitely. Mirrors comparison.DefaultTimeout (T-679).
+// never run indefinitely.
 const DefaultTimeout = 30 * time.Minute
 
 // Config holds consolidation configuration.
