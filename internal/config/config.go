@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"strconv"
 	"strings"
 	"time"
 
@@ -409,11 +410,12 @@ func Load(workingDir string) *Config {
 }
 
 // parsePort attempts to parse a string as a valid port number.
+// The entire string must be a base-10 integer; leading/trailing whitespace,
+// sign prefixes, or any non-digit suffix are rejected (see T-654).
 func parsePort(s string) (int, error) {
-	var port int
-	_, err := fmt.Sscanf(s, "%d", &port)
+	port, err := strconv.Atoi(s)
 	if err != nil {
-		return 0, err
+		return 0, fmt.Errorf("invalid port %q: %w", s, err)
 	}
 	if port < 1 || port > 65535 {
 		return 0, fmt.Errorf("port out of range: %d", port)
@@ -421,12 +423,13 @@ func parsePort(s string) (int, error) {
 	return port, nil
 }
 
-// parsePositiveInt attempts to parse a string as a positive integer.
+// parsePositiveInt attempts to parse a string as a non-negative integer.
+// The entire string must be a base-10 integer; leading/trailing whitespace,
+// sign prefixes, or any non-digit suffix are rejected (see T-654).
 func parsePositiveInt(s string) (int, error) {
-	var n int
-	_, err := fmt.Sscanf(s, "%d", &n)
+	n, err := strconv.Atoi(s)
 	if err != nil {
-		return 0, err
+		return 0, fmt.Errorf("invalid integer %q: %w", s, err)
 	}
 	if n < 0 {
 		return 0, fmt.Errorf("value must be non-negative: %d", n)

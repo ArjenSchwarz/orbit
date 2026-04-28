@@ -2594,3 +2594,117 @@ func TestLoad_AutoConsolidate_ProjectOverridesHome(t *testing.T) {
 		t.Error("expected project config to override home config")
 	}
 }
+
+// Regression tests for T-654: parsePort and parsePositiveInt previously used
+// fmt.Sscanf("%d", ...), which accepts a numeric prefix and ignores trailing
+// characters. Values like "8080abc" or "3oops" were silently accepted as 8080
+// and 3 respectively. Strict parsing should reject any non-numeric trailing
+// or leading characters.
+
+func TestParsePort_RejectsTrailingCharacters(t *testing.T) {
+	cases := []string{
+		"8080abc",
+		"8080 ",
+		" 8080",
+		"8080.0",
+		"8080\n",
+		"0x1F90",
+		"8080garbage",
+	}
+	for _, in := range cases {
+		t.Run(in, func(t *testing.T) {
+			if _, err := parsePort(in); err == nil {
+				t.Errorf("parsePort(%q) should have returned an error", in)
+			}
+		})
+	}
+}
+
+func TestParsePort_AcceptsValidPort(t *testing.T) {
+	got, err := parsePort("8080")
+	if err != nil {
+		t.Fatalf("parsePort(\"8080\") returned error: %v", err)
+	}
+	if got != 8080 {
+		t.Errorf("parsePort(\"8080\") = %d, want 8080", got)
+	}
+}
+
+func TestParsePositiveInt_RejectsTrailingCharacters(t *testing.T) {
+	cases := []string{
+		"3oops",
+		"3 ",
+		" 3",
+		"3.0",
+		"3\n",
+		"3abc",
+	}
+	for _, in := range cases {
+		t.Run(in, func(t *testing.T) {
+			if _, err := parsePositiveInt(in); err == nil {
+				t.Errorf("parsePositiveInt(%q) should have returned an error", in)
+			}
+		})
+	}
+}
+
+func TestParsePositiveInt_AcceptsValidValue(t *testing.T) {
+	got, err := parsePositiveInt("3")
+	if err != nil {
+		t.Fatalf("parsePositiveInt(\"3\") returned error: %v", err)
+	}
+	if got != 3 {
+		t.Errorf("parsePositiveInt(\"3\") = %d, want 3", got)
+	}
+}
+
+func TestLoad_ServePortRejectsTrailingChars(t *testing.T) {
+	tmpDir := t.TempDir()
+	homeDir := t.TempDir()
+
+	t.Setenv("HOME", homeDir)
+	t.Setenv("ORBIT_SERVE_PORT", "9000abc")
+
+	cfg := Load(tmpDir)
+
+	// Bug: 9000abc was previously accepted as 9000. With the fix, the value
+	// is rejected and the default is used.
+	if cfg.ServePort != DefaultServePort {
+		t.Errorf("expected default ServePort %d for ORBIT_SERVE_PORT=%q, got %d",
+			DefaultServePort, "9000abc", cfg.ServePort)
+	}
+}
+
+func TestLoad_VariantCountRejectsTrailingChars(t *testing.T) {
+	tmpDir := t.TempDir()
+	homeDir := t.TempDir()
+
+	t.Setenv("HOME", homeDir)
+	t.Setenv("ORBIT_VARIANT_COUNT", "3oops")
+
+	cfg := Load(tmpDir)
+
+	// Bug: 3oops was previously accepted as 3. With the fix, the value is
+	// rejected and the default (0 — feature disabled) is used.
+	if cfg.VariantCount != 0 {
+		t.Errorf("expected VariantCount 0 for ORBIT_VARIANT_COUNT=%q, got %d",
+			"3oops", cfg.VariantCount)
+	}
+}
+
+func TestLoad_MaxParallelRejectsTrailingChars(t *testing.T) {
+	tmpDir := t.TempDir()
+	homeDir := t.TempDir()
+
+	t.Setenv("HOME", homeDir)
+	t.Setenv("ORBIT_MAX_PARALLEL", "5junk")
+
+	cfg := Load(tmpDir)
+
+	// Bug: 5junk was previously accepted as 5. With the fix, the value is
+	// rejected and the default (DefaultMaxParallel) is used.
+	if cfg.MaxParallel != DefaultMaxParallel {
+		t.Errorf("expected MaxParallel %d for ORBIT_MAX_PARALLEL=%q, got %d",
+			DefaultMaxParallel, "5junk", cfg.MaxParallel)
+	}
+}
