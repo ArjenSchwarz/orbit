@@ -156,6 +156,10 @@ func compareCommand(args []string) error {
 		agentCfg := agents.AgentConfig{
 			AutoApprove: true, // Comparison runs non-interactively
 		}
+		// appConfig is always non-nil in this branch (loaded above when fromFile
+		// is empty). The nil check is defensive in case the loading logic above
+		// changes; remove it together with the surrounding guard if appConfig
+		// is hoisted out of the conditional.
 		if appConfig != nil {
 			if cfg := appConfig.GetAgentConfig("claude-code"); cfg.Timeout > 0 {
 				agentCfg.Timeout = cfg.Timeout
