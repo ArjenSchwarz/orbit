@@ -903,6 +903,193 @@ func TestRecoveryPartialFailure(t *testing.T) {
 	})
 }
 
+// deadlineCapturingAgent records the deadline of every Run/Resume context for
+// inspection. Used by T-679 regression tests to verify the consolidator wraps
+// agent invocations with a deadline so they can't hang indefinitely.
+type deadlineCapturingAgent struct {
+	name        string
+	result      *agents.RunResult
+	deadlines   []time.Time
+	hasDeadline []bool
+}
+
+func (a *deadlineCapturingAgent) Name() string              { return a.name }
+func (a *deadlineCapturingAgent) CLICommand() string        { return "mock" }
+func (a *deadlineCapturingAgent) IsInstalled() bool         { return true }
+func (a *deadlineCapturingAgent) Version() (string, error)  { return "1.0.0", nil }
+func (a *deadlineCapturingAgent) DefaultSessionDir() string { return "/tmp" }
+func (a *deadlineCapturingAgent) DiscoverSessions(_ context.Context, _ string) ([]agents.SessionInfo, error) {
+	return nil, nil
+}
+func (a *deadlineCapturingAgent) Run(ctx context.Context, _ agents.RunOptions) (*agents.RunResult, error) {
+	dl, ok := ctx.Deadline()
+	a.deadlines = append(a.deadlines, dl)
+	a.hasDeadline = append(a.hasDeadline, ok)
+	return a.result, nil
+}
+func (a *deadlineCapturingAgent) Resume(ctx context.Context, _ string, opts agents.RunOptions) (*agents.RunResult, error) {
+	return a.Run(ctx, opts)
+}
+
+// hangingAgent blocks until its context is canceled. Used to verify the
+// consolidator's per-invocation timeout actually terminates a stuck agent.
+type hangingAgent struct {
+	name string
+}
+
+func (a *hangingAgent) Name() string              { return a.name }
+func (a *hangingAgent) CLICommand() string        { return "mock" }
+func (a *hangingAgent) IsInstalled() bool         { return true }
+func (a *hangingAgent) Version() (string, error)  { return "1.0.0", nil }
+func (a *hangingAgent) DefaultSessionDir() string { return "/tmp" }
+func (a *hangingAgent) DiscoverSessions(_ context.Context, _ string) ([]agents.SessionInfo, error) {
+	return nil, nil
+}
+func (a *hangingAgent) Run(ctx context.Context, _ agents.RunOptions) (*agents.RunResult, error) {
+	<-ctx.Done()
+	return nil, ctx.Err()
+}
+func (a *hangingAgent) Resume(ctx context.Context, _ string, opts agents.RunOptions) (*agents.RunResult, error) {
+	return a.Run(ctx, opts)
+}
+
+// TestRunWithRetry_AppliesTimeout verifies that runWithRetry bounds each agent
+// invocation with a deadline so a hung session can't run forever.
+// Regression test for T-679: consolidation paths previously called the agent
+// without setting RunOptions.Timeout and without an explicit
+// comparison-style deadline.
+func TestRunWithRetry_AppliesTimeout(t *testing.T) {
+	t.Parallel()
+
+	t.Run("agent context has a deadline", func(t *testing.T) {
+		t.Parallel()
+
+		tmpDir := t.TempDir()
+		agent := &deadlineCapturingAgent{
+			name: "test-agent",
+			result: &agents.RunResult{
+				SessionID: "test-session",
+				ExitCode:  0,
+				Output:    "ok",
+			},
+		}
+
+		mgr := createTestManagerWithVariants(t, 2, tmpDir)
+		cfg := Config{
+			SpecName:  "test-spec",
+			SpecDir:   tmpDir,
+			VariantID: 1,
+			Agent:     agent,
+		}
+
+		consolidator, err := NewConsolidator(cfg, mgr)
+		require.NoError(t, err)
+
+		_, err = consolidator.runWithRetry(context.Background(), "test prompt")
+		require.NoError(t, err)
+		require.Len(t, agent.hasDeadline, 1, "agent should have been called once")
+		assert.True(t, agent.hasDeadline[0], "context passed to agent must have a deadline")
+	})
+
+	t.Run("hung agent is terminated by timeout", func(t *testing.T) {
+		t.Parallel()
+
+		tmpDir := t.TempDir()
+		agent := &hangingAgent{name: "test-agent"}
+
+		mgr := createTestManagerWithVariants(t, 2, tmpDir)
+		cfg := Config{
+			SpecName:  "test-spec",
+			SpecDir:   tmpDir,
+			VariantID: 1,
+			Agent:     agent,
+			Timeout:   50 * time.Millisecond, // short timeout for test speed
+		}
+
+		consolidator, err := NewConsolidator(cfg, mgr)
+		require.NoError(t, err)
+
+		start := time.Now()
+		// Use a generous parent deadline so the test fails clearly if the
+		// per-invocation timeout doesn't fire.
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		_, err = consolidator.runWithRetry(ctx, "test prompt")
+		elapsed := time.Since(start)
+
+		require.Error(t, err, "runWithRetry must return an error when agent hangs")
+		assert.Less(t, elapsed, 4*time.Second, "runWithRetry should terminate within timeout, not run until parent cancels")
+	})
+}
+
+// TestRunPostPrompt_AppliesTimeout verifies that runPostPrompt bounds the agent
+// invocation with a deadline so a hung session can't run forever.
+// Regression test for T-679.
+func TestRunPostPrompt_AppliesTimeout(t *testing.T) {
+	t.Parallel()
+
+	t.Run("agent context has a deadline", func(t *testing.T) {
+		t.Parallel()
+
+		tmpDir := t.TempDir()
+		agent := &deadlineCapturingAgent{
+			name: "test-agent",
+			result: &agents.RunResult{
+				SessionID: "test-session",
+				ExitCode:  0,
+				Output:    "ok",
+			},
+		}
+
+		mgr := createTestManagerWithVariants(t, 2, tmpDir)
+		cfg := Config{
+			SpecName:   "test-spec",
+			SpecDir:    tmpDir,
+			VariantID:  1,
+			Agent:      agent,
+			PostPrompt: "review the work",
+		}
+
+		consolidator, err := NewConsolidator(cfg, mgr)
+		require.NoError(t, err)
+
+		ok, err := consolidator.runPostPrompt(context.Background())
+		require.NoError(t, err)
+		assert.True(t, ok)
+		require.Len(t, agent.hasDeadline, 1, "agent should have been called once")
+		assert.True(t, agent.hasDeadline[0], "context passed to agent must have a deadline")
+	})
+
+	t.Run("hung agent is terminated by timeout", func(t *testing.T) {
+		t.Parallel()
+
+		tmpDir := t.TempDir()
+		agent := &hangingAgent{name: "test-agent"}
+
+		mgr := createTestManagerWithVariants(t, 2, tmpDir)
+		cfg := Config{
+			SpecName:   "test-spec",
+			SpecDir:    tmpDir,
+			VariantID:  1,
+			Agent:      agent,
+			PostPrompt: "review the work",
+			Timeout:    50 * time.Millisecond,
+		}
+
+		consolidator, err := NewConsolidator(cfg, mgr)
+		require.NoError(t, err)
+
+		start := time.Now()
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		_, err = consolidator.runPostPrompt(ctx)
+		elapsed := time.Since(start)
+
+		require.Error(t, err, "runPostPrompt must return an error when agent hangs")
+		assert.Less(t, elapsed, 4*time.Second, "runPostPrompt should terminate within timeout, not run until parent cancels")
+	})
+}
+
 // TestRunWithRetry_IsErrorTreatedAsFailure verifies that runWithRetry treats
 // agent-level IsError=true as a failure even when err==nil and result.Error==nil.
 // Regression test for T-609.

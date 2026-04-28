@@ -488,9 +488,21 @@ func (c *Consolidator) Run(ctx context.Context) (*ConsolidationResult, error) {
 	return consolidationResult, nil
 }
 
+// agentTimeout returns the per-invocation timeout for agent calls. A zero
+// Config.Timeout falls back to DefaultTimeout so callers always get a bound
+// even when the field is left unset. Regression: T-679.
+func (c *Consolidator) agentTimeout() time.Duration {
+	if c.config.Timeout > 0 {
+		return c.config.Timeout
+	}
+	return DefaultTimeout
+}
+
 // runWithRetry runs the agent with exponential backoff for retryable errors.
 // Uses the shared retry executor with proper error classification via the
 // agent's registered classifier (instead of type-asserting the agent).
+// Each agent invocation is bounded by agentTimeout() so a hung session
+// cannot run indefinitely (T-679).
 // Implements: [5.8], [5.9]
 func (c *Consolidator) runWithRetry(ctx context.Context, prompt string) (*agents.RunResult, error) {
 	const maxRetries = 5
@@ -501,12 +513,14 @@ func (c *Consolidator) runWithRetry(ctx context.Context, prompt string) (*agents
 		MaxRetries: maxRetries,
 		Sleep:      time.Sleep,
 		Execute: func(ctx context.Context, _ int) (*agents.RunResult, error) {
+			runCtx, cancel := context.WithTimeout(ctx, c.agentTimeout())
+			defer cancel()
 			opts := agents.RunOptions{
 				Prompt:    prompt,
 				SessionID: sessionID,
 				WorkDir:   worktreePath,
 			}
-			return c.config.Agent.Run(ctx, opts)
+			return c.config.Agent.Run(runCtx, opts)
 		},
 		Classify: func(result *agents.RunResult, err error) *agents.ClassifiedError {
 			// Success: no error and agent did not report an error condition.
@@ -667,6 +681,8 @@ func (c *Consolidator) runTests(ctx context.Context) (bool, error) {
 }
 
 // runPostPrompt executes the configured post-prompt through the agent.
+// The agent invocation is bounded by agentTimeout() so a hung post-prompt
+// session cannot run indefinitely (T-679).
 func (c *Consolidator) runPostPrompt(ctx context.Context) (bool, error) {
 	if c.config.PostPrompt == "" {
 		return true, nil
@@ -674,13 +690,16 @@ func (c *Consolidator) runPostPrompt(ctx context.Context) (bool, error) {
 
 	worktreePath := c.recovery.worktreePath
 
+	runCtx, cancel := context.WithTimeout(ctx, c.agentTimeout())
+	defer cancel()
+
 	opts := agents.RunOptions{
 		Prompt:    c.config.PostPrompt,
 		SessionID: uuid.NewString(),
 		WorkDir:   worktreePath,
 	}
 
-	result, err := c.config.Agent.Run(ctx, opts)
+	result, err := c.config.Agent.Run(runCtx, opts)
 	if err != nil {
 		return false, fmt.Errorf("post-prompt failed: %w", err)
 	}
