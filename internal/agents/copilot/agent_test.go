@@ -498,6 +498,127 @@ func TestDiscoverSessions_UsesCreatedAtFromWorkspace(t *testing.T) {
 	}
 }
 
+// TestDiscoverSessions_MissingWorkspaceYAML is a regression test for T-701.
+// A session with a valid non-empty events.jsonl but no workspace.yaml must be
+// returned when no project filter is supplied (projectDir == ""). Previously
+// DiscoverSessions dropped such sessions because parseCopilotWorkspace
+// returned (nil, nil) for missing files and the caller treated ws == nil as
+// "skip".
+func TestDiscoverSessions_MissingWorkspaceYAML(t *testing.T) {
+	homeDir := t.TempDir()
+
+	sessionID := "missing-workspace-session"
+	sessionDir := filepath.Join(homeDir, ".copilot", "session-state", sessionID)
+	if err := os.MkdirAll(sessionDir, 0755); err != nil {
+		t.Fatalf("failed to create session dir: %v", err)
+	}
+	eventsPath := filepath.Join(sessionDir, "events.jsonl")
+	modTime := time.Date(2025, 4, 1, 12, 0, 0, 0, time.UTC)
+	if err := os.WriteFile(eventsPath, []byte(`{"type":"event","data":"test"}`+"\n"), 0644); err != nil {
+		t.Fatalf("failed to write events file: %v", err)
+	}
+	if err := os.Chtimes(eventsPath, modTime, modTime); err != nil {
+		t.Fatalf("failed to set events mtime: %v", err)
+	}
+
+	agent := &Agent{config: agents.AgentConfig{}, cliPath: "copilot", sessionDir: filepath.Join(homeDir, ".copilot", "session-state")}
+
+	sessions, err := agent.DiscoverSessions(context.Background(), "")
+	if err != nil {
+		t.Fatalf("DiscoverSessions() error = %v", err)
+	}
+	if len(sessions) != 1 {
+		t.Fatalf("expected 1 session with missing workspace.yaml, got %d", len(sessions))
+	}
+	if sessions[0].ID != sessionID {
+		t.Errorf("session.ID = %q, want %q", sessions[0].ID, sessionID)
+	}
+	if !sessions[0].CreatedAt.Equal(modTime) {
+		t.Errorf("CreatedAt = %v, want events mtime %v", sessions[0].CreatedAt, modTime)
+	}
+}
+
+// TestDiscoverSessions_InvalidWorkspaceYAML is a regression test for T-701.
+// A session whose workspace.yaml is unparseable must still be discovered when
+// no project filter is applied.
+func TestDiscoverSessions_InvalidWorkspaceYAML(t *testing.T) {
+	homeDir := t.TempDir()
+
+	sessionID := "invalid-workspace-session"
+	sessionDir := filepath.Join(homeDir, ".copilot", "session-state", sessionID)
+	if err := os.MkdirAll(sessionDir, 0755); err != nil {
+		t.Fatalf("failed to create session dir: %v", err)
+	}
+	eventsPath := filepath.Join(sessionDir, "events.jsonl")
+	if err := os.WriteFile(eventsPath, []byte(`{"type":"event","data":"test"}`+"\n"), 0644); err != nil {
+		t.Fatalf("failed to write events file: %v", err)
+	}
+	bad := []byte("id: \"unterminated\ncwd: : :\n\t- not yaml\n")
+	if err := os.WriteFile(filepath.Join(sessionDir, "workspace.yaml"), bad, 0644); err != nil {
+		t.Fatalf("failed to write workspace file: %v", err)
+	}
+
+	agent := &Agent{config: agents.AgentConfig{}, cliPath: "copilot", sessionDir: filepath.Join(homeDir, ".copilot", "session-state")}
+
+	sessions, err := agent.DiscoverSessions(context.Background(), "")
+	if err != nil {
+		t.Fatalf("DiscoverSessions() error = %v", err)
+	}
+	if len(sessions) != 1 {
+		t.Fatalf("expected 1 session with invalid workspace.yaml, got %d", len(sessions))
+	}
+	if sessions[0].ID != sessionID {
+		t.Errorf("session.ID = %q, want %q", sessions[0].ID, sessionID)
+	}
+}
+
+// TestDiscoverSessions_MalformedWorkspaceWithFilter ensures that when a
+// project filter is supplied, sessions with missing or invalid workspace
+// metadata do not falsely match. They must be skipped, since there is no
+// metadata to compare against.
+func TestDiscoverSessions_MalformedWorkspaceWithFilter(t *testing.T) {
+	homeDir := t.TempDir()
+	projectPath := t.TempDir()
+
+	modTime := time.Date(2025, 4, 3, 9, 0, 0, 0, time.UTC)
+	// Valid workspace.yaml pointing at projectPath — should match.
+	setupCopilotSession(t, homeDir, projectPath, "valid-session", modTime)
+
+	// Missing workspace.yaml — should be skipped under filter.
+	missingDir := filepath.Join(homeDir, ".copilot", "session-state", "missing-workspace")
+	if err := os.MkdirAll(missingDir, 0755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(missingDir, "events.jsonl"), []byte(`{"type":"event"}`+"\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	// Invalid workspace.yaml — should be skipped under filter.
+	invalidDir := filepath.Join(homeDir, ".copilot", "session-state", "invalid-workspace")
+	if err := os.MkdirAll(invalidDir, 0755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(invalidDir, "events.jsonl"), []byte(`{"type":"event"}`+"\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(invalidDir, "workspace.yaml"), []byte("id: \"unterminated\ncwd: : :\n\t- not yaml\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	agent := &Agent{config: agents.AgentConfig{}, cliPath: "copilot", sessionDir: filepath.Join(homeDir, ".copilot", "session-state")}
+
+	sessions, err := agent.DiscoverSessions(context.Background(), projectPath)
+	if err != nil {
+		t.Fatalf("DiscoverSessions() error = %v", err)
+	}
+	if len(sessions) != 1 {
+		t.Fatalf("expected 1 session matching project filter, got %d", len(sessions))
+	}
+	if sessions[0].ID != "valid-session" {
+		t.Errorf("session.ID = %q, want %q", sessions[0].ID, "valid-session")
+	}
+}
+
 func TestAgent_ArgOrder(t *testing.T) {
 	agent := New(agents.AgentConfig{
 		AutoApprove: true,

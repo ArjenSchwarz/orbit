@@ -26,9 +26,18 @@ Bug T-290 was caused by `listCopilot` using plain string equality instead of `no
 When `projectPath` is empty (no filtering), each agent source must return ALL sessions:
 - **Claude**: `listClaude` iterates all subdirectories under `~/.claude/projects/` and collects sessions from each. Uses `listClaudeAllProjects()` internally.
 - **Codex**: `listCodex` skips the `cwd` filter check when `projectPath` is empty.
-- **Copilot**: `listCopilot` uses `matchPath != "" && matchPath != projectPath` — when `projectPath` is empty and a session has a known cwd/git_root, `matchPath != ""` is true so the session is skipped. Only sessions without a known workspace path are returned. This is a known limitation (separate from T-146).
+- **Copilot**: `listCopilot` skips the `matchPath` comparison entirely when `projectPath` is empty (T-374). It also includes sessions whose `workspace.yaml` is missing or unparseable when no filter is set (T-701) — workspace metadata is only required for filtering, not for listing. Parse errors are surfaced as `ListWarning` entries.
 
 This was the subject of T-146 — `listClaude` previously called `BuildProjectPath("")` which returned `""`, causing it to look in the root `~/.claude/projects/` directory (which contains subdirectories, not `.jsonl` files).
+
+## Copilot workspace.yaml handling
+
+`parseCopilotWorkspace` in both `internal/sessions/lister.go` and `internal/agents/copilot/agent.go`:
+- Returns `(nil, nil)` when `workspace.yaml` does not exist (treat as missing metadata).
+- Returns `(nil, error)` when the file exists but cannot be read or parsed (callers may surface a warning).
+
+Callers must distinguish "missing metadata" from "invalid session". A session with valid non-empty `events.jsonl` is a valid session even when `workspace.yaml` is missing or malformed; metadata is only needed when filtering by project path. T-701 was caused by the previous `if err != nil || ws == nil { continue }` guard which conflated the two.
+
 ## Codex session structure
 
 Sessions stored in `~/.codex/sessions/YYYY/MM/DD/session-{uuid}.jsonl`.

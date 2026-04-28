@@ -4,6 +4,7 @@ package copilot
 import (
 	"bytes"
 	"context"
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -109,22 +110,34 @@ func (a *Agent) DiscoverSessions(ctx context.Context, projectDir string) ([]agen
 			continue
 		}
 
-		// Parse workspace.yaml to filter by project directory.
-		ws, err := parseCopilotWorkspace(workspacePath)
-		if err != nil || ws == nil {
-			continue
+		// Parse workspace.yaml for filtering and timestamp metadata.
+		// A missing or unparseable workspace.yaml is not fatal: when the
+		// caller did not request a project filter, the session is still
+		// a valid resumable session and must be returned. Only skip when
+		// we have no metadata AND a project filter is requested.
+		// DiscoverSessions has no warnings channel (unlike sessions.Lister),
+		// so parse errors are emitted via debugLog rather than being
+		// completely invisible.
+		ws, parseErr := parseCopilotWorkspace(workspacePath)
+		if parseErr != nil {
+			debugLog("Failed to parse workspace.yaml for session %s: %v", entry.Name(), parseErr)
 		}
 
-		matchPath := ws.GitRoot
-		if matchPath == "" {
-			matchPath = ws.Cwd
-		}
-		if projectDir != "" && matchPath != "" && normalizePath(matchPath) != normalizePath(projectDir) {
-			continue
+		if projectDir != "" {
+			if ws == nil {
+				continue
+			}
+			matchPath := ws.GitRoot
+			if matchPath == "" {
+				matchPath = ws.Cwd
+			}
+			if matchPath != "" && normalizePath(matchPath) != normalizePath(projectDir) {
+				continue
+			}
 		}
 
 		var createdAt time.Time
-		if ws.CreatedAt != nil {
+		if ws != nil && ws.CreatedAt != nil {
 			createdAt = *ws.CreatedAt
 		} else {
 			createdAt = eventsInfo.ModTime()
@@ -151,6 +164,9 @@ type copilotWorkspace struct {
 }
 
 // parseCopilotWorkspace parses a Copilot workspace.yaml file.
+// Returns (nil, nil) when the file does not exist. Returns a non-nil error
+// when the file exists but cannot be read or parsed; callers may choose to
+// surface or ignore that error.
 func parseCopilotWorkspace(path string) (*copilotWorkspace, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {
@@ -162,7 +178,7 @@ func parseCopilotWorkspace(path string) (*copilotWorkspace, error) {
 
 	var ws copilotWorkspace
 	if err := yaml.Unmarshal(data, &ws); err != nil {
-		return nil, nil
+		return nil, fmt.Errorf("parse workspace.yaml: %w", err)
 	}
 
 	return &ws, nil

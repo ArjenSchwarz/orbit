@@ -43,19 +43,24 @@ func NewLister() (*Lister, error) {
 // sorted by creation time (oldest first).
 // Warnings are returned for agent sources that failed to list.
 func (l *Lister) ListAll(projectPath string) ([]SessionInfo, []ListWarning, error) {
+	var warnings []ListWarning
+
 	collectors := []struct {
 		source string
 		fn     func() ([]SessionInfo, error)
 	}{
 		{SourceClaude, func() ([]SessionInfo, error) { return l.listClaude(projectPath) }},
-		{SourceCopilot, func() ([]SessionInfo, error) { return l.listCopilot(projectPath) }},
+		{SourceCopilot, func() ([]SessionInfo, error) {
+			sessions, parseWarnings, err := l.listCopilot(projectPath)
+			warnings = append(warnings, parseWarnings...)
+			return sessions, err
+		}},
 		{SourceCodex, func() ([]SessionInfo, error) { return l.listCodex(projectPath) }},
 		{SourceKiroCLI, func() ([]SessionInfo, error) { return l.listKiro(projectPath) }},
 		{SourceKiroIDE, func() ([]SessionInfo, error) { return l.listKiroIDE(projectPath) }},
 	}
 
 	var allSessions []SessionInfo
-	var warnings []ListWarning
 
 	for _, c := range collectors {
 		sessions, err := c.fn()
@@ -229,20 +234,25 @@ func (l *Lister) listCodex(projectPath string) ([]SessionInfo, error) {
 	return sessions, nil
 }
 
-// listCopilot returns all Copilot sessions for a project directory.
-func (l *Lister) listCopilot(projectPath string) ([]SessionInfo, error) {
+// listCopilot returns all Copilot sessions for a project directory. When
+// projectPath is empty, sessions with a missing or unparseable workspace.yaml
+// are still returned, since workspace metadata is only needed for filtering.
+// YAML parse failures are surfaced as warnings rather than silently dropping
+// the session.
+func (l *Lister) listCopilot(projectPath string) ([]SessionInfo, []ListWarning, error) {
 	sessionDir := filepath.Join(l.homeDir, ".copilot", "session-state")
 
 	if _, err := os.Stat(sessionDir); os.IsNotExist(err) {
-		return nil, nil
+		return nil, nil, nil
 	}
 
 	entries, err := os.ReadDir(sessionDir)
 	if err != nil {
-		return nil, fmt.Errorf("failed to read session directory: %w", err)
+		return nil, nil, fmt.Errorf("failed to read session directory: %w", err)
 	}
 
 	var sessions []SessionInfo
+	var warnings []ListWarning
 	for _, entry := range entries {
 		if !entry.IsDir() {
 			continue
@@ -262,11 +272,21 @@ func (l *Lister) listCopilot(projectPath string) ([]SessionInfo, error) {
 		}
 
 		ws, err := parseCopilotWorkspace(workspacePath)
-		if err != nil || ws == nil {
-			continue
+		if err != nil {
+			warnings = append(warnings, ListWarning{
+				Source: SourceCopilot,
+				Err:    fmt.Errorf("session %s: %w", entry.Name(), err),
+			})
+			ws = nil
 		}
 
+		// Workspace metadata is only required when filtering by project.
+		// Without metadata we cannot match a project filter, so skip in
+		// that case; otherwise include the session.
 		if projectPath != "" {
+			if ws == nil {
+				continue
+			}
 			matchPath := ws.GitRoot
 			if matchPath == "" {
 				matchPath = ws.Cwd
@@ -277,7 +297,7 @@ func (l *Lister) listCopilot(projectPath string) ([]SessionInfo, error) {
 		}
 
 		var createdAt time.Time
-		if ws.CreatedAt != nil {
+		if ws != nil && ws.CreatedAt != nil {
 			createdAt = *ws.CreatedAt
 		} else {
 			createdAt = eventsInfo.ModTime()
@@ -291,7 +311,7 @@ func (l *Lister) listCopilot(projectPath string) ([]SessionInfo, error) {
 		})
 	}
 
-	return sessions, nil
+	return sessions, warnings, nil
 }
 
 // listKiro returns all Kiro CLI sessions for a project directory.
@@ -455,6 +475,10 @@ type copilotWorkspace struct {
 }
 
 // parseCopilotWorkspace parses a Copilot workspace.yaml file.
+// Returns (nil, nil) when the file does not exist (callers treat the
+// session as having no workspace metadata). Returns a non-nil error when
+// the file exists but cannot be read or parsed, so callers can surface a
+// warning instead of silently dropping the session.
 func parseCopilotWorkspace(path string) (*copilotWorkspace, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {
@@ -466,7 +490,7 @@ func parseCopilotWorkspace(path string) (*copilotWorkspace, error) {
 
 	var ws copilotWorkspace
 	if err := yaml.Unmarshal(data, &ws); err != nil {
-		return nil, nil
+		return nil, fmt.Errorf("parse workspace.yaml: %w", err)
 	}
 
 	return &ws, nil
