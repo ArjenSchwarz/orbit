@@ -121,6 +121,13 @@ func IsPathWithinDir(path, dir string) bool {
 		return false
 	}
 
-	// If relative path starts with "..", the file is outside the directory
-	return !strings.HasPrefix(rel, "..")
+	// The file is outside the directory only when the first path segment
+	// of rel is the literal parent-directory marker "..". Compare it as a
+	// discrete segment so legitimate names that merely begin with ".."
+	// (e.g. "..cache/file.txt", "..session.jsonl") are still treated as
+	// in-tree.
+	if rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+		return false
+	}
+	return true
 }
