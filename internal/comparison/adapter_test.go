@@ -3,6 +3,7 @@ package comparison
 import (
 	"context"
 	"testing"
+	"time"
 
 	"github.com/arjenschwarz/orbit/internal/agents"
 	"github.com/arjenschwarz/orbit/internal/testutil"
@@ -168,6 +169,77 @@ func TestAgentAdapter_WithExtraArgs(t *testing.T) {
 	calls := agent.Recorder().Calls()
 	require.Len(t, calls, 1)
 	assert.Equal(t, []string{"--tools", ""}, calls[0].Options.ExtraArgs)
+}
+
+func TestAgentAdapter_WithTimeout_PassesTimeoutToRunOptions(t *testing.T) {
+	// Regression test for T-678: AgentAdapter must propagate the configured
+	// agent timeout into RunOptions.Timeout so the comparison run honors
+	// AgentConfig.Timeout instead of relying on a hardcoded 30-minute ceiling.
+	scenario := testutil.NewScenario().
+		Success("session-1", 0.01).
+		Build()
+
+	agent := testutil.NewTestAgent(t, "mock", scenario)
+	t.Cleanup(func() { agent.AssertAllConsumed(t) })
+
+	timeout := 90 * time.Minute
+	adapter := NewAgentAdapter(agent, "/tmp/test").WithTimeout(timeout)
+
+	_, err := adapter.RunCustomPrompt(context.Background(), "test prompt")
+	require.NoError(t, err)
+
+	calls := agent.Recorder().Calls()
+	require.Len(t, calls, 1)
+	assert.Equal(t, timeout, calls[0].Options.Timeout)
+}
+
+func TestAgentAdapter_WithTimeout_DoesNotMutateOriginal(t *testing.T) {
+	// Regression test for T-678: WithTimeout returns a copy, mirroring the
+	// behaviour of WithExtraArgs to keep the API consistent.
+	scenario := testutil.NewScenario().
+		Success("session-1", 0.01).
+		Success("session-2", 0.01).
+		Build()
+
+	agent := testutil.NewTestAgent(t, "mock", scenario)
+	t.Cleanup(func() { agent.AssertAllConsumed(t) })
+
+	original := NewAgentAdapter(agent, "/tmp/test")
+	withTimeout := original.WithTimeout(45 * time.Minute)
+
+	_, err := original.RunCustomPrompt(context.Background(), "prompt1")
+	require.NoError(t, err)
+
+	calls := agent.Recorder().Calls()
+	require.Len(t, calls, 1)
+	assert.Equal(t, time.Duration(0), calls[0].Options.Timeout)
+
+	_, err = withTimeout.RunCustomPrompt(context.Background(), "prompt2")
+	require.NoError(t, err)
+
+	calls = agent.Recorder().Calls()
+	require.Len(t, calls, 2)
+	assert.Equal(t, 45*time.Minute, calls[1].Options.Timeout)
+}
+
+func TestAgentAdapter_RunCustomPrompt_DefaultsToZeroTimeout(t *testing.T) {
+	// When no timeout is configured the adapter must leave RunOptions.Timeout
+	// at zero so agents inherit the parent context deadline only.
+	scenario := testutil.NewScenario().
+		Success("session-1", 0.01).
+		Build()
+
+	agent := testutil.NewTestAgent(t, "mock", scenario)
+	t.Cleanup(func() { agent.AssertAllConsumed(t) })
+
+	adapter := NewAgentAdapter(agent, "/tmp/test")
+
+	_, err := adapter.RunCustomPrompt(context.Background(), "test prompt")
+	require.NoError(t, err)
+
+	calls := agent.Recorder().Calls()
+	require.Len(t, calls, 1)
+	assert.Equal(t, time.Duration(0), calls[0].Options.Timeout)
 }
 
 func TestAgentAdapter_WithExtraArgs_DoesNotMutateOriginal(t *testing.T) {

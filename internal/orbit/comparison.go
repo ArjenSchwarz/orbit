@@ -46,10 +46,17 @@ func (o *Orbit) runComparison(ctx context.Context) error {
 	specContext := o.readSpecContext()
 
 	// Create comparator with timeout to prevent indefinite hangs from stalled API connections.
-	comparisonCtx, cancel := context.WithTimeout(o.shutdownCtx, comparison.DefaultTimeout)
+	// Honor AgentConfig.Timeout when set (T-678); fall back to the hardcoded default
+	// to preserve the original safety net for users on default configuration.
+	comparisonTimeout := o.config.AgentConfig.Timeout
+	if comparisonTimeout <= 0 {
+		comparisonTimeout = comparison.DefaultTimeout
+	}
+	comparisonCtx, cancel := context.WithTimeout(o.shutdownCtx, comparisonTimeout)
 	defer cancel()
 
-	adapter := comparison.NewAgentAdapter(o.agent, o.config.WorkingDir)
+	adapter := comparison.NewAgentAdapter(o.agent, o.config.WorkingDir).
+		WithTimeout(comparisonTimeout)
 	comparator := comparison.NewComparator(adapter, o.config.CompareCommand)
 
 	comparisonJSONPath := filepath.Join(o.config.SpecDir, ".orbit", "comparison.json")
