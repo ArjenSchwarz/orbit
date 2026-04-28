@@ -17,9 +17,9 @@ Comparison prompts include all data inline (diffs, stats, changelogs, spec conte
 - File reading (unnecessary, data is inline)
 - Command execution (running tests/lint is not the comparison's job)
 
-### Timeout on comparison context (2026-02-10, updated 2026-02-17)
+### Timeout on comparison context (2026-02-10, updated 2026-04-28 for T-678)
 
-A 30-minute timeout (`comparison.DefaultTimeout`) is applied to prevent indefinite hangs from API stalls. The timeout is applied via `context.WithTimeout()` and passed to `CompareUnified()`, which threads it through to `RunCustomPrompt()` per-call. The adapter no longer stores context — it receives it as a method parameter, following Go best practices.
+When `AgentConfig.Timeout` is set (via `.orbit.yaml` `agents.<agent>.timeout`), it is honored for the comparison run too — both via the wrapping `context.WithTimeout()` and via `RunOptions.Timeout` (set on the adapter through `AgentAdapter.WithTimeout`). When no timeout is configured, the hardcoded 30-minute `comparison.DefaultTimeout` is still applied as a safety net to prevent indefinite hangs from API stalls. The adapter no longer stores context — it receives it as a method parameter, following Go best practices. Both call sites (`internal/orbit/comparison.go` and `cmd/orbit/compare.go`) read the timeout the same way so behaviour stays consistent.
 
 ### Agent writes comparison JSON to file (2026-02-10)
 

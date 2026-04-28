@@ -2,6 +2,7 @@ package comparison
 
 import (
 	"context"
+	"time"
 
 	"github.com/arjenschwarz/orbit/internal/agents"
 )
@@ -12,6 +13,7 @@ type AgentAdapter struct {
 	agent     agents.Agent
 	workDir   string
 	extraArgs []string
+	timeout   time.Duration
 }
 
 // NewAgentAdapter creates a new adapter wrapping the given agent.
@@ -38,12 +40,23 @@ func (a *AgentAdapter) WithExtraArgs(args ...string) *AgentAdapter {
 	return &cp
 }
 
+// WithTimeout returns a copy of the adapter with a per-execution timeout.
+// The timeout is forwarded to RunOptions.Timeout so the underlying agent's
+// executor enforces it (mirroring how phase execution honors
+// AgentConfig.Timeout). A zero duration means no per-execution timeout.
+func (a *AgentAdapter) WithTimeout(timeout time.Duration) *AgentAdapter {
+	cp := *a
+	cp.timeout = timeout
+	return &cp
+}
+
 // RunCustomPrompt implements the promptRunner interface by delegating to agent.Run().
 func (a *AgentAdapter) RunCustomPrompt(ctx context.Context, prompt string) (*agents.RunResult, error) {
 	opts := agents.RunOptions{
 		Prompt:    prompt,
 		WorkDir:   a.workDir,
 		ExtraArgs: a.extraArgs,
+		Timeout:   a.timeout,
 	}
 	return a.agent.Run(ctx, opts)
 }

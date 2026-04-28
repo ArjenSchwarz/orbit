@@ -62,9 +62,11 @@ func runCompare(ctx context.Context, args []string) error {
 		return fmt.Errorf("failed to get working directory: %w", err)
 	}
 
-	// Config only needed for AI agent invocation, not for loading saved results
+	// Config only needed for AI agent invocation, not for loading saved results.
+	// Captured at function scope so it can supply AgentConfig.Timeout below (T-678).
+	var appConfig *config.Config
 	if *fromFile == "" {
-		appConfig := config.Load(workDir)
+		appConfig = config.Load(workDir)
 		if err := appConfig.RequireConfigFile(); err != nil {
 			return err
 		}
@@ -167,21 +169,39 @@ func runCompare(ctx context.Context, args []string) error {
 		// Read spec context for additional context
 		specContext := readSpecContext(specDir)
 
-		// Run comparison with a timeout to prevent indefinite hangs
+		// Run comparison with a timeout to prevent indefinite hangs.
+		// Honor AgentConfig.Timeout when set (T-678); fall back to the hardcoded
+		// default to preserve the original safety net for users on default config.
 		fmt.Println("\nRunning comparison analysis...")
 
-		comparisonCtx, cancel := context.WithTimeout(ctx, comparison.DefaultTimeout)
+		agentCfg := agents.AgentConfig{
+			AutoApprove: true, // Comparison runs non-interactively
+		}
+		// appConfig is always non-nil in this branch (loaded above when fromFile
+		// is empty). The nil check is defensive in case the loading logic above
+		// changes; remove it together with the surrounding guard if appConfig
+		// is hoisted out of the conditional.
+		if appConfig != nil {
+			if cfg := appConfig.GetAgentConfig("claude-code"); cfg.Timeout > 0 {
+				agentCfg.Timeout = cfg.Timeout
+			}
+		}
+
+		comparisonTimeout := agentCfg.Timeout
+		if comparisonTimeout <= 0 {
+			comparisonTimeout = comparison.DefaultTimeout
+		}
+		comparisonCtx, cancel := context.WithTimeout(ctx, comparisonTimeout)
 		defer cancel()
 
 		// Get the default agent (claude-code) with AutoApprove for non-interactive use
-		agent, err := agents.Get("claude-code", agents.AgentConfig{
-			AutoApprove: true, // Comparison runs non-interactively
-		})
+		agent, err := agents.Get("claude-code", agentCfg)
 		if err != nil {
 			return fmt.Errorf("failed to get agent: %w", err)
 		}
 
-		adapter := comparison.NewAgentAdapter(agent, workDir)
+		adapter := comparison.NewAgentAdapter(agent, workDir).
+			WithTimeout(comparisonTimeout)
 		comparator := comparison.NewComparator(adapter, *compareCmd)
 
 		// Use the unified comparison method with summaries only (diffs excluded to save context)
