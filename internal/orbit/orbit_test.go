@@ -2001,7 +2001,7 @@ func TestVariantPostCompletion_NilRunResult(t *testing.T) {
 
 	// This should NOT panic. Before the fix, it would panic on nil dereference.
 	// Like runVariantPhaseWithRetry, the default classifier returns non-retryable.
-	_, err := o.runVariantPostCompletion(context.Background(), v, agent, nil, 0)
+	_, err := o.runVariantPostCompletion(t.Context(), v, agent, nil, 0)
 	if err == nil {
 		t.Fatal("expected ClassifiedError, got nil")
 	}
@@ -2222,7 +2222,7 @@ func TestVariantPostCompletion_ResumesPriorSession(t *testing.T) {
 	}
 
 	// New post-completion call should resume the prior session via Resume().
-	result, runErr := o.runVariantPostCompletion(context.Background(), v, agent, logManager, 0)
+	result, runErr := o.runVariantPostCompletion(t.Context(), v, agent, logManager, 0)
 	if runErr != nil {
 		t.Fatalf("runVariantPostCompletion failed: %v", runErr)
 	}
@@ -2301,7 +2301,7 @@ func TestVariantPostCompletion_FreshSessionTracksLogManager(t *testing.T) {
 		WorktreePath: tmpDir,
 	}
 
-	result, runErr := o.runVariantPostCompletion(context.Background(), v, agent, logManager, 0)
+	result, runErr := o.runVariantPostCompletion(t.Context(), v, agent, logManager, 0)
 	if runErr != nil {
 		t.Fatalf("runVariantPostCompletion failed: %v", runErr)
 	}
@@ -2324,6 +2324,77 @@ func TestVariantPostCompletion_FreshSessionTracksLogManager(t *testing.T) {
 	}
 
 	// After success, post-completion state should be cleared.
+	if pc := readPostCompletion(t, logManager.SessionDir()); pc != nil {
+		t.Errorf("expected post_completion to be cleared after success, still set: %+v", pc)
+	}
+}
+
+// TestVariantPostCompletion_FallsBackToFreshSessionOnInvalid verifies that when
+// Resume() fails because the prior session is gone (ErrorClassSessionInvalid),
+// runVariantPostCompletion generates a fresh session id, updates the log
+// manager via SetPostCompletionSessionID, and retries with Run() in the same
+// retry iteration. This is the most nuanced part of the T-715 fix.
+func TestVariantPostCompletion_FallsBackToFreshSessionOnInvalid(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	logManager, err := logs.NewManagerWithOptions(tmpDir, "variant-1", tmpDir, logs.ManagerOptions{UseSubdirs: false})
+	if err != nil {
+		t.Fatalf("NewManagerWithOptions: %v", err)
+	}
+	priorSessionID, _, err := logManager.StartPostCompletion(false)
+	if err != nil {
+		t.Fatalf("StartPostCompletion seeding failed: %v", err)
+	}
+
+	// Resume hits SessionInvalid; the function should regenerate a session id
+	// and call Run() within the same Execute closure (no retry-loop bounce).
+	scenario := testutil.NewScenario().
+		SessionInvalid().
+		Success("fresh-agent-session", 0.02).
+		Build()
+	agent := testutil.NewTestAgent(t, "test-agent", scenario)
+	t.Cleanup(func() { agent.AssertAllConsumed(t) })
+
+	o := &Orbit{
+		config: Config{
+			PostPrompt:      "review implementation",
+			ContinueSession: true,
+		},
+		debug: debug.New(false, ""),
+	}
+
+	v := &variants.Variant{
+		ID:           1,
+		WorktreePath: tmpDir,
+	}
+
+	result, runErr := o.runVariantPostCompletion(t.Context(), v, agent, logManager, 0)
+	if runErr != nil {
+		t.Fatalf("runVariantPostCompletion failed: %v", runErr)
+	}
+	if result == nil {
+		t.Fatal("expected non-nil result")
+	}
+
+	calls := agent.Recorder().Calls()
+	if len(calls) != 2 {
+		t.Fatalf("expected 2 agent calls (Resume + Run fallback), got %d", len(calls))
+	}
+	if calls[0].Method != "Resume" {
+		t.Errorf("call 0: expected Resume, got %q", calls[0].Method)
+	}
+	if calls[0].SessionID != priorSessionID {
+		t.Errorf("call 0: Resume session id = %q, want %q", calls[0].SessionID, priorSessionID)
+	}
+	if calls[1].Method != "Run" {
+		t.Errorf("call 1: expected Run, got %q", calls[1].Method)
+	}
+	if calls[1].Options.SessionID == "" || calls[1].Options.SessionID == priorSessionID {
+		t.Errorf("call 1: Run should use a fresh session id, got %q (prior was %q)",
+			calls[1].Options.SessionID, priorSessionID)
+	}
+
+	// State should be cleared after the successful fallback Run().
 	if pc := readPostCompletion(t, logManager.SessionDir()); pc != nil {
 		t.Errorf("expected post_completion to be cleared after success, still set: %+v", pc)
 	}

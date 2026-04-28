@@ -893,18 +893,11 @@ func (o *Orbit) runVariantPhaseWithRetry(ctx context.Context, v *variants.Varian
 
 // runVariantPostCompletion executes the post-completion command for a variant.
 //
-// Mirrors single-run runPostPrompt session lifecycle:
-//  1. StartPostCompletion on the variant log manager — if an entry is already
-//     in progress and ContinueSession is set, resume that session via Resume().
-//  2. On invalid-session errors during resume, fall back to a fresh Run() and
-//     update the log manager via SetPostCompletionSessionID.
-//  3. Reconcile the agent-returned session id with the log manager when it
-//     differs from the one we asked for.
-//  4. Clear the in-progress entry on success via CompletePostCompletion.
-//
-// Without this coordination, variant post-prompt loses phase context across
-// resumed runs and silently bypasses the documented post-completion
-// lifecycle (T-715).
+// Coordinates the variant log manager so post-prompt mirrors the single-run
+// lifecycle (StartPostCompletion → Resume/Run → ReconcilePostCompletionSessionID
+// → CompletePostCompletion). Without this coordination, variant post-prompt
+// loses phase context across resumed runs and silently bypasses the
+// post-completion lifecycle (T-715).
 func (o *Orbit) runVariantPostCompletion(
 	ctx context.Context,
 	v *variants.Variant,
@@ -916,7 +909,6 @@ func (o *Orbit) runVariantPostCompletion(
 		MaxRetries: maxRetries,
 		Sleep:      o.sleepFunc(),
 		Execute: func(ctx context.Context, _ int) (*agents.RunResult, error) {
-			// Determine session id and whether to resume from log manager state.
 			var sessionID string
 			var isResume bool
 			if logManager != nil {
@@ -945,7 +937,9 @@ func (o *Orbit) runVariantPostCompletion(
 			var err error
 			if isResume {
 				result, err = agent.Resume(ctx, sessionID, opts)
-				// Fall back to fresh session on invalid-session errors.
+				// Fall back to a fresh session when the agent reports the
+				// resumed session is gone — otherwise the retry loop would
+				// keep hitting the same dead session.
 				if err != nil && isSessionInvalidError(result) {
 					o.debug.Log("Variant %d: post-completion resume failed, starting fresh session", v.ID)
 					log.Printf("Variant %d: post-completion session resume failed, starting fresh session", v.ID)
@@ -962,8 +956,9 @@ func (o *Orbit) runVariantPostCompletion(
 				result, err = agent.Run(ctx, opts)
 			}
 
-			// On success, reconcile the returned session id and clear in-progress state.
 			if err == nil && result != nil && !result.IsError && logManager != nil {
+				// Guard against empty SessionID so we don't overwrite the
+				// stored id with "" when the agent omits it on success.
 				if result.SessionID != "" && result.SessionID != sessionID {
 					o.debug.Log("Variant %d: post-completion session id changed: expected=%s got=%s",
 						v.ID, sessionID, result.SessionID)
