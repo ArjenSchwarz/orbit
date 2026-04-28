@@ -47,7 +47,7 @@ func consolidateCommand(args []string) error {
 	}
 
 	// Reorder args so flags come before positional args (Go's flag package requires this)
-	if err := fs.Parse(reorderArgs(args)); err != nil {
+	if err := fs.Parse(reorderArgs(fs, args)); err != nil {
 		return err
 	}
 
