@@ -204,22 +204,19 @@ func runCommand(args []string) error {
 		parallelValue = true
 	}
 
-	// Resolve max-parallel: CLI flag overrides config if explicitly provided.
-	// Use fs.Visit to detect whether the flag was actually set on the command line,
-	// so that --max-parallel=3 (matching the default) still overrides config.
+	// Resolve and validate max-parallel.
+	// Validation operates on the resolved value (not the raw CLI flag) so a
+	// negative `.orbit.yaml` value cannot bypass the check just because the
+	// flag holds its default — see T-728.
 	maxParallelExplicit := false
 	fs.Visit(func(f *flag.Flag) {
 		if f.Name == "max-parallel" {
 			maxParallelExplicit = true
 		}
 	})
-	maxParallelValue := cfg.MaxParallel
-	if maxParallelExplicit {
-		maxParallelValue = *maxParallel
-	}
-	// If config value is 0 and flag wasn't explicitly set, use the built-in default
-	if maxParallelValue == 0 {
-		maxParallelValue = *maxParallel
+	maxParallelValue, err := resolveMaxParallel(cfg.MaxParallel, *maxParallel, 3, maxParallelExplicit)
+	if err != nil {
+		return err
 	}
 
 	// Resolve auto-consolidate: --auto-consolidate enables, --no-auto-consolidate disables
@@ -251,12 +248,10 @@ func runCommand(args []string) error {
 		}
 	}
 
-	// Validate variant configuration
+	// Validate variant configuration. Max-parallel is validated inside
+	// resolveMaxParallel so config-sourced values are also checked (T-728).
 	if *variantCount < 0 {
 		return fmt.Errorf("--variants must be non-negative")
-	}
-	if *maxParallel < 1 {
-		return fmt.Errorf("--max-parallel must be at least 1")
 	}
 
 	// Validate auto-consolidate requires variants
@@ -343,6 +338,32 @@ func getGitBranch() (string, error) {
 		return "", fmt.Errorf("not in a git repository or git not available: %w", err)
 	}
 	return strings.TrimSpace(string(output)), nil
+}
+
+// resolveMaxParallel applies CLI/config precedence to --max-parallel and
+// validates the resolved value. The flag must be detected as explicitly set
+// via fs.Visit so an explicit --max-parallel=3 still wins over a non-default
+// config value (T-585 regression).
+//
+// Precedence: explicit flag > config > flag default. A config value of 0 is
+// treated as "unset" and falls through to the flag default; an explicit
+// --max-parallel=0 is left at 0 so validation rejects it. Validation runs on
+// the *resolved* value so a negative `.orbit.yaml` value cannot bypass the
+// check just because the flag held its built-in default (T-728 regression).
+func resolveMaxParallel(configValue, flagValue, flagDefault int, flagExplicit bool) (int, error) {
+	var resolved int
+	switch {
+	case flagExplicit:
+		resolved = flagValue
+	case configValue == 0:
+		resolved = flagDefault
+	default:
+		resolved = configValue
+	}
+	if resolved < 1 {
+		return 0, fmt.Errorf("--max-parallel must be at least 1 (got %d)", resolved)
+	}
+	return resolved, nil
 }
 
 // resolvePrompts applies CLI flag overrides to config values.

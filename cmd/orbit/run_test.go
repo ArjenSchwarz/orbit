@@ -324,6 +324,105 @@ func TestMaxParallel_FlagVisitDetection(t *testing.T) {
 	}
 }
 
+// TestResolveMaxParallel covers resolution and validation of the --max-parallel
+// flag against config/CLI precedence, including the T-728 regression where a
+// negative `.orbit.yaml` value bypassed validation when the flag was not set.
+//
+// The validation must operate on the *resolved* value rather than the raw CLI
+// flag value. Otherwise a negative config such as `max-parallel: -1` flows
+// through to `make(chan struct{}, n)` and panics with "makechan: size out of
+// range".
+func TestResolveMaxParallel(t *testing.T) {
+	tests := []struct {
+		name         string
+		configValue  int
+		flagExplicit bool
+		flagValue    int
+		flagDefault  int
+		want         int
+		wantErr      bool
+	}{
+		{
+			name:         "negative config without explicit flag is rejected (T-728)",
+			configValue:  -1,
+			flagExplicit: false,
+			flagValue:    3,
+			flagDefault:  3,
+			wantErr:      true,
+		},
+		{
+			name:         "negative explicit flag is rejected",
+			configValue:  3,
+			flagExplicit: true,
+			flagValue:    -2,
+			flagDefault:  3,
+			wantErr:      true,
+		},
+		{
+			name:         "explicit zero flag is rejected",
+			configValue:  3,
+			flagExplicit: true,
+			flagValue:    0,
+			flagDefault:  3,
+			wantErr:      true,
+		},
+		{
+			name:         "zero config falls back to flag default and is valid",
+			configValue:  0,
+			flagExplicit: false,
+			flagValue:    3,
+			flagDefault:  3,
+			want:         3,
+			wantErr:      false,
+		},
+		{
+			name:         "valid positive config with no flag",
+			configValue:  4,
+			flagExplicit: false,
+			flagValue:    3,
+			flagDefault:  3,
+			want:         4,
+			wantErr:      false,
+		},
+		{
+			name:         "explicit flag overrides config",
+			configValue:  8,
+			flagExplicit: true,
+			flagValue:    5,
+			flagDefault:  3,
+			want:         5,
+			wantErr:      false,
+		},
+		{
+			name:         "explicit positive flag rescues negative config",
+			configValue:  -5,
+			flagExplicit: true,
+			flagValue:    2,
+			flagDefault:  3,
+			want:         2,
+			wantErr:      false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := resolveMaxParallel(tt.configValue, tt.flagValue, tt.flagDefault, tt.flagExplicit)
+			if tt.wantErr {
+				if err == nil {
+					t.Fatalf("expected validation error, got nil (resolved=%d)", got)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			if got != tt.want {
+				t.Errorf("resolveMaxParallel = %d, want %d", got, tt.want)
+			}
+		})
+	}
+}
+
 // TestDeprecatedPostCommandFlag tests that --post-command flag is rejected
 func TestDeprecatedPostCommandFlag(t *testing.T) {
 	// The runCommand function checks for deprecated --post-command flag
