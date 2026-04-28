@@ -223,6 +223,23 @@ func TestIsPathWithinDir(t *testing.T) {
 		t.Fatalf("failed to create test file: %v", err)
 	}
 
+	// Regression for T-702: directories and files whose names start with ".."
+	// (but are not the parent-directory segment "..") are valid in-tree paths and
+	// must not be rejected. Previously HasPrefix(rel, "..") incorrectly rejected
+	// these, e.g. "..cache/file.txt" or "..session.jsonl".
+	dotDotDir := filepath.Join(tmpDir, "..cache")
+	if err := os.MkdirAll(dotDotDir, 0755); err != nil {
+		t.Fatalf("failed to create ..cache dir: %v", err)
+	}
+	dotDotFileInDir := filepath.Join(dotDotDir, "file.txt")
+	if err := os.WriteFile(dotDotFileInDir, []byte("ok"), 0644); err != nil {
+		t.Fatalf("failed to create ..cache/file.txt: %v", err)
+	}
+	dotDotSibling := filepath.Join(tmpDir, "..session.jsonl")
+	if err := os.WriteFile(dotDotSibling, []byte("ok"), 0644); err != nil {
+		t.Fatalf("failed to create ..session.jsonl: %v", err)
+	}
+
 	tests := []struct {
 		name     string
 		path     string
@@ -258,6 +275,20 @@ func TestIsPathWithinDir(t *testing.T) {
 			path:     filepath.Join(subDir, "nonexistent.txt"),
 			dir:      subDir,
 			expected: false, // File doesn't exist, so EvalSymlinks fails
+		},
+		{
+			// T-702 regression: child directory whose name starts with ".."
+			name:     "child dir name starts with double dot",
+			path:     dotDotFileInDir,
+			dir:      tmpDir,
+			expected: true,
+		},
+		{
+			// T-702 regression: sibling file whose name starts with ".."
+			name:     "file name starts with double dot",
+			path:     dotDotSibling,
+			dir:      tmpDir,
+			expected: true,
 		},
 	}
 
