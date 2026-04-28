@@ -2,6 +2,8 @@ package config
 
 import (
 	"fmt"
+	"io"
+	"log"
 	"os"
 	"path/filepath"
 	"strings"
@@ -2592,5 +2594,175 @@ func TestLoad_AutoConsolidate_ProjectOverridesHome(t *testing.T) {
 
 	if cfg.AutoConsolidate {
 		t.Error("expected project config to override home config")
+	}
+}
+
+// parsePort and parsePositiveInt must reject any input that is not a complete
+// unsigned base-10 integer (no whitespace, sign prefixes, or trailing chars).
+
+func TestParsePort_RejectsTrailingCharacters(t *testing.T) {
+	cases := []string{
+		"8080abc",
+		"8080 ",
+		" 8080",
+		"8080.0",
+		"8080\n",
+		"0x1F90",
+		"8080garbage",
+		"+8080",
+		"-8080",
+		"",
+	}
+	for _, in := range cases {
+		t.Run(fmt.Sprintf("input=%q", in), func(t *testing.T) {
+			if _, err := parsePort(in); err == nil {
+				t.Errorf("parsePort(%q) should have returned an error", in)
+			}
+		})
+	}
+}
+
+func TestParsePort_AcceptsValidPort(t *testing.T) {
+	cases := []struct {
+		in   string
+		want int
+	}{
+		{"1", 1},
+		{"8080", 8080},
+		{"65535", 65535},
+	}
+	for _, c := range cases {
+		t.Run(c.in, func(t *testing.T) {
+			got, err := parsePort(c.in)
+			if err != nil {
+				t.Fatalf("parsePort(%q) returned error: %v", c.in, err)
+			}
+			if got != c.want {
+				t.Errorf("parsePort(%q) = %d, want %d", c.in, got, c.want)
+			}
+		})
+	}
+}
+
+func TestParsePort_RejectsOutOfRange(t *testing.T) {
+	cases := []string{"0", "65536", "100000"}
+	for _, in := range cases {
+		t.Run(in, func(t *testing.T) {
+			if _, err := parsePort(in); err == nil {
+				t.Errorf("parsePort(%q) should have returned an error", in)
+			}
+		})
+	}
+}
+
+func TestParsePositiveInt_RejectsTrailingCharacters(t *testing.T) {
+	cases := []string{
+		"3oops",
+		"3 ",
+		" 3",
+		"3.0",
+		"3\n",
+		"3abc",
+		"+3",
+		"-3",
+		"",
+	}
+	for _, in := range cases {
+		t.Run(fmt.Sprintf("input=%q", in), func(t *testing.T) {
+			if _, err := parsePositiveInt(in); err == nil {
+				t.Errorf("parsePositiveInt(%q) should have returned an error", in)
+			}
+		})
+	}
+}
+
+func TestParsePositiveInt_AcceptsValidValue(t *testing.T) {
+	cases := []struct {
+		in   string
+		want int
+	}{
+		{"0", 0},
+		{"3", 3},
+		{"100", 100},
+	}
+	for _, c := range cases {
+		t.Run(c.in, func(t *testing.T) {
+			got, err := parsePositiveInt(c.in)
+			if err != nil {
+				t.Fatalf("parsePositiveInt(%q) returned error: %v", c.in, err)
+			}
+			if got != c.want {
+				t.Errorf("parsePositiveInt(%q) = %d, want %d", c.in, got, c.want)
+			}
+		})
+	}
+}
+
+// silenceLog redirects the standard logger to io.Discard for the duration
+// of the test so the expected "Warning: ORBIT_…" lines from rejected env
+// values do not pollute go test output. The original logger output is
+// restored on cleanup.
+//
+// This swaps the logger's writer rather than os.Stderr so it does not
+// race with anything else in the process that holds a reference to the
+// original os.Stderr. The standard logger's writer is still global state,
+// so callers must not run with t.Parallel().
+func silenceLog(t *testing.T) {
+	t.Helper()
+	original := log.Writer()
+	log.SetOutput(io.Discard)
+	t.Cleanup(func() {
+		log.SetOutput(original)
+	})
+}
+
+func TestLoad_ServePortRejectsTrailingChars(t *testing.T) {
+	tmpDir := t.TempDir()
+	homeDir := t.TempDir()
+
+	t.Setenv("HOME", homeDir)
+	t.Setenv("ORBIT_SERVE_PORT", "9000abc")
+	silenceLog(t)
+
+	cfg := Load(tmpDir)
+
+	// Malformed values are rejected; ServePort falls back to the default.
+	if cfg.ServePort != DefaultServePort {
+		t.Errorf("expected default ServePort %d for ORBIT_SERVE_PORT=%q, got %d",
+			DefaultServePort, "9000abc", cfg.ServePort)
+	}
+}
+
+func TestLoad_VariantCountRejectsTrailingChars(t *testing.T) {
+	tmpDir := t.TempDir()
+	homeDir := t.TempDir()
+
+	t.Setenv("HOME", homeDir)
+	t.Setenv("ORBIT_VARIANT_COUNT", "3oops")
+	silenceLog(t)
+
+	cfg := Load(tmpDir)
+
+	// Malformed values are rejected; VariantCount stays at 0 (feature disabled).
+	if cfg.VariantCount != 0 {
+		t.Errorf("expected VariantCount 0 for ORBIT_VARIANT_COUNT=%q, got %d",
+			"3oops", cfg.VariantCount)
+	}
+}
+
+func TestLoad_MaxParallelRejectsTrailingChars(t *testing.T) {
+	tmpDir := t.TempDir()
+	homeDir := t.TempDir()
+
+	t.Setenv("HOME", homeDir)
+	t.Setenv("ORBIT_MAX_PARALLEL", "5junk")
+	silenceLog(t)
+
+	cfg := Load(tmpDir)
+
+	// Malformed values are rejected; MaxParallel falls back to the default.
+	if cfg.MaxParallel != DefaultMaxParallel {
+		t.Errorf("expected MaxParallel %d for ORBIT_MAX_PARALLEL=%q, got %d",
+			DefaultMaxParallel, "5junk", cfg.MaxParallel)
 	}
 }

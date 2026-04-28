@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"strconv"
 	"strings"
 	"time"
 
@@ -309,8 +310,9 @@ func Load(workingDir string) *Config {
 		if port, err := parsePort(envServePort); err == nil {
 			servePort = port
 			envUsed = true
+		} else {
+			log.Printf("Warning: ORBIT_SERVE_PORT=%q ignored: %v", envServePort, err)
 		}
-		// Invalid port values are silently ignored (use config/default)
 	}
 	if envServeBind, exists := os.LookupEnv("ORBIT_SERVE_BIND"); exists {
 		serveBind = envServeBind
@@ -329,6 +331,8 @@ func Load(workingDir string) *Config {
 		if count, err := parsePositiveInt(envVariantCount); err == nil {
 			variantCount = count
 			envUsed = true
+		} else {
+			log.Printf("Warning: ORBIT_VARIANT_COUNT=%q ignored: %v", envVariantCount, err)
 		}
 	}
 	if envParallel, exists := os.LookupEnv("ORBIT_PARALLEL"); exists {
@@ -339,6 +343,8 @@ func Load(workingDir string) *Config {
 		if max, err := parsePositiveInt(envMaxParallel); err == nil {
 			maxParallel = max
 			envUsed = true
+		} else {
+			log.Printf("Warning: ORBIT_MAX_PARALLEL=%q ignored: %v", envMaxParallel, err)
 		}
 	}
 	if envBranchPrefix, exists := os.LookupEnv("ORBIT_BRANCH_PREFIX"); exists {
@@ -409,11 +415,18 @@ func Load(workingDir string) *Config {
 }
 
 // parsePort attempts to parse a string as a valid port number.
+// The entire string must be unsigned base-10 digits; leading/trailing
+// whitespace, sign prefixes, and any non-digit suffix are rejected.
 func parsePort(s string) (int, error) {
-	var port int
-	_, err := fmt.Sscanf(s, "%d", &port)
+	// strconv.Atoi accepts a leading '+' or '-' (it wraps ParseInt with base 10).
+	// Reject those explicitly so port values are required to be plain unsigned
+	// digits — do not remove without also switching to ParseUint.
+	if s == "" || s[0] == '+' || s[0] == '-' {
+		return 0, fmt.Errorf("invalid port %q: must be unsigned base-10 digits", s)
+	}
+	port, err := strconv.Atoi(s)
 	if err != nil {
-		return 0, err
+		return 0, fmt.Errorf("invalid port %q: %w", s, err)
 	}
 	if port < 1 || port > 65535 {
 		return 0, fmt.Errorf("port out of range: %d", port)
@@ -421,15 +434,19 @@ func parsePort(s string) (int, error) {
 	return port, nil
 }
 
-// parsePositiveInt attempts to parse a string as a positive integer.
+// parsePositiveInt attempts to parse a string as a non-negative integer.
+// The entire string must be unsigned base-10 digits; leading/trailing
+// whitespace, sign prefixes, and any non-digit suffix are rejected.
 func parsePositiveInt(s string) (int, error) {
-	var n int
-	_, err := fmt.Sscanf(s, "%d", &n)
-	if err != nil {
-		return 0, err
+	// strconv.Atoi accepts a leading '+' or '-' (it wraps ParseInt with base 10).
+	// Reject those explicitly so the value is required to be plain unsigned
+	// digits — do not remove without also switching to ParseUint.
+	if s == "" || s[0] == '+' || s[0] == '-' {
+		return 0, fmt.Errorf("invalid integer %q: must be unsigned base-10 digits", s)
 	}
-	if n < 0 {
-		return 0, fmt.Errorf("value must be non-negative: %d", n)
+	n, err := strconv.Atoi(s)
+	if err != nil {
+		return 0, fmt.Errorf("invalid integer %q: %w", s, err)
 	}
 	return n, nil
 }
