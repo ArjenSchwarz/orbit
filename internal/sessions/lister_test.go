@@ -509,6 +509,152 @@ func TestListAllCopilotSessionsEmptyProjectPath(t *testing.T) {
 	}
 }
 
+// setupCopilotSessionMissingWorkspace creates a Copilot session directory
+// with a non-empty events.jsonl but no workspace.yaml at all.
+func setupCopilotSessionMissingWorkspace(t *testing.T, homeDir, sessionID string, modTime time.Time) {
+	t.Helper()
+	sessionDir := filepath.Join(homeDir, ".copilot", "session-state", sessionID)
+	if err := os.MkdirAll(sessionDir, 0755); err != nil {
+		t.Fatalf("failed to create session dir: %v", err)
+	}
+	eventsPath := filepath.Join(sessionDir, "events.jsonl")
+	if err := os.WriteFile(eventsPath, []byte(`{"type":"event","data":"test"}`+"\n"), 0644); err != nil {
+		t.Fatalf("failed to write events file: %v", err)
+	}
+	if err := os.Chtimes(eventsPath, modTime, modTime); err != nil {
+		t.Fatalf("failed to set events mtime: %v", err)
+	}
+}
+
+// setupCopilotSessionInvalidWorkspace creates a Copilot session directory with
+// a non-empty events.jsonl and a workspace.yaml that fails to parse as YAML.
+func setupCopilotSessionInvalidWorkspace(t *testing.T, homeDir, sessionID string, modTime time.Time) {
+	t.Helper()
+	sessionDir := filepath.Join(homeDir, ".copilot", "session-state", sessionID)
+	if err := os.MkdirAll(sessionDir, 0755); err != nil {
+		t.Fatalf("failed to create session dir: %v", err)
+	}
+	eventsPath := filepath.Join(sessionDir, "events.jsonl")
+	if err := os.WriteFile(eventsPath, []byte(`{"type":"event","data":"test"}`+"\n"), 0644); err != nil {
+		t.Fatalf("failed to write events file: %v", err)
+	}
+	if err := os.Chtimes(eventsPath, modTime, modTime); err != nil {
+		t.Fatalf("failed to set events mtime: %v", err)
+	}
+	// Intentionally malformed YAML — unterminated block, bad indent, control chars.
+	bad := []byte("id: \"unterminated\ncwd: : :\n\t- not yaml\n")
+	if err := os.WriteFile(filepath.Join(sessionDir, "workspace.yaml"), bad, 0644); err != nil {
+		t.Fatalf("failed to write workspace file: %v", err)
+	}
+}
+
+// TestListAllCopilotSessionsMissingWorkspace is a regression test for T-701.
+// Sessions with a valid non-empty events.jsonl but no workspace.yaml at all
+// must be listed when no project filter is applied. Previously listCopilot
+// dropped them silently because parseCopilotWorkspace returned (nil, nil) for
+// missing files and the caller treated ws == nil as "skip".
+func TestListAllCopilotSessionsMissingWorkspace(t *testing.T) {
+	homeDir := t.TempDir()
+
+	sessionID := "missing-workspace-session"
+	modTime := time.Date(2025, 4, 1, 12, 0, 0, 0, time.UTC)
+	setupCopilotSessionMissingWorkspace(t, homeDir, sessionID, modTime)
+
+	lister := newTestLister(homeDir)
+
+	sessions, _, err := lister.ListAll("")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	var copilotSessions []SessionInfo
+	for _, s := range sessions {
+		if s.Source == SourceCopilot {
+			copilotSessions = append(copilotSessions, s)
+		}
+	}
+
+	if len(copilotSessions) != 1 {
+		t.Fatalf("expected 1 Copilot session with missing workspace.yaml, got %d", len(copilotSessions))
+	}
+	if copilotSessions[0].ID != sessionID {
+		t.Errorf("session.ID = %q, want %q", copilotSessions[0].ID, sessionID)
+	}
+	if !copilotSessions[0].CreatedAt.Equal(modTime) {
+		t.Errorf("CreatedAt = %v, want events mtime %v", copilotSessions[0].CreatedAt, modTime)
+	}
+}
+
+// TestListAllCopilotSessionsInvalidWorkspace is a regression test for T-701.
+// Sessions with a valid non-empty events.jsonl but a workspace.yaml that
+// cannot be parsed must still be listed when no project filter is applied.
+func TestListAllCopilotSessionsInvalidWorkspace(t *testing.T) {
+	homeDir := t.TempDir()
+
+	sessionID := "invalid-workspace-session"
+	modTime := time.Date(2025, 4, 2, 9, 0, 0, 0, time.UTC)
+	setupCopilotSessionInvalidWorkspace(t, homeDir, sessionID, modTime)
+
+	lister := newTestLister(homeDir)
+
+	sessions, _, err := lister.ListAll("")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	var copilotSessions []SessionInfo
+	for _, s := range sessions {
+		if s.Source == SourceCopilot {
+			copilotSessions = append(copilotSessions, s)
+		}
+	}
+
+	if len(copilotSessions) != 1 {
+		t.Fatalf("expected 1 Copilot session with invalid workspace.yaml, got %d", len(copilotSessions))
+	}
+	if copilotSessions[0].ID != sessionID {
+		t.Errorf("session.ID = %q, want %q", copilotSessions[0].ID, sessionID)
+	}
+}
+
+// TestListCopilotSessionsMalformedWorkspaceWithFilter verifies that when a
+// project filter IS supplied, sessions with missing or invalid workspace.yaml
+// do not falsely match (they have no metadata to compare against). They must
+// be skipped — silently or with a warning, but never matched.
+func TestListCopilotSessionsMalformedWorkspaceWithFilter(t *testing.T) {
+	homeDir := t.TempDir()
+	projectPath := t.TempDir()
+
+	modTime := time.Date(2025, 4, 3, 9, 0, 0, 0, time.UTC)
+	// One session with valid workspace pointing at projectPath — should match.
+	setupCopilotSession(t, homeDir, projectPath, "valid-session", modTime)
+	// One session with no workspace.yaml at all — must NOT match a project filter.
+	setupCopilotSessionMissingWorkspace(t, homeDir, "missing-workspace-session", modTime)
+	// One session with malformed workspace.yaml — must NOT match a project filter.
+	setupCopilotSessionInvalidWorkspace(t, homeDir, "invalid-workspace-session", modTime)
+
+	lister := newTestLister(homeDir)
+
+	sessions, _, err := lister.ListAll(projectPath)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	var copilotSessions []SessionInfo
+	for _, s := range sessions {
+		if s.Source == SourceCopilot {
+			copilotSessions = append(copilotSessions, s)
+		}
+	}
+
+	if len(copilotSessions) != 1 {
+		t.Fatalf("expected 1 Copilot session matching project filter, got %d", len(copilotSessions))
+	}
+	if copilotSessions[0].ID != "valid-session" {
+		t.Errorf("session.ID = %q, want %q", copilotSessions[0].ID, "valid-session")
+	}
+}
+
 // setupCodexSessionWithLeadingLines creates a Codex session file where
 // session_meta is NOT the first line. Non-meta entries appear before it.
 func setupCodexSessionWithLeadingLines(t *testing.T, homeDir, projectPath, sessionID string, createdAt time.Time, leadingLines int) {
