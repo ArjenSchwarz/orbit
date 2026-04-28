@@ -527,15 +527,36 @@ Variant 1 is recommended.
 		assert.ErrorIs(t, err, ErrNoImprovements)
 	})
 
-	// Regression: T-710 — guard against any short suffix after the header
-	// that could trigger out-of-range slicing. Header followed by only a
-	// newline must also return ErrNoImprovements without panicking.
-	t.Run("returns error without panicking when header is followed only by newline", func(t *testing.T) {
+	// Header followed only by a newline yields an empty trailing section.
+	// This is not a panic path (`"\n"[1:]` is valid) but verifies the empty
+	// section is reported as ErrNoImprovements.
+	t.Run("returns error when header is followed only by newline", func(t *testing.T) {
 		tmpDir := t.TempDir()
 		compDir := filepath.Join(tmpDir, "comparison-report")
 		require.NoError(t, os.MkdirAll(compDir, 0755))
 
 		reportContent := "# Comparison Report\n\n# Improvements from Other Variants\n"
+		require.NoError(t, os.WriteFile(filepath.Join(compDir, "report.md"), []byte(reportContent), 0644))
+
+		c := &Consolidator{
+			config: Config{
+				SpecDir: tmpDir,
+			},
+		}
+
+		err := c.checkEmptyImprovements(context.Background())
+		assert.ErrorIs(t, err, ErrNoImprovements)
+	})
+
+	// Header followed immediately by another top-level heading: the
+	// "Improvements" section has no body, so we should report no
+	// improvements without inspecting the next section's content.
+	t.Run("returns error when header is immediately followed by next top-level heading", func(t *testing.T) {
+		tmpDir := t.TempDir()
+		compDir := filepath.Join(tmpDir, "comparison-report")
+		require.NoError(t, os.MkdirAll(compDir, 0755))
+
+		reportContent := "# Comparison Report\n\n# Improvements from Other Variants\n# Next Section\nirrelevant body\n"
 		require.NoError(t, os.WriteFile(filepath.Join(compDir, "report.md"), []byte(reportContent), 0644))
 
 		c := &Consolidator{
