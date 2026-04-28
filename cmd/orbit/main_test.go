@@ -227,6 +227,20 @@ func TestReorderArgs(t *testing.T) {
 			input:    []string{"my-spec", "--variant=1"},
 			expected: []string{"--variant=1", "my-spec"},
 		},
+		// Regression guard for the i++; continue branch in reorderArgs:
+		// "--flag=value" must not absorb the following positional argument.
+		"equals-flag before positional": {
+			fs:       newConsolidateFlagSet(),
+			input:    []string{"--variant=1", "my-feature"},
+			expected: []string{"--variant=1", "my-feature"},
+		},
+		// Multiple boolean flags in sequence followed by a positional. Each
+		// bool must keep its hands off the following token.
+		"sequential bool flags then positional": {
+			fs:       newConsolidateFlagSet(),
+			input:    []string{"--allow-dirty", "--rollback", "my-spec"},
+			expected: []string{"--allow-dirty", "--rollback", "my-spec"},
+		},
 		"only flags": {
 			fs:       newConsolidateFlagSet(),
 			input:    []string{"--variant", "1", "--force"},
@@ -301,9 +315,14 @@ func TestReorderArgs_NilFlagSet(t *testing.T) {
 			expected: []string{"--variant", "1", "my-spec"},
 		},
 		"nil fs gobbles next token even for what would be a bool": {
-			// Without a FlagSet the function cannot know --rollback is bool.
-			// The legacy heuristic consumes the following token; that's why
-			// callers should pass a FlagSet whenever bool flags exist.
+			// Without a FlagSet the function cannot know --rollback is bool,
+			// so the legacy heuristic consumes "my-spec" as if it were
+			// --rollback's value. The combined output here is coincidentally
+			// correct because "my-spec" is appended to flags rather than
+			// positional, but a value flag following the absorbed token would
+			// be lost — e.g. ["--rollback", "my-spec", "--variant", "1"]
+			// would drop --variant entirely. Callers should always pass a
+			// FlagSet when bool flags exist.
 			input:    []string{"--rollback", "my-spec"},
 			expected: []string{"--rollback", "my-spec"},
 		},
