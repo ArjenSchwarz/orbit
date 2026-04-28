@@ -2,6 +2,8 @@ package config
 
 import (
 	"fmt"
+	"io"
+	"log"
 	"os"
 	"path/filepath"
 	"strings"
@@ -2696,20 +2698,20 @@ func TestParsePositiveInt_AcceptsValidValue(t *testing.T) {
 	}
 }
 
-// silenceStderr redirects os.Stderr to /dev/null for the duration of the
-// test so the expected "Warning: ORBIT_…" lines from rejected env values
-// do not pollute go test output. The original stderr is restored on cleanup.
-func silenceStderr(t *testing.T) {
+// silenceLog redirects the standard logger to io.Discard for the duration
+// of the test so the expected "Warning: ORBIT_…" lines from rejected env
+// values do not pollute go test output. The original logger output is
+// restored on cleanup.
+//
+// This swaps the logger's writer rather than os.Stderr so it does not
+// race with anything else in the process that holds a reference to the
+// original os.Stderr.
+func silenceLog(t *testing.T) {
 	t.Helper()
-	devNull, err := os.OpenFile(os.DevNull, os.O_WRONLY, 0)
-	if err != nil {
-		t.Fatalf("opening os.DevNull: %v", err)
-	}
-	original := os.Stderr
-	os.Stderr = devNull
+	original := log.Writer()
+	log.SetOutput(io.Discard)
 	t.Cleanup(func() {
-		os.Stderr = original
-		_ = devNull.Close()
+		log.SetOutput(original)
 	})
 }
 
@@ -2719,7 +2721,7 @@ func TestLoad_ServePortRejectsTrailingChars(t *testing.T) {
 
 	t.Setenv("HOME", homeDir)
 	t.Setenv("ORBIT_SERVE_PORT", "9000abc")
-	silenceStderr(t)
+	silenceLog(t)
 
 	cfg := Load(tmpDir)
 
@@ -2736,7 +2738,7 @@ func TestLoad_VariantCountRejectsTrailingChars(t *testing.T) {
 
 	t.Setenv("HOME", homeDir)
 	t.Setenv("ORBIT_VARIANT_COUNT", "3oops")
-	silenceStderr(t)
+	silenceLog(t)
 
 	cfg := Load(tmpDir)
 
@@ -2753,7 +2755,7 @@ func TestLoad_MaxParallelRejectsTrailingChars(t *testing.T) {
 
 	t.Setenv("HOME", homeDir)
 	t.Setenv("ORBIT_MAX_PARALLEL", "5junk")
-	silenceStderr(t)
+	silenceLog(t)
 
 	cfg := Load(tmpDir)
 

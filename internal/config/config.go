@@ -311,7 +311,7 @@ func Load(workingDir string) *Config {
 			servePort = port
 			envUsed = true
 		} else {
-			fmt.Fprintf(os.Stderr, "Warning: ORBIT_SERVE_PORT=%q ignored: %v\n", envServePort, err)
+			log.Printf("Warning: ORBIT_SERVE_PORT=%q ignored: %v", envServePort, err)
 		}
 	}
 	if envServeBind, exists := os.LookupEnv("ORBIT_SERVE_BIND"); exists {
@@ -332,7 +332,7 @@ func Load(workingDir string) *Config {
 			variantCount = count
 			envUsed = true
 		} else {
-			fmt.Fprintf(os.Stderr, "Warning: ORBIT_VARIANT_COUNT=%q ignored: %v\n", envVariantCount, err)
+			log.Printf("Warning: ORBIT_VARIANT_COUNT=%q ignored: %v", envVariantCount, err)
 		}
 	}
 	if envParallel, exists := os.LookupEnv("ORBIT_PARALLEL"); exists {
@@ -344,7 +344,7 @@ func Load(workingDir string) *Config {
 			maxParallel = max
 			envUsed = true
 		} else {
-			fmt.Fprintf(os.Stderr, "Warning: ORBIT_MAX_PARALLEL=%q ignored: %v\n", envMaxParallel, err)
+			log.Printf("Warning: ORBIT_MAX_PARALLEL=%q ignored: %v", envMaxParallel, err)
 		}
 	}
 	if envBranchPrefix, exists := os.LookupEnv("ORBIT_BRANCH_PREFIX"); exists {
