@@ -2407,8 +2407,9 @@ func TestVariantPostCompletion_FallsBackToFreshSessionOnInvalid(t *testing.T) {
 // the original (likely dead) session id rather than the one the agent
 // actually ended up using.
 func TestVariantPostCompletion_ReconcilesSessionIDOnRetryableError(t *testing.T) {
-	// Force the claude-code classifier so a retryable error is classified as
-	// ErrorClassRetryable (the default classifier marks everything fatal).
+	// Touch the registry so the claudecode init() side effect is in scope —
+	// classifyFromAgent("claude-code") then returns the retryable classifier
+	// instead of the default (which would mark every error fatal).
 	_ = agents.GetClassifier("claude-code")
 
 	clock := testutil.NewFakeClock(time.Now())

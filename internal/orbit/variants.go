@@ -915,6 +915,7 @@ func (o *Orbit) runVariantPostCompletion(
 				var err error
 				sessionID, isResume, err = logManager.StartPostCompletion(o.config.ContinueSession)
 				if err != nil {
+					log.Printf("Warning: variant %d failed to start post-completion in log manager: %v", v.ID, err)
 					o.debug.Log("Variant %d: failed to start post-completion in log manager: %v", v.ID, err)
 					sessionID = uuid.NewString()
 					isResume = false
