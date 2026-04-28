@@ -3,8 +3,16 @@
 package consolidation
 
 import (
+	"time"
+
 	"github.com/arjenschwarz/orbit/internal/agents"
 )
+
+// DefaultTimeout is the maximum duration for a single consolidation agent
+// invocation. This bounds both the consolidation prompt (runWithRetry) and the
+// post-prompt (runPostPrompt) so a stalled API connection or hung session can
+// never run indefinitely.
+const DefaultTimeout = 30 * time.Minute
 
 // Config holds consolidation configuration.
 type Config struct {
@@ -13,8 +21,9 @@ type Config struct {
 	VariantID    int
 	Agent        agents.Agent
 	AllowDirty   bool
-	PostPrompt   string // AI prompt after consolidation (renamed from PostCommand)
-	CustomPrompt string // User-provided instructions via --prompt
+	PostPrompt   string        // AI prompt after consolidation (renamed from PostCommand)
+	CustomPrompt string        // User-provided instructions via --prompt
+	Timeout      time.Duration // Per-invocation agent timeout (0 = DefaultTimeout)
 }
 
 // ConsolidationResult contains the outcome of a consolidation run.
