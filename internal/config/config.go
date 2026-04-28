@@ -115,7 +115,7 @@ type Config struct {
 	// Variant configuration for multi-spec comparison
 	VariantCount   int    // Number of variants (0 = single-run mode)
 	Parallel       bool   // Run variants in parallel
-	MaxParallel    int    // Maximum parallel variants
+	MaxParallel    int    // Maximum parallel variants (0 means "unset"; resolved to the CLI flag default)
 	BranchPrefix   string // Branch naming prefix
 	GuidanceFile   string // Path to YAML file with per-variant guidance
 	CompareCommand string // Custom comparison command (empty = use Claude)
