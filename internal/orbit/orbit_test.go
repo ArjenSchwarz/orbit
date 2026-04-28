@@ -2,6 +2,7 @@ package orbit
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"os"
 	"path/filepath"
@@ -2000,7 +2001,7 @@ func TestVariantPostCompletion_NilRunResult(t *testing.T) {
 
 	// This should NOT panic. Before the fix, it would panic on nil dereference.
 	// Like runVariantPhaseWithRetry, the default classifier returns non-retryable.
-	_, err := o.runVariantPostCompletion(context.Background(), v, agent, 0)
+	_, err := o.runVariantPostCompletion(context.Background(), v, agent, nil, 0)
 	if err == nil {
 		t.Fatal("expected ClassifiedError, got nil")
 	}
@@ -2170,5 +2171,160 @@ func TestRunVariantsParallel_CancelPreservesMixedStatuses(t *testing.T) {
 		if v.Status != variants.StatusPending {
 			t.Errorf("variant %d: status = %q, want %q", v.ID, v.Status, variants.StatusPending)
 		}
+	}
+}
+
+// TestVariantPostCompletion_ResumesPriorSession is the regression test for T-715.
+//
+// Variant post-prompt should mirror single-run post-prompt session lifecycle: it
+// must coordinate the session through the variant log manager so that when a
+// post-completion is already in progress (interrupted run resumed via
+// ContinueSession), the agent's Resume() path is used instead of starting a
+// brand-new session via Run() with a fresh UUID.
+//
+// Before the fix, runVariantPostCompletion always generated a fresh UUID and
+// invoked agent.Run(), regardless of the log manager state. Resume() was never
+// called for variant post-prompt, diverging from the documented single-run
+// semantics.
+func TestVariantPostCompletion_ResumesPriorSession(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	// Seed a variant log manager that already has an in-progress post-completion
+	// state recorded — simulating a prior post-prompt run that was interrupted.
+	logManager, err := logs.NewManagerWithOptions(tmpDir, "variant-1", tmpDir, logs.ManagerOptions{UseSubdirs: false})
+	if err != nil {
+		t.Fatalf("NewManagerWithOptions: %v", err)
+	}
+	priorSessionID, _, err := logManager.StartPostCompletion(false)
+	if err != nil {
+		t.Fatalf("StartPostCompletion seeding failed: %v", err)
+	}
+
+	// Configure a TestAgent that succeeds on first call. The recorder will let
+	// us assert which method (Run vs Resume) was invoked and with which session.
+	scenario := testutil.NewScenario().
+		Success(priorSessionID, 0.01).
+		Build()
+	agent := testutil.NewTestAgent(t, "test-agent", scenario)
+	t.Cleanup(func() { agent.AssertAllConsumed(t) })
+
+	o := &Orbit{
+		config: Config{
+			PostPrompt:      "review implementation",
+			ContinueSession: true,
+		},
+		debug: debug.New(false, ""),
+	}
+
+	v := &variants.Variant{
+		ID:           1,
+		WorktreePath: tmpDir,
+	}
+
+	// New post-completion call should resume the prior session via Resume().
+	result, runErr := o.runVariantPostCompletion(context.Background(), v, agent, logManager, 0)
+	if runErr != nil {
+		t.Fatalf("runVariantPostCompletion failed: %v", runErr)
+	}
+	if result == nil {
+		t.Fatal("expected non-nil result")
+	}
+
+	calls := agent.Recorder().Calls()
+	if len(calls) != 1 {
+		t.Fatalf("expected exactly 1 agent call, got %d", len(calls))
+	}
+	if calls[0].Method != "Resume" {
+		t.Errorf("expected Resume method to be called, got %q", calls[0].Method)
+	}
+	if calls[0].SessionID != priorSessionID {
+		t.Errorf("Resume session id = %q, want %q", calls[0].SessionID, priorSessionID)
+	}
+
+	// Post-completion state should be cleared after success — verify via the
+	// on-disk summary.json that CompletePostCompletion was called.
+	if pc := readPostCompletion(t, logManager.SessionDir()); pc != nil {
+		t.Errorf("expected post_completion to be cleared after success, still set: %+v", pc)
+	}
+}
+
+// readPostCompletion loads summary.json from sessionDir and returns the
+// post_completion field as a generic map (or nil if absent). Test helper for
+// verifying log-manager state without relying on internal summary access.
+func readPostCompletion(t *testing.T, sessionDir string) map[string]any {
+	t.Helper()
+	data, err := os.ReadFile(filepath.Join(sessionDir, "summary.json"))
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil
+		}
+		t.Fatalf("read summary.json: %v", err)
+	}
+	var summary map[string]any
+	if err := json.Unmarshal(data, &summary); err != nil {
+		t.Fatalf("unmarshal summary.json: %v", err)
+	}
+	pc, ok := summary["post_completion"].(map[string]any)
+	if !ok {
+		return nil
+	}
+	return pc
+}
+
+// TestVariantPostCompletion_FreshSessionTracksLogManager verifies that even when
+// no prior post-completion exists, the log manager is updated with a session ID
+// (so orbit status can show live activity) and the post-completion state is
+// cleared after success. Companion regression for T-715.
+func TestVariantPostCompletion_FreshSessionTracksLogManager(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	logManager, err := logs.NewManagerWithOptions(tmpDir, "variant-1", tmpDir, logs.ManagerOptions{UseSubdirs: false})
+	if err != nil {
+		t.Fatalf("NewManagerWithOptions: %v", err)
+	}
+
+	// Single Run call — agent returns its own session ID, exercising
+	// ReconcilePostCompletionSessionID.
+	scenario := testutil.NewScenario().
+		Success("agent-returned-session", 0.02).
+		Build()
+	agent := testutil.NewTestAgent(t, "test-agent", scenario)
+	t.Cleanup(func() { agent.AssertAllConsumed(t) })
+
+	o := &Orbit{
+		config: Config{PostPrompt: "review implementation"},
+		debug:  debug.New(false, ""),
+	}
+
+	v := &variants.Variant{
+		ID:           1,
+		WorktreePath: tmpDir,
+	}
+
+	result, runErr := o.runVariantPostCompletion(context.Background(), v, agent, logManager, 0)
+	if runErr != nil {
+		t.Fatalf("runVariantPostCompletion failed: %v", runErr)
+	}
+	if result == nil {
+		t.Fatal("expected non-nil result")
+	}
+
+	calls := agent.Recorder().Calls()
+	if len(calls) != 1 {
+		t.Fatalf("expected exactly 1 agent call, got %d", len(calls))
+	}
+	// Without an in-progress post-completion in the log manager, Run() is the
+	// correct method (nothing to resume). The session ID should be a UUID
+	// generated through StartPostCompletion, not blank.
+	if calls[0].Method != "Run" {
+		t.Errorf("expected Run method, got %q", calls[0].Method)
+	}
+	if calls[0].Options.SessionID == "" {
+		t.Errorf("expected a session id to be passed to Run, got empty string")
+	}
+
+	// After success, post-completion state should be cleared.
+	if pc := readPostCompletion(t, logManager.SessionDir()); pc != nil {
+		t.Errorf("expected post_completion to be cleared after success, still set: %+v", pc)
 	}
 }

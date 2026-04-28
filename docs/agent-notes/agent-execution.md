@@ -79,6 +79,22 @@ Two helper functions in `internal/orbit/single.go`:
 - Long sleeps (rate-limit waits) are broken into 30-second chunks with context checks between them, so Ctrl+C is responsive even during multi-hour usage limit waits.
 - Rate-limit resets are capped at 5 to prevent infinite loops if the condition never resolves.
 
+## Variant Post-Prompt Session Lifecycle (`internal/orbit/variants.go`)
+
+`runVariantPostCompletion` mirrors single-run `runPostPrompt`:
+
+1. `logManager.StartPostCompletion(ContinueSession)` returns `(sessionID, isResume)`.
+2. If `isResume`, call `agent.Resume(sessionID, opts)`. On invalid-session
+   error, fall back to a fresh UUID + `agent.Run`, and update the manager
+   via `SetPostCompletionSessionID`.
+3. On success, reconcile the agent-returned session id via
+   `ReconcilePostCompletionSessionID` and clear the in-progress entry via
+   `CompletePostCompletion`.
+
+Without these calls, variant post-prompt always opens a brand-new session,
+losing phase context and bypassing the documented post-completion lifecycle
+(T-715).
+
 ## Claude Code Usage Limit Parsing (`internal/agents/claudecode/errors.go`)
 
 `parseUsageLimitReset()` extracts the reset time from messages like `"resets 3am (Australia/Melbourne)"` or `"resets 3am"` (no timezone). The timezone in parentheses is optional -- when absent, `time.Local` is used as the default. The regex uses 4 capture groups; `FindStringSubmatch` returns a 5-element slice on match (or nil), so `matches[4]` is `""` when the optional timezone group doesn't match.

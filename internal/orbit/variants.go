@@ -727,7 +727,7 @@ func (o *Orbit) runVariant(ctx context.Context, v *variants.Variant) error {
 	if o.config.PostPrompt != "" {
 		log.Printf("Variant %d: running post-prompt...", v.ID)
 		postStartTime := time.Now()
-		postResult, err := o.runVariantPostCompletion(ctx, v, variantAgent, variantAgentConfig.Timeout)
+		postResult, err := o.runVariantPostCompletion(ctx, v, variantAgent, variantLogManager, variantAgentConfig.Timeout)
 		if err != nil {
 			// Save failed post-prompt session for debugging
 			if variantLogManager != nil && postResult != nil {
@@ -892,18 +892,89 @@ func (o *Orbit) runVariantPhaseWithRetry(ctx context.Context, v *variants.Varian
 }
 
 // runVariantPostCompletion executes the post-completion command for a variant.
-func (o *Orbit) runVariantPostCompletion(ctx context.Context, v *variants.Variant, agent agents.Agent, timeout time.Duration) (*agents.RunResult, error) {
+//
+// Mirrors single-run runPostPrompt session lifecycle:
+//  1. StartPostCompletion on the variant log manager — if an entry is already
+//     in progress and ContinueSession is set, resume that session via Resume().
+//  2. On invalid-session errors during resume, fall back to a fresh Run() and
+//     update the log manager via SetPostCompletionSessionID.
+//  3. Reconcile the agent-returned session id with the log manager when it
+//     differs from the one we asked for.
+//  4. Clear the in-progress entry on success via CompletePostCompletion.
+//
+// Without this coordination, variant post-prompt loses phase context across
+// resumed runs and silently bypasses the documented post-completion
+// lifecycle (T-715).
+func (o *Orbit) runVariantPostCompletion(
+	ctx context.Context,
+	v *variants.Variant,
+	agent agents.Agent,
+	logManager *logs.Manager,
+	timeout time.Duration,
+) (*agents.RunResult, error) {
 	return agents.RunWithRetry(ctx, agents.RetryConfig{
 		MaxRetries: maxRetries,
 		Sleep:      o.sleepFunc(),
 		Execute: func(ctx context.Context, _ int) (*agents.RunResult, error) {
+			// Determine session id and whether to resume from log manager state.
+			var sessionID string
+			var isResume bool
+			if logManager != nil {
+				var err error
+				sessionID, isResume, err = logManager.StartPostCompletion(o.config.ContinueSession)
+				if err != nil {
+					o.debug.Log("Variant %d: failed to start post-completion in log manager: %v", v.ID, err)
+					sessionID = uuid.NewString()
+					isResume = false
+				} else {
+					o.debug.Log("Variant %d: post-completion session %s (resume=%v)", v.ID, sessionID, isResume)
+				}
+			} else {
+				sessionID = uuid.NewString()
+				isResume = false
+			}
+
 			opts := agents.RunOptions{
 				Prompt:    o.config.PostPrompt,
-				SessionID: uuid.NewString(),
+				SessionID: sessionID,
 				WorkDir:   v.WorktreePath,
 				Timeout:   timeout,
 			}
-			return agent.Run(ctx, opts)
+
+			var result *agents.RunResult
+			var err error
+			if isResume {
+				result, err = agent.Resume(ctx, sessionID, opts)
+				// Fall back to fresh session on invalid-session errors.
+				if err != nil && isSessionInvalidError(result) {
+					o.debug.Log("Variant %d: post-completion resume failed, starting fresh session", v.ID)
+					log.Printf("Variant %d: post-completion session resume failed, starting fresh session", v.ID)
+					sessionID = uuid.NewString()
+					if logManager != nil {
+						if setErr := logManager.SetPostCompletionSessionID(sessionID); setErr != nil {
+							o.debug.Log("Variant %d: failed to update post-completion session id: %v", v.ID, setErr)
+						}
+					}
+					opts.SessionID = sessionID
+					result, err = agent.Run(ctx, opts)
+				}
+			} else {
+				result, err = agent.Run(ctx, opts)
+			}
+
+			// On success, reconcile the returned session id and clear in-progress state.
+			if err == nil && result != nil && !result.IsError && logManager != nil {
+				if result.SessionID != "" && result.SessionID != sessionID {
+					o.debug.Log("Variant %d: post-completion session id changed: expected=%s got=%s",
+						v.ID, sessionID, result.SessionID)
+					logManager.ReconcilePostCompletionSessionID(result.SessionID)
+				}
+				if completeErr := logManager.CompletePostCompletion(); completeErr != nil {
+					o.debug.Log("Variant %d: failed to complete post-completion in log manager: %v", v.ID, completeErr)
+				}
+			}
+
+			return result, err
 		},
 		Classify: classifyFromAgent(agent.Name()),
 		OnRetry: func(attempt, maxRetries int, classified *agents.ClassifiedError, backoff time.Duration) {
