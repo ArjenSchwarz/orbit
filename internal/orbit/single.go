@@ -279,8 +279,11 @@ func (o *Orbit) runPostPrompt() error {
 		var err error
 		sessionID, isResume, err = o.logManager.StartPostCompletion(o.config.ContinueSession)
 		if err != nil {
+			if o.spinner != nil {
+				o.spinner.Stop()
+			}
 			o.debug.Log("Failed to start post-completion in log manager: %v", err)
-			return o.fail(fmt.Errorf("failed to start post-completion: %w", err))
+			return fmt.Errorf("failed to start post-completion: %w", err)
 		}
 		o.debug.LogSession(sessionID, isResume, "post-completion obtained from log manager")
 	} else {
