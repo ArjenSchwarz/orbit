@@ -204,6 +204,9 @@ func runCompare(ctx context.Context, args []string) error {
 		if err != nil {
 			return fmt.Errorf("unknown agent type %q for alias %q\n\nValid agent types: %v", resolved.Type, aliasName, agents.List())
 		}
+		if !agent.IsInstalled() {
+			return fmt.Errorf("agent %q CLI (%s) not found\nInstall it from: %s", aliasName, agent.CLICommand(), getAgentInstallURL(resolved.Type))
+		}
 
 		adapter := comparison.NewAgentAdapter(agent, workDir).
 			WithTimeout(comparisonTimeout)
