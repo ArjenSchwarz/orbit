@@ -1188,9 +1188,9 @@ func TestRunWithRetry_IsErrorTreatedAsFailure(t *testing.T) {
 			},
 			wantErr: false,
 		},
-		"nil result should succeed": {
+		"nil result should fail": {
 			result:  nil,
-			wantErr: false,
+			wantErr: true,
 		},
 		"Go-level error should fail": {
 			result:  &agents.RunResult{SessionID: "test-session", ExitCode: 1},
