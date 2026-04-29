@@ -1574,15 +1574,15 @@ func TestSetup_CleansUpBranchesOnPartialFailure(t *testing.T) {
 
 	// Branches 1 and 2 were created successfully before branch 3 failed.
 	// They must be deleted during cleanup.
-	if len(git.mockGitClient.deletedBranches) != 2 {
+	if len(git.deletedBranches) != 2 {
 		t.Errorf("expected 2 deleted branches, got %d: %v",
-			len(git.mockGitClient.deletedBranches), git.mockGitClient.deletedBranches)
+			len(git.deletedBranches), git.deletedBranches)
 	}
 
 	// Worktrees 1 and 2 were also created and must be removed.
-	if len(git.mockGitClient.removedWorktrees) != 2 {
+	if len(git.removedWorktrees) != 2 {
 		t.Errorf("expected 2 removed worktrees, got %d: %v",
-			len(git.mockGitClient.removedWorktrees), git.mockGitClient.removedWorktrees)
+			len(git.removedWorktrees), git.removedWorktrees)
 	}
 }
 
@@ -1612,15 +1612,15 @@ func TestSetup_CleansUpBranchesOnWorktreeFailure(t *testing.T) {
 
 	// Branch 1 was created with its worktree, branch 2 was created but worktree failed.
 	// Both branches must be deleted.
-	if len(git.mockGitClient.deletedBranches) != 2 {
+	if len(git.deletedBranches) != 2 {
 		t.Errorf("expected 2 deleted branches, got %d: %v",
-			len(git.mockGitClient.deletedBranches), git.mockGitClient.deletedBranches)
+			len(git.deletedBranches), git.deletedBranches)
 	}
 
 	// Only worktree 1 was successfully created, so only it should be removed.
-	if len(git.mockGitClient.removedWorktrees) != 1 {
+	if len(git.removedWorktrees) != 1 {
 		t.Errorf("expected 1 removed worktree, got %d: %v",
-			len(git.mockGitClient.removedWorktrees), git.mockGitClient.removedWorktrees)
+			len(git.removedWorktrees), git.removedWorktrees)
 	}
 }
 
