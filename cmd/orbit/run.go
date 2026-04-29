@@ -313,8 +313,8 @@ func runCommand(args []string) error {
 		Guidance:         guidance,
 		CompareCommand:   compareCommandValue,
 		GlobalGuidance:   cfg.GlobalGuidance,
-		SpecDir:  specDir,
-		RepoRoot: repoRoot,
+		SpecDir:          specDir,
+		RepoRoot:         repoRoot,
 		VariantAgents:          variantAgents,
 		AutoConsolidate:        autoConsolidateValue,
 		AllowDirty:             *allowDirty,
@@ -345,11 +345,6 @@ func getGitBranch() (string, error) {
 	return strings.TrimSpace(string(output)), nil
 }
 
-// resolveMaxParallel applies CLI/config precedence to --max-parallel and
-// validates the resolved value. The flag must be detected as explicitly set
-// via fs.Visit so an explicit --max-parallel=3 still wins over a non-default
-// config value.
-//
 // variantFlagValues holds the resolved values for variant-related flags.
 type variantFlagValues struct {
 	VariantCount   int
@@ -383,8 +378,9 @@ func resolveVariantFlags(fs *flag.FlagSet, cfg *config.Config) variantFlagValues
 		GuidanceFile:   cfg.GuidanceFile,
 	}
 	if variantCountExplicit {
-		val, _ := fs.Lookup("variants").Value.(flag.Getter)
-		v.VariantCount = val.Get().(int)
+		if getter, ok := fs.Lookup("variants").Value.(flag.Getter); ok {
+			v.VariantCount = getter.Get().(int)
+		}
 	}
 	if branchPrefixExplicit {
 		v.BranchPrefix = fs.Lookup("branch-prefix").Value.String()
@@ -398,6 +394,11 @@ func resolveVariantFlags(fs *flag.FlagSet, cfg *config.Config) variantFlagValues
 	return v
 }
 
+// resolveMaxParallel applies CLI/config precedence to --max-parallel and
+// validates the resolved value. The flag must be detected as explicitly set
+// via fs.Visit so an explicit --max-parallel=3 still wins over a non-default
+// config value.
+//
 // Precedence: explicit flag > config > flag default. A config value of 0 is
 // treated as "unset" and falls through to the flag's default (which flagValue
 // already holds when flagExplicit is false). An explicit --max-parallel=0 is
