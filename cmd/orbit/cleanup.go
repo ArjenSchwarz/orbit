@@ -47,19 +47,19 @@ func cleanupCommand(args []string) error {
 		specName = extractSpecName(branch)
 	}
 
+	// Get repo root
+	repoRoot, err := getRepoRoot()
+	if err != nil {
+		return fmt.Errorf("failed to get repository root: %w", err)
+	}
+
 	// Find and load variants.json
-	specDir := filepath.Join("specs", specName)
+	specDir := filepath.Join(repoRoot, "specs", specName)
 	metadataPath := filepath.Join(specDir, ".orbit", "variants.json")
 
 	if _, err := os.Stat(metadataPath); os.IsNotExist(err) {
 		fmt.Printf("No variant run to clean up for spec: %s\n", specName)
 		return nil
-	}
-
-	// Get repo root
-	repoRoot, err := getRepoRoot()
-	if err != nil {
-		return fmt.Errorf("failed to get repository root: %w", err)
 	}
 
 	// Load metadata using a Manager

@@ -60,17 +60,17 @@ func runCompare(ctx context.Context, args []string) error {
 		return err
 	}
 
-	// Get working directory for config loading
-	workDir, err := os.Getwd()
+	// Get repo root
+	repoRoot, err := getRepoRoot()
 	if err != nil {
-		return fmt.Errorf("failed to get working directory: %w", err)
+		return fmt.Errorf("failed to get repository root: %w", err)
 	}
 
 	// Config only needed for AI agent invocation, not for loading saved results.
 	// Captured at function scope so it can supply AgentConfig.Timeout below (T-678).
 	var appConfig *config.Config
 	if *fromFile == "" {
-		appConfig = config.Load(workDir)
+		appConfig = config.Load(repoRoot)
 		if err := appConfig.RequireConfigFile(); err != nil {
 			return err
 		}
@@ -87,17 +87,11 @@ func runCompare(ctx context.Context, args []string) error {
 	}
 
 	// Find and load variants.json
-	specDir := filepath.Join("specs", specName)
+	specDir := filepath.Join(repoRoot, "specs", specName)
 	metadataPath := filepath.Join(specDir, ".orbit", "variants.json")
 
 	if _, err := os.Stat(metadataPath); os.IsNotExist(err) {
 		return fmt.Errorf("no variant run found for spec: %s", specName)
-	}
-
-	// Get repo root
-	repoRoot, err := getRepoRoot()
-	if err != nil {
-		return fmt.Errorf("failed to get repository root: %w", err)
 	}
 
 	// Load metadata using a Manager
@@ -208,7 +202,7 @@ func runCompare(ctx context.Context, args []string) error {
 			return fmt.Errorf("agent %q CLI (%s) not found\nInstall it from: %s", aliasName, agent.CLICommand(), getAgentInstallURL(resolved.Type))
 		}
 
-		adapter := comparison.NewAgentAdapter(agent, workDir).
+		adapter := comparison.NewAgentAdapter(agent, repoRoot).
 			WithTimeout(comparisonTimeout)
 		comparator := comparison.NewComparator(adapter, *compareCmd)
 

@@ -96,6 +96,13 @@ func TestConsolidateCommand_RollbackModeValidation(t *testing.T) {
 		t.Fatalf("failed to change to temp directory: %v", err)
 	}
 
+	// Initialize git repo (required for getRepoRoot)
+	cmd := exec.Command("git", "init")
+	cmd.Dir = tmpDir
+	if out, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("failed to init git repo: %v\n%s", err, out)
+	}
+
 	// With --rollback, we should NOT get a "variant required" error
 	// Instead, we should get a "no variant run found" error (which is expected
 	// since we don't have a real spec setup)
