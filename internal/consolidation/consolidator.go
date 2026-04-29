@@ -535,7 +535,7 @@ func (c *Consolidator) runWithRetry(ctx context.Context, prompt string) (*agents
 				return nil
 			}
 
-			// Nil result with no error is unexpected — treat as fatal to avoid nil dereference.
+			// Nil result with no error is unexpected — treat as retryable transient glitch.
 			if err == nil && result == nil {
 				return &agents.ClassifiedError{
 					Original: fmt.Errorf("agent returned nil result"),
