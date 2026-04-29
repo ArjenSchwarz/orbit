@@ -28,8 +28,8 @@ func runCommand(args []string) error {
 	// This allows us to provide a clear error message instead of "unknown flag".
 	for _, arg := range args {
 		if arg == "--post-command" || strings.HasPrefix(arg, "--post-command=") {
-			return fmt.Errorf("flag --post-command is deprecated\n\n"+
-				"  Rename to: --post-prompt\n\n"+
+			return fmt.Errorf("flag --post-command is deprecated\n\n" +
+				"  Rename to: --post-prompt\n\n" +
 				"Update your command and retry")
 		}
 	}
@@ -56,12 +56,12 @@ func runCommand(args []string) error {
 	agentFlag := fs.String("agent", "", "Agent to use (claude-code, codex, kiro, copilot, opencode)")
 
 	// Variant flags for multi-spec comparison
-	variantCount := fs.Int("variants", 0, "Number of implementation variants to run (0 = single-run mode)")
+	fs.Int("variants", 0, "Number of implementation variants to run (0 = single-run mode)")
 	parallel := fs.Bool("parallel", false, "Run variants in parallel")
 	maxParallel := fs.Int("max-parallel", config.DefaultMaxParallel, "Maximum parallel variants")
-	branchPrefix := fs.String("branch-prefix", "orbit-impl", "Branch naming prefix for variants")
-	guidanceFile := fs.String("guidance-file", "", "YAML file with per-variant guidance")
-	compareCommand := fs.String("compare-command", "", "Custom comparison command")
+	fs.String("branch-prefix", "orbit-impl", "Branch naming prefix for variants")
+	fs.String("guidance-file", "", "YAML file with per-variant guidance")
+	fs.String("compare-command", "", "Custom comparison command")
 	variantAgentsFlag := fs.String("variant-agents", "", "Comma-separated agent list for variants (cycles if fewer agents than variants)")
 
 	// Auto-consolidation flags
@@ -227,11 +227,17 @@ func runCommand(args []string) error {
 		autoConsolidateValue = false
 	}
 
+	vf := resolveVariantFlags(fs, cfg)
+	variantCountValue := vf.VariantCount
+	branchPrefixValue := vf.BranchPrefix
+	compareCommandValue := vf.CompareCommand
+	guidanceFileValue := vf.GuidanceFile
+
 	// Parse guidance file if provided
 	var guidance []string
-	if *guidanceFile != "" {
+	if guidanceFileValue != "" {
 		var err error
-		guidance, err = parseGuidanceFile(*guidanceFile, *variantCount)
+		guidance, err = parseGuidanceFile(guidanceFileValue, variantCountValue)
 		if err != nil {
 			return fmt.Errorf("failed to parse guidance file: %w", err)
 		}
@@ -249,18 +255,18 @@ func runCommand(args []string) error {
 
 	// Validate variant configuration. Max-parallel is validated inside
 	// resolveMaxParallel so config-sourced values are also checked.
-	if *variantCount < 0 {
+	if variantCountValue < 0 {
 		return fmt.Errorf("--variants must be non-negative")
 	}
 
 	// Validate auto-consolidate requires variants
-	if *autoConsolidate && *variantCount == 0 {
+	if autoConsolidateValue && variantCountValue == 0 {
 		return fmt.Errorf("--auto-consolidate requires --variants to be specified")
 	}
 
 	// Derive SpecDir and RepoRoot for variant mode
 	var specDir, repoRoot string
-	if *variantCount > 0 {
+	if variantCountValue > 0 {
 		// SpecDir is the directory containing the tasks file
 		specDir = filepath.Dir(*tasksFile)
 
@@ -278,35 +284,35 @@ func runCommand(args []string) error {
 
 	// Create and run orchestrator
 	orbitCfg := orbit.Config{
-		TasksFile:        *tasksFile,
-		LogDir:           actualLogDir,
-		BranchName:       branchName,
-		SkipPermissions:  *skipPermissions,
-		Verbose:          *verbose,
-		Debug:            debugValue,
-		CentralizedLog:   centralizedLogValue,
-		RunID:            runID,
-		Version:          version,
-		DryRun:           *dryRun,
-		WorkingDir:       workingDir,
-		Command:          command,
-		PrePrompt:        prePrompt,
-		PostPrompt:       postPrompt,
-		AgentPreCommand:  agentPreCommand,
-		AgentPostCommand: agentPostCommand,
-		CommandTimeout:   cfg.CommandTimeout,
-		DateSubdirs:      dateSubdirsValue,
-		ContinueSession:  continueSessionValue,
-		Agent:            aliasName,
-		AgentConfig:      agentCfg,
-		AgentConfigs:     cfg.GetAllAgentConfigs(),
-		VariantCount:     *variantCount,
-		Parallel:         parallelValue,
-		MaxParallel:      maxParallelValue,
-		BranchPrefix:     *branchPrefix,
-		Guidance:         guidance,
-		CompareCommand:   *compareCommand,
-		GlobalGuidance:   cfg.GlobalGuidance,
+		TasksFile:              *tasksFile,
+		LogDir:                 actualLogDir,
+		BranchName:             branchName,
+		SkipPermissions:        *skipPermissions,
+		Verbose:                *verbose,
+		Debug:                  debugValue,
+		CentralizedLog:         centralizedLogValue,
+		RunID:                  runID,
+		Version:                version,
+		DryRun:                 *dryRun,
+		WorkingDir:             workingDir,
+		Command:                command,
+		PrePrompt:              prePrompt,
+		PostPrompt:             postPrompt,
+		AgentPreCommand:        agentPreCommand,
+		AgentPostCommand:       agentPostCommand,
+		CommandTimeout:         cfg.CommandTimeout,
+		DateSubdirs:            dateSubdirsValue,
+		ContinueSession:        continueSessionValue,
+		Agent:                  aliasName,
+		AgentConfig:            agentCfg,
+		AgentConfigs:           cfg.GetAllAgentConfigs(),
+		VariantCount:           variantCountValue,
+		Parallel:               parallelValue,
+		MaxParallel:            maxParallelValue,
+		BranchPrefix:           branchPrefixValue,
+		Guidance:               guidance,
+		CompareCommand:         compareCommandValue,
+		GlobalGuidance:         cfg.GlobalGuidance,
 		SpecDir:                specDir,
 		RepoRoot:               repoRoot,
 		VariantAgents:          variantAgents,
@@ -337,6 +343,57 @@ func getGitBranch() (string, error) {
 		return "", fmt.Errorf("not in a git repository or git not available: %w", err)
 	}
 	return strings.TrimSpace(string(output)), nil
+}
+
+// variantFlagValues holds the resolved values for variant-related flags.
+type variantFlagValues struct {
+	VariantCount   int
+	BranchPrefix   string
+	CompareCommand string
+	GuidanceFile   string
+}
+
+// resolveVariantFlags resolves variant-related flags using explicit-set detection.
+// fs.Visit only visits flags the user actually passed, letting us distinguish
+// "user passed the default value" from "flag was never set".
+func resolveVariantFlags(fs *flag.FlagSet, cfg *config.Config) variantFlagValues {
+	variantCountExplicit, branchPrefixExplicit, compareCommandExplicit, guidanceFileExplicit := false, false, false, false
+	fs.Visit(func(f *flag.Flag) {
+		switch f.Name {
+		case "variants":
+			variantCountExplicit = true
+		case "branch-prefix":
+			branchPrefixExplicit = true
+		case "compare-command":
+			compareCommandExplicit = true
+		case "guidance-file":
+			guidanceFileExplicit = true
+		}
+	})
+
+	v := variantFlagValues{
+		VariantCount:   cfg.VariantCount,
+		BranchPrefix:   cfg.BranchPrefix,
+		CompareCommand: cfg.CompareCommand,
+		GuidanceFile:   cfg.GuidanceFile,
+	}
+	if variantCountExplicit {
+		if getter, ok := fs.Lookup("variants").Value.(flag.Getter); ok {
+			if i, ok := getter.Get().(int); ok {
+				v.VariantCount = i
+			}
+		}
+	}
+	if branchPrefixExplicit {
+		v.BranchPrefix = fs.Lookup("branch-prefix").Value.String()
+	}
+	if compareCommandExplicit {
+		v.CompareCommand = fs.Lookup("compare-command").Value.String()
+	}
+	if guidanceFileExplicit {
+		v.GuidanceFile = fs.Lookup("guidance-file").Value.String()
+	}
+	return v
 }
 
 // resolveMaxParallel applies CLI/config precedence to --max-parallel and
