@@ -738,3 +738,101 @@ func mustMarshal(t *testing.T, v any) []byte {
 	require.NoError(t, err)
 	return data
 }
+
+// TestResolveFileCreatedAt_UsesTranscriptTimestamp verifies that the resolver
+// derives CreatedAt from source-specific transcript metadata (matching the
+// lister) rather than file modification time. Regression test for T-994.
+func TestResolveFileCreatedAt_UsesTranscriptTimestamp(t *testing.T) {
+	t.Run("claude", func(t *testing.T) {
+		homeDir := t.TempDir()
+		projectPath := t.TempDir()
+
+		sessionID := "ts-test-claude"
+		transcriptTime := time.Date(2025, 3, 10, 9, 0, 0, 0, time.UTC)
+
+		claudeProjectPath := claudecode.BuildProjectPath(projectPath)
+		dir := filepath.Join(homeDir, ".claude", "projects", claudeProjectPath)
+		require.NoError(t, os.MkdirAll(dir, 0755))
+
+		entry := map[string]any{
+			"type":      "system",
+			"timestamp": transcriptTime.Format(time.RFC3339),
+			"message":   "init",
+		}
+		data, _ := json.Marshal(entry)
+		filePath := filepath.Join(dir, sessionID+".jsonl")
+		require.NoError(t, os.WriteFile(filePath, append(data, '\n'), 0644))
+
+		// Set file mtime to a different time to prove we don't use it.
+		differentTime := time.Date(2099, 12, 31, 23, 59, 0, 0, time.UTC)
+		require.NoError(t, os.Chtimes(filePath, differentTime, differentTime))
+
+		resolver := newTestResolver(projectPath, homeDir)
+		resolved, err := resolver.Resolve(SourceClaude, sessionID)
+		require.NoError(t, err)
+		defer func() { _ = resolved.Reader.Close() }()
+
+		assert.Equal(t, transcriptTime, resolved.Metadata.CreatedAt,
+			"CreatedAt should come from transcript first entry, not file mtime")
+	})
+
+	t.Run("codex", func(t *testing.T) {
+		homeDir := t.TempDir()
+		projectPath := t.TempDir()
+
+		sessionID := "12345678-aaaa-bbbb-cccc-123456789abc"
+		metaTime := time.Date(2025, 2, 20, 15, 0, 0, 0, time.UTC)
+
+		codexDir := filepath.Join(homeDir, ".codex", "sessions", "2025", "02", "20")
+		require.NoError(t, os.MkdirAll(codexDir, 0755))
+
+		meta := map[string]any{
+			"type":      "session_meta",
+			"timestamp": metaTime.Format(time.RFC3339),
+			"payload":   map[string]any{"id": sessionID, "cwd": projectPath},
+		}
+		data, _ := json.Marshal(meta)
+		filePath := filepath.Join(codexDir, fmt.Sprintf("session-%s.jsonl", sessionID))
+		require.NoError(t, os.WriteFile(filePath, append(data, '\n'), 0644))
+
+		differentTime := time.Date(2099, 12, 31, 23, 59, 0, 0, time.UTC)
+		require.NoError(t, os.Chtimes(filePath, differentTime, differentTime))
+
+		resolver := newTestResolver(projectPath, homeDir)
+		resolved, err := resolver.Resolve(SourceCodex, sessionID)
+		require.NoError(t, err)
+		defer func() { _ = resolved.Reader.Close() }()
+
+		assert.Equal(t, metaTime, resolved.Metadata.CreatedAt,
+			"CreatedAt should come from session_meta timestamp, not file mtime")
+	})
+
+	t.Run("copilot", func(t *testing.T) {
+		homeDir := t.TempDir()
+		projectPath := t.TempDir()
+
+		sessionID := "12345678-dddd-eeee-ffff-123456789abc"
+		wsTime := time.Date(2025, 4, 5, 8, 30, 0, 0, time.UTC)
+
+		sessionDir := filepath.Join(homeDir, ".copilot", "session-state", sessionID)
+		require.NoError(t, os.MkdirAll(sessionDir, 0755))
+
+		eventsPath := filepath.Join(sessionDir, "events.jsonl")
+		require.NoError(t, os.WriteFile(eventsPath, []byte(`{"type":"event"}`+"\n"), 0644))
+
+		yamlContent := fmt.Sprintf("id: %s\ncwd: %s\ncreated_at: %s\n",
+			sessionID, projectPath, wsTime.Format(time.RFC3339))
+		require.NoError(t, os.WriteFile(filepath.Join(sessionDir, "workspace.yaml"), []byte(yamlContent), 0644))
+
+		differentTime := time.Date(2099, 12, 31, 23, 59, 0, 0, time.UTC)
+		require.NoError(t, os.Chtimes(eventsPath, differentTime, differentTime))
+
+		resolver := newTestResolver(projectPath, homeDir)
+		resolved, err := resolver.Resolve(SourceCopilot, sessionID)
+		require.NoError(t, err)
+		defer func() { _ = resolved.Reader.Close() }()
+
+		assert.Equal(t, wsTime, resolved.Metadata.CreatedAt,
+			"CreatedAt should come from workspace.yaml created_at, not file mtime")
+	})
+}

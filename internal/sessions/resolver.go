@@ -285,7 +285,10 @@ func (r *Resolver) findKiroIDEPath(workspaceDir, sessionID string) (string, erro
 	return bestPath, nil
 }
 
-// openFileSession opens a file and returns a ResolvedSession with metadata from os.Stat.
+// openFileSession opens a file and returns a ResolvedSession with metadata.
+// It derives CreatedAt using the same source-specific logic as the lister
+// (transcript timestamps, session metadata, or workspace metadata) rather
+// than relying solely on file modification time.
 func (r *Resolver) openFileSession(path, source, sessionID string) (*ResolvedSession, error) {
 	f, err := os.Open(path)
 	if err != nil {
@@ -298,15 +301,45 @@ func (r *Resolver) openFileSession(path, source, sessionID string) (*ResolvedSes
 		return nil, err
 	}
 
+	createdAt := r.resolveFileCreatedAt(f, path, source, info.ModTime())
+
 	return &ResolvedSession{
 		Reader: f,
 		Metadata: SessionMetadata{
 			Source:    source,
 			ID:        sessionID,
 			Size:      info.Size(),
-			CreatedAt: info.ModTime(),
+			CreatedAt: createdAt,
 		},
 	}, nil
+}
+
+// resolveFileCreatedAt derives the session start timestamp using the same
+// source-specific logic as the lister. Falls back to modTime on failure.
+// For Claude, the file is seeked back to the start after parsing.
+func (r *Resolver) resolveFileCreatedAt(f *os.File, path, source string, modTime time.Time) time.Time {
+	switch source {
+	case SourceClaude:
+		if ts, err := transcript.ParseFirstTimestamp(f); err == nil {
+			_, _ = f.Seek(0, io.SeekStart)
+			return ts
+		}
+		_, _ = f.Seek(0, io.SeekStart)
+	case SourceCodex:
+		if ts, err := getCodexSessionTimestamp(path); err == nil {
+			return ts
+		}
+	case SourceCopilot:
+		wsPath := filepath.Join(filepath.Dir(path), "workspace.yaml")
+		if ws, err := parseCopilotWorkspace(wsPath); err == nil && ws != nil && ws.CreatedAt != nil {
+			return *ws.CreatedAt
+		}
+	case SourceKiroCLI, SourceKiroIDE:
+		// Kiro CLI uses SQLite (handled by resolveKiroSession, not file-based).
+		// Kiro IDE embeds startTime in JSON but requires full parsing; fall
+		// through to modTime for now.
+	}
+	return modTime
 }
 
 // findCodexSession searches ~/.codex/sessions/ for a session by UUID or
