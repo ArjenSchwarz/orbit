@@ -12,7 +12,11 @@ import (
 	"time"
 
 	"github.com/arjenschwarz/orbit/internal/agents"
-	_ "github.com/arjenschwarz/orbit/internal/agents/claudecode" // Register claudecode agent
+	_ "github.com/arjenschwarz/orbit/internal/agents/claudecode" // Register claude-code agent
+	_ "github.com/arjenschwarz/orbit/internal/agents/codex"      // Register codex agent
+	_ "github.com/arjenschwarz/orbit/internal/agents/copilot"    // Register copilot agent
+	_ "github.com/arjenschwarz/orbit/internal/agents/kiro"       // Register kiro agent
+	_ "github.com/arjenschwarz/orbit/internal/agents/opencode"   // Register opencode agent
 	"github.com/arjenschwarz/orbit/internal/comparison"
 	"github.com/arjenschwarz/orbit/internal/config"
 	"github.com/arjenschwarz/orbit/internal/cost"
@@ -174,18 +178,20 @@ func runCompare(ctx context.Context, args []string) error {
 		// default to preserve the original safety net for users on default config.
 		fmt.Println("\nRunning comparison analysis...")
 
-		agentCfg := agents.AgentConfig{
-			AutoApprove: true, // Comparison runs non-interactively
+		// Resolve and validate all agent aliases
+		if err := appConfig.ResolveAliases(); err != nil {
+			return err
 		}
-		// appConfig is always non-nil in this branch (loaded above when fromFile
-		// is empty). The nil check is defensive in case the loading logic above
-		// changes; remove it together with the surrounding guard if appConfig
-		// is hoisted out of the conditional.
-		if appConfig != nil {
-			if cfg := appConfig.GetAgentConfig("claude-code"); cfg.Timeout > 0 {
-				agentCfg.Timeout = cfg.Timeout
-			}
+
+		// Resolve agent alias: use configured default agent
+		aliasName := resolveAgent("", appConfig)
+		resolved, err := appConfig.GetResolvedAgent(aliasName)
+		if err != nil {
+			return err
 		}
+
+		agentCfg := buildAgentConfig(resolved)
+		agentCfg.AutoApprove = true // Comparison runs non-interactively
 
 		comparisonTimeout := agentCfg.Timeout
 		if comparisonTimeout <= 0 {
@@ -194,10 +200,9 @@ func runCompare(ctx context.Context, args []string) error {
 		comparisonCtx, cancel := context.WithTimeout(ctx, comparisonTimeout)
 		defer cancel()
 
-		// Get the default agent (claude-code) with AutoApprove for non-interactive use
-		agent, err := agents.Get("claude-code", agentCfg)
+		agent, err := agents.Get(resolved.Type, agentCfg)
 		if err != nil {
-			return fmt.Errorf("failed to get agent: %w", err)
+			return fmt.Errorf("unknown agent type %q for alias %q\n\nValid agent types: %v", resolved.Type, aliasName, agents.List())
 		}
 
 		adapter := comparison.NewAgentAdapter(agent, workDir).
