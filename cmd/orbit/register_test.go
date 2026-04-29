@@ -113,6 +113,27 @@ func TestIsValidOrbitLogDir(t *testing.T) {
 			t.Error("isValidOrbitLogDir() = true, want false")
 		}
 	})
+
+	t.Run("valid with date-subdir containing session files", func(t *testing.T) {
+		tmpDir := t.TempDir()
+
+		// Create a date-subdir with session files
+		subDir := filepath.Join(tmpDir, "2025-01-15-143022-my-feature")
+		if err := os.MkdirAll(subDir, 0755); err != nil {
+			t.Fatalf("Failed to create subdir: %v", err)
+		}
+		if err := os.WriteFile(
+			filepath.Join(subDir, "phase-1-session.json"),
+			[]byte("{}"),
+			0644,
+		); err != nil {
+			t.Fatalf("Failed to create test file: %v", err)
+		}
+
+		if !isValidOrbitLogDir(tmpDir) {
+			t.Error("isValidOrbitLogDir() = false, want true for date-subdir layout")
+		}
+	})
 }
 
 func TestDeriveStatus(t *testing.T) {
@@ -623,6 +644,81 @@ func TestRegisterCommand(t *testing.T) {
 
 		if len(entries[0].Phases) != 3 {
 			t.Errorf("len(Phases) = %d, want 3", len(entries[0].Phases))
+		}
+	})
+
+	t.Run("registers date-subdir log directory", func(t *testing.T) {
+		tmpDir := t.TempDir()
+		t.Setenv("HOME", tmpDir)
+
+		// Create a .orbit directory with only date-subdir runs (no direct session files)
+		logDir := filepath.Join(tmpDir, "project", ".orbit")
+		subDir := filepath.Join(logDir, "2025-01-15-143022-my-feature")
+		if err := os.MkdirAll(subDir, 0755); err != nil {
+			t.Fatalf("Failed to create subdir: %v", err)
+		}
+		if err := os.WriteFile(
+			filepath.Join(subDir, "phase-1-session.json"),
+			[]byte("{}"),
+			0644,
+		); err != nil {
+			t.Fatalf("Failed to create test file: %v", err)
+		}
+
+		err := registerCommand([]string{logDir})
+		if err != nil {
+			t.Fatalf("registerCommand() error: %v", err)
+		}
+
+		// Verify registration points to the subdir
+		regDir, _ := getRegistryDir()
+		reg, _ := registry.New(regDir)
+		entries, _ := reg.List()
+
+		if len(entries) != 1 {
+			t.Fatalf("len(entries) = %d, want 1", len(entries))
+		}
+		if entries[0].LogDir != subDir {
+			t.Errorf("LogDir = %q, want %q", entries[0].LogDir, subDir)
+		}
+	})
+
+	t.Run("registers latest date-subdir when multiple exist", func(t *testing.T) {
+		tmpDir := t.TempDir()
+		t.Setenv("HOME", tmpDir)
+
+		logDir := filepath.Join(tmpDir, "project", ".orbit")
+		// Create two date-subdir runs
+		for _, name := range []string{"2025-01-14-100000-feat", "2025-01-15-143022-feat"} {
+			subDir := filepath.Join(logDir, name)
+			if err := os.MkdirAll(subDir, 0755); err != nil {
+				t.Fatalf("Failed to create subdir: %v", err)
+			}
+			if err := os.WriteFile(
+				filepath.Join(subDir, "phase-1-run-1-session.json"),
+				[]byte("{}"),
+				0644,
+			); err != nil {
+				t.Fatalf("Failed to create test file: %v", err)
+			}
+		}
+
+		err := registerCommand([]string{logDir})
+		if err != nil {
+			t.Fatalf("registerCommand() error: %v", err)
+		}
+
+		regDir, _ := getRegistryDir()
+		reg, _ := registry.New(regDir)
+		entries, _ := reg.List()
+
+		if len(entries) != 1 {
+			t.Fatalf("len(entries) = %d, want 1", len(entries))
+		}
+		// Should pick the latest (lexicographically last) subdir
+		want := filepath.Join(logDir, "2025-01-15-143022-feat")
+		if entries[0].LogDir != want {
+			t.Errorf("LogDir = %q, want %q", entries[0].LogDir, want)
 		}
 	})
 }
