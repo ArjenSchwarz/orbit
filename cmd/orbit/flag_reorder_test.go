@@ -48,6 +48,11 @@ func TestReorderArgs_CompareSubcommand(t *testing.T) {
 			wantSpec:     "my-feature",
 			wantFromFile: "specs/my-feature/.orbit/comparison.json",
 		},
+		"--from-file=value inline form": {
+			args:         []string{"my-feature", "--from-file=specs/my-feature/.orbit/comparison.json"},
+			wantSpec:     "my-feature",
+			wantFromFile: "specs/my-feature/.orbit/comparison.json",
+		},
 		"spec only": {
 			args:     []string{"my-feature"},
 			wantSpec: "my-feature",
@@ -154,6 +159,11 @@ func TestReorderArgs_CleanupSubcommand(t *testing.T) {
 			wantKeep:   1,
 			wantDryRun: true,
 		},
+		"--keep=value inline form": {
+			args:     []string{"my-feature", "--keep=2"},
+			wantSpec: "my-feature",
+			wantKeep: 2,
+		},
 	}
 
 	for name, tc := range tests {
@@ -170,11 +180,7 @@ func TestReorderArgs_CleanupSubcommand(t *testing.T) {
 			if got := fs.Arg(0); got != tc.wantSpec {
 				t.Errorf("spec: got %q, want %q", got, tc.wantSpec)
 			}
-			if got := keep.Value.String(); got != "0" && got != "" {
-				if got != fmt.Sprintf("%d", tc.wantKeep) {
-					t.Errorf("keep: got %s, want %d", got, tc.wantKeep)
-				}
-			} else if tc.wantKeep != 0 {
+			if got := keep.Value.String(); got != fmt.Sprintf("%d", tc.wantKeep) {
 				t.Errorf("keep: got %s, want %d", got, tc.wantKeep)
 			}
 			if got := dryRun.Value.String(); (got == "true") != tc.wantDryRun {
