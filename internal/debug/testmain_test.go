@@ -10,9 +10,12 @@ func TestMain(m *testing.M) {
 	if err != nil {
 		panic("failed to create temp home for tests: " + err.Error())
 	}
-	defer os.RemoveAll(tmp)
 
-	os.Setenv("HOME", tmp)
+	if err := os.Setenv("HOME", tmp); err != nil {
+		panic("failed to set HOME for tests: " + err.Error())
+	}
 
-	os.Exit(m.Run())
+	code := m.Run()
+	_ = os.RemoveAll(tmp)
+	os.Exit(code)
 }
