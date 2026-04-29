@@ -66,18 +66,18 @@ func consolidateCommand(args []string) error {
 		specName = extractSpecName(branch)
 	}
 
-	// Find and load variants.json
-	specDir := filepath.Join("specs", specName)
-	metadataPath := filepath.Join(specDir, ".orbit", "variants.json")
-
-	if _, err := os.Stat(metadataPath); os.IsNotExist(err) {
-		return fmt.Errorf("no variant run found for spec: %s", specName)
-	}
-
 	// Get repo root
 	repoRoot, err := getRepoRoot()
 	if err != nil {
 		return fmt.Errorf("failed to get repository root: %w", err)
+	}
+
+	// Find and load variants.json
+	specDir := filepath.Join(repoRoot, "specs", specName)
+	metadataPath := filepath.Join(specDir, ".orbit", "variants.json")
+
+	if _, err := os.Stat(metadataPath); os.IsNotExist(err) {
+		return fmt.Errorf("no variant run found for spec: %s", specName)
 	}
 
 	// Load metadata using a Manager
@@ -103,12 +103,7 @@ func consolidateCommand(args []string) error {
 	}
 
 	// Resolve the agent to use [Req 2.6]
-	workDir, err := os.Getwd()
-	if err != nil {
-		return fmt.Errorf("failed to get working directory: %w", err)
-	}
-
-	appConfig := config.Load(workDir)
+	appConfig := config.Load(repoRoot)
 
 	// Require config file for agent resolution
 	if err := appConfig.RequireConfigFile(); err != nil {

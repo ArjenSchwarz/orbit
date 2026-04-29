@@ -51,18 +51,18 @@ func finalizeCommand(args []string) error {
 		specName = extractSpecName(branch)
 	}
 
-	// Find and load variants.json
-	specDir := filepath.Join("specs", specName)
-	metadataPath := filepath.Join(specDir, ".orbit", "variants.json")
-
-	if _, err := os.Stat(metadataPath); os.IsNotExist(err) {
-		return fmt.Errorf("no variant run found for spec: %s", specName)
-	}
-
 	// Get repo root
 	repoRoot, err := getRepoRoot()
 	if err != nil {
 		return fmt.Errorf("failed to get repository root: %w", err)
+	}
+
+	// Find and load variants.json
+	specDir := filepath.Join(repoRoot, "specs", specName)
+	metadataPath := filepath.Join(specDir, ".orbit", "variants.json")
+
+	if _, err := os.Stat(metadataPath); os.IsNotExist(err) {
+		return fmt.Errorf("no variant run found for spec: %s", specName)
 	}
 
 	// Load metadata using a Manager
