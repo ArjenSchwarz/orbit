@@ -708,14 +708,56 @@ func TestFollower_AddSeenHash_Cap(t *testing.T) {
 		t.Errorf("expected %d hashes at cap, got %d", maxSeenHashes, len(f.seenHashes))
 	}
 
-	// Next add should trigger reset
+	// Next add should trigger reset of hash map but NOT initialRenderDone
 	f.addSeenHash([16]byte{0xff, 0xff, 0xff, 0xff})
 	if len(f.seenHashes) != 1 {
 		t.Errorf("after reset, expected 1 hash, got %d", len(f.seenHashes))
 	}
-	if f.initialRenderDone {
-		t.Error("initialRenderDone should be reset after cap exceeded")
+	if !f.initialRenderDone {
+		t.Error("initialRenderDone should NOT be reset after cap exceeded")
 	}
+}
+
+
+func TestFollower_DedupeCapReset_NoReplay(t *testing.T) {
+	// Regression test for T-913: after hash cap reset, previously rendered
+	// entries must not be replayed to output.
+	tmpDir := t.TempDir()
+	tmpFile := filepath.Join(tmpDir, "test.jsonl")
+
+	// Write a single entry
+	entry := `{"type":"user","message":{"role":"user","content":[{"type":"text","text":"Hello"}]}}` + "\n"
+	require.NoError(t, os.WriteFile(tmpFile, []byte(entry), 0644))
+
+	var buf bytes.Buffer
+	f, err := NewFollower(tmpFile, &buf, RenderOptions{})
+	require.NoError(t, err)
+
+	// Initial render
+	require.NoError(t, f.processFile())
+	initialOutput := buf.String()
+	assert.Contains(t, initialOutput, "Hello")
+
+	// Simulate hash cap being reached by filling the map
+	for i := range maxSeenHashes {
+		h := [16]byte{byte(i >> 24), byte(i >> 16), byte(i >> 8), byte(i)}
+		f.seenHashes[h] = struct{}{}
+	}
+
+	// Add one more hash to trigger the cap reset
+	f.addSeenHash([16]byte{0xde, 0xad, 0xbe, 0xef})
+
+	// Map should be reset
+	assert.Equal(t, 1, len(f.seenHashes))
+	// initialRenderDone should still be true
+	assert.True(t, f.initialRenderDone)
+
+	// Clear output buffer and process file again
+	buf.Reset()
+	require.NoError(t, f.processFile())
+
+	// The previously rendered entry should NOT be re-emitted
+	assert.Empty(t, buf.String(), "previously rendered entries should not be replayed after cap reset")
 }
 
 func TestFollower_Run_WithCancellation(t *testing.T) {

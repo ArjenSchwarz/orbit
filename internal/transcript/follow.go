@@ -45,7 +45,8 @@ type Follower struct {
 	warn     io.Writer // Destination for warning messages (defaults to os.Stderr)
 
 	// Deduplication state
-	seenHashes map[[16]byte]struct{}
+	seenHashes    map[[16]byte]struct{}
+	renderedCount int // Number of entries already rendered (high-water mark for cap resets)
 
 	// File change detection
 	lastMtime time.Time
@@ -90,6 +91,7 @@ func (f *Follower) poll() (bool, error) {
 		// Clear state and re-render from beginning
 		f.seenHashes = make(map[[16]byte]struct{})
 		f.initialRenderDone = false
+		f.renderedCount = 0
 		f.lastMtime = mtime
 		f.lastInode = inode
 		f.lastSize = size
@@ -119,13 +121,19 @@ func (f *Follower) processFile() error {
 	var newEntries []Entry
 	var newHashes [][16]byte
 
-	for _, lh := range lines {
+	for i, lh := range lines {
 		var entry Entry
 		if err := json.Unmarshal(lh.raw, &entry); err != nil {
 			// Already filtered by readAndHashLines, shouldn't happen
 			continue
 		}
 		allEntries = append(allEntries, entry)
+
+		// Entries before renderedCount are already output; skip them even if
+		// their hash was evicted during a cap reset.
+		if i < f.renderedCount {
+			continue
+		}
 
 		// Check if this entry is new
 		if _, seen := f.seenHashes[lh.hash]; !seen {
@@ -169,15 +177,18 @@ func (f *Follower) processFile() error {
 		f.addSeenHash(h)
 	}
 
+	// Update high-water mark so cap resets don't replay these entries
+	f.renderedCount = len(allEntries)
+
 	return nil
 }
 
 // addSeenHash adds a hash to the seen set, resetting if cap exceeded.
 func (f *Follower) addSeenHash(h [16]byte) {
 	if len(f.seenHashes) >= maxSeenHashes {
-		// Reset to avoid unbounded growth
+		// Reset to avoid unbounded growth. renderedCount prevents replay
+		// of already-emitted entries after the map is cleared.
 		f.seenHashes = make(map[[16]byte]struct{})
-		f.initialRenderDone = false // Re-render header on next batch
 	}
 	f.seenHashes[h] = struct{}{}
 }
