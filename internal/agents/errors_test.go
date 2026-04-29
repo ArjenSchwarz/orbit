@@ -298,6 +298,8 @@ func TestParseRetryAfter(t *testing.T) {
 	}{
 		{"retry after seconds", "retry after 45 seconds", 45 * time.Second},
 		{"retry-after colon", "retry-after: 30s", 30 * time.Second},
+		{"retry-after numeric only", "retry-after: 120", 120 * time.Second},
+		{"retry after numeric no unit", "retry after 90", 90 * time.Second},
 		{"wait seconds", "wait: 60 seconds", 60 * time.Second},
 		{"default when no match", "rate limit exceeded", DefaultRateLimitRetryAfter},
 	}

@@ -258,6 +258,7 @@ func BackoffDuration(attempt int) time.Duration {
 // retryAfterPatterns are pre-compiled regexes for extracting retry-after durations.
 var retryAfterPatterns = []*regexp.Regexp{
 	regexp.MustCompile(`retry.?after[:\s]+(\d+)\s*s`),
+	regexp.MustCompile(`retry.?after[:\s]+(\d+)`),
 	regexp.MustCompile(`wait[:\s]+(\d+)\s*s`),
 	regexp.MustCompile(`(\d+)\s*seconds?`),
 }
