@@ -3,6 +3,7 @@ package variants
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 	"sync"
@@ -1544,6 +1545,113 @@ func TestSetup_NewRunNoCompletedVariantsAllowsDifferentHEAD(t *testing.T) {
 	if mgr.metadata.BaseCommit != "abc123def456" {
 		t.Errorf("BaseCommit should be current HEAD 'abc123def456', got %q", mgr.metadata.BaseCommit)
 	}
+}
+
+// TestSetup_CleansUpBranchesOnPartialFailure is the regression test for T-821.
+// When variant setup fails partway through (e.g., 3rd branch creation fails),
+// branches that were already created must be cleaned up to avoid orphaned branches.
+func TestSetup_CleansUpBranchesOnPartialFailure(t *testing.T) {
+	tmpDir := t.TempDir()
+	specDir := filepath.Join(tmpDir, "specs", "test-spec")
+
+	// Use a mock that fails on the 3rd CreateBranch call
+	git := &failOnNthBranchMock{
+		mockGitClient: newMockGitClient(),
+		failOnCall:    3,
+	}
+
+	cfg := Config{Count: 3, BranchPrefix: "orbit-impl"}
+	mgr, err := NewManager(cfg, "test-spec", specDir, tmpDir, git)
+	if err != nil {
+		t.Fatalf("NewManager: %v", err)
+	}
+
+	ctx := context.Background()
+	err = mgr.Setup(ctx, false)
+	if err == nil {
+		t.Fatal("expected error from Setup")
+	}
+
+	// Branches 1 and 2 were created successfully before branch 3 failed.
+	// They must be deleted during cleanup.
+	if len(git.mockGitClient.deletedBranches) != 2 {
+		t.Errorf("expected 2 deleted branches, got %d: %v",
+			len(git.mockGitClient.deletedBranches), git.mockGitClient.deletedBranches)
+	}
+
+	// Worktrees 1 and 2 were also created and must be removed.
+	if len(git.mockGitClient.removedWorktrees) != 2 {
+		t.Errorf("expected 2 removed worktrees, got %d: %v",
+			len(git.mockGitClient.removedWorktrees), git.mockGitClient.removedWorktrees)
+	}
+}
+
+// TestSetup_CleansUpBranchesOnWorktreeFailure verifies that when worktree creation
+// fails, the branch for that worktree AND all previously created branches are cleaned up.
+func TestSetup_CleansUpBranchesOnWorktreeFailure(t *testing.T) {
+	tmpDir := t.TempDir()
+	specDir := filepath.Join(tmpDir, "specs", "test-spec")
+
+	// Use a mock that fails on the 2nd CreateWorktree call
+	git := &failOnNthWorktreeMock{
+		mockGitClient: newMockGitClient(),
+		failOnCall:    2,
+	}
+
+	cfg := Config{Count: 3, BranchPrefix: "orbit-impl"}
+	mgr, err := NewManager(cfg, "test-spec", specDir, tmpDir, git)
+	if err != nil {
+		t.Fatalf("NewManager: %v", err)
+	}
+
+	ctx := context.Background()
+	err = mgr.Setup(ctx, false)
+	if err == nil {
+		t.Fatal("expected error from Setup")
+	}
+
+	// Branch 1 was created with its worktree, branch 2 was created but worktree failed.
+	// Both branches must be deleted.
+	if len(git.mockGitClient.deletedBranches) != 2 {
+		t.Errorf("expected 2 deleted branches, got %d: %v",
+			len(git.mockGitClient.deletedBranches), git.mockGitClient.deletedBranches)
+	}
+
+	// Only worktree 1 was successfully created, so only it should be removed.
+	if len(git.mockGitClient.removedWorktrees) != 1 {
+		t.Errorf("expected 1 removed worktree, got %d: %v",
+			len(git.mockGitClient.removedWorktrees), git.mockGitClient.removedWorktrees)
+	}
+}
+
+// failOnNthBranchMock wraps mockGitClient but fails CreateBranch on the Nth call.
+type failOnNthBranchMock struct {
+	*mockGitClient
+	failOnCall int
+	callCount  int
+}
+
+func (m *failOnNthBranchMock) CreateBranch(name, commit string) error {
+	m.callCount++
+	if m.callCount == m.failOnCall {
+		return fmt.Errorf("simulated branch creation failure")
+	}
+	return m.mockGitClient.CreateBranch(name, commit)
+}
+
+// failOnNthWorktreeMock wraps mockGitClient but fails CreateWorktree on the Nth call.
+type failOnNthWorktreeMock struct {
+	*mockGitClient
+	failOnCall int
+	callCount  int
+}
+
+func (m *failOnNthWorktreeMock) CreateWorktree(ctx context.Context, path, branch string) error {
+	m.callCount++
+	if m.callCount == m.failOnCall {
+		return fmt.Errorf("simulated worktree creation failure")
+	}
+	return m.mockGitClient.CreateWorktree(ctx, path, branch)
 }
 
 func contains(s, substr string) bool {

@@ -255,6 +255,7 @@ func (m *Manager) Setup(ctx context.Context, continueExisting bool) error {
 	// Create branches and worktrees for each variant that doesn't already exist
 	sanitizedSpec := sanitizeSpecName(m.specName)
 	var createdWorktrees []string
+	var createdBranches []string
 
 	for i := 1; i <= m.config.Count; i++ {
 		// Skip variants that are already completed
@@ -268,16 +269,17 @@ func (m *Manager) Setup(ctx context.Context, continueExisting bool) error {
 		// Create branch at the captured head commit so all variants share the
 		// same base, even if HEAD advances between iterations.
 		if err := m.git.CreateBranch(branchName, headCommit); err != nil {
-			// Cleanup already created worktrees on failure
-			m.cleanupCreated(ctx, createdWorktrees)
+			// Cleanup already created worktrees and branches on failure
+			m.cleanupCreated(ctx, createdWorktrees, createdBranches)
 			return fmt.Errorf("create branch for variant %d: %w", i, err)
 		}
 
+		createdBranches = append(createdBranches, branchName)
+
 		// Create worktree
 		if err := m.git.CreateWorktree(ctx, worktreePath, branchName); err != nil {
-			// Cleanup already created worktrees and this branch
-			_ = m.git.DeleteBranch(branchName)
-			m.cleanupCreated(ctx, createdWorktrees)
+			// Cleanup already created worktrees and branches (includes this branch)
+			m.cleanupCreated(ctx, createdWorktrees, createdBranches)
 			return fmt.Errorf("create worktree for variant %d: %w", i, err)
 		}
 
@@ -304,17 +306,20 @@ func (m *Manager) Setup(ctx context.Context, continueExisting bool) error {
 	m.mu.Unlock()
 
 	if err != nil {
-		m.cleanupCreated(ctx, createdWorktrees)
+		m.cleanupCreated(ctx, createdWorktrees, createdBranches)
 		return fmt.Errorf("save metadata: %w", err)
 	}
 
 	return nil
 }
 
-// cleanupCreated removes worktrees that were created during a failed setup.
-func (m *Manager) cleanupCreated(ctx context.Context, paths []string) {
+// cleanupCreated removes worktrees and branches that were created during a failed setup.
+func (m *Manager) cleanupCreated(ctx context.Context, paths []string, branches []string) {
 	for _, path := range paths {
 		_ = m.git.RemoveWorktree(ctx, path)
+	}
+	for _, branch := range branches {
+		_ = m.git.DeleteBranch(branch)
 	}
 }
 
