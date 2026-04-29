@@ -2,8 +2,10 @@
 package codex
 
 import (
+	"bufio"
 	"bytes"
 	"context"
+	"encoding/json"
 	"io/fs"
 	"os"
 	"os/exec"
@@ -13,6 +15,9 @@ import (
 
 	"github.com/arjenschwarz/orbit/internal/agents"
 )
+
+// codexMetaScanLimit is the maximum number of lines to scan for session_meta.
+const codexMetaScanLimit = 20
 
 // Compile-time interface check.
 var _ agents.Agent = (*Agent)(nil)
@@ -114,6 +119,14 @@ func (a *Agent) DiscoverSessions(ctx context.Context, projectDir string) ([]agen
 			return nil
 		}
 
+		// Filter by projectDir when specified.
+		if projectDir != "" {
+			cwd := codexSessionCwd(path)
+			if cwd == "" || normalizePath(cwd) != normalizePath(projectDir) {
+				return nil
+			}
+		}
+
 		// Strip .jsonl extension and extract UUID if present, consistent with sessions/lister.go.
 		filename := d.Name()
 		sessionID := strings.TrimSuffix(filename, ".jsonl")
@@ -135,6 +148,43 @@ func (a *Agent) DiscoverSessions(ctx context.Context, projectDir string) ([]agen
 	}
 
 	return sessions, nil
+}
+
+// codexSessionCwd extracts the cwd from the session_meta entry of a Codex session file.
+func codexSessionCwd(path string) string {
+	f, err := os.Open(path)
+	if err != nil {
+		return ""
+	}
+	defer func() { _ = f.Close() }()
+
+	scanner := bufio.NewScanner(f)
+	for i := 0; i < codexMetaScanLimit && scanner.Scan(); i++ {
+		var entry struct {
+			Type    string          `json:"type"`
+			Payload json.RawMessage `json:"payload"`
+		}
+		if err := json.Unmarshal(scanner.Bytes(), &entry); err == nil {
+			if entry.Type == "session_meta" && len(entry.Payload) > 0 {
+				var meta struct {
+					Cwd string `json:"cwd"`
+				}
+				if err := json.Unmarshal(entry.Payload, &meta); err == nil {
+					return meta.Cwd
+				}
+			}
+		}
+	}
+	return ""
+}
+
+// normalizePath resolves symlinks and cleans a path for reliable comparison.
+func normalizePath(p string) string {
+	resolved, err := filepath.EvalSymlinks(p)
+	if err != nil {
+		return filepath.Clean(p)
+	}
+	return filepath.Clean(resolved)
 }
 
 // Run executes a prompt in a new session.
