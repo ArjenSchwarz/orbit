@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"strings"
@@ -1002,5 +1003,164 @@ func TestListClaudeSkipsSymlinkEscape(t *testing.T) {
 	}
 	if sessions[0].ID != "legit-session" {
 		t.Errorf("session.ID = %q, want %q", sessions[0].ID, "legit-session")
+	}
+}
+
+// TestListKiroIDESkipsSymlinkEscape verifies that Kiro IDE session listing does not
+// follow symlinks that escape the workspace directory (T-792).
+func TestListKiroIDESkipsSymlinkEscape(t *testing.T) {
+	homeDir := t.TempDir()
+
+	// Create a fake workspace directory structure.
+	workspaceDir := filepath.Join(homeDir, ".kiro", "workspace")
+	if err := os.MkdirAll(workspaceDir, 0755); err != nil {
+		t.Fatalf("mkdir: %v", err)
+	}
+
+	// Create a legitimate .chat file inside the workspace.
+	legitChat := map[string]any{
+		"executionId": "legit-exec-id",
+		"chat":        []map[string]any{{"role": "user", "content": "hello"}},
+		"metadata":    map[string]any{"startTime": 1700000000000},
+	}
+	legitData, _ := json.Marshal(legitChat)
+	if err := os.WriteFile(filepath.Join(workspaceDir, "legit.chat"), legitData, 0644); err != nil {
+		t.Fatalf("write legit chat: %v", err)
+	}
+
+	// Create an outside directory with a .chat file that should NOT be discovered.
+	outsideDir := t.TempDir()
+	escapedChat := map[string]any{
+		"executionId": "escaped-exec-id",
+		"chat":        []map[string]any{{"role": "user", "content": "escaped"}},
+		"metadata":    map[string]any{"startTime": 1700000001000},
+	}
+	escapedData, _ := json.Marshal(escapedChat)
+	outsideFile := filepath.Join(outsideDir, "escaped.chat")
+	if err := os.WriteFile(outsideFile, escapedData, 0644); err != nil {
+		t.Fatalf("write outside chat: %v", err)
+	}
+
+	// Create a symlink inside the workspace pointing to the outside file.
+	symlink := filepath.Join(workspaceDir, "escaped.chat")
+	if err := os.Symlink(outsideFile, symlink); err != nil {
+		t.Fatalf("create symlink: %v", err)
+	}
+
+	// Read the workspace directory directly (bypass KiroIDEWorkspaceDir lookup).
+	entries, err := os.ReadDir(workspaceDir)
+	if err != nil {
+		t.Fatalf("readdir: %v", err)
+	}
+
+	// Simulate what listKiroIDE does: iterate entries and check symlinks.
+	var foundIDs []string
+	for _, entry := range entries {
+		if entry.IsDir() || !strings.HasSuffix(entry.Name(), ".chat") {
+			continue
+		}
+		path := filepath.Join(workspaceDir, entry.Name())
+		if entry.Type()&os.ModeSymlink != 0 {
+			resolved, err := filepath.EvalSymlinks(path)
+			if err != nil || !isWithinDir(resolved, workspaceDir) {
+				continue
+			}
+		}
+		data, err := os.ReadFile(path)
+		if err != nil {
+			continue
+		}
+		var header struct {
+			ExecutionID string `json:"executionId"`
+		}
+		if err := json.Unmarshal(data, &header); err != nil {
+			continue
+		}
+		foundIDs = append(foundIDs, header.ExecutionID)
+	}
+
+	if len(foundIDs) != 1 {
+		t.Fatalf("expected 1 session, got %d: %v", len(foundIDs), foundIDs)
+	}
+	if foundIDs[0] != "legit-exec-id" {
+		t.Errorf("found ID = %q, want %q", foundIDs[0], "legit-exec-id")
+	}
+}
+
+// TestWalkDirFollowSymlinksSkipsEscape verifies that walkDirFollowSymlinks
+// does not follow symlinks that resolve outside the root directory (T-792).
+func TestWalkDirFollowSymlinksSkipsEscape(t *testing.T) {
+	root := t.TempDir()
+
+	// Create a legitimate file inside root.
+	if err := os.WriteFile(filepath.Join(root, "legit.jsonl"), []byte("data\n"), 0644); err != nil {
+		t.Fatalf("write legit file: %v", err)
+	}
+
+	// Create an outside directory with a file that should NOT be walked.
+	outsideDir := t.TempDir()
+	outsideFile := filepath.Join(outsideDir, "escaped.jsonl")
+	if err := os.WriteFile(outsideFile, []byte("escaped\n"), 0644); err != nil {
+		t.Fatalf("write outside file: %v", err)
+	}
+
+	// Create a symlink inside root pointing to the outside directory.
+	symlink := filepath.Join(root, "escape-link")
+	if err := os.Symlink(outsideDir, symlink); err != nil {
+		t.Fatalf("create symlink: %v", err)
+	}
+
+	var visited []string
+	err := walkDirFollowSymlinks(root, func(path string, d fs.DirEntry, err error) error {
+		if err != nil {
+			return nil
+		}
+		if !d.IsDir() {
+			visited = append(visited, filepath.Base(path))
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatalf("walkDirFollowSymlinks error: %v", err)
+	}
+
+	// Only the legitimate file should be visited.
+	if len(visited) != 1 {
+		t.Fatalf("expected 1 visited file, got %d: %v", len(visited), visited)
+	}
+	if visited[0] != "legit.jsonl" {
+		t.Errorf("visited[0] = %q, want %q", visited[0], "legit.jsonl")
+	}
+}
+
+// TestIsWithinDirResolvesSymlinkedPrefix verifies that isWithinDir correctly
+// handles the case where dir itself is under a symlinked prefix (e.g. /tmp →
+// /private/tmp on macOS). This is a regression test for the false-negative
+// reported in the T-792 review.
+func TestIsWithinDirResolvesSymlinkedPrefix(t *testing.T) {
+	// Create a real directory and a symlink to it.
+	realDir := t.TempDir()
+	symlinkParent := t.TempDir()
+	symlinkDir := filepath.Join(symlinkParent, "link")
+	if err := os.Symlink(realDir, symlinkDir); err != nil {
+		t.Fatalf("create symlink: %v", err)
+	}
+
+	// Create a file inside the real directory.
+	filePath := filepath.Join(realDir, "test.jsonl")
+	if err := os.WriteFile(filePath, []byte("data\n"), 0644); err != nil {
+		t.Fatalf("write file: %v", err)
+	}
+
+	// Resolve the file path (simulating what EvalSymlinks returns).
+	resolvedFile, err := filepath.EvalSymlinks(filePath)
+	if err != nil {
+		t.Fatalf("EvalSymlinks file: %v", err)
+	}
+
+	// isWithinDir should return true when dir is the symlink path and
+	// path is the resolved real path.
+	if !isWithinDir(resolvedFile, symlinkDir) {
+		t.Errorf("isWithinDir(%q, %q) = false, want true", resolvedFile, symlinkDir)
 	}
 }

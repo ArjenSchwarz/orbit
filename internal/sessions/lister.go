@@ -597,13 +597,17 @@ func normalizePath(p string) string {
 
 // walkDirFollowSymlinks walks a directory tree, following symlinks with cycle detection.
 // Symlinks that resolve outside the root directory are skipped.
+// Unresolvable symlinks (broken, permission errors) are silently skipped rather than
+// propagated to fn, since callers treat missing sessions as non-fatal.
 func walkDirFollowSymlinks(root string, fn fs.WalkDirFunc) error {
 	visited := make(map[string]bool)
 	boundary, err := filepath.EvalSymlinks(root)
 	if err != nil {
 		boundary = root
 	}
-	boundary, _ = filepath.Abs(boundary)
+	if abs, err := filepath.Abs(boundary); err == nil {
+		boundary = abs
+	}
 	return walkDirFollowSymlinksInternal(root, boundary, fn, visited)
 }
 
@@ -653,13 +657,20 @@ func walkDirFollowSymlinksInternal(root, boundary string, fn fs.WalkDirFunc, vis
 	})
 }
 
-// isWithinDir reports whether path is within dir after resolving symlinks.
+// isWithinDir reports whether path is within dir.
+// Both path and dir are resolved via EvalSymlinks before comparison so that
+// symlinked prefixes (e.g. /tmp → /private/tmp on macOS) do not cause
+// false negatives.
 func isWithinDir(path, dir string) bool {
 	absPath, err := filepath.Abs(path)
 	if err != nil {
 		return false
 	}
-	absDir, err := filepath.Abs(dir)
+	resolvedDir, err := filepath.EvalSymlinks(dir)
+	if err != nil {
+		resolvedDir = dir
+	}
+	absDir, err := filepath.Abs(resolvedDir)
 	if err != nil {
 		return false
 	}
