@@ -485,6 +485,7 @@ func getAgentInstallURL(agentName string) string {
 		"codex":       "https://github.com/openai/codex",
 		"kiro":        "https://kiro.dev/docs/cli",
 		"copilot":     "https://docs.github.com/en/copilot/using-github-copilot/using-github-copilot-in-the-command-line",
+		"opencode":    "https://opencode.ai",
 	}
 	if url, ok := urls[agentName]; ok {
 		return url
