@@ -543,8 +543,11 @@ func (o *Orbit) runPhase(phase int) error {
 		var err error
 		sessionID, isResume, err = o.logManager.StartPhase(phase, o.config.ContinueSession, overrideSessionID)
 		if err != nil {
+			if o.spinner != nil {
+				o.spinner.Stop()
+			}
 			o.debug.Log("Failed to start phase in log manager: %v", err)
-			return o.fail(fmt.Errorf("failed to start phase: %w", err))
+			return fmt.Errorf("failed to start phase: %w", err)
 		}
 		o.debug.LogSession(sessionID, isResume, "obtained from log manager")
 	} else {
