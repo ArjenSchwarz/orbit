@@ -672,6 +672,39 @@ func TestListCopilotSessionsMalformedWorkspaceWithFilter(t *testing.T) {
 	}
 }
 
+// TestListCopilotSessionsEmptyPathsWithFilter verifies that T-845 is fixed:
+// a Copilot session with a valid workspace.yaml but empty git_root and cwd
+// must be skipped when a project filter is applied.
+func TestListCopilotSessionsEmptyPathsWithFilter(t *testing.T) {
+	homeDir := t.TempDir()
+	projectPath := t.TempDir()
+
+	// Create a session with valid workspace.yaml but no path fields.
+	sessionDir := filepath.Join(homeDir, ".copilot", "session-state", "empty-paths-session")
+	if err := os.MkdirAll(sessionDir, 0755); err != nil {
+		t.Fatalf("failed to create session dir: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(sessionDir, "events.jsonl"), []byte("{\"type\":\"event\"}\n"), 0644); err != nil {
+		t.Fatalf("failed to write events: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(sessionDir, "workspace.yaml"), []byte("id: empty-paths-session\n"), 0644); err != nil {
+		t.Fatalf("failed to write workspace: %v", err)
+	}
+
+	lister := newTestLister(homeDir)
+	sessions, _, err := lister.ListAll(projectPath)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	for _, s := range sessions {
+		if s.Source == SourceCopilot && s.ID == "empty-paths-session" {
+			t.Fatalf("session with empty paths should be excluded when project filter is active")
+		}
+	}
+}
+
+
 // setupCodexSessionWithLeadingLines creates a Codex session file where
 // session_meta is NOT the first line. Non-meta entries appear before it.
 func setupCodexSessionWithLeadingLines(t *testing.T, homeDir, projectPath, sessionID string, createdAt time.Time, leadingLines int) {
