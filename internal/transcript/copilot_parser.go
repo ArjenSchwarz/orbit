@@ -10,9 +10,9 @@ import (
 // ParseCopilot parses a Copilot session JSONL file and returns the result.
 func ParseCopilot(r io.Reader) (*ParseResult, error) {
 	scanner := bufio.NewScanner(r)
-	// Increase buffer size to handle long lines
+	// Increase buffer size to handle long lines (10MB, consistent with other parsers)
 	buf := make([]byte, 0, 64*1024)
-	scanner.Buffer(buf, 1024*1024) // 1MB max line size
+	scanner.Buffer(buf, 10*1024*1024) // 10MB max line size
 
 	var events []CopilotEvent
 	var warnings []ParseWarning
