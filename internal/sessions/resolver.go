@@ -58,15 +58,55 @@ func (r *Resolver) Resolve(source, sessionID string) (*ResolvedSession, error) {
 }
 
 func (r *Resolver) resolveClaude(sessionID string) (*ResolvedSession, error) {
-	claudeProjectPath := claudecode.BuildProjectPath(r.projectPath)
-	baseDir := filepath.Join(r.homeDir, ".claude", "projects", claudeProjectPath)
-	sessionFile := filepath.Join(baseDir, sessionID+".jsonl")
+	path, err := r.findClaudeSessionPath(sessionID)
+	if err != nil {
+		return nil, err
+	}
+	return r.openFileSession(path, SourceClaude, sessionID)
+}
 
-	if !web.IsPathWithinDir(sessionFile, baseDir) {
-		return nil, fmt.Errorf("session not found: %s", sessionID)
+// findClaudeSessionPath locates a Claude session file. When projectPath is set,
+// it looks in the specific project directory. When empty, it searches all project
+// subdirectories under ~/.claude/projects/.
+func (r *Resolver) findClaudeSessionPath(sessionID string) (string, error) {
+	if strings.ContainsAny(sessionID, "/\\") || strings.Contains(sessionID, "..") {
+		return "", fmt.Errorf("session not found: %s", sessionID)
 	}
 
-	return r.openFileSession(sessionFile, SourceClaude, sessionID)
+	projectsRoot := filepath.Join(r.homeDir, ".claude", "projects")
+
+	if r.projectPath != "" {
+		claudeProjectPath := claudecode.BuildProjectPath(r.projectPath)
+		baseDir := filepath.Join(projectsRoot, claudeProjectPath)
+		sessionFile := filepath.Join(baseDir, sessionID+".jsonl")
+		if !web.IsPathWithinDir(sessionFile, baseDir) {
+			return "", fmt.Errorf("session not found: %s", sessionID)
+		}
+		if _, err := os.Stat(sessionFile); err != nil {
+			return "", fmt.Errorf("session not found: %s", sessionID)
+		}
+		return sessionFile, nil
+	}
+
+	// Search all project subdirectories.
+	entries, err := os.ReadDir(projectsRoot)
+	if err != nil {
+		return "", fmt.Errorf("session not found: %s", sessionID)
+	}
+	for _, entry := range entries {
+		if !entry.IsDir() {
+			continue
+		}
+		baseDir := filepath.Join(projectsRoot, entry.Name())
+		sessionFile := filepath.Join(baseDir, sessionID+".jsonl")
+		if _, err := os.Stat(sessionFile); err == nil {
+			if !web.IsPathWithinDir(sessionFile, projectsRoot) {
+				continue
+			}
+			return sessionFile, nil
+		}
+	}
+	return "", fmt.Errorf("session not found: %s", sessionID)
 }
 
 func (r *Resolver) resolveCodex(sessionID string) (*ResolvedSession, error) {
@@ -183,16 +223,7 @@ func (r *Resolver) ResolvePath(source, sessionID string) (string, error) {
 
 	switch source {
 	case SourceClaude:
-		claudeProjectPath := claudecode.BuildProjectPath(r.projectPath)
-		baseDir := filepath.Join(r.homeDir, ".claude", "projects", claudeProjectPath)
-		sessionFile := filepath.Join(baseDir, sessionID+".jsonl")
-		if !web.IsPathWithinDir(sessionFile, baseDir) {
-			return "", fmt.Errorf("session not found: %s", sessionID)
-		}
-		if _, err := os.Stat(sessionFile); err != nil {
-			return "", fmt.Errorf("session not found: %s", sessionID)
-		}
-		return sessionFile, nil
+		return r.findClaudeSessionPath(sessionID)
 	case SourceCodex:
 		path, err := findCodexSession(r.homeDir, sessionID)
 		if err != nil {

@@ -81,6 +81,55 @@ func TestResolveClaudeSession(t *testing.T) {
 	}
 }
 
+// TestResolveClaudeSessionEmptyProjectPath verifies that when projectPath is
+// empty, the resolver searches all project subdirectories under ~/.claude/projects/
+// to find the session (matching the lister's all-project behaviour).
+func TestResolveClaudeSessionEmptyProjectPath(t *testing.T) {
+	homeDir := t.TempDir()
+
+	sessionID := "session-in-subproject"
+
+	// Create a session file in an arbitrary project subdirectory.
+	projectDir := filepath.Join(homeDir, ".claude", "projects", "some-hashed-project-dir")
+	require.NoError(t, os.MkdirAll(projectDir, 0755))
+
+	entry := map[string]any{"type": "system", "timestamp": "2025-01-15T10:00:00Z", "message": "test"}
+	data, _ := json.Marshal(entry)
+	content := append(data, '\n')
+	require.NoError(t, os.WriteFile(filepath.Join(projectDir, sessionID+".jsonl"), content, 0644))
+
+	// Resolver with empty projectPath should find the session.
+	resolver := newTestResolver("", homeDir)
+
+	resolved, err := resolver.Resolve(SourceClaude, sessionID)
+	require.NoError(t, err)
+	defer func() { _ = resolved.Reader.Close() }()
+
+	assert.Equal(t, SourceClaude, resolved.Metadata.Source)
+	assert.Equal(t, sessionID, resolved.Metadata.ID)
+
+	// ResolvePath should also work.
+	path, err := resolver.ResolvePath(SourceClaude, sessionID)
+	require.NoError(t, err)
+	assert.Contains(t, path, sessionID+".jsonl")
+}
+
+// TestResolveClaudeSessionEmptyProjectPathNotFound verifies that when projectPath
+// is empty and the session doesn't exist in any subdirectory, an error is returned.
+func TestResolveClaudeSessionEmptyProjectPathNotFound(t *testing.T) {
+	homeDir := t.TempDir()
+
+	// Create the projects root with one subdirectory but no matching session.
+	projectDir := filepath.Join(homeDir, ".claude", "projects", "some-project")
+	require.NoError(t, os.MkdirAll(projectDir, 0755))
+	require.NoError(t, os.WriteFile(filepath.Join(projectDir, "other-session.jsonl"), []byte("{}"), 0644))
+
+	resolver := newTestResolver("", homeDir)
+	_, err := resolver.Resolve(SourceClaude, "nonexistent-session")
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "session not found")
+}
+
 func TestResolveUnknownSource(t *testing.T) {
 	resolver := newTestResolver(t.TempDir(), t.TempDir())
 	_, err := resolver.Resolve("unknown-agent", "some-id")
