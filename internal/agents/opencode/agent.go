@@ -210,7 +210,7 @@ func discoverSessionsIn(ctx context.Context, sessionDir string, projectDir strin
 		sessionID := entry.Name()
 
 		// Skip sessions not belonging to the requested project.
-		if allowedIDs != nil {
+		if projectDir != "" {
 			if _, ok := allowedIDs[sessionID]; !ok {
 				continue
 			}
@@ -283,6 +283,13 @@ func sessionIDsForProject(messageDir, projectDir string) map[string]struct{} {
 		return nil
 	}
 
+	// Resolve projectDir for symlink-safe comparison (e.g. macOS /var → /private/var).
+	cleanProjectDir := filepath.Clean(projectDir)
+	resolvedProjectDir, err := filepath.EvalSymlinks(cleanProjectDir)
+	if err != nil {
+		resolvedProjectDir = cleanProjectDir
+	}
+
 	// Find the project ID whose worktree matches projectDir.
 	var projectID string
 	for _, entry := range entries {
@@ -300,7 +307,12 @@ func sessionIDsForProject(messageDir, projectDir string) map[string]struct{} {
 		if err := json.Unmarshal(data, &proj); err != nil {
 			continue
 		}
-		if filepath.Clean(proj.Worktree) == filepath.Clean(projectDir) {
+		cleanWorktree := filepath.Clean(proj.Worktree)
+		resolvedWorktree, err := filepath.EvalSymlinks(cleanWorktree)
+		if err != nil {
+			resolvedWorktree = cleanWorktree
+		}
+		if resolvedWorktree == resolvedProjectDir {
 			projectID = proj.ID
 			break
 		}

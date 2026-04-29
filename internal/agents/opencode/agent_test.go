@@ -431,7 +431,7 @@ func TestDiscoverSessions_CreatedAtFallbackWhenAllMsgFilesUnreadable(t *testing.
 		"CreatedAt must not be zero when all msg_ files fail to unmarshal; should fall back to directory modTime")
 }
 
-// TestDiscoverSessions_FiltersbyProjectDir verifies that when a projectDir is
+// TestDiscoverSessions_FiltersByProjectDir verifies that when a projectDir is
 // provided, only sessions belonging to that project are returned.
 // Regression test for T-740.
 func TestDiscoverSessions_FiltersByProjectDir(t *testing.T) {
