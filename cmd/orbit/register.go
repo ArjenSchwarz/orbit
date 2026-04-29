@@ -55,6 +55,14 @@ func registerCommand(args []string) error {
 		return fmt.Errorf("no valid orbit logs found in %s", path)
 	}
 
+	// If the directory itself doesn't have session files directly,
+	// resolve to the latest date-subdir that does.
+	if !hasDirectSessionFiles(logDir) {
+		if subDir := findLatestDateSubdir(logDir); subDir != "" {
+			logDir = subDir
+		}
+	}
+
 	// Get registry
 	regDir, err := getRegistryDir()
 	if err != nil {
@@ -151,13 +159,81 @@ func resolvePath(path string) (string, error) {
 
 // isValidOrbitLogDir checks if a directory contains valid orbit logs.
 // A directory is valid if it contains at least one phase session file
-// (either new format phase-N-run-M-session.json or legacy phase-N-session.json).
+// (either new format phase-N-run-M-session.json or legacy phase-N-session.json),
+// either directly or in a date-subdir subdirectory.
 func isValidOrbitLogDir(dir string) bool {
 	entries, err := os.ReadDir(dir)
 	if err != nil {
 		return false
 	}
 
+	for _, entry := range entries {
+		if !entry.IsDir() {
+			name := entry.Name()
+			if phaseSessionPattern.MatchString(name) || legacyPhaseSessionPattern.MatchString(name) {
+				return true
+			}
+			continue
+		}
+		// Check subdirectories for date-subdir mode
+		subEntries, err := os.ReadDir(filepath.Join(dir, entry.Name()))
+		if err != nil {
+			continue
+		}
+		for _, sub := range subEntries {
+			if sub.IsDir() {
+				continue
+			}
+			name := sub.Name()
+			if phaseSessionPattern.MatchString(name) || legacyPhaseSessionPattern.MatchString(name) {
+				return true
+			}
+		}
+	}
+
+	return false
+}
+
+// findLatestDateSubdir finds the most recent date-subdir run directory within a base .orbit directory.
+// Returns empty string if no valid subdirectory is found.
+func findLatestDateSubdir(dir string) string {
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return ""
+	}
+
+	var latest string
+	for _, entry := range entries {
+		if !entry.IsDir() {
+			continue
+		}
+		subDir := filepath.Join(dir, entry.Name())
+		subEntries, err := os.ReadDir(subDir)
+		if err != nil {
+			continue
+		}
+		for _, sub := range subEntries {
+			if sub.IsDir() {
+				continue
+			}
+			name := sub.Name()
+			if phaseSessionPattern.MatchString(name) || legacyPhaseSessionPattern.MatchString(name) {
+				// Directories are sorted lexicographically; timestamp-prefixed names sort chronologically
+				latest = subDir
+				break
+			}
+		}
+	}
+
+	return latest
+}
+
+// hasDirectSessionFiles checks if a directory contains session files directly (not in subdirectories).
+func hasDirectSessionFiles(dir string) bool {
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return false
+	}
 	for _, entry := range entries {
 		if entry.IsDir() {
 			continue
@@ -167,7 +243,6 @@ func isValidOrbitLogDir(dir string) bool {
 			return true
 		}
 	}
-
 	return false
 }
 
