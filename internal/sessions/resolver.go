@@ -316,7 +316,7 @@ func (r *Resolver) openFileSession(path, source, sessionID string) (*ResolvedSes
 
 // resolveFileCreatedAt derives the session start timestamp using the same
 // source-specific logic as the lister. Falls back to modTime on failure.
-// For Claude and Codex, the file is seeked back to the start after parsing.
+// For Claude, the file is seeked back to the start after parsing.
 func (r *Resolver) resolveFileCreatedAt(f *os.File, path, source string, modTime time.Time) time.Time {
 	switch source {
 	case SourceClaude:
@@ -334,6 +334,10 @@ func (r *Resolver) resolveFileCreatedAt(f *os.File, path, source string, modTime
 		if ws, err := parseCopilotWorkspace(wsPath); err == nil && ws != nil && ws.CreatedAt != nil {
 			return *ws.CreatedAt
 		}
+	case SourceKiroCLI, SourceKiroIDE:
+		// Kiro CLI uses SQLite (handled by resolveKiroSession, not file-based).
+		// Kiro IDE embeds startTime in JSON but requires full parsing; fall
+		// through to modTime for now.
 	}
 	return modTime
 }
