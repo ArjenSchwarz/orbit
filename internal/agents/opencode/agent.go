@@ -168,13 +168,23 @@ func (a *Agent) DiscoverSessions(ctx context.Context, projectDir string) ([]agen
 		return nil, nil
 	}
 
-	return discoverSessionsIn(ctx, sessionDir)
+	return discoverSessionsIn(ctx, sessionDir, projectDir)
 }
 
 // discoverSessionsIn scans sessionDir for OpenCode session subdirectories and
-// returns session metadata for each. Extracted from DiscoverSessions to allow
+// returns session metadata for each. When projectDir is non-empty, only sessions
+// belonging to that project are returned. Extracted from DiscoverSessions to allow
 // testing with arbitrary directories.
-func discoverSessionsIn(ctx context.Context, sessionDir string) ([]agents.SessionInfo, error) {
+func discoverSessionsIn(ctx context.Context, sessionDir string, projectDir string) ([]agents.SessionInfo, error) {
+	// Build a set of allowed session IDs when filtering by project.
+	var allowedIDs map[string]struct{}
+	if projectDir != "" {
+		allowedIDs = sessionIDsForProject(sessionDir, projectDir)
+		if len(allowedIDs) == 0 {
+			return nil, nil
+		}
+	}
+
 	// Sessions are stored in ~/.local/share/opencode/storage/message/<sessionID>/
 	entries, err := os.ReadDir(sessionDir)
 	if err != nil {
@@ -198,6 +208,14 @@ func discoverSessionsIn(ctx context.Context, sessionDir string) ([]agents.Sessio
 		}
 
 		sessionID := entry.Name()
+
+		// Skip sessions not belonging to the requested project.
+		if projectDir != "" {
+			if _, ok := allowedIDs[sessionID]; !ok {
+				continue
+			}
+		}
+
 		sessionPath := filepath.Join(sessionDir, sessionID)
 
 		// Read the first message file to get metadata
@@ -250,6 +268,74 @@ func discoverSessionsIn(ctx context.Context, sessionDir string) ([]agents.Sessio
 	}
 
 	return sessions, nil
+}
+
+// sessionIDsForProject returns the set of session IDs belonging to projectDir.
+// It looks up the project ID from storage/project/*.json, then lists session
+// files in storage/session/{projectID}/.
+func sessionIDsForProject(messageDir, projectDir string) map[string]struct{} {
+	// messageDir is storage/message; go up to storage/
+	storageDir := filepath.Dir(messageDir)
+	projectsDir := filepath.Join(storageDir, "project")
+
+	entries, err := os.ReadDir(projectsDir)
+	if err != nil {
+		return nil
+	}
+
+	// Resolve projectDir for symlink-safe comparison (e.g. macOS /var → /private/var).
+	cleanProjectDir := filepath.Clean(projectDir)
+	resolvedProjectDir, err := filepath.EvalSymlinks(cleanProjectDir)
+	if err != nil {
+		resolvedProjectDir = cleanProjectDir
+	}
+
+	// Find the project ID whose worktree matches projectDir.
+	var projectID string
+	for _, entry := range entries {
+		if entry.IsDir() || !strings.HasSuffix(entry.Name(), ".json") {
+			continue
+		}
+		data, err := os.ReadFile(filepath.Join(projectsDir, entry.Name()))
+		if err != nil {
+			continue
+		}
+		var proj struct {
+			ID       string `json:"id"`
+			Worktree string `json:"worktree"`
+		}
+		if err := json.Unmarshal(data, &proj); err != nil {
+			continue
+		}
+		cleanWorktree := filepath.Clean(proj.Worktree)
+		resolvedWorktree, err := filepath.EvalSymlinks(cleanWorktree)
+		if err != nil {
+			resolvedWorktree = cleanWorktree
+		}
+		if resolvedWorktree == resolvedProjectDir {
+			projectID = proj.ID
+			break
+		}
+	}
+	if projectID == "" {
+		return nil
+	}
+
+	// List session files in storage/session/{projectID}/
+	sessDir := filepath.Join(storageDir, "session", projectID)
+	sessEntries, err := os.ReadDir(sessDir)
+	if err != nil {
+		return nil
+	}
+
+	ids := make(map[string]struct{}, len(sessEntries))
+	for _, e := range sessEntries {
+		if e.IsDir() || !strings.HasSuffix(e.Name(), ".json") {
+			continue
+		}
+		ids[strings.TrimSuffix(e.Name(), ".json")] = struct{}{}
+	}
+	return ids
 }
 
 // Run executes a prompt in a new session.

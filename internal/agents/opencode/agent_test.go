@@ -366,7 +366,7 @@ func TestDiscoverSessions_CreatedAtFallbackToModTime(t *testing.T) {
 	// Write a non-message file so the directory isn't empty.
 	require.NoError(t, os.WriteFile(filepath.Join(sessionDir, "metadata.json"), []byte(`{}`), 0o644))
 
-	sessions, err := discoverSessionsIn(t.Context(), tmp)
+	sessions, err := discoverSessionsIn(t.Context(), tmp, "")
 	require.NoError(t, err)
 	require.Len(t, sessions, 1, "expected exactly one session")
 
@@ -393,7 +393,7 @@ func TestDiscoverSessions_ParseCreatedTimeFallbackOnBadTimestamp(t *testing.T) {
 	badMsg := `{"id":"msg_1","sessionID":"ses_bad_timestamps","role":"user","time":{"created":"not-a-timestamp"}}`
 	require.NoError(t, os.WriteFile(filepath.Join(sessionDir, "msg_001.json"), []byte(badMsg), 0o644))
 
-	sessions, err := discoverSessionsIn(t.Context(), tmp)
+	sessions, err := discoverSessionsIn(t.Context(), tmp, "")
 	require.NoError(t, err)
 	require.Len(t, sessions, 1)
 
@@ -422,13 +422,77 @@ func TestDiscoverSessions_CreatedAtFallbackWhenAllMsgFilesUnreadable(t *testing.
 		0o644,
 	))
 
-	sessions, err := discoverSessionsIn(t.Context(), tmp)
+	sessions, err := discoverSessionsIn(t.Context(), tmp, "")
 	require.NoError(t, err)
 	require.Len(t, sessions, 1)
 
 	session := sessions[0]
 	assert.False(t, session.CreatedAt.IsZero(),
 		"CreatedAt must not be zero when all msg_ files fail to unmarshal; should fall back to directory modTime")
+}
+
+// TestDiscoverSessions_FiltersByProjectDir verifies that when a projectDir is
+// provided, only sessions belonging to that project are returned.
+// Regression test for T-740.
+func TestDiscoverSessions_FiltersByProjectDir(t *testing.T) {
+	t.Parallel()
+
+	// Build a fake storage tree:
+	// tmp/storage/message/ses_A/msg_001.json  (belongs to projectA)
+	// tmp/storage/message/ses_B/msg_001.json  (belongs to projectB)
+	// tmp/storage/project/proj1.json          (worktree: /fake/projectA)
+	// tmp/storage/session/proj1/ses_A.json
+	// tmp/storage/session/proj2/ses_B.json
+	tmp := t.TempDir()
+	storageDir := filepath.Join(tmp, "storage")
+	messageDir := filepath.Join(storageDir, "message")
+	projectDir := filepath.Join(storageDir, "project")
+	sessionDir := filepath.Join(storageDir, "session")
+
+	// Create message directories.
+	for _, ses := range []string{"ses_A", "ses_B"} {
+		dir := filepath.Join(messageDir, ses)
+		require.NoError(t, os.MkdirAll(dir, 0o755))
+		msg := `{"id":"msg_1","sessionID":"` + ses + `","role":"user","time":{"created":"2026-01-01T00:00:00Z"}}`
+		require.NoError(t, os.WriteFile(filepath.Join(dir, "msg_001.json"), []byte(msg), 0o644))
+	}
+
+	// Create project files.
+	require.NoError(t, os.MkdirAll(projectDir, 0o755))
+	require.NoError(t, os.WriteFile(
+		filepath.Join(projectDir, "proj1.json"),
+		[]byte(`{"id":"proj1","worktree":"/fake/projectA"}`), 0o644))
+	require.NoError(t, os.WriteFile(
+		filepath.Join(projectDir, "proj2.json"),
+		[]byte(`{"id":"proj2","worktree":"/fake/projectB"}`), 0o644))
+
+	// Create session index directories.
+	require.NoError(t, os.MkdirAll(filepath.Join(sessionDir, "proj1"), 0o755))
+	require.NoError(t, os.MkdirAll(filepath.Join(sessionDir, "proj2"), 0o755))
+	require.NoError(t, os.WriteFile(filepath.Join(sessionDir, "proj1", "ses_A.json"), []byte(`{}`), 0o644))
+	require.NoError(t, os.WriteFile(filepath.Join(sessionDir, "proj2", "ses_B.json"), []byte(`{}`), 0o644))
+
+	// Without filter: returns both sessions.
+	all, err := discoverSessionsIn(t.Context(), messageDir, "")
+	require.NoError(t, err)
+	assert.Len(t, all, 2)
+
+	// With projectA filter: returns only ses_A.
+	filtered, err := discoverSessionsIn(t.Context(), messageDir, "/fake/projectA")
+	require.NoError(t, err)
+	require.Len(t, filtered, 1)
+	assert.Equal(t, "ses_A", filtered[0].ID)
+
+	// Trailing slash on caller side must still match.
+	trailingSlash, err := discoverSessionsIn(t.Context(), messageDir, "/fake/projectA/")
+	require.NoError(t, err)
+	require.Len(t, trailingSlash, 1)
+	assert.Equal(t, "ses_A", trailingSlash[0].ID)
+
+	// With unknown project: returns nil.
+	none, err := discoverSessionsIn(t.Context(), messageDir, "/fake/unknown")
+	require.NoError(t, err)
+	assert.Empty(t, none)
 }
 
 // TestParseCreatedTime_ZeroUnixReturnsFallback verifies that a created time
