@@ -52,7 +52,7 @@ func (o *Orbit) runComparison(ctx context.Context) error {
 	if comparisonTimeout <= 0 {
 		comparisonTimeout = comparison.DefaultTimeout
 	}
-	comparisonCtx, cancel := context.WithTimeout(o.shutdownCtx, comparisonTimeout)
+	comparisonCtx, cancel := context.WithTimeout(ctx, comparisonTimeout)
 	defer cancel()
 
 	adapter := comparison.NewAgentAdapter(o.agent, o.config.WorkingDir).
