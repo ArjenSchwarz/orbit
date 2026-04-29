@@ -32,7 +32,7 @@ func statusCommand(args []string) error {
 		fmt.Fprintf(os.Stderr, "  orbit status --format json     # Output as JSON\n")
 	}
 
-	if err := fs.Parse(args); err != nil {
+	if err := fs.Parse(reorderArgs(fs, args)); err != nil {
 		return err
 	}
 
