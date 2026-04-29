@@ -530,10 +530,18 @@ func (c *Consolidator) runWithRetry(ctx context.Context, prompt string) (*agents
 			return c.config.Agent.Run(runCtx, opts)
 		},
 		Classify: func(result *agents.RunResult, err error) *agents.ClassifiedError {
-			// Success: no error and agent did not report an error condition.
-			// Uses IsError (not result.Error) to match classifyFromAgent behavior.
-			if err == nil && (result == nil || !result.IsError) {
+			// Success: no error, non-nil result, and agent did not report an error condition.
+			if err == nil && result != nil && !result.IsError {
 				return nil
+			}
+
+			// Nil result with no error is unexpected — treat as retryable transient glitch.
+			if err == nil && result == nil {
+				return &agents.ClassifiedError{
+					Original: errors.New("agent returned nil result"),
+					Class:    agents.ErrorClassRetryable,
+					Message:  "agent returned nil result without error",
+				}
 			}
 
 			classifier := agents.GetClassifier(c.config.Agent.Name())

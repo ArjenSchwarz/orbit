@@ -1188,9 +1188,9 @@ func TestRunWithRetry_IsErrorTreatedAsFailure(t *testing.T) {
 			},
 			wantErr: false,
 		},
-		"nil result should succeed": {
+		"nil result should fail (T-751)": {
 			result:  nil,
-			wantErr: false,
+			wantErr: true,
 		},
 		"Go-level error should fail": {
 			result:  &agents.RunResult{SessionID: "test-session", ExitCode: 1},
@@ -1221,7 +1221,12 @@ func TestRunWithRetry_IsErrorTreatedAsFailure(t *testing.T) {
 			consolidator, err := NewConsolidator(cfg, mgr)
 			require.NoError(t, err)
 
-			_, err = consolidator.runWithRetry(context.Background(), "test prompt")
+			// Use a short timeout to bound retries for retryable error cases
+			// (e.g., nil result) that would otherwise sleep ~15s with real backoff.
+			ctx, cancel := context.WithTimeout(context.Background(), 200*time.Millisecond)
+			defer cancel()
+
+			_, err = consolidator.runWithRetry(ctx, "test prompt")
 			if tc.wantErr {
 				assert.Error(t, err, "runWithRetry should return error")
 			} else {
