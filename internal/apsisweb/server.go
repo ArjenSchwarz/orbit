@@ -98,7 +98,7 @@ func (s *Server) Start() error {
 	if err != nil && err != http.ErrServerClosed {
 		return fmt.Errorf("server error: %w", err)
 	}
-	return err
+	return nil
 }
 
 // Shutdown gracefully stops the server.

@@ -122,7 +122,7 @@ func (s *Server) Start() error {
 	default:
 	}
 
-	return err
+	return nil
 }
 
 // Shutdown gracefully stops the server.
