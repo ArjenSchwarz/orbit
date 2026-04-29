@@ -534,3 +534,65 @@ func TestAgent_ArgOrder(t *testing.T) {
 		})
 	}
 }
+
+func TestAgent_DiscoverSessions_FiltersByProjectDir(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	nestedDir := filepath.Join(tmpDir, "2025", "01", "15")
+	if err := os.MkdirAll(nestedDir, 0o755); err != nil {
+		t.Fatalf("failed to create nested dir: %v", err)
+	}
+
+	projectA := filepath.Join(tmpDir, "project-a")
+	projectB := filepath.Join(tmpDir, "project-b")
+	if err := os.MkdirAll(projectA, 0o755); err != nil {
+		t.Fatalf("failed to create project-a: %v", err)
+	}
+	if err := os.MkdirAll(projectB, 0o755); err != nil {
+		t.Fatalf("failed to create project-b: %v", err)
+	}
+
+	// Session belonging to project-a
+	metaA := `{"type":"session_meta","payload":{"cwd":"` + projectA + `"}}` + "\n"
+	if err := os.WriteFile(filepath.Join(nestedDir, "session-aaa.jsonl"), []byte(metaA), 0o644); err != nil {
+		t.Fatalf("failed to write session file: %v", err)
+	}
+
+	// Session belonging to project-b
+	metaB := `{"type":"session_meta","payload":{"cwd":"` + projectB + `"}}` + "\n"
+	if err := os.WriteFile(filepath.Join(nestedDir, "session-bbb.jsonl"), []byte(metaB), 0o644); err != nil {
+		t.Fatalf("failed to write session file: %v", err)
+	}
+
+	// Session with no cwd metadata
+	if err := os.WriteFile(filepath.Join(nestedDir, "session-ccc.jsonl"), []byte(`{"type":"session_meta"}`+"\n"), 0o644); err != nil {
+		t.Fatalf("failed to write session file: %v", err)
+	}
+
+	agent := &Agent{
+		config:     agents.AgentConfig{},
+		cliPath:    "codex",
+		sessionDir: tmpDir,
+	}
+
+	// Filter by project-a: should return only session-aaa
+	sessions, err := agent.DiscoverSessions(context.Background(), projectA)
+	if err != nil {
+		t.Fatalf("DiscoverSessions() error = %v", err)
+	}
+	if len(sessions) != 1 {
+		t.Fatalf("expected 1 session for project-a, got %d", len(sessions))
+	}
+	if sessions[0].ID != "session-aaa" {
+		t.Errorf("session.ID = %q, want %q", sessions[0].ID, "session-aaa")
+	}
+
+	// Empty projectDir: should return all sessions
+	all, err := agent.DiscoverSessions(context.Background(), "")
+	if err != nil {
+		t.Fatalf("DiscoverSessions() error = %v", err)
+	}
+	if len(all) != 3 {
+		t.Fatalf("expected 3 sessions with empty filter, got %d", len(all))
+	}
+}
