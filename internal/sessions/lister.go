@@ -300,7 +300,7 @@ func (l *Lister) listCopilot(projectPath string) ([]SessionInfo, []ListWarning, 
 			if matchPath == "" {
 				matchPath = ws.Cwd
 			}
-			if matchPath != "" && normalizePath(matchPath) != normalizePath(projectPath) {
+			if matchPath == "" || normalizePath(matchPath) != normalizePath(projectPath) {
 				continue
 			}
 		}
