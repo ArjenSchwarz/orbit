@@ -227,25 +227,28 @@ func runCommand(args []string) error {
 		autoConsolidateValue = false
 	}
 
-	// Resolve variant-count: CLI flag > config > default (0)
-	variantCountExplicit := false
+	// Detect explicitly-set variant flags in a single pass.
+	variantCountExplicit, branchPrefixExplicit, compareCommandExplicit, guidanceFileExplicit := false, false, false, false
 	fs.Visit(func(f *flag.Flag) {
-		if f.Name == "variants" {
+		switch f.Name {
+		case "variants":
 			variantCountExplicit = true
+		case "branch-prefix":
+			branchPrefixExplicit = true
+		case "compare-command":
+			compareCommandExplicit = true
+		case "guidance-file":
+			guidanceFileExplicit = true
 		}
 	})
+
+	// Resolve variant-count: CLI flag > config > default (0)
 	variantCountValue := cfg.VariantCount
 	if variantCountExplicit {
 		variantCountValue = *variantCount
 	}
 
 	// Resolve branch-prefix: CLI flag > config > default
-	branchPrefixExplicit := false
-	fs.Visit(func(f *flag.Flag) {
-		if f.Name == "branch-prefix" {
-			branchPrefixExplicit = true
-		}
-	})
 	branchPrefixValue := cfg.BranchPrefix
 	if branchPrefixExplicit {
 		branchPrefixValue = *branchPrefix
@@ -253,13 +256,13 @@ func runCommand(args []string) error {
 
 	// Resolve compare-command: CLI flag > config > default ("")
 	compareCommandValue := cfg.CompareCommand
-	if *compareCommand != "" {
+	if compareCommandExplicit {
 		compareCommandValue = *compareCommand
 	}
 
 	// Resolve guidance-file: CLI flag > config > default ("")
 	guidanceFileValue := cfg.GuidanceFile
-	if *guidanceFile != "" {
+	if guidanceFileExplicit {
 		guidanceFileValue = *guidanceFile
 	}
 
@@ -343,8 +346,8 @@ func runCommand(args []string) error {
 		Guidance:         guidance,
 		CompareCommand:   compareCommandValue,
 		GlobalGuidance:   cfg.GlobalGuidance,
-		SpecDir:                specDir,
-		RepoRoot:               repoRoot,
+		SpecDir:  specDir,
+		RepoRoot: repoRoot,
 		VariantAgents:          variantAgents,
 		AutoConsolidate:        autoConsolidateValue,
 		AllowDirty:             *allowDirty,
