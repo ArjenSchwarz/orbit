@@ -379,7 +379,9 @@ func resolveVariantFlags(fs *flag.FlagSet, cfg *config.Config) variantFlagValues
 	}
 	if variantCountExplicit {
 		if getter, ok := fs.Lookup("variants").Value.(flag.Getter); ok {
-			v.VariantCount = getter.Get().(int)
+			if i, ok := getter.Get().(int); ok {
+				v.VariantCount = i
+			}
 		}
 	}
 	if branchPrefixExplicit {
