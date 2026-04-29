@@ -1198,6 +1198,7 @@ func TestIsWithinDirResolvesSymlinkedPrefix(t *testing.T) {
 	}
 }
 
+
 // TestCodexSessionCwdLargeLineBeforeMeta verifies that getCodexSessionCwd
 // handles JSONL lines exceeding the default 64 KiB scanner buffer.
 // Regression test for T-868.
@@ -1249,5 +1250,68 @@ func TestCodexSessionCwdLargeLineBeforeMeta(t *testing.T) {
 	}
 	if !got.Equal(ts) {
 		t.Errorf("getCodexSessionTimestamp() = %v, want %v", got, ts)
+	}
+}
+
+// TestListKiroIDEEmptyPathScansAllWorkspaces verifies that listKiroIDE("")
+// scans all workspace hash directories instead of hashing the cwd (T-870).
+func TestListKiroIDEEmptyPathScansAllWorkspaces(t *testing.T) {
+	baseDir := t.TempDir()
+
+	// Create two workspace directories with .chat files.
+	ws1 := filepath.Join(baseDir, "aaa111")
+	ws2 := filepath.Join(baseDir, "bbb222")
+	if err := os.MkdirAll(ws1, 0755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(ws2, 0755); err != nil {
+		t.Fatal(err)
+	}
+
+	chat1, _ := json.Marshal(map[string]any{
+		"executionId": "exec-1",
+		"chat":        []map[string]any{{"role": "user", "content": "hi"}},
+		"metadata":    map[string]any{"startTime": 1700000000000},
+	})
+	chat2, _ := json.Marshal(map[string]any{
+		"executionId": "exec-2",
+		"chat":        []map[string]any{{"role": "user", "content": "hello"}},
+		"metadata":    map[string]any{"startTime": 1700000001000},
+	})
+	if err := os.WriteFile(filepath.Join(ws1, "a.chat"), chat1, 0644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(ws2, "b.chat"), chat2, 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	// Also create a regular file at base level (should be skipped, not a dir).
+	if err := os.WriteFile(filepath.Join(baseDir, "not-a-dir"), []byte("x"), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	lister := &Lister{
+		homeDir:         t.TempDir(),
+		kiroIDEBasePath: func() (string, error) { return baseDir, nil },
+	}
+
+	sessions, err := lister.listKiroIDE("")
+	if err != nil {
+		t.Fatalf("listKiroIDE(\"\") error: %v", err)
+	}
+
+	if len(sessions) != 2 {
+		t.Fatalf("expected 2 sessions, got %d", len(sessions))
+	}
+
+	ids := map[string]bool{}
+	for _, s := range sessions {
+		ids[s.ID] = true
+		if s.Source != SourceKiroIDE {
+			t.Errorf("session %s source = %q, want %q", s.ID, s.Source, SourceKiroIDE)
+		}
+	}
+	if !ids["exec-1"] || !ids["exec-2"] {
+		t.Errorf("expected exec-1 and exec-2, got %v", ids)
 	}
 }

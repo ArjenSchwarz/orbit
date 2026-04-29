@@ -23,10 +23,14 @@ import (
 // kiroDiscoverFunc abstracts Kiro session discovery for testing.
 type kiroDiscoverFunc func(ctx context.Context, dir string) ([]logs.SessionMetadata, error)
 
+// kiroIDEBasePathFunc abstracts Kiro IDE base path resolution for testing.
+type kiroIDEBasePathFunc func() (string, error)
+
 // Lister discovers sessions from all agent types for a project.
 type Lister struct {
-	homeDir      string
-	kiroDiscover kiroDiscoverFunc // nil → logs.DiscoverForDirectory
+	homeDir         string
+	kiroDiscover    kiroDiscoverFunc    // nil → logs.DiscoverForDirectory
+	kiroIDEBasePath kiroIDEBasePathFunc // nil → transcript.KiroIDEBasePath
 }
 
 // NewLister creates a Lister.
@@ -361,7 +365,12 @@ func (l *Lister) listKiro(cwd string) ([]SessionInfo, error) {
 }
 
 // listKiroIDE returns all Kiro IDE sessions for a project directory.
+// When projectPath is empty, scans all workspace directories.
 func (l *Lister) listKiroIDE(projectPath string) ([]SessionInfo, error) {
+	if projectPath == "" {
+		return l.listKiroIDEAll()
+	}
+
 	workspaceDir, err := transcript.KiroIDEWorkspaceDir(projectPath)
 	if err != nil {
 		if errors.Is(err, transcript.ErrKiroIDENotFound) {
@@ -370,6 +379,11 @@ func (l *Lister) listKiroIDE(projectPath string) ([]SessionInfo, error) {
 		return nil, fmt.Errorf("kiro ide workspace: %w", err)
 	}
 
+	return l.listKiroIDEWorkspace(workspaceDir)
+}
+
+// listKiroIDEWorkspace scans a single workspace directory for Kiro IDE sessions.
+func (l *Lister) listKiroIDEWorkspace(workspaceDir string) ([]SessionInfo, error) {
 	entries, err := os.ReadDir(workspaceDir)
 	if err != nil {
 		return nil, fmt.Errorf("read kiro ide workspace: %w", err)
@@ -465,6 +479,40 @@ func (l *Lister) listKiroIDE(projectPath string) ([]SessionInfo, error) {
 	}
 
 	return sessions, nil
+}
+
+// listKiroIDEAll scans all workspace hash directories under the Kiro IDE base path.
+func (l *Lister) listKiroIDEAll() ([]SessionInfo, error) {
+	baseFn := l.kiroIDEBasePath
+	if baseFn == nil {
+		baseFn = transcript.KiroIDEBasePath
+	}
+	base, err := baseFn()
+	if err != nil {
+		if errors.Is(err, transcript.ErrKiroIDENotFound) {
+			return nil, nil
+		}
+		return nil, fmt.Errorf("kiro ide base path: %w", err)
+	}
+
+	entries, err := os.ReadDir(base)
+	if err != nil {
+		return nil, fmt.Errorf("read kiro ide base: %w", err)
+	}
+
+	var all []SessionInfo
+	for _, entry := range entries {
+		if !entry.IsDir() {
+			continue
+		}
+		workspaceDir := filepath.Join(base, entry.Name())
+		sessions, err := l.listKiroIDEWorkspace(workspaceDir)
+		if err != nil {
+			continue // skip unreadable workspaces
+		}
+		all = append(all, sessions...)
+	}
+	return all, nil
 }
 
 // --- Supporting functions and types ---
