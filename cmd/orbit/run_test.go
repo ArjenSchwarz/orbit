@@ -495,3 +495,94 @@ func TestBuildAgentConfig(t *testing.T) {
 		})
 	}
 }
+
+// TestVariantConfig_Resolution tests that variant config values from .orbit.yaml
+// are properly applied when CLI flags are not explicitly set (T-814).
+func TestVariantConfig_Resolution(t *testing.T) {
+	tmpDir := t.TempDir()
+	homeDir := t.TempDir()
+	t.Setenv("HOME", homeDir)
+
+	configContent := `variant-count: 3
+branch-prefix: "my-prefix"
+compare-command: "custom-compare"
+guidance-file: "my-guidance.yaml"
+parallel: true
+agents:
+  claude-code:
+    type: claude-code
+`
+	if err := os.WriteFile(filepath.Join(tmpDir, ".orbit.yaml"), []byte(configContent), 0644); err != nil {
+		t.Fatalf("failed to write config: %v", err)
+	}
+
+	cfg := config.Load(tmpDir)
+
+	// Verify config values are loaded
+	if cfg.VariantCount != 3 {
+		t.Errorf("VariantCount = %d, want 3", cfg.VariantCount)
+	}
+	if cfg.BranchPrefix != "my-prefix" {
+		t.Errorf("BranchPrefix = %q, want %q", cfg.BranchPrefix, "my-prefix")
+	}
+	if cfg.CompareCommand != "custom-compare" {
+		t.Errorf("CompareCommand = %q, want %q", cfg.CompareCommand, "custom-compare")
+	}
+	if cfg.GuidanceFile != "my-guidance.yaml" {
+		t.Errorf("GuidanceFile = %q, want %q", cfg.GuidanceFile, "my-guidance.yaml")
+	}
+	if !cfg.Parallel {
+		t.Error("Parallel = false, want true")
+	}
+}
+
+// TestVariantConfig_CLIOverridesConfig tests that CLI flags override config values.
+func TestVariantConfig_CLIOverridesConfig(t *testing.T) {
+	tests := []struct {
+		name         string
+		args         []string
+		configPrefix string
+		wantPrefix   string
+	}{
+		{
+			name:         "explicit flag overrides config",
+			args:         []string{"--branch-prefix", "cli-prefix"},
+			configPrefix: "config-prefix",
+			wantPrefix:   "cli-prefix",
+		},
+		{
+			name:         "config used when flag not set",
+			args:         []string{},
+			configPrefix: "config-prefix",
+			wantPrefix:   "config-prefix",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			fs := flag.NewFlagSet("test", flag.ContinueOnError)
+			branchPrefix := fs.String("branch-prefix", "orbit-impl", "Branch naming prefix")
+
+			if err := fs.Parse(tt.args); err != nil {
+				t.Fatalf("failed to parse flags: %v", err)
+			}
+
+			branchPrefixExplicit := false
+			fs.Visit(func(f *flag.Flag) {
+				if f.Name == "branch-prefix" {
+					branchPrefixExplicit = true
+				}
+			})
+
+			// Simulate the resolution logic from run.go
+			resolved := tt.configPrefix
+			if branchPrefixExplicit {
+				resolved = *branchPrefix
+			}
+
+			if resolved != tt.wantPrefix {
+				t.Errorf("branchPrefix = %q, want %q", resolved, tt.wantPrefix)
+			}
+		})
+	}
+}

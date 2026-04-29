@@ -227,11 +227,47 @@ func runCommand(args []string) error {
 		autoConsolidateValue = false
 	}
 
+	// Resolve variant-count: CLI flag > config > default (0)
+	variantCountExplicit := false
+	fs.Visit(func(f *flag.Flag) {
+		if f.Name == "variants" {
+			variantCountExplicit = true
+		}
+	})
+	variantCountValue := cfg.VariantCount
+	if variantCountExplicit {
+		variantCountValue = *variantCount
+	}
+
+	// Resolve branch-prefix: CLI flag > config > default
+	branchPrefixExplicit := false
+	fs.Visit(func(f *flag.Flag) {
+		if f.Name == "branch-prefix" {
+			branchPrefixExplicit = true
+		}
+	})
+	branchPrefixValue := cfg.BranchPrefix
+	if branchPrefixExplicit {
+		branchPrefixValue = *branchPrefix
+	}
+
+	// Resolve compare-command: CLI flag > config > default ("")
+	compareCommandValue := cfg.CompareCommand
+	if *compareCommand != "" {
+		compareCommandValue = *compareCommand
+	}
+
+	// Resolve guidance-file: CLI flag > config > default ("")
+	guidanceFileValue := cfg.GuidanceFile
+	if *guidanceFile != "" {
+		guidanceFileValue = *guidanceFile
+	}
+
 	// Parse guidance file if provided
 	var guidance []string
-	if *guidanceFile != "" {
+	if guidanceFileValue != "" {
 		var err error
-		guidance, err = parseGuidanceFile(*guidanceFile, *variantCount)
+		guidance, err = parseGuidanceFile(guidanceFileValue, variantCountValue)
 		if err != nil {
 			return fmt.Errorf("failed to parse guidance file: %w", err)
 		}
@@ -249,18 +285,18 @@ func runCommand(args []string) error {
 
 	// Validate variant configuration. Max-parallel is validated inside
 	// resolveMaxParallel so config-sourced values are also checked.
-	if *variantCount < 0 {
+	if variantCountValue < 0 {
 		return fmt.Errorf("--variants must be non-negative")
 	}
 
 	// Validate auto-consolidate requires variants
-	if *autoConsolidate && *variantCount == 0 {
+	if autoConsolidateValue && variantCountValue == 0 {
 		return fmt.Errorf("--auto-consolidate requires --variants to be specified")
 	}
 
 	// Derive SpecDir and RepoRoot for variant mode
 	var specDir, repoRoot string
-	if *variantCount > 0 {
+	if variantCountValue > 0 {
 		// SpecDir is the directory containing the tasks file
 		specDir = filepath.Dir(*tasksFile)
 
@@ -300,12 +336,12 @@ func runCommand(args []string) error {
 		Agent:            aliasName,
 		AgentConfig:      agentCfg,
 		AgentConfigs:     cfg.GetAllAgentConfigs(),
-		VariantCount:     *variantCount,
+		VariantCount:     variantCountValue,
 		Parallel:         parallelValue,
 		MaxParallel:      maxParallelValue,
-		BranchPrefix:     *branchPrefix,
+		BranchPrefix:     branchPrefixValue,
 		Guidance:         guidance,
-		CompareCommand:   *compareCommand,
+		CompareCommand:   compareCommandValue,
 		GlobalGuidance:   cfg.GlobalGuidance,
 		SpecDir:                specDir,
 		RepoRoot:               repoRoot,
