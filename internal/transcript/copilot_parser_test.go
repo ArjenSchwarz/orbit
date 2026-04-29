@@ -192,3 +192,24 @@ func TestParseCopilot_ModelOnlyOnAssistantEntries(t *testing.T) {
 		}
 	}
 }
+
+func TestParseCopilot_InterruptedAssistantTurnPreserved(t *testing.T) {
+	// When a session is interrupted (no turn_end), the assistant content should still be preserved
+	input := `{"type":"session.start","data":{"sessionId":"s1"},"id":"1","timestamp":"2026-01-17T12:00:00Z"}
+{"type":"session.model_change","data":{"model":"gpt-4o"},"id":"2","timestamp":"2026-01-17T12:00:00.500Z"}
+{"type":"user.message","data":{"content":"hello"},"id":"3","timestamp":"2026-01-17T12:00:01Z"}
+{"type":"assistant.turn_start","data":{"turnId":"0"},"id":"4","timestamp":"2026-01-17T12:00:02Z"}
+{"type":"assistant.message","data":{"messageId":"m1","content":"partial response"},"id":"5","timestamp":"2026-01-17T12:00:03Z"}`
+
+	result, err := ParseCopilot(strings.NewReader(input))
+	require.NoError(t, err)
+	require.Len(t, result.Entries, 2, "should have user + interrupted assistant entry")
+
+	assert.Equal(t, "user", result.Entries[0].Type)
+	assert.Equal(t, "assistant", result.Entries[1].Type)
+	assert.Equal(t, "2026-01-17T12:00:02Z", result.Entries[1].Timestamp)
+	assert.Equal(t, "gpt-4o", result.Entries[1].Model)
+	require.Len(t, result.Entries[1].Message.Content, 1)
+	assert.Equal(t, "text", result.Entries[1].Message.Content[0].Type)
+	assert.Equal(t, "partial response", result.Entries[1].Message.Content[0].Text)
+}

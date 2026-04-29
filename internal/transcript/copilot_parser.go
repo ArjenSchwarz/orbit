@@ -174,5 +174,18 @@ func convertCopilotToEntries(events []CopilotEvent) []Entry {
 		}
 	}
 
+	// Flush any incomplete assistant turn (interrupted session without turn_end)
+	if inAssistantTurn && len(currentTurnContent) > 0 {
+		entries = append(entries, Entry{
+			Type:      "assistant",
+			Timestamp: currentTurnTimestamp,
+			Model:     currentModel,
+			Message: &Message{
+				Role:    "assistant",
+				Content: currentTurnContent,
+			},
+		})
+	}
+
 	return entries
 }
