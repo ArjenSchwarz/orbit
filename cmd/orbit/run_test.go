@@ -496,8 +496,8 @@ func TestBuildAgentConfig(t *testing.T) {
 	}
 }
 
-// TestVariantConfig_Resolution tests that variant config values from .orbit.yaml
-// are properly applied when CLI flags are not explicitly set (T-814).
+// TestVariantConfig_Resolution tests that resolveVariantFlags uses config values
+// when CLI flags are not explicitly set (T-814).
 func TestVariantConfig_Resolution(t *testing.T) {
 	tmpDir := t.TempDir()
 	homeDir := t.TempDir()
@@ -518,155 +518,112 @@ agents:
 
 	cfg := config.Load(tmpDir)
 
-	// Simulate run.go resolution with no CLI flags set (empty args)
 	fs := flag.NewFlagSet("test", flag.ContinueOnError)
-	variantCount := fs.Int("variants", 0, "")
-	branchPrefix := fs.String("branch-prefix", "orbit-impl", "")
-	compareCommand := fs.String("compare-command", "", "")
-	guidanceFile := fs.String("guidance-file", "", "")
+	fs.Int("variants", 0, "")
+	fs.String("branch-prefix", "orbit-impl", "")
+	fs.String("compare-command", "", "")
+	fs.String("guidance-file", "", "")
 
 	if err := fs.Parse([]string{}); err != nil {
 		t.Fatalf("failed to parse flags: %v", err)
 	}
 
-	// Single-pass detection (mirrors production code)
-	variantCountExplicit, branchPrefixExplicit, compareCommandExplicit, guidanceFileExplicit := false, false, false, false
-	fs.Visit(func(f *flag.Flag) {
-		switch f.Name {
-		case "variants":
-			variantCountExplicit = true
-		case "branch-prefix":
-			branchPrefixExplicit = true
-		case "compare-command":
-			compareCommandExplicit = true
-		case "guidance-file":
-			guidanceFileExplicit = true
-		}
-	})
+	vf := resolveVariantFlags(fs, cfg)
 
-	// Resolve using same logic as run.go
-	variantCountValue := cfg.VariantCount
-	if variantCountExplicit {
-		variantCountValue = *variantCount
+	if vf.VariantCount != 3 {
+		t.Errorf("VariantCount = %d, want 3", vf.VariantCount)
 	}
-	branchPrefixValue := cfg.BranchPrefix
-	if branchPrefixExplicit {
-		branchPrefixValue = *branchPrefix
+	if vf.BranchPrefix != "my-prefix" {
+		t.Errorf("BranchPrefix = %q, want %q", vf.BranchPrefix, "my-prefix")
 	}
-	compareCommandValue := cfg.CompareCommand
-	if compareCommandExplicit {
-		compareCommandValue = *compareCommand
+	if vf.CompareCommand != "custom-compare" {
+		t.Errorf("CompareCommand = %q, want %q", vf.CompareCommand, "custom-compare")
 	}
-	guidanceFileValue := cfg.GuidanceFile
-	if guidanceFileExplicit {
-		guidanceFileValue = *guidanceFile
-	}
-
-	// Config values should be used when no flags are set
-	if variantCountValue != 3 {
-		t.Errorf("VariantCount = %d, want 3", variantCountValue)
-	}
-	if branchPrefixValue != "my-prefix" {
-		t.Errorf("BranchPrefix = %q, want %q", branchPrefixValue, "my-prefix")
-	}
-	if compareCommandValue != "custom-compare" {
-		t.Errorf("CompareCommand = %q, want %q", compareCommandValue, "custom-compare")
-	}
-	if guidanceFileValue != "my-guidance.yaml" {
-		t.Errorf("GuidanceFile = %q, want %q", guidanceFileValue, "my-guidance.yaml")
+	if vf.GuidanceFile != "my-guidance.yaml" {
+		t.Errorf("GuidanceFile = %q, want %q", vf.GuidanceFile, "my-guidance.yaml")
 	}
 }
 
 // TestVariantConfig_CLIOverridesConfig tests that CLI flags override config values
-// for all variant-related flags using the fs.Visit() detection pattern.
+// when passed explicitly, using the production resolveVariantFlags function.
 func TestVariantConfig_CLIOverridesConfig(t *testing.T) {
 	tests := []struct {
-		name               string
-		args               []string
-		configPrefix       string
-		configCompare      string
-		configGuidance     string
-		wantPrefix         string
-		wantCompare        string
-		wantGuidance       string
+		name         string
+		args         []string
+		cfg          *config.Config
+		wantCount    int
+		wantPrefix   string
+		wantCompare  string
+		wantGuidance string
 	}{
 		{
-			name:           "explicit flags override config",
-			args:           []string{"--branch-prefix", "cli-prefix", "--compare-command", "cli-compare", "--guidance-file", "cli-guidance.yaml"},
-			configPrefix:   "config-prefix",
-			configCompare:  "config-compare",
-			configGuidance: "config-guidance.yaml",
-			wantPrefix:     "cli-prefix",
-			wantCompare:    "cli-compare",
-			wantGuidance:   "cli-guidance.yaml",
+			name: "explicit flags override config",
+			args: []string{"--variants", "5", "--branch-prefix", "cli-prefix", "--compare-command", "cli-compare", "--guidance-file", "cli-guidance.yaml"},
+			cfg: &config.Config{
+				VariantCount:   3,
+				BranchPrefix:   "config-prefix",
+				CompareCommand: "config-compare",
+				GuidanceFile:   "config-guidance.yaml",
+			},
+			wantCount:    5,
+			wantPrefix:   "cli-prefix",
+			wantCompare:  "cli-compare",
+			wantGuidance: "cli-guidance.yaml",
 		},
 		{
-			name:           "config used when flags not set",
-			args:           []string{},
-			configPrefix:   "config-prefix",
-			configCompare:  "config-compare",
-			configGuidance: "config-guidance.yaml",
-			wantPrefix:     "config-prefix",
-			wantCompare:    "config-compare",
-			wantGuidance:   "config-guidance.yaml",
+			name: "config used when flags not set",
+			args: []string{},
+			cfg: &config.Config{
+				VariantCount:   3,
+				BranchPrefix:   "config-prefix",
+				CompareCommand: "config-compare",
+				GuidanceFile:   "config-guidance.yaml",
+			},
+			wantCount:    3,
+			wantPrefix:   "config-prefix",
+			wantCompare:  "config-compare",
+			wantGuidance: "config-guidance.yaml",
 		},
 		{
-			name:           "explicit empty string clears config value",
-			args:           []string{"--compare-command", "", "--guidance-file", ""},
-			configPrefix:   "config-prefix",
-			configCompare:  "config-compare",
-			configGuidance: "config-guidance.yaml",
-			wantPrefix:     "config-prefix",
-			wantCompare:    "",
-			wantGuidance:   "",
+			name: "explicit empty string clears config value",
+			args: []string{"--compare-command", "", "--guidance-file", ""},
+			cfg: &config.Config{
+				BranchPrefix:   "config-prefix",
+				CompareCommand: "config-compare",
+				GuidanceFile:   "config-guidance.yaml",
+			},
+			wantCount:    0,
+			wantPrefix:   "config-prefix",
+			wantCompare:  "",
+			wantGuidance: "",
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			fs := flag.NewFlagSet("test", flag.ContinueOnError)
-			branchPrefix := fs.String("branch-prefix", "orbit-impl", "")
-			compareCommand := fs.String("compare-command", "", "")
-			guidanceFile := fs.String("guidance-file", "", "")
+			fs.Int("variants", 0, "")
+			fs.String("branch-prefix", "orbit-impl", "")
+			fs.String("compare-command", "", "")
+			fs.String("guidance-file", "", "")
 
 			if err := fs.Parse(tt.args); err != nil {
 				t.Fatalf("failed to parse flags: %v", err)
 			}
 
-			branchPrefixExplicit, compareCommandExplicit, guidanceFileExplicit := false, false, false
-			fs.Visit(func(f *flag.Flag) {
-				switch f.Name {
-				case "branch-prefix":
-					branchPrefixExplicit = true
-				case "compare-command":
-					compareCommandExplicit = true
-				case "guidance-file":
-					guidanceFileExplicit = true
-				}
-			})
+			vf := resolveVariantFlags(fs, tt.cfg)
 
-			// Resolution logic matching run.go
-			resolvedPrefix := tt.configPrefix
-			if branchPrefixExplicit {
-				resolvedPrefix = *branchPrefix
+			if vf.VariantCount != tt.wantCount {
+				t.Errorf("VariantCount = %d, want %d", vf.VariantCount, tt.wantCount)
 			}
-			resolvedCompare := tt.configCompare
-			if compareCommandExplicit {
-				resolvedCompare = *compareCommand
+			if vf.BranchPrefix != tt.wantPrefix {
+				t.Errorf("BranchPrefix = %q, want %q", vf.BranchPrefix, tt.wantPrefix)
 			}
-			resolvedGuidance := tt.configGuidance
-			if guidanceFileExplicit {
-				resolvedGuidance = *guidanceFile
+			if vf.CompareCommand != tt.wantCompare {
+				t.Errorf("CompareCommand = %q, want %q", vf.CompareCommand, tt.wantCompare)
 			}
-
-			if resolvedPrefix != tt.wantPrefix {
-				t.Errorf("branchPrefix = %q, want %q", resolvedPrefix, tt.wantPrefix)
-			}
-			if resolvedCompare != tt.wantCompare {
-				t.Errorf("compareCommand = %q, want %q", resolvedCompare, tt.wantCompare)
-			}
-			if resolvedGuidance != tt.wantGuidance {
-				t.Errorf("guidanceFile = %q, want %q", resolvedGuidance, tt.wantGuidance)
+			if vf.GuidanceFile != tt.wantGuidance {
+				t.Errorf("GuidanceFile = %q, want %q", vf.GuidanceFile, tt.wantGuidance)
 			}
 		})
 	}

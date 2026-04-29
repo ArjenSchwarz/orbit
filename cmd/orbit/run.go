@@ -56,12 +56,12 @@ func runCommand(args []string) error {
 	agentFlag := fs.String("agent", "", "Agent to use (claude-code, codex, kiro, copilot, opencode)")
 
 	// Variant flags for multi-spec comparison
-	variantCount := fs.Int("variants", 0, "Number of implementation variants to run (0 = single-run mode)")
+	fs.Int("variants", 0, "Number of implementation variants to run (0 = single-run mode)")
 	parallel := fs.Bool("parallel", false, "Run variants in parallel")
 	maxParallel := fs.Int("max-parallel", config.DefaultMaxParallel, "Maximum parallel variants")
-	branchPrefix := fs.String("branch-prefix", "orbit-impl", "Branch naming prefix for variants")
-	guidanceFile := fs.String("guidance-file", "", "YAML file with per-variant guidance")
-	compareCommand := fs.String("compare-command", "", "Custom comparison command")
+	fs.String("branch-prefix", "orbit-impl", "Branch naming prefix for variants")
+	fs.String("guidance-file", "", "YAML file with per-variant guidance")
+	fs.String("compare-command", "", "Custom comparison command")
 	variantAgentsFlag := fs.String("variant-agents", "", "Comma-separated agent list for variants (cycles if fewer agents than variants)")
 
 	// Auto-consolidation flags
@@ -227,44 +227,11 @@ func runCommand(args []string) error {
 		autoConsolidateValue = false
 	}
 
-	// Detect explicitly-set variant flags in a single pass.
-	variantCountExplicit, branchPrefixExplicit, compareCommandExplicit, guidanceFileExplicit := false, false, false, false
-	fs.Visit(func(f *flag.Flag) {
-		switch f.Name {
-		case "variants":
-			variantCountExplicit = true
-		case "branch-prefix":
-			branchPrefixExplicit = true
-		case "compare-command":
-			compareCommandExplicit = true
-		case "guidance-file":
-			guidanceFileExplicit = true
-		}
-	})
-
-	// Resolve variant-count: CLI flag > config > default (0)
-	variantCountValue := cfg.VariantCount
-	if variantCountExplicit {
-		variantCountValue = *variantCount
-	}
-
-	// Resolve branch-prefix: CLI flag > config > default
-	branchPrefixValue := cfg.BranchPrefix
-	if branchPrefixExplicit {
-		branchPrefixValue = *branchPrefix
-	}
-
-	// Resolve compare-command: CLI flag > config > default ("")
-	compareCommandValue := cfg.CompareCommand
-	if compareCommandExplicit {
-		compareCommandValue = *compareCommand
-	}
-
-	// Resolve guidance-file: CLI flag > config > default ("")
-	guidanceFileValue := cfg.GuidanceFile
-	if guidanceFileExplicit {
-		guidanceFileValue = *guidanceFile
-	}
+	vf := resolveVariantFlags(fs, cfg)
+	variantCountValue := vf.VariantCount
+	branchPrefixValue := vf.BranchPrefix
+	compareCommandValue := vf.CompareCommand
+	guidanceFileValue := vf.GuidanceFile
 
 	// Parse guidance file if provided
 	var guidance []string
@@ -383,6 +350,54 @@ func getGitBranch() (string, error) {
 // via fs.Visit so an explicit --max-parallel=3 still wins over a non-default
 // config value.
 //
+// variantFlagValues holds the resolved values for variant-related flags.
+type variantFlagValues struct {
+	VariantCount   int
+	BranchPrefix   string
+	CompareCommand string
+	GuidanceFile   string
+}
+
+// resolveVariantFlags resolves variant-related flags using explicit-set detection.
+// fs.Visit only visits flags the user actually passed, letting us distinguish
+// "user passed the default value" from "flag was never set".
+func resolveVariantFlags(fs *flag.FlagSet, cfg *config.Config) variantFlagValues {
+	variantCountExplicit, branchPrefixExplicit, compareCommandExplicit, guidanceFileExplicit := false, false, false, false
+	fs.Visit(func(f *flag.Flag) {
+		switch f.Name {
+		case "variants":
+			variantCountExplicit = true
+		case "branch-prefix":
+			branchPrefixExplicit = true
+		case "compare-command":
+			compareCommandExplicit = true
+		case "guidance-file":
+			guidanceFileExplicit = true
+		}
+	})
+
+	v := variantFlagValues{
+		VariantCount:   cfg.VariantCount,
+		BranchPrefix:   cfg.BranchPrefix,
+		CompareCommand: cfg.CompareCommand,
+		GuidanceFile:   cfg.GuidanceFile,
+	}
+	if variantCountExplicit {
+		val, _ := fs.Lookup("variants").Value.(flag.Getter)
+		v.VariantCount = val.Get().(int)
+	}
+	if branchPrefixExplicit {
+		v.BranchPrefix = fs.Lookup("branch-prefix").Value.String()
+	}
+	if compareCommandExplicit {
+		v.CompareCommand = fs.Lookup("compare-command").Value.String()
+	}
+	if guidanceFileExplicit {
+		v.GuidanceFile = fs.Lookup("guidance-file").Value.String()
+	}
+	return v
+}
+
 // Precedence: explicit flag > config > flag default. A config value of 0 is
 // treated as "unset" and falls through to the flag's default (which flagValue
 // already holds when flagExplicit is false). An explicit --max-parallel=0 is
