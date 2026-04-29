@@ -56,7 +56,7 @@ func runCompare(ctx context.Context, args []string) error {
 		fmt.Fprintf(os.Stderr, "  orbit compare my-feature --from-file specs/my-feature/.orbit/comparison.json\n")
 	}
 
-	if err := fs.Parse(args); err != nil {
+	if err := fs.Parse(reorderArgs(fs, args)); err != nil {
 		return err
 	}
 
