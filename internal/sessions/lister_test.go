@@ -923,3 +923,84 @@ func TestListKiroUsesCreatedAtNotUpdatedAt(t *testing.T) {
 		t.Errorf("session.Size = %d, want %d", s.Size, 1024)
 	}
 }
+
+// TestListCodexSkipsSymlinkEscape verifies that Codex session listing does not
+// follow symlinks that resolve outside the sessions directory (T-792).
+func TestListCodexSkipsSymlinkEscape(t *testing.T) {
+	homeDir := t.TempDir()
+	projectPath := t.TempDir()
+
+	// Create a legitimate session inside the codex sessions dir.
+	createdAt := time.Date(2025, 3, 1, 10, 0, 0, 0, time.UTC)
+	setupCodexSession(t, homeDir, projectPath, "legit-session-id", createdAt)
+
+	// Create an outside directory with a session file that should NOT be discovered.
+	outsideDir := t.TempDir()
+	outsideFile := filepath.Join(outsideDir, "escaped-session.jsonl")
+	meta := fmt.Sprintf(`{"type":"session_meta","timestamp":"2025-03-02T10:00:00Z","payload":{"id":"escaped-id","cwd":"%s"}}`, projectPath)
+	if err := os.WriteFile(outsideFile, []byte(meta+"\n"), 0644); err != nil {
+		t.Fatalf("write outside file: %v", err)
+	}
+
+	// Create a symlink inside the codex sessions dir pointing outside.
+	codexDir := filepath.Join(homeDir, ".codex", "sessions")
+	symlink := filepath.Join(codexDir, "escape-link")
+	if err := os.Symlink(outsideDir, symlink); err != nil {
+		t.Fatalf("create symlink: %v", err)
+	}
+
+	lister := newTestLister(homeDir)
+	sessions, err := lister.listCodex(projectPath)
+	if err != nil {
+		t.Fatalf("listCodex error: %v", err)
+	}
+
+	// Only the legitimate session should be found.
+	if len(sessions) != 1 {
+		t.Fatalf("expected 1 session, got %d", len(sessions))
+	}
+	if !strings.Contains(sessions[0].ID, "legit-session-id") {
+		t.Errorf("session.ID = %q, want it to contain %q", sessions[0].ID, "legit-session-id")
+	}
+}
+
+// TestListClaudeSkipsSymlinkEscape verifies that Claude session listing does not
+// follow symlinks that escape the project directory (T-792).
+func TestListClaudeSkipsSymlinkEscape(t *testing.T) {
+	homeDir := t.TempDir()
+	projectPath := t.TempDir()
+
+	// Create a legitimate session.
+	createdAt := time.Date(2025, 3, 1, 10, 0, 0, 0, time.UTC)
+	setupClaudeSession(t, homeDir, projectPath, "legit-session", createdAt)
+
+	// Create an outside file that should NOT be discovered.
+	outsideDir := t.TempDir()
+	outsideFile := filepath.Join(outsideDir, "escaped.jsonl")
+	entry := `{"type":"system","timestamp":"2025-03-02T10:00:00Z","message":"escaped"}`
+	if err := os.WriteFile(outsideFile, []byte(entry+"\n"), 0644); err != nil {
+		t.Fatalf("write outside file: %v", err)
+	}
+
+	// Create a symlink inside the Claude project dir pointing to the outside file.
+	claudeProjectPath := claudecode.BuildProjectPath(projectPath)
+	projectDir := filepath.Join(homeDir, ".claude", "projects", claudeProjectPath)
+	symlink := filepath.Join(projectDir, "escaped.jsonl")
+	if err := os.Symlink(outsideFile, symlink); err != nil {
+		t.Fatalf("create symlink: %v", err)
+	}
+
+	lister := newTestLister(homeDir)
+	sessions, err := lister.listClaudeDir(projectDir)
+	if err != nil {
+		t.Fatalf("listClaudeDir error: %v", err)
+	}
+
+	// Only the legitimate session should be found.
+	if len(sessions) != 1 {
+		t.Fatalf("expected 1 session, got %d", len(sessions))
+	}
+	if sessions[0].ID != "legit-session" {
+		t.Errorf("session.ID = %q, want %q", sessions[0].ID, "legit-session")
+	}
+}

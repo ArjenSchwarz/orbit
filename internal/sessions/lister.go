@@ -138,8 +138,17 @@ func (l *Lister) listClaudeDir(projectDir string) ([]SessionInfo, error) {
 			continue
 		}
 
-		sessionID := strings.TrimSuffix(entry.Name(), ".jsonl")
 		filePath := filepath.Join(projectDir, entry.Name())
+
+		// Skip symlinks that escape the project directory.
+		if entry.Type()&fs.ModeSymlink != 0 {
+			resolved, err := filepath.EvalSymlinks(filePath)
+			if err != nil || !isWithinDir(resolved, projectDir) {
+				continue
+			}
+		}
+
+		sessionID := strings.TrimSuffix(entry.Name(), ".jsonl")
 
 		info, err := entry.Info()
 		if err != nil {
@@ -381,6 +390,15 @@ func (l *Lister) listKiroIDE(projectPath string) ([]SessionInfo, error) {
 		}
 
 		path := filepath.Join(workspaceDir, entry.Name())
+
+		// Skip symlinks that escape the workspace directory.
+		if entry.Type()&fs.ModeSymlink != 0 {
+			resolved, err := filepath.EvalSymlinks(path)
+			if err != nil || !isWithinDir(resolved, workspaceDir) {
+				continue
+			}
+		}
+
 		data, err := os.ReadFile(path)
 		if err != nil {
 			continue
@@ -578,12 +596,18 @@ func normalizePath(p string) string {
 }
 
 // walkDirFollowSymlinks walks a directory tree, following symlinks with cycle detection.
+// Symlinks that resolve outside the root directory are skipped.
 func walkDirFollowSymlinks(root string, fn fs.WalkDirFunc) error {
 	visited := make(map[string]bool)
-	return walkDirFollowSymlinksInternal(root, fn, visited)
+	boundary, err := filepath.EvalSymlinks(root)
+	if err != nil {
+		boundary = root
+	}
+	boundary, _ = filepath.Abs(boundary)
+	return walkDirFollowSymlinksInternal(root, boundary, fn, visited)
 }
 
-func walkDirFollowSymlinksInternal(root string, fn fs.WalkDirFunc, visited map[string]bool) error {
+func walkDirFollowSymlinksInternal(root, boundary string, fn fs.WalkDirFunc, visited map[string]bool) error {
 	absRoot, err := filepath.Abs(root)
 	if err != nil {
 		return err
@@ -602,12 +626,16 @@ func walkDirFollowSymlinksInternal(root string, fn fs.WalkDirFunc, visited map[s
 		if d.Type()&fs.ModeSymlink != 0 {
 			realPath, err := filepath.EvalSymlinks(path)
 			if err != nil {
-				return fn(path, d, err)
+				return nil // skip unresolvable symlinks
+			}
+
+			if !isWithinDir(realPath, boundary) {
+				return nil // skip symlinks escaping the boundary
 			}
 
 			info, err := os.Stat(realPath)
 			if err != nil {
-				return fn(path, d, err)
+				return nil
 			}
 
 			if info.IsDir() {
@@ -615,7 +643,7 @@ func walkDirFollowSymlinksInternal(root string, fn fs.WalkDirFunc, visited map[s
 				if visited[absReal] {
 					return nil
 				}
-				return walkDirFollowSymlinksInternal(realPath, fn, visited)
+				return walkDirFollowSymlinksInternal(realPath, boundary, fn, visited)
 			}
 
 			return fn(realPath, fs.FileInfoToDirEntry(info), nil)
@@ -623,6 +651,23 @@ func walkDirFollowSymlinksInternal(root string, fn fs.WalkDirFunc, visited map[s
 
 		return fn(path, d, err)
 	})
+}
+
+// isWithinDir reports whether path is within dir after resolving symlinks.
+func isWithinDir(path, dir string) bool {
+	absPath, err := filepath.Abs(path)
+	if err != nil {
+		return false
+	}
+	absDir, err := filepath.Abs(dir)
+	if err != nil {
+		return false
+	}
+	rel, err := filepath.Rel(absDir, absPath)
+	if err != nil {
+		return false
+	}
+	return rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator))
 }
 
 // sortSessionsByTimestamp sorts sessions by creation time (oldest first).
