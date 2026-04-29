@@ -529,6 +529,7 @@ func getCodexSessionTimestamp(path string) (time.Time, error) {
 	defer func() { _ = f.Close() }()
 
 	scanner := bufio.NewScanner(f)
+	scanner.Buffer(make([]byte, 0, 64*1024), 10*1024*1024)
 	for i := 0; i < codexMetaScanLimit && scanner.Scan(); i++ {
 		var entry struct {
 			Timestamp string `json:"timestamp"`
@@ -563,6 +564,7 @@ func getCodexSessionCwd(path string) string {
 	defer func() { _ = f.Close() }()
 
 	scanner := bufio.NewScanner(f)
+	scanner.Buffer(make([]byte, 0, 64*1024), 10*1024*1024)
 	for i := 0; i < codexMetaScanLimit && scanner.Scan(); i++ {
 		var entry struct {
 			Type    string          `json:"type"`

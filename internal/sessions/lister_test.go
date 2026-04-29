@@ -1197,3 +1197,57 @@ func TestIsWithinDirResolvesSymlinkedPrefix(t *testing.T) {
 		t.Errorf("isWithinDir(%q, %q) = false, want true", resolvedFile, symlinkDir)
 	}
 }
+
+// TestCodexSessionCwdLargeLineBeforeMeta verifies that getCodexSessionCwd
+// handles JSONL lines exceeding the default 64 KiB scanner buffer.
+// Regression test for T-868.
+func TestCodexSessionCwdLargeLineBeforeMeta(t *testing.T) {
+	t.Parallel()
+
+	homeDir := t.TempDir()
+	ts := time.Date(2025, 6, 1, 12, 0, 0, 0, time.UTC)
+	sessionID := "large-line-test"
+	projectPath := "/home/user/project"
+
+	dir := filepath.Join(homeDir, ".codex", "sessions",
+		ts.Format("2006"), ts.Format("01"), ts.Format("02"))
+	if err := os.MkdirAll(dir, 0755); err != nil {
+		t.Fatalf("MkdirAll: %v", err)
+	}
+
+	// Create a line larger than the default 64 KiB scanner buffer.
+	largeText := strings.Repeat("x", 70*1024)
+	largeLine, _ := json.Marshal(map[string]any{
+		"type":      "response_item",
+		"timestamp": ts.Format(time.RFC3339),
+		"payload":   map[string]any{"type": "message", "content": largeText},
+	})
+
+	metaLine, _ := json.Marshal(map[string]any{
+		"type":      "session_meta",
+		"timestamp": ts.Format(time.RFC3339),
+		"payload":   map[string]any{"id": sessionID, "cwd": projectPath},
+	})
+
+	content := append(largeLine, '\n')
+	content = append(content, metaLine...)
+	content = append(content, '\n')
+
+	filePath := filepath.Join(dir, fmt.Sprintf("session-%s.jsonl", sessionID))
+	if err := os.WriteFile(filePath, content, 0644); err != nil {
+		t.Fatalf("WriteFile: %v", err)
+	}
+
+	cwd := getCodexSessionCwd(filePath)
+	if cwd != projectPath {
+		t.Errorf("getCodexSessionCwd() = %q, want %q", cwd, projectPath)
+	}
+
+	got, err := getCodexSessionTimestamp(filePath)
+	if err != nil {
+		t.Fatalf("getCodexSessionTimestamp() error: %v", err)
+	}
+	if !got.Equal(ts) {
+		t.Errorf("getCodexSessionTimestamp() = %v, want %v", got, ts)
+	}
+}
