@@ -483,6 +483,12 @@ func TestDiscoverSessions_FiltersByProjectDir(t *testing.T) {
 	require.Len(t, filtered, 1)
 	assert.Equal(t, "ses_A", filtered[0].ID)
 
+	// Trailing slash on caller side must still match.
+	trailingSlash, err := discoverSessionsIn(t.Context(), messageDir, "/fake/projectA/")
+	require.NoError(t, err)
+	require.Len(t, trailingSlash, 1)
+	assert.Equal(t, "ses_A", trailingSlash[0].ID)
+
 	// With unknown project: returns nil.
 	none, err := discoverSessionsIn(t.Context(), messageDir, "/fake/unknown")
 	require.NoError(t, err)

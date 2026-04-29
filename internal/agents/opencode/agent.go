@@ -300,7 +300,7 @@ func sessionIDsForProject(messageDir, projectDir string) map[string]struct{} {
 		if err := json.Unmarshal(data, &proj); err != nil {
 			continue
 		}
-		if proj.Worktree == projectDir {
+		if filepath.Clean(proj.Worktree) == filepath.Clean(projectDir) {
 			projectID = proj.ID
 			break
 		}
