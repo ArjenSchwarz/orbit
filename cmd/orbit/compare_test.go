@@ -136,3 +136,19 @@ func runCmd(t *testing.T, dir string, name string, args ...string) {
 		t.Fatalf("%s %v failed: %v\n%s", name, args, err, out)
 	}
 }
+
+// TestReadSpecContext_UppercaseTasksFile verifies that readSpecContext picks up
+// TASKS.md when tasks.md does not exist (T-1008).
+func TestReadSpecContext_UppercaseTasksFile(t *testing.T) {
+	specDir := t.TempDir()
+
+	// Create only TASKS.md (uppercase)
+	if err := os.WriteFile(filepath.Join(specDir, "TASKS.md"), []byte("# Tasks\n- task 1"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	result := readSpecContext(specDir)
+	if !strings.Contains(result, "# Tasks") {
+		t.Fatalf("expected TASKS.md content in spec context, got: %q", result)
+	}
+}
