@@ -312,20 +312,27 @@ func (o *Orbit) generateReport(ctx context.Context, allFailed bool) error {
 func (o *Orbit) readSpecContext() string {
 	var parts []string
 
-	// Key spec files to include
+	// Key spec files to include (with fallback alternatives)
 	specFiles := []struct {
-		name  string
+		names []string
 		label string
 	}{
-		{"requirements.md", "Requirements"},
-		{"design.md", "Design"},
-		{"tasks.md", "Tasks"},
+		{[]string{"requirements.md"}, "Requirements"},
+		{[]string{"design.md"}, "Design"},
+		{[]string{"tasks.md", "TASKS.md"}, "Tasks"},
 	}
 
 	for _, sf := range specFiles {
-		path := filepath.Join(o.config.SpecDir, sf.name)
-		content, err := os.ReadFile(path)
-		if err != nil {
+		var content []byte
+		for _, name := range sf.names {
+			path := filepath.Join(o.config.SpecDir, name)
+			var err error
+			content, err = os.ReadFile(path)
+			if err == nil {
+				break
+			}
+		}
+		if content == nil {
 			continue // Skip files that don't exist
 		}
 
