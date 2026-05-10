@@ -35,7 +35,7 @@
 | [Shared Agent Execution](#shared-agent-execution) | 2026-02-17 | No Tasks | Extract the shared exec scaffolding duplicated across all five agent `Run()` methods. |
 | [Shared Retry Executor](#shared-retry-executor) | 2026-02-18 | No Tasks | Consolidate four near-identical retry executors into a single shared implementation. |
 | [Message Metadata](#message-metadata) | 2026-03-12 | Done | Show timestamps and model identifiers inline in rendered Apsis transcripts. |
-| [Finalize Show Verify](#finalize-show-verify) | 2026-05-10 | Planned | Show variant agent and warn on consolidation mismatch in `orbit finalize`. |
+| [Finalize Show Verify](#finalize-show-verify) | 2026-05-10 | Done | Show variant agent and warn on consolidation mismatch in `orbit finalize`. |
 
 ---
 
