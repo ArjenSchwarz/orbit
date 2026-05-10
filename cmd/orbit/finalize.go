@@ -8,7 +8,9 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
+	"github.com/arjenschwarz/orbit/internal/consolidation"
 	"github.com/arjenschwarz/orbit/internal/variants"
 )
 
@@ -96,11 +98,16 @@ func finalizeCommand(args []string) error {
 
 	// Show what will happen
 	fmt.Printf("Finalize spec: %s\n\n", specName)
+	fmt.Printf("%s\n", formatVariantAgentInfo(targetVariant))
 	fmt.Printf("This will:\n")
 	fmt.Printf("  1. Rebase variant %d (%s) onto %s\n", targetVariant.ID, targetVariant.Branch, metadata.OriginalBranch)
 	fmt.Printf("  2. Remove all variant worktrees\n")
 	fmt.Printf("  3. Delete all variant branches\n")
 	fmt.Println()
+
+	// Verify against the most recent consolidation log entry, if any.
+	// Runs before the force-gate so the warning is visible in --force / CI runs.
+	printConsolidationMismatchWarning(filepath.Join(specDir, ".orbit"), *variantID)
 
 	// Confirm unless force flag is set
 	if !*force {
@@ -144,4 +151,52 @@ func finalizeCommand(args []string) error {
 	fmt.Println("All variant worktrees and branches have been cleaned up.")
 
 	return nil
+}
+
+// printConsolidationMismatchWarning reads consolidation-log.json under orbitDir
+// and prints a warning when the most recent entry's ChosenVariantID differs
+// from the requested variantID. Missing log, parse failure, or empty entries
+// are treated as "no verification possible" and print nothing.
+func printConsolidationMismatchWarning(orbitDir string, variantID int) {
+	log, err := consolidation.NewLogger(orbitDir).Read()
+	if err != nil {
+		return
+	}
+	if len(log.Entries) == 0 {
+		return
+	}
+	latest := log.Entries[len(log.Entries)-1]
+	if latest.ChosenVariantID == variantID {
+		return
+	}
+	fmt.Printf("Warning: variant %d does not match the most recent consolidation (variant %d, %s)\n\n",
+		variantID, latest.ChosenVariantID, latest.Timestamp.Format(time.RFC3339))
+}
+
+// formatVariantAgentInfo renders an "Agent: ..." line for the finalize preamble.
+// When all of Agent, AgentType, and Model are empty, returns "Agent: unknown".
+// Otherwise, builds "Agent: <alias> (<type>, model: <model>)" with each parenthetical
+// piece omitted cleanly when its source field is empty.
+func formatVariantAgentInfo(v *variants.Variant) string {
+	if v.Agent == "" && v.AgentType == "" && v.Model == "" {
+		return "Agent: unknown"
+	}
+
+	var parens []string
+	if v.AgentType != "" {
+		parens = append(parens, v.AgentType)
+	}
+	if v.Model != "" {
+		parens = append(parens, "model: "+v.Model)
+	}
+
+	var parts []string
+	if v.Agent != "" {
+		parts = append(parts, v.Agent)
+	}
+	if len(parens) > 0 {
+		parts = append(parts, "("+strings.Join(parens, ", ")+")")
+	}
+
+	return "Agent: " + strings.Join(parts, " ")
 }
