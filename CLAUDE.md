@@ -382,7 +382,7 @@ Retry logic is centralized in `internal/agents/retry.go` via `RunWithRetry()`, w
 
 ### Usage Limit Handling (Claude Code)
 
-Claude Code has a 5-hour usage limit that displays messages like "You've hit your limit · resets 3am (Australia/Melbourne)". When this occurs, Orbit will:
+Claude Code displays session-limit messages like "You've hit your session limit · resets 3am (Australia/Melbourne)". Orbit also accepts the older "You've hit your limit" wording. When this occurs, Orbit will:
 1. Parse the reset time and timezone from the error message
 2. Calculate the wait duration until that time (plus a 1-minute buffer)
 3. Wait automatically until the limit resets

@@ -148,7 +148,6 @@ func TestClassifier_Classify_ErrMsgs(t *testing.T) {
 	}
 }
 
-
 func TestClassifier_ImplementsInterface(t *testing.T) {
 	// This test verifies that Classifier implements ErrorClassifier
 	classifier := NewClassifier()
@@ -166,6 +165,7 @@ func TestClassifier_Classify_UsageLimit(t *testing.T) {
 		stdout string
 	}{
 		{"hit your limit", "You've hit your limit · resets 3am (Australia/Melbourne)", ""},
+		{"hit your session limit", "You've hit your session limit · resets 4pm (Australia/Melbourne)", ""},
 		{"hit your limit in stdout", "", "You've hit your limit · resets 5pm (America/New_York)"},
 		{"lowercase hit limit", "you've hit your limit resets 12am (UTC)", ""},
 	}

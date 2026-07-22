@@ -29,12 +29,13 @@ func (c *Classifier) Classify(exitCode int, stderr, stdout string, errMsgs []str
 	combined := stderr + stdout + strings.Join(errMsgs, " ")
 	combinedLower := strings.ToLower(combined)
 
-	// Check for usage limit (5-hour limit) - must check before regular rate limit
+	// Check for session/usage limits - must check before regular rate limits.
 	// Example messages:
 	//   "You've hit your limit · resets 3am (Australia/Melbourne)"
+	//   "You've hit your session limit · resets 4pm (Australia/Melbourne)"
 	//   "You've hit your limit · resets 3am"
 	if strings.Contains(combinedLower, "hit your limit") ||
-		strings.Contains(combinedLower, "you've hit your limit") {
+		strings.Contains(combinedLower, "hit your session limit") {
 		waitDuration := parseUsageLimitReset(combined)
 		if waitDuration > 0 {
 			return &agents.ClassifiedError{
@@ -74,7 +75,6 @@ func (c *Classifier) Classify(exitCode int, stderr, stdout string, errMsgs []str
 
 	return agents.NewUnknownError("claude-code", errMsgs, stderr, stdout)
 }
-
 
 // parseUsageLimitReset parses the reset time from usage limit messages.
 // Example messages:
