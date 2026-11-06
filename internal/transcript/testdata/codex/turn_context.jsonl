@@ -1,0 +1,8 @@
+{"timestamp":"2026-10-01T09:00:00.000Z","type":"session_meta","payload":{"session_id":"0199aaaa-0000-7000-8000-000000000001","id":"0199aaaa-0000-7000-8000-000000000001","timestamp":"2026-10-01T09:00:00.000Z","cwd":"/work/example-repo","originator":"codex_exec","cli_version":"0.166.0","model_provider":"example-provider"}}
+{"timestamp":"2026-10-01T09:00:01.000Z","type":"response_item","payload":{"type":"message","id":"msg_user_1","role":"user","content":[{"type":"input_text","text":"Run the tests"}]}}
+{"timestamp":"2026-10-01T09:00:01.100Z","type":"turn_context","payload":{"turn_id":"turn-1","cwd":"/work/example-repo","approval_policy":"never","sandbox_policy":{"type":"read-only"},"model":"example-model-a","summary":"auto"}}
+{"timestamp":"2026-10-01T09:00:02.000Z","type":"response_item","payload":{"type":"reasoning","summary":[{"type":"summary_text","text":"Planning the test run"}]}}
+{"timestamp":"2026-10-01T09:00:03.000Z","type":"response_item","payload":{"type":"function_call","name":"shell","arguments":"{\"command\":[\"make\",\"test\"]}","call_id":"call_1"}}
+{"timestamp":"2026-10-01T09:00:04.000Z","type":"turn_context","payload":{"turn_id":"turn-2","cwd":"/work/example-repo","approval_policy":"never","sandbox_policy":{"type":"read-only"},"model":"example-model-b","summary":"auto"}}
+{"timestamp":"2026-10-01T09:00:05.000Z","type":"response_item","payload":{"type":"function_call_output","call_id":"call_1","output":"ok"}}
+{"timestamp":"2026-10-01T09:00:06.000Z","type":"response_item","payload":{"type":"message","role":"assistant","content":[{"type":"output_text","text":"Tests pass."}]}}

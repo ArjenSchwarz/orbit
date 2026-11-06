@@ -20,6 +20,7 @@ import (
 
 	"github.com/arjenschwarz/orbit/internal/apsisweb"
 	"github.com/arjenschwarz/orbit/internal/sessions"
+	"github.com/arjenschwarz/orbit/internal/sharedjson"
 	"github.com/arjenschwarz/orbit/internal/transcript"
 )
 
@@ -188,8 +189,8 @@ func parseFlags() *Config {
 	flag.StringVar(&cfg.Output, "output", "", "Output file (default: stdout)")
 	flag.StringVar(&cfg.Project, "p", "", "Project directory (default: current directory)")
 	flag.StringVar(&cfg.Project, "project", "", "Project directory (default: current directory)")
-	flag.StringVar(&cfg.Format, "f", "md", "Output format: md, markdown, html, json (default: md)")
-	flag.StringVar(&cfg.Format, "format", "md", "Output format: md, markdown, html, json (default: md)")
+	flag.StringVar(&cfg.Format, "f", "md", "Output format: md, markdown, html, json, shared-json (default: md)")
+	flag.StringVar(&cfg.Format, "format", "md", "Output format: md, markdown, html, json, shared-json (default: md)")
 	flag.StringVar(&cfg.Agent, "a", "", "Force agent format (claude-code, codex, kiro, kiro-ide, copilot)")
 	flag.StringVar(&cfg.Agent, "agent", "", "Force agent format (claude-code, codex, kiro, kiro-ide, copilot)")
 	flag.BoolVar(&cfg.Follow, "F", false, "Follow mode: monitor file for new entries")
@@ -226,8 +227,10 @@ Options:
   -l, --list              List available sessions for the project
   -o, --output <file>     Write output to file (default: stdout)
   -p, --project <path>    Project directory (default: current directory)
-  -f, --format <format>   Output format: md, markdown, html, json (default: md)
+  -f, --format <format>   Output format: md, markdown, html, json, shared-json (default: md)
                           json outputs the raw session data as pretty-printed JSON
+                          shared-json outputs the same structure for every agent,
+                          described by docs/schemas/apsis-shared-json.v1.schema.json
   -a, --agent <name>      Force agent format: claude-code, codex, kiro, kiro-ide, copilot
                           (default: auto-detect from content)
   -F, --follow            Follow mode: continuously monitor file for new entries
@@ -246,6 +249,7 @@ Examples:
   apsis -o transcript.md session-id              Save to file
   apsis -f html -o transcript.html session-id    Save as HTML
   apsis -f json session-id                       Output raw JSON (pretty-printed)
+  apsis -f shared-json session-id                Output versioned JSON shared by all agents
   apsis -a kiro session.json                     Force Kiro format parsing
   apsis --list                                   List sessions for current project
   apsis --list -p /path/to/project               List sessions for different project
@@ -325,7 +329,7 @@ func run(cfg *Config) (int, error) {
 	}
 
 	// Non-follow mode: resolve input source
-	input, sessionID, costPath, err := resolveInput(cfg.Input, absProjectPath)
+	input, in, err := resolveInput(cfg.Input, absProjectPath)
 	if err != nil {
 		return 0, err
 	}
@@ -342,7 +346,7 @@ func run(cfg *Config) (int, error) {
 		output = f
 	}
 
-	return 0, convert(input, output, sessionID, cfg.Format, cfg.Agent, costPath)
+	return 0, convert(input, output, in, cfg.Format, cfg.Agent)
 }
 
 // isFilePath returns true if the argument appears to be a file path rather than a session ID.
@@ -374,38 +378,44 @@ func isInputFromPipe() bool {
 	return (stat.Mode() & os.ModeCharDevice) == 0
 }
 
-// resolveInput determines the input source and returns a reader, session ID, and cost path.
+// inputContext describes what the input, rather than the transcript, says about a session.
+type inputContext struct {
+	source   string                    // resolver source; empty for file and stdin input
+	id       string                    // session ID, or the filename stem of a .jsonl file
+	costPath string                    // Kiro IDE execution detail path for credit cost extraction
+	resolved *sessions.SessionMetadata // resolver metadata; nil for file and stdin input
+}
+
+// resolveInput determines the input source and returns a reader and its input context.
 // It checks Claude location first, then Codex, then Copilot, then Kiro CLI, then Kiro IDE.
-// The cost path is non-empty only for Kiro IDE sessions (used for credit cost extraction).
-func resolveInput(arg string, projectPath string) (io.ReadCloser, string, string, error) {
+func resolveInput(arg string, projectPath string) (io.ReadCloser, inputContext, error) {
 	// If no argument, read from stdin
 	if arg == "" {
-		return os.Stdin, "", "", nil
+		return os.Stdin, inputContext{}, nil
 	}
 
 	// Check if it's a file path
 	if isFilePath(arg) {
 		f, err := os.Open(arg)
 		if err != nil {
-			return nil, "", "", fmt.Errorf("failed to open file: %w", err)
+			return nil, inputContext{}, fmt.Errorf("failed to open file: %w", err)
 		}
+		var in inputContext
 		// Extract session ID from filename if it's a .jsonl file
-		sessionID := ""
 		if strings.HasSuffix(arg, ".jsonl") {
-			sessionID = strings.TrimSuffix(filepath.Base(arg), ".jsonl")
+			in.id = strings.TrimSuffix(filepath.Base(arg), ".jsonl")
 		}
 		// For .chat files, derive cost path from the file's executionId and parent directory
-		costPath := ""
 		if strings.HasSuffix(arg, ".chat") {
-			costPath = deriveChatFileCostPath(arg)
+			in.costPath = deriveChatFileCostPath(arg)
 		}
-		return f, sessionID, costPath, nil
+		return f, in, nil
 	}
 
 	// Treat as session ID — try each source via Resolver
 	resolver, err := sessions.NewResolver(projectPath)
 	if err != nil {
-		return nil, "", "", err
+		return nil, inputContext{}, err
 	}
 
 	// Try sources in priority order
@@ -420,11 +430,21 @@ func resolveInput(arg string, projectPath string) (io.ReadCloser, string, string
 	for _, source := range sources {
 		resolved, err := resolver.Resolve(source, arg)
 		if err == nil {
-			return resolved.Reader, arg, resolved.Metadata.CostPath, nil
+			return resolved.Reader, resolvedInput(resolved), nil
 		}
 	}
 
-	return nil, "", "", fmt.Errorf("session not found: %s", arg)
+	return nil, inputContext{}, fmt.Errorf("session not found: %s", arg)
+}
+
+// resolvedInput builds the input context of a session found by the resolver.
+func resolvedInput(resolved *sessions.ResolvedSession) inputContext {
+	return inputContext{
+		source:   resolved.Metadata.Source,
+		id:       resolved.Metadata.ID,
+		costPath: resolved.Metadata.CostPath,
+		resolved: &resolved.Metadata,
+	}
 }
 
 // listSessions lists all sessions for a project.
@@ -545,7 +565,7 @@ func runLatest(cfg *Config, projectPath string) (int, error) {
 		output = f
 	}
 
-	return 0, convert(resolved.Reader, output, latest.ID, cfg.Format, cfg.Agent, resolved.Metadata.CostPath)
+	return 0, convert(resolved.Reader, output, resolvedInput(resolved), cfg.Format, cfg.Agent)
 }
 
 // deriveChatFileCostPath extracts the executionId from a .chat file and derives
@@ -643,6 +663,10 @@ func validateFollowMode(cfg *Config) error {
 		return fmt.Errorf("JSON output is not supported in follow mode. Use markdown format instead")
 	}
 
+	if strings.ToLower(cfg.Format) == "shared-json" {
+		return fmt.Errorf("follow mode does not support -f shared-json")
+	}
+
 	return nil
 }
 
@@ -664,26 +688,30 @@ func agentToFormat(agent string) transcript.Format {
 	}
 }
 
-// convert reads a transcript file from input and writes formatted output (Markdown, HTML, or JSON).
-func convert(input io.Reader, output io.Writer, sessionID string, format string, agent string, costPath string) error {
-	if strings.ToLower(format) == "json" {
+// convert reads a transcript file from input and writes formatted output
+// (Markdown, HTML, raw JSON or shared JSON).
+func convert(input io.Reader, output io.Writer, in inputContext, format string, agent string) error {
+	format = strings.ToLower(format)
+	if format == "json" {
 		return convertToJSON(input, output, agent)
+	}
+
+	// Only shared JSON keeps metadata-only Codex sessions and splits entries at
+	// recorded model changes; other formats keep their existing output.
+	parseOpts := transcript.ParseOptions{KiroIDECostPath: in.costPath}
+	if format == "shared-json" {
+		parseOpts.AllowEmptyCodex = true
+		parseOpts.PreserveModelChanges = true
 	}
 
 	var result *transcript.ParseResult
 	var err error
-
-	var parseOpts []transcript.ParseOptions
-	if costPath != "" {
-		parseOpts = append(parseOpts, transcript.ParseOptions{KiroIDECostPath: costPath})
-	}
-
 	if agent != "" {
-		result, err = transcript.ParseJSONLWithFormat(input, agentToFormat(agent), parseOpts...)
-	} else if costPath != "" {
-		result, err = transcript.ParseJSONLWithFormat(input, transcript.FormatKiroIDE, parseOpts...)
+		result, err = transcript.ParseJSONLWithFormat(input, agentToFormat(agent), parseOpts)
+	} else if in.costPath != "" {
+		result, err = transcript.ParseJSONLWithFormat(input, transcript.FormatKiroIDE, parseOpts)
 	} else {
-		result, err = transcript.Parse(input)
+		result, err = transcript.Parse(input, parseOpts)
 	}
 	if err != nil {
 		return fmt.Errorf("failed to parse transcript: %w", err)
@@ -697,6 +725,15 @@ func convert(input io.Reader, output io.Writer, sessionID string, format string,
 		fmt.Fprintf(os.Stderr, "Parsed with %d warning(s)\n", len(result.Warnings))
 	}
 
+	// Shared JSON emits a document even for a session without entries.
+	if format == "shared-json" {
+		doc := sharedjson.Session(result, sharedjson.SessionContext{Source: in.source, ID: in.id, Resolved: in.resolved})
+		if err := sharedjson.Write(output, doc); err != nil {
+			return fmt.Errorf("failed to write output: %w", err)
+		}
+		return nil
+	}
+
 	if len(result.Entries) == 0 {
 		fmt.Fprintln(os.Stderr, "Session contains no entries")
 		return nil
@@ -704,7 +741,7 @@ func convert(input io.Reader, output io.Writer, sessionID string, format string,
 
 	opts := transcript.RenderOptions{
 		Title:     "Session Transcript",
-		SessionID: sessionID,
+		SessionID: in.id,
 	}
 
 	if result.Metadata != nil {
@@ -713,13 +750,13 @@ func convert(input io.Reader, output io.Writer, sessionID string, format string,
 	}
 
 	var rendered string
-	switch strings.ToLower(format) {
+	switch format {
 	case "html":
 		rendered = transcript.RenderHTML(result.Entries, opts)
 	case "md", "markdown", "":
 		rendered = transcript.RenderMarkdown(result.Entries, opts)
 	default:
-		return fmt.Errorf("unsupported format: %s (use md, markdown, html, or json)", format)
+		return fmt.Errorf("unsupported format: %s (use md, markdown, html, json, or shared-json)", format)
 	}
 
 	_, err = output.Write([]byte(rendered))

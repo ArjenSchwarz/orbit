@@ -580,7 +580,7 @@ func formatAssistantMessageHTML(entry *Entry, toolMeta map[string]toolMetadata, 
 	sb.WriteString("            <div class=\"message-header\">\n")
 	sb.WriteString("                <span class=\"icon\">🤖</span>\n")
 	sb.WriteString("                <span class=\"message-role\">Assistant</span>\n")
-	writeMessageMetaHTML(&sb, entry.Timestamp, entry.Model)
+	writeMessageMetaHTML(&sb, entry.Timestamp, modelLabel(entry.Model, entry.Provider))
 	sb.WriteString("            </div>\n")
 	sb.WriteString("            <div class=\"message-content\">\n")
 

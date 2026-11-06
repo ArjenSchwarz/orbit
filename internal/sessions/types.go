@@ -75,11 +75,15 @@ type SessionInfo struct {
 
 // SessionMetadata is returned by the Resolver alongside the reader.
 type SessionMetadata struct {
-	Source    string
-	ID       string
-	CreatedAt time.Time
-	Size      int64
-	CostPath  string // Non-empty only for Kiro IDE sessions
+	Source             string
+	ID                 string
+	CreatedAt          time.Time
+	TimeFromFilesystem bool      // CreatedAt is the file modification time, not a recorded time
+	DatabaseCreatedAt  time.Time // Kiro CLI database created_at; CreatedAt stays unset, as the web view expects
+	Size               int64
+	CostPath           string // Non-empty only for Kiro IDE sessions
+	Project            string // Recorded project outside the transcript, such as Copilot's workspace.yaml git_root
+	Path               string // Path of the resolved transcript file
 }
 
 // ResolvedSession is the result of resolving a session by source and ID.

@@ -1,0 +1,35 @@
+{
+  "schema_version": 1,
+  "kind": "session",
+  "session": {
+    "source": "copilot",
+    "id": "copilot",
+    "created_at": "2026-03-10T09:00:00Z",
+    "model": "gpt-4o"
+  },
+  "entries": [
+    {
+      "id": "evt-003",
+      "role": "user",
+      "timestamp": "2026-03-10T09:00:02Z",
+      "content": [
+        {
+          "type": "text",
+          "text": "Hello"
+        }
+      ]
+    },
+    {
+      "role": "assistant",
+      "timestamp": "2026-03-10T09:00:03Z",
+      "model": "gpt-4o",
+      "content": [
+        {
+          "type": "text",
+          "text": "Hi there!"
+        }
+      ]
+    }
+  ],
+  "warnings": []
+}

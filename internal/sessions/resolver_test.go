@@ -724,10 +724,11 @@ func TestKiroIDECreatedAt_UsesStartTime(t *testing.T) {
 	rs := bytes.NewReader(chatJSON)
 	modTime := time.Date(2099, 1, 1, 0, 0, 0, 0, time.UTC) // deliberately different
 
-	got := kiroIDECreatedAt(rs, modTime)
+	got, fromFilesystem := kiroIDECreatedAt(rs, modTime)
 
 	expected := time.UnixMilli(startTimeMs)
 	require.Equal(t, expected, got, "CreatedAt should use metadata.startTime, not modTime")
+	require.False(t, fromFilesystem)
 }
 
 func TestKiroIDECreatedAt_FallsBackToModTime(t *testing.T) {
@@ -740,9 +741,10 @@ func TestKiroIDECreatedAt_FallsBackToModTime(t *testing.T) {
 	rs := bytes.NewReader(chatJSON)
 	modTime := time.Date(2025, 6, 15, 12, 0, 0, 0, time.UTC)
 
-	got := kiroIDECreatedAt(rs, modTime)
+	got, fromFilesystem := kiroIDECreatedAt(rs, modTime)
 
 	require.Equal(t, modTime, got, "CreatedAt should fall back to modTime when startTime is absent")
+	require.True(t, fromFilesystem, "the fallback is marked as a filesystem time")
 }
 
 func TestKiroIDECreatedAt_FallsBackWhenStartTimeZero(t *testing.T) {
@@ -756,7 +758,7 @@ func TestKiroIDECreatedAt_FallsBackWhenStartTimeZero(t *testing.T) {
 	rs := bytes.NewReader(chatJSON)
 	modTime := time.Date(2025, 6, 15, 12, 0, 0, 0, time.UTC)
 
-	got := kiroIDECreatedAt(rs, modTime)
+	got, _ := kiroIDECreatedAt(rs, modTime)
 
 	require.Equal(t, modTime, got, "CreatedAt should fall back to modTime when startTime is 0")
 }
@@ -773,7 +775,7 @@ func TestKiroIDECreatedAt_SeeksBackToStart(t *testing.T) {
 	rs := bytes.NewReader(chatJSON)
 	modTime := time.Now()
 
-	_ = kiroIDECreatedAt(rs, modTime)
+	_, _ = kiroIDECreatedAt(rs, modTime)
 
 	// Reader should be back at position 0
 	pos, err := rs.Seek(0, io.SeekCurrent)
@@ -884,4 +886,63 @@ func TestResolveFileCreatedAt_UsesTranscriptTimestamp(t *testing.T) {
 		assert.Equal(t, wsTime, resolved.Metadata.CreatedAt,
 			"CreatedAt should come from workspace.yaml created_at, not file mtime")
 	})
+}
+
+func TestResolveFileMetadata_ProjectPathAndFilesystemFallback(t *testing.T) {
+	modTime := time.Date(2099, 12, 31, 23, 59, 0, 0, time.UTC)
+	recorded := time.Date(2025, 4, 5, 8, 30, 0, 0, time.UTC)
+
+	t.Run("claude without timestamps falls back to modification time", func(t *testing.T) {
+		homeDir := t.TempDir()
+		projectPath := t.TempDir()
+		dir := filepath.Join(homeDir, ".claude", "projects", claudecode.BuildProjectPath(projectPath))
+		require.NoError(t, os.MkdirAll(dir, 0o755))
+		filePath := filepath.Join(dir, "no-time.jsonl")
+		require.NoError(t, os.WriteFile(filePath, []byte(`{"type":"user","message":{"role":"user","content":"hello"}}`+"\n"), 0o644))
+		require.NoError(t, os.Chtimes(filePath, modTime, modTime))
+
+		resolved, err := newTestResolver(projectPath, homeDir).Resolve(SourceClaude, "no-time")
+		require.NoError(t, err)
+		t.Cleanup(func() { _ = resolved.Reader.Close() })
+		assert.True(t, modTime.Equal(resolved.Metadata.CreatedAt))
+		assert.True(t, resolved.Metadata.TimeFromFilesystem)
+		assert.Equal(t, filePath, resolved.Metadata.Path)
+		assert.Empty(t, resolved.Metadata.Project)
+	})
+
+	for name, tc := range map[string]struct {
+		workspace          string
+		wantProject        string
+		wantFromFilesystem bool
+	}{
+		"git_root":                 {"git_root: /work/repo\ncwd: /work/repo/sub\ncreated_at: " + recorded.Format(time.RFC3339) + "\n", "/work/repo", false},
+		"cwd without git_root":     {"cwd: /work/plain\ncreated_at: " + recorded.Format(time.RFC3339) + "\n", "/work/plain", false},
+		"no created_at":            {"cwd: /work/plain\n", "/work/plain", true},
+		"no workspace.yaml at all": {"", "", true},
+	} {
+		t.Run("copilot "+name, func(t *testing.T) {
+			homeDir := t.TempDir()
+			sessionID := "12345678-dddd-eeee-ffff-123456789abc"
+			sessionDir := filepath.Join(homeDir, ".copilot", "session-state", sessionID)
+			require.NoError(t, os.MkdirAll(sessionDir, 0o755))
+			eventsPath := filepath.Join(sessionDir, "events.jsonl")
+			require.NoError(t, os.WriteFile(eventsPath, []byte(`{"type":"session.start"}`+"\n"), 0o644))
+			require.NoError(t, os.Chtimes(eventsPath, modTime, modTime))
+			if tc.workspace != "" {
+				require.NoError(t, os.WriteFile(filepath.Join(sessionDir, "workspace.yaml"), []byte(tc.workspace), 0o644))
+			}
+
+			resolved, err := newTestResolver(t.TempDir(), homeDir).Resolve(SourceCopilot, sessionID)
+			require.NoError(t, err)
+			t.Cleanup(func() { _ = resolved.Reader.Close() })
+			assert.Equal(t, tc.wantProject, resolved.Metadata.Project)
+			assert.Equal(t, tc.wantFromFilesystem, resolved.Metadata.TimeFromFilesystem)
+			assert.Equal(t, eventsPath, resolved.Metadata.Path)
+			if tc.wantFromFilesystem {
+				assert.True(t, modTime.Equal(resolved.Metadata.CreatedAt))
+			} else {
+				assert.True(t, recorded.Equal(resolved.Metadata.CreatedAt))
+			}
+		})
+	}
 }

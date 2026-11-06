@@ -57,11 +57,17 @@ func parseKiroIDE(r io.Reader, costPath string) (*ParseResult, error) {
 	if entries == nil {
 		entries, warnings = convertKiroIDEToEntries(&chatFile)
 	}
+	if metadata == nil {
+		metadata = &ParseResultMetadata{}
+	}
+	// Entries take their model and provider from the same metadata, so these are the first values.
+	metadata.StartedAt, metadata.FirstModel, metadata.FirstProvider = extractKiroIDESessionMetadata(&chatFile)
 
 	return &ParseResult{
 		Entries:  entries,
 		Warnings: warnings,
 		Metadata: metadata,
+		Format:   FormatKiroIDE,
 	}, nil
 }
 
@@ -72,14 +78,16 @@ func convertKiroIDEToEntries(chatFile *KiroIDEChatFile) ([]Entry, []ParseWarning
 	entries := make([]Entry, 0, len(chatFile.Chat))
 	warnings := make([]ParseWarning, 0)
 
-	sessionTimestamp, modelID := extractKiroIDESessionMetadata(chatFile)
+	sessionTimestamp, modelID, provider := extractKiroIDESessionMetadata(chatFile)
 
 	for i, msg := range chatFile.Chat {
 		// Skip messages with empty role
 		if msg.Role == "" {
 			warnings = append(warnings, ParseWarning{
 				Line:    i + 1,
+				Unit:    WarningUnitChatMessage,
 				Message: fmt.Sprintf("message %d: missing role, skipped", i),
+				Code:    WarningInvalidRecord,
 			})
 			continue
 		}
@@ -107,8 +115,9 @@ func convertKiroIDEToEntries(chatFile *KiroIDEChatFile) ([]Entry, []ParseWarning
 			})
 		case "bot":
 			entries = append(entries, Entry{
-				Type:  "assistant",
-				Model: modelID,
+				Type:     "assistant",
+				Model:    modelID,
+				Provider: provider,
 				Message: &Message{
 					Role: "assistant",
 					Content: []ContentItem{
@@ -129,7 +138,9 @@ func convertKiroIDEToEntries(chatFile *KiroIDEChatFile) ([]Entry, []ParseWarning
 		default:
 			warnings = append(warnings, ParseWarning{
 				Line:    i + 1,
+				Unit:    WarningUnitChatMessage,
 				Message: fmt.Sprintf("unknown role %q in chat message", msg.Role),
+				Code:    WarningUnrecognizedRecord,
 			})
 		}
 	}
@@ -167,7 +178,7 @@ func convertKiroIDEActionsToEntries(actions []KiroIDEAction, chatFile *KiroIDECh
 	entries := make([]Entry, 0, len(actions))
 	warnings := make([]ParseWarning, 0)
 
-	sessionTimestamp, modelID := extractKiroIDESessionMetadata(chatFile)
+	sessionTimestamp, modelID, provider := extractKiroIDESessionMetadata(chatFile)
 
 	// Extract user messages from chat (non-system-prompt human messages)
 	userMessages := extractKiroIDEUserMessages(chatFile)
@@ -184,14 +195,14 @@ func convertKiroIDEActionsToEntries(actions []KiroIDEAction, chatFile *KiroIDECh
 		case "say":
 			entry := convertKiroIDESayAction(&action)
 			if entry != nil {
-				entry.Model = modelID
+				entry.Model, entry.Provider = modelID, provider
 				entries = append(entries, *entry)
 			}
 
 		case "taskStatus":
 			entry := convertKiroIDETaskStatusAction(&action)
 			if entry != nil {
-				entry.Model = modelID
+				entry.Model, entry.Provider = modelID, provider
 				entries = append(entries, *entry)
 			}
 
@@ -204,7 +215,7 @@ func convertKiroIDEActionsToEntries(actions []KiroIDEAction, chatFile *KiroIDECh
 		case "readFiles", "replace", "create", "append", "runCommand", "search":
 			toolUse, toolResult := convertKiroIDEToolAction(&action)
 			if toolUse != nil {
-				toolUse.Model = modelID
+				toolUse.Model, toolUse.Provider = modelID, provider
 				entries = append(entries, *toolUse)
 			}
 			if toolResult != nil {
@@ -215,7 +226,9 @@ func convertKiroIDEActionsToEntries(actions []KiroIDEAction, chatFile *KiroIDECh
 		default:
 			warnings = append(warnings, ParseWarning{
 				Line:    i + 1,
+				Unit:    WarningUnitExecutionAction,
 				Message: fmt.Sprintf("unknown action type %q, skipped", action.ActionType),
+				Code:    WarningUnrecognizedRecord,
 			})
 		}
 	}
@@ -230,12 +243,14 @@ func convertKiroIDEActionsToEntries(actions []KiroIDEAction, chatFile *KiroIDECh
 
 // extractKiroIDEUserMessages extracts user prompt messages from the chat file,
 // filtering system prompts and empty content.
-// extractKiroIDESessionMetadata returns the session-level timestamp and model ID
-// from the chat file metadata. Returns empty strings if metadata is nil or values are absent.
-func extractKiroIDESessionMetadata(chatFile *KiroIDEChatFile) (timestamp, modelID string) {
+// extractKiroIDESessionMetadata returns the session-level timestamp, model ID and
+// model provider from the chat file metadata. Returns empty strings if metadata is
+// nil or values are absent.
+func extractKiroIDESessionMetadata(chatFile *KiroIDEChatFile) (timestamp, modelID, provider string) {
 	if chatFile.Metadata != nil {
 		timestamp = formatUnixMilliTimestamp(chatFile.Metadata.StartTime)
 		modelID = chatFile.Metadata.ModelID
+		provider = chatFile.Metadata.ModelProvider
 	}
 	return
 }
@@ -273,7 +288,8 @@ func convertKiroIDESayAction(action *KiroIDEAction) *Entry {
 		return nil
 	}
 	return &Entry{
-		Type: "assistant",
+		Type:     "assistant",
+		RecordID: action.ActionID,
 		Message: &Message{
 			Role: "assistant",
 			Content: []ContentItem{
@@ -290,7 +306,8 @@ func convertKiroIDETaskStatusAction(action *KiroIDEAction) *Entry {
 	}
 	text := fmt.Sprintf("Task %q: %s", action.TaskID, action.TaskStatus)
 	return &Entry{
-		Type: "assistant",
+		Type:     "assistant",
+		RecordID: action.ActionID,
 		Message: &Message{
 			Role: "assistant",
 			Content: []ContentItem{
@@ -330,7 +347,8 @@ func convertKiroIDEUserInputAction(action *KiroIDEAction) *Entry {
 	}
 
 	return &Entry{
-		Type: "user",
+		Type:     "user",
+		RecordID: action.ActionID,
 		Message: &Message{
 			Role: "user",
 			Content: []ContentItem{
@@ -351,8 +369,10 @@ func convertKiroIDEToolAction(action *KiroIDEAction) (*Entry, *Entry) {
 	// Build tool_use input description
 	input := buildKiroIDEToolInput(action)
 
+	// Both entries come from one action, so they share its identifier (Decision 32).
 	toolUseEntry := &Entry{
-		Type: "assistant",
+		Type:     "assistant",
+		RecordID: action.ActionID,
 		Message: &Message{
 			Role: "assistant",
 			Content: []ContentItem{
@@ -370,7 +390,8 @@ func convertKiroIDEToolAction(action *KiroIDEAction) (*Entry, *Entry) {
 	resultContent, isError := buildKiroIDEToolResult(action)
 
 	toolResultEntry := &Entry{
-		Type: "user",
+		Type:     "user",
+		RecordID: action.ActionID,
 		Message: &Message{
 			Role: "user",
 			Content: []ContentItem{

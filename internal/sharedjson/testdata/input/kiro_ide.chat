@@ -1,0 +1,1 @@
+{"executionId":"example-execution","metadata":{"modelId":"example-model","modelProvider":"example-provider","startTime":1790812800000},"chat":[{"role":"human","content":"Run the tests"},{"role":"bot","content":"Running them now."},{"role":"future","content":"skipped"}]}

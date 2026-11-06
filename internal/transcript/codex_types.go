@@ -12,6 +12,7 @@ type CodexEntry struct {
 // CodexResponseItem is the payload for response_item entries.
 type CodexResponseItem struct {
 	Type      string         `json:"type"`                // message, function_call, function_call_output, reasoning, ghost_snapshot
+	ID        string         `json:"id,omitempty"`        // optional item identifier
 	Role      string         `json:"role,omitempty"`      // user, assistant (for message type)
 	Name      string         `json:"name,omitempty"`      // function name (for function_call)
 	Arguments string         `json:"arguments,omitempty"` // JSON string of arguments (for function_call)
@@ -42,8 +43,15 @@ type CodexEventMsg struct {
 
 // CodexSessionMeta is the payload for session_meta entries.
 type CodexSessionMeta struct {
-	ID        string `json:"id"`
-	Timestamp string `json:"timestamp"`
-	Cwd       string `json:"cwd"`
-	Model     string `json:"model"`
+	ID         string `json:"id"`
+	Timestamp  string `json:"timestamp"`
+	Cwd        string `json:"cwd"`
+	Model      string `json:"model"` // Older rollouts only; Codex 0.166.0 records the model in turn_context
+	Provider   string `json:"model_provider"`
+	Originator string `json:"originator"`
+}
+
+// CodexTurnContext is the payload for turn_context entries.
+type CodexTurnContext struct {
+	Model string `json:"model"`
 }

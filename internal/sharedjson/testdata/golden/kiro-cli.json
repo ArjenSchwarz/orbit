@@ -1,0 +1,35 @@
+{
+  "schema_version": 1,
+  "kind": "session",
+  "session": {
+    "source": "kiro-cli",
+    "id": "kiro",
+    "created_at": "2026-03-10T09:00:00.000Z",
+    "model": "claude-sonnet-4"
+  },
+  "entries": [
+    {
+      "role": "user",
+      "timestamp": "2026-03-10T09:00:00.000Z",
+      "content": [
+        {
+          "type": "text",
+          "text": "Hello"
+        }
+      ]
+    },
+    {
+      "id": "msg-001",
+      "role": "assistant",
+      "timestamp": "2025-03-10T02:00:00Z",
+      "model": "claude-sonnet-4",
+      "content": [
+        {
+          "type": "text",
+          "text": "Hi there!"
+        }
+      ]
+    }
+  ],
+  "warnings": []
+}

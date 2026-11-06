@@ -2,14 +2,15 @@
 
 ## How `apsis -l` works
 
-Entry point: `cmd/apsis/main.go`, function `listAllSessions(projectPath)`.
+Entry point: `cmd/apsis/main.go`, function `listSessions(projectPath)`, which constructs `sessions.NewLister()` and calls `Lister.ListAll(projectPath)`.
 
-Calls agent-specific list functions in parallel, then merges and sorts results:
-- `listClaudeSessions(projectPath)` - filters via encoded project path in directory name
-- `listCopilotSessions(projectPath)` - filters via `workspace.yaml` metadata
-- `listCodexSessions(homeDir, projectPath)` - filters via `cwd` field in `session_meta`
-- `listKiroSessions(projectPath)` - filters via SQLite directory discovery
-- `listKiroIDESessions(projectPath)` - filters via workspace directory lookup
+`internal/sessions/lister.go` calls these collectors sequentially, retains source warnings, then merges and sorts results:
+
+- `listClaude(projectPath)` - filters via encoded project path in directory name
+- `listCopilot(projectPath)` - filters via `workspace.yaml` metadata
+- `listCodex(projectPath)` - filters via `cwd` in `session_meta`
+- `listKiro(projectPath)` - filters via SQLite directory discovery
+- `listKiroIDE(projectPath)` - filters via workspace directory lookup
 
 ## Path normalization
 
@@ -40,20 +41,34 @@ Callers must distinguish "missing metadata" from "invalid session". A session wi
 
 ## Codex session structure
 
-Sessions stored in `~/.codex/sessions/YYYY/MM/DD/session-{uuid}.jsonl`.
+Sessions are JSONL files below `~/.codex/sessions/`, normally in date directories. Listing extracts a UUID substring from the filename when present; otherwise it uses the basename without `.jsonl`.
 
-First line is always `session_meta` type with payload containing `id`, `timestamp`, and `cwd`.
-The `cwd` field contains the working directory where the session was started.
+The `session_meta` header records the session ID and starting working directory; its top-level timestamp supplies the recorded listing time. The listing helpers search up to `codexMetaScanLimit` (50) physical lines with a 10 MiB per-line limit, rather than assuming that the first line is usable.
 
 Two functions read from session_meta:
 - `getCodexSessionTimestamp(path)` - reads top-level `timestamp` field
 - `getCodexSessionCwd(path)` - reads `payload.cwd` field
 
+## Existing timestamp scan contracts
+
+- Claude listing uses `transcript.ParseFirstTimestamp`: it scans until a timestamp is found, with a 10 MiB per-line limit and no 50-line or 1-MiB total cap. An invalid nonempty timestamp returns an error; listing then falls back to modification time.
+- Codex timestamp/cwd helpers retain their 50-line, 10-MiB-per-line scan behaviour. Timestamp extraction failures fall back to modification time.
+- A metadata cache must preserve those outcomes. Applying a new global head limit to existing timestamps can change listing order and `latest` even without a feature flag.
+
 ## Session resolution by ID
 
-`resolveInput()` and `resolveFollowInput()` use `findCodexSession()` to locate a session by UUID. This scans all codex sessions without project filtering (intentional — user explicitly asked for a specific session).
+`resolveInput()` and `resolveFollowInput()` delegate to `sessions.Resolver`; Codex branches use `findCodexSession()`. It searches globally without project filtering, matches a filename UUID or a full non-UUID basename case-insensitively, and stops at the first walk-order match before validating its content/readability.
 
-## OpenCode session structure
+Duplicate filename IDs can therefore shadow a later valid file. Any derived index that claims an ID is openable must validate the actual selected candidate, rather than any matching copy. All-projects listing and suppression proposals must also keep their new selection rules distinct from legacy project-listing behaviour.
+
+`resolveInput()` returns the reader plus an `inputContext` (source, ID, Kiro IDE cost path, resolver metadata); file and stdin input have no source or resolver metadata. Resolver `SessionMetadata` now also carries:
+
+- `Path`: the opened file (Claude, Codex, Copilot, Kiro IDE); empty for Kiro CLI.
+- `TimeFromFilesystem`: set wherever `CreatedAt` falls back to the file modification time. Shared JSON never reports such a time as `created_at`.
+- `Project`: Copilot `workspace.yaml` `git_root`, else `cwd`; for Kiro CLI the database key that actually matched (`logs.GetSessionRecord` tries the normalised then the symlink-resolved directory).
+- `DatabaseCreatedAt`: the Kiro CLI database `created_at`. Kiro CLI `CreatedAt` deliberately stays zero because the web transcript view prints `CreatedAt` whenever it is set (Q103, open question U6).
+
+## OpenCode agent session structure (not an Apsis source)
 
 Sessions stored in `~/.local/share/opencode/storage/message/<sessionID>/`.
 

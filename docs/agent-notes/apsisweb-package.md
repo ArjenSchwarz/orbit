@@ -48,3 +48,7 @@ internal/apsisweb/
     transcript.html  - Transcript viewer with metadata card
     error.html       - Error page with code and message
 ```
+
+## Known Flaky Test
+
+- `TestIntegrationEndToEnd` often fails with `shutdown error: context deadline exceeded` after its 5-second `srv.Shutdown`. On 2026-11-05 it failed 4 of 6 runs on an unmodified export of upstream `7259a6c`, so it predates the shared JSON work. Re-run `make test` to get a clean pass, and do not treat this failure as caused by an unrelated change. The cause has not been investigated.

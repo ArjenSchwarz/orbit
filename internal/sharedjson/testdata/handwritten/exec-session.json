@@ -1,0 +1,39 @@
+{
+  "schema_version": 1,
+  "kind": "session",
+  "session": {
+    "source": "codex-exec",
+    "id": "0199aaaa-0000-7000-8000-000000000001-3f2a9c0d1b7e4a56c8d90e1f2a3b4c5d6e7f8091a2b3c4d5e6f708192a3b4c5d",
+    "thread_id": "0199aaaa-0000-7000-8000-000000000001",
+    "project": "/work/example-repo"
+  },
+  "entries": [
+    {
+      "role": "assistant",
+      "turn": 1,
+      "content": [
+        { "type": "thinking", "item_id": "item_0", "status": "completed", "text": "Checking the tests" },
+        { "type": "tool_use", "id": "t1:item_1", "item_id": "item_1", "name": "command_execution", "input": { "command": "make test" } },
+        { "type": "tool_result", "tool_use_id": "t1:item_1", "item_id": "item_1", "content": "ok\n", "is_error": false, "exit_code": 0, "status": "completed" },
+        { "type": "plan", "item_id": "item_2", "incomplete": true, "items": [{ "text": "Run tests", "completed": true }, { "text": "Report", "completed": false }] },
+        { "type": "error", "message": "stream disconnected" },
+        { "type": "event", "item_id": "item_3", "event_type": "collab_tool_call", "payload": { "id": "item_3", "arbitrary": { "nested": [1, 2] } } },
+        { "type": "usage", "basis": "thread_total_at_turn_completion", "counters": { "input_tokens": 1200, "cached_input_tokens": 800, "output_tokens": 90, "future_counter": 123456789012345678901234567890 } },
+        { "type": "other", "source_type": "image" },
+        { "type": "text", "text": "Done" }
+      ]
+    },
+    {
+      "role": "assistant",
+      "turn": 2,
+      "content": [
+        { "type": "tool_use", "id": "t2:item_1", "item_id": "item_1", "name": "command_execution", "input": { "command": "make lint" } },
+        { "type": "tool_result", "tool_use_id": "t2:item_1", "item_id": "item_1", "content": "", "is_error": false, "incomplete": true }
+      ]
+    }
+  ],
+  "warnings": [
+    { "code": "malformed_line", "message": "malformed JSON event (offset 14)", "line": 4 },
+    { "code": "thread_mismatch", "message": "thread.started records a different thread ID", "line": 9 }
+  ]
+}

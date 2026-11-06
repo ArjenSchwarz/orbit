@@ -190,3 +190,44 @@ func TestGetSession_MissingSchema(t *testing.T) {
 	require.Error(t, err)
 	assert.ErrorIs(t, err, ErrSchemaInvalid)
 }
+
+func TestGetSessionRecord_ReportsMatchedKeyAndCreatedAt(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("symlinks require elevated privileges on Windows")
+	}
+	db := createTestDB(t)
+
+	tmpDir := t.TempDir()
+	realDir := filepath.Join(tmpDir, "real")
+	linkDir := filepath.Join(tmpDir, "link")
+	require.NoError(t, os.Mkdir(realDir, 0o755))
+	require.NoError(t, os.Symlink(realDir, linkDir))
+	resolvedRealDir, err := filepath.EvalSymlinks(realDir)
+	require.NoError(t, err)
+	normalizedLink, err := filepath.Abs(linkDir)
+	require.NoError(t, err)
+
+	created := time.Date(2026, 10, 1, 9, 0, 0, 0, time.UTC)
+	updated := created.Add(time.Hour)
+	insertSessionWithTimes(t, db, resolvedRealDir, "session-via-real", `{"conversation_id":"session-via-real"}`, created, updated)
+	insertSessionWithTimes(t, db, normalizedLink, "session-via-link", `{"conversation_id":"session-via-link"}`, created, updated)
+
+	for name, tc := range map[string]struct {
+		id      string
+		wantKey string
+	}{
+		"resolved key":   {"session-via-real", resolvedRealDir},
+		"normalized key": {"session-via-link", normalizedLink},
+	} {
+		t.Run(name, func(t *testing.T) {
+			record, err := db.GetSessionRecord(context.Background(), tc.id, linkDir)
+			require.NoError(t, err)
+			assert.Equal(t, tc.wantKey, record.Key)
+			assert.True(t, created.Equal(record.CreatedAt), "created_at, not updated_at")
+			assert.JSONEq(t, `{"conversation_id":"`+tc.id+`"}`, string(record.Value))
+		})
+	}
+
+	_, err = db.GetSessionRecord(context.Background(), "missing", linkDir)
+	assert.ErrorIs(t, err, ErrSessionNotFound)
+}

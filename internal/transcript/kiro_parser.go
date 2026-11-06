@@ -20,21 +20,27 @@ func ParseKiro(r io.Reader) (*ParseResult, error) {
 	}
 
 	entries, warnings := convertKiroToEntries(&session)
+	// No StartedAt: the resolver supplies the database created_at (Decision 30).
+	metadata := &ParseResultMetadata{}
+	for _, historyEntry := range session.History {
+		if historyEntry.RequestMetadata != nil && historyEntry.RequestMetadata.ModelID != "" {
+			metadata.FirstModel = historyEntry.RequestMetadata.ModelID
+			break
+		}
+	}
 
 	// Extract cost metadata from usage_info
 	totalCost := extractKiroCredits(&session)
-	var metadata *ParseResultMetadata
 	if totalCost > 0 {
-		metadata = &ParseResultMetadata{
-			TotalCost: &totalCost,
-			CostUnit:  "credits",
-		}
+		metadata.TotalCost = &totalCost
+		metadata.CostUnit = "credits"
 	}
 
 	return &ParseResult{
 		Entries:  entries,
 		Warnings: warnings,
 		Metadata: metadata,
+		Format:   FormatKiro,
 	}, nil
 }
 
@@ -145,6 +151,7 @@ func convertKiroAssistantMessage(assistantMsg *KiroAssistantMessage, metadata *K
 		entry := convertKiroToolUse(assistantMsg.ToolUse)
 		entry.Timestamp = ts
 		entry.Model = model
+		entry.RecordID = assistantMsg.ToolUse.MessageID
 		entries = append(entries, entry)
 	}
 
@@ -153,6 +160,7 @@ func convertKiroAssistantMessage(assistantMsg *KiroAssistantMessage, metadata *K
 			Type:      "assistant",
 			Timestamp: ts,
 			Model:     model,
+			RecordID:  assistantMsg.TextResponse.MessageID,
 			Message: &Message{
 				Role: "assistant",
 				Content: []ContentItem{
@@ -171,6 +179,7 @@ func convertKiroAssistantMessage(assistantMsg *KiroAssistantMessage, metadata *K
 			Type:      "assistant",
 			Timestamp: ts,
 			Model:     model,
+			RecordID:  assistantMsg.Response.MessageID,
 			Message: &Message{
 				Role: "assistant",
 				Content: []ContentItem{

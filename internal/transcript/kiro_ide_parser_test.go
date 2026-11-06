@@ -399,7 +399,7 @@ func TestParseKiroIDEWithCostPath(t *testing.T) {
 	}
 }
 
-func TestParseKiroIDEWithoutCostHasNoMetadata(t *testing.T) {
+func TestParseKiroIDEWithoutCostHasSourceMetadata(t *testing.T) {
 	input := `{
 		"executionId": "exec-1",
 		"chat": [
@@ -414,8 +414,14 @@ func TestParseKiroIDEWithoutCostHasNoMetadata(t *testing.T) {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	if result.Metadata != nil {
-		t.Errorf("expected nil metadata for ParseKiroIDE without cost path, got %+v", result.Metadata)
+	if result.Metadata == nil {
+		t.Fatal("expected source metadata without cost")
+	}
+	if result.Metadata.TotalCost != nil {
+		t.Errorf("expected no cost for ParseKiroIDE without cost path, got %+v", result.Metadata)
+	}
+	if result.Metadata.FirstModel != "auto" || result.Metadata.StartedAt != "1970-01-01T00:00:01Z" {
+		t.Errorf("unexpected source metadata: %+v", result.Metadata)
 	}
 }
 

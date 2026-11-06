@@ -8,6 +8,7 @@ require (
 	github.com/google/go-cmp v0.6.0
 	github.com/google/uuid v1.6.0
 	github.com/mattn/go-isatty v0.0.21
+	github.com/santhosh-tekuri/jsonschema/v6 v6.0.3
 	github.com/spf13/viper v1.21.0
 	github.com/stretchr/testify v1.11.1
 	github.com/yuin/goldmark v1.8.2

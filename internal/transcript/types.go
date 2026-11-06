@@ -23,6 +23,9 @@ type Entry struct {
 	Message         *Message       `json:"message,omitempty"`
 	Timestamp       string         `json:"timestamp,omitempty"`
 	Model           string         `json:"-"` // Not serialized; populated by parsers
+	Provider        string         `json:"-"` // Recorded provider (Codex rollouts, Kiro IDE); not part of the source wire format
+	RecordID        string         `json:"-"` // Identifier of the single source record this entry is built from (Decision 32)
+	Origin          string         `json:"-"` // Claude Code entrypoint, decoded by UnmarshalJSON; feeds ParseResultMetadata.Origin
 	SessionID       string         `json:"sessionId,omitempty"`
 	Cwd             string         `json:"cwd,omitempty"`             // Working directory for this entry
 	IsMeta          bool           `json:"isMeta,omitempty"`          // Meta entries are internal Claude markers
@@ -53,6 +56,7 @@ func (e *Entry) UnmarshalJSON(data []byte) error {
 		ParentUUID      string          `json:"parentUuid,omitempty"`
 		SourceToolUseID string          `json:"sourceToolUseID,omitempty"`
 		ToolUseResult   json.RawMessage `json:"toolUseResult,omitempty"`
+		Entrypoint      string          `json:"entrypoint,omitempty"`
 	}
 
 	var alias entryAlias
@@ -69,6 +73,7 @@ func (e *Entry) UnmarshalJSON(data []byte) error {
 	e.UUID = alias.UUID
 	e.ParentUUID = alias.ParentUUID
 	e.SourceToolUseID = alias.SourceToolUseID
+	e.Origin = alias.Entrypoint
 
 	// Handle toolUseResult which can be string or object
 	if len(alias.ToolUseResult) > 0 {

@@ -718,7 +718,6 @@ func TestFollower_AddSeenHash_Cap(t *testing.T) {
 	}
 }
 
-
 func TestFollower_DedupeCapReset_NoReplay(t *testing.T) {
 	// Regression test for T-913: after hash cap reset, previously rendered
 	// entries must not be replayed to output.
@@ -850,7 +849,7 @@ func TestFollower_Run_DetectsChanges(t *testing.T) {
 	}
 
 	cancel()
-	<-done
+	require.NoError(t, <-done, "Run() returned error on cancellation")
 }
 
 // waitForOutput polls the buffer until expected content appears or timeout.
@@ -923,7 +922,7 @@ func TestFollowerIntegration_BasicFollowWithAppend(t *testing.T) {
 	assert.NotContains(t, incrementalOutput, "# Session Transcript", "incremental output should not contain header")
 
 	cancel()
-	<-done
+	require.NoError(t, <-done, "Run() returned error on cancellation")
 }
 
 // TestFollowerIntegration_FileTruncation tests that truncated files cause
@@ -988,7 +987,7 @@ func TestFollowerIntegration_FileTruncation(t *testing.T) {
 	}
 
 	cancel()
-	<-done
+	require.NoError(t, <-done, "Run() returned error on cancellation")
 }
 
 // TestFollowerIntegration_FileReplacement tests that file replacement (inode change)
@@ -1054,7 +1053,7 @@ func TestFollowerIntegration_FileReplacement(t *testing.T) {
 	}
 
 	cancel()
-	<-done
+	require.NoError(t, <-done, "Run() returned error on cancellation")
 }
 
 // TestFollowerIntegration_IncompleteJSONHandling tests that incomplete JSON lines
@@ -1118,5 +1117,5 @@ func TestFollowerIntegration_IncompleteJSONHandling(t *testing.T) {
 	}
 
 	cancel()
-	<-done
+	require.NoError(t, <-done, "Run() returned error on cancellation")
 }

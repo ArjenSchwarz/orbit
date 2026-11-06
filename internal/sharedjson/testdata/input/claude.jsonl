@@ -1,0 +1,5 @@
+{"type":"user","uuid":"0b5e1a40-0000-4000-8000-000000000001","timestamp":"2026-10-01T09:00:00.000Z","cwd":"/work/example-repo","entrypoint":"sdk-cli","message":{"role":"user","content":"List the files"}}
+{"type":"assistant","uuid":"0b5e1a40-0000-4000-8000-000000000002","parentUuid":"0b5e1a40-0000-4000-8000-000000000001","timestamp":"2026-10-01T09:00:02.000Z","cwd":"/work/example-repo","entrypoint":"sdk-cli","message":{"role":"assistant","content":[{"type":"thinking","thinking":"I will list them."},{"type":"tool_use","id":"toolu_01","name":"Bash","input":{"command":"ls"}}]}}
+not json
+{"type":"user","uuid":"0b5e1a40-0000-4000-8000-000000000003","parentUuid":"0b5e1a40-0000-4000-8000-000000000002","timestamp":"2026-10-01T09:00:03.000Z","message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"toolu_01","content":"README.md\n<main.go>","is_error":false}]}}
+{"type":"assistant","uuid":"0b5e1a40-0000-4000-8000-000000000004","timestamp":"2026-10-01T09:00:04.000Z","message":{"role":"assistant","content":[{"type":"image","source":{"type":"base64","data":""}},{"type":"text","text":"Two files: README.md & main.go"}]}}

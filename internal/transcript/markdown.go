@@ -422,7 +422,7 @@ func formatAssistantMessage(entry *Entry, toolMeta map[string]toolMetadata, skil
 
 	var sb strings.Builder
 	sb.WriteString("## 🤖 Assistant")
-	sb.WriteString(FormatMessageMetaMarkdown(entry.Timestamp, entry.Model))
+	sb.WriteString(FormatMessageMetaMarkdown(entry.Timestamp, modelLabel(entry.Model, entry.Provider)))
 	sb.WriteString("\n\n")
 	sb.WriteString(content.String())
 	sb.WriteString("---\n\n")

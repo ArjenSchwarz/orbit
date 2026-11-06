@@ -1,0 +1,41 @@
+{
+  "schema_version": 1,
+  "kind": "session",
+  "session": {
+    "source": "kiro-ide",
+    "id": "kiro_ide",
+    "created_at": "2026-10-01T00:00:00Z",
+    "model": "example-model",
+    "provider": "example-provider"
+  },
+  "entries": [
+    {
+      "role": "user",
+      "timestamp": "2026-10-01T00:00:00Z",
+      "content": [
+        {
+          "type": "text",
+          "text": "Run the tests"
+        }
+      ]
+    },
+    {
+      "role": "assistant",
+      "model": "example-model",
+      "provider": "example-provider",
+      "content": [
+        {
+          "type": "text",
+          "text": "Running them now."
+        }
+      ]
+    }
+  ],
+  "warnings": [
+    {
+      "code": "unrecognized_record",
+      "message": "unknown role \"future\" in chat message",
+      "chat_message": 3
+    }
+  ]
+}

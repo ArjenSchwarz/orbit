@@ -1057,6 +1057,9 @@ apsis -f html -o transcript.html session-id
 # Export raw JSON (useful for inspecting session metadata)
 apsis -f json session-id
 
+# Export versioned JSON with the same structure for every agent
+apsis -f shared-json session-id
+
 # List available sessions for current project
 apsis --list
 
@@ -1071,7 +1074,7 @@ apsis --list -p /path/to/project
 | `-l, --list` | List available sessions for the project |
 | `-o, --output <file>` | Write output to file (default: stdout) |
 | `-p, --project <path>` | Project directory (default: current directory) |
-| `-f, --format <format>` | Output format: `md`, `markdown`, `html`, `json` (default: `md`) |
+| `-f, --format <format>` | Output format: `md`, `markdown`, `html`, `json`, `shared-json` (default: `md`) |
 | `-F, --follow` | Follow mode: continuously monitor file for new entries (stdout only, markdown only) |
 | `-v, --version` | Show version, commit, and build time |
 | `-h, --help` | Show help |
@@ -1097,6 +1100,22 @@ Generates a styled HTML document with:
 - Collapsible thinking blocks
 - Syntax-highlighted code blocks
 - Color-coded success/error indicators
+
+Markdown and HTML assistant headers show the model provider a session records beside the model, as `model (provider)`, for Codex rollouts (`model_provider`) and Kiro IDE chats (`modelProvider`).
+
+### Raw JSON (`-f json`)
+
+Outputs the session's source records unchanged: a JSON array of JSONL lines, or the Kiro JSON object.
+
+### Shared JSON (`-f shared-json`)
+
+Outputs one document with the same layout for every agent, described by the JSON Schema in [`docs/schemas/apsis-shared-json.v1.schema.json`](docs/schemas/apsis-shared-json.v1.schema.json):
+
+- `session`: the source, identifier, recorded creation time, project, first recorded model and provider, client origin (Claude Code `entrypoint`, Codex `originator`) and cost, each omitted when unavailable
+- `entries`: entries in transcript order with their role, recorded identifier, timestamp, model, provider and content blocks (text, thinking, tool calls and results), without the length limits of the rendered formats
+- `warnings`: parse warnings with a code and a one-based position
+
+Every document carries `schema_version`. Consumers should ignore fields and block types they do not recognise: new fields and block types do not change the version, while removing a field or changing its meaning does. A session without entries still produces a document with `"entries": []`, and parse warnings are also printed on stderr. Follow mode (`-F`) does not support `shared-json`.
 
 ## License
 

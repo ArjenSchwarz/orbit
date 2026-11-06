@@ -1,0 +1,247 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://raw.githubusercontent.com/ArjenSchwarz/orbit/main/docs/schemas/apsis-shared-json.v1.schema.json",
+  "title": "Apsis shared JSON, version 1",
+  "description": "Session and listing documents emitted by `apsis -f shared-json`. Consumers must ignore unknown fields and skip block types they do not support. Removing a field or changing its meaning raises schema_version; additive fields and block types do not.",
+  "type": "object",
+  "required": ["schema_version", "kind"],
+  "properties": {
+    "schema_version": { "const": 1 },
+    "kind": { "type": "string" }
+  },
+  "oneOf": [
+    { "$ref": "#/$defs/sessionDocument" },
+    { "$ref": "#/$defs/listingDocument" }
+  ],
+  "$defs": {
+    "sessionDocument": {
+      "description": "One session: metadata, ordered entries and parse warnings.",
+      "type": "object",
+      "required": ["schema_version", "kind", "session", "entries", "warnings"],
+      "properties": {
+        "schema_version": { "const": 1 },
+        "kind": { "const": "session" },
+        "session": { "$ref": "#/$defs/sessionMetadata" },
+        "entries": { "type": "array", "items": { "$ref": "#/$defs/entry" } },
+        "warnings": { "type": "array", "items": { "$ref": "#/$defs/warning" } }
+      }
+    },
+    "listingDocument": {
+      "description": "Listed sessions, oldest first, with listing warnings.",
+      "type": "object",
+      "required": ["schema_version", "kind", "scope", "sessions", "warnings"],
+      "properties": {
+        "schema_version": { "const": 1 },
+        "kind": { "const": "listing" },
+        "scope": { "$ref": "#/$defs/scope" },
+        "sessions": { "type": "array", "items": { "$ref": "#/$defs/listingRow" } },
+        "warnings": { "type": "array", "items": { "$ref": "#/$defs/listingWarning" } }
+      }
+    },
+    "sessionMetadata": {
+      "description": "Session metadata shared by session documents and listing rows. Unavailable values are omitted.",
+      "type": "object",
+      "properties": {
+        "source": { "type": "string", "minLength": 1, "description": "Source name, such as claude, codex, codex-exec, copilot, kiro-cli or kiro-ide." },
+        "id": { "type": "string", "minLength": 1, "description": "Identifier that opens the session within its source." },
+        "thread_id": { "type": "string", "minLength": 1, "description": "Codex thread identifier recorded by an exec stream." },
+        "created_at": { "type": "string", "format": "date-time", "description": "Recorded creation time; never a filesystem time." },
+        "project": { "type": "string", "minLength": 1, "description": "Recorded project directory, or the containing repository of an exec stream." },
+        "model": { "type": "string", "minLength": 1, "description": "First recorded model." },
+        "provider": { "type": "string", "minLength": 1, "description": "First recorded model provider." },
+        "origin": { "type": "string", "minLength": 1, "description": "First recorded client entry point or originator, exactly as recorded." },
+        "cost": { "$ref": "#/$defs/cost" }
+      }
+    },
+    "cost": {
+      "type": "object",
+      "required": ["amount", "unit"],
+      "properties": {
+        "amount": { "type": "number" },
+        "unit": { "type": "string", "minLength": 1 }
+      }
+    },
+    "listingRow": {
+      "description": "A listed session: shared session metadata plus listing fields.",
+      "$ref": "#/$defs/sessionMetadata",
+      "required": ["source", "id"],
+      "properties": {
+        "size_bytes": { "type": "integer", "minimum": 0 },
+        "file_modified_at": { "type": "string", "format": "date-time", "description": "File modification time used to order a session without a recorded creation time." }
+      }
+    },
+    "scope": {
+      "type": "object",
+      "oneOf": [
+        {
+          "required": ["project"],
+          "properties": { "project": { "type": "string", "minLength": 1 } }
+        },
+        {
+          "required": ["all_projects"],
+          "properties": { "all_projects": { "const": true } }
+        }
+      ]
+    },
+    "entry": {
+      "description": "One entry in transcript order.",
+      "type": "object",
+      "required": ["role", "content"],
+      "properties": {
+        "id": { "type": "string", "minLength": 1, "description": "Identifier of the single source record the entry is built from. Not a tool-linking identifier and not unique within a document." },
+        "role": { "type": "string", "minLength": 1 },
+        "timestamp": { "type": "string", "format": "date-time" },
+        "model": { "type": "string", "minLength": 1 },
+        "provider": { "type": "string", "minLength": 1 },
+        "turn": { "type": "integer", "minimum": 1 },
+        "content": { "type": "array", "items": { "$ref": "#/$defs/block" } }
+      }
+    },
+    "block": {
+      "type": "object",
+      "required": ["type"],
+      "oneOf": [
+        { "$ref": "#/$defs/textBlock" },
+        { "$ref": "#/$defs/thinkingBlock" },
+        { "$ref": "#/$defs/toolUseBlock" },
+        { "$ref": "#/$defs/toolResultBlock" },
+        { "$ref": "#/$defs/planBlock" },
+        { "$ref": "#/$defs/errorBlock" },
+        { "$ref": "#/$defs/eventBlock" },
+        { "$ref": "#/$defs/usageBlock" },
+        { "$ref": "#/$defs/otherBlock" },
+        { "$ref": "#/$defs/extensionBlock" }
+      ]
+    },
+    "blockCommon": {
+      "description": "Fields any block may carry.",
+      "type": "object",
+      "properties": {
+        "item_id": { "type": "string", "minLength": 1, "description": "Source item identifier." },
+        "status": { "type": "string", "minLength": 1, "description": "Source item status as recorded." },
+        "incomplete": { "type": "boolean", "description": "The item started but never completed." }
+      }
+    },
+    "textBlock": {
+      "$ref": "#/$defs/blockCommon",
+      "required": ["type", "text"],
+      "properties": {
+        "type": { "const": "text" },
+        "text": { "type": "string" }
+      }
+    },
+    "thinkingBlock": {
+      "$ref": "#/$defs/blockCommon",
+      "required": ["type", "text"],
+      "properties": {
+        "type": { "const": "thinking" },
+        "text": { "type": "string" }
+      }
+    },
+    "toolUseBlock": {
+      "$ref": "#/$defs/blockCommon",
+      "required": ["type", "name"],
+      "properties": {
+        "type": { "const": "tool_use" },
+        "id": { "type": "string", "minLength": 1, "description": "Links the call to its tool_result." },
+        "name": { "type": "string" },
+        "input": { "description": "Tool input as recorded; any JSON value." }
+      }
+    },
+    "toolResultBlock": {
+      "$ref": "#/$defs/blockCommon",
+      "required": ["type", "content", "is_error"],
+      "properties": {
+        "type": { "const": "tool_result" },
+        "tool_use_id": { "type": "string", "minLength": 1 },
+        "content": { "type": "string", "description": "Result content, without length limits." },
+        "is_error": { "type": "boolean" },
+        "exit_code": { "type": "integer", "description": "Recorded command exit code; omitted when unrecorded." }
+      }
+    },
+    "planBlock": {
+      "$ref": "#/$defs/blockCommon",
+      "required": ["type", "items"],
+      "properties": {
+        "type": { "const": "plan" },
+        "items": { "type": "array", "items": { "$ref": "#/$defs/planItem" } }
+      }
+    },
+    "planItem": {
+      "type": "object",
+      "required": ["text", "completed"],
+      "properties": {
+        "text": { "type": "string" },
+        "completed": { "type": "boolean" }
+      }
+    },
+    "errorBlock": {
+      "$ref": "#/$defs/blockCommon",
+      "required": ["type", "message"],
+      "properties": {
+        "type": { "const": "error" },
+        "message": { "type": "string" }
+      }
+    },
+    "eventBlock": {
+      "$ref": "#/$defs/blockCommon",
+      "required": ["type", "event_type"],
+      "properties": {
+        "type": { "const": "event" },
+        "event_type": { "type": "string", "minLength": 1, "description": "Source event or item type without a specialised translation." },
+        "payload": { "description": "The event's parsed payload; any JSON value." }
+      }
+    },
+    "usageBlock": {
+      "$ref": "#/$defs/blockCommon",
+      "required": ["type", "basis", "counters"],
+      "properties": {
+        "type": { "const": "usage" },
+        "basis": { "type": "string", "minLength": 1, "description": "What the counters measure, such as thread_total_at_turn_completion." },
+        "counters": { "type": "object", "description": "Counters in source key order; values are any JSON value." }
+      }
+    },
+    "otherBlock": {
+      "$ref": "#/$defs/blockCommon",
+      "required": ["type"],
+      "properties": {
+        "type": { "const": "other" },
+        "source_type": { "type": "string", "minLength": 1, "description": "The parsed content kind." },
+        "text": { "type": "string" }
+      }
+    },
+    "extensionBlock": {
+      "description": "A block type added after this schema was published. Consumers skip types they do not support.",
+      "type": "object",
+      "required": ["type"],
+      "properties": {
+        "type": {
+          "type": "string",
+          "not": { "enum": ["text", "thinking", "tool_use", "tool_result", "plan", "error", "event", "usage", "other"] }
+        }
+      }
+    },
+    "warning": {
+      "description": "A non-fatal problem. The one-based position key names its unit: a physical line, a Kiro IDE chat message or a Kiro IDE execution-detail action.",
+      "type": "object",
+      "required": ["code", "message"],
+      "properties": {
+        "code": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Warning kind. Later versions may add codes.",
+          "examples": ["malformed_line", "oversized_line", "thread_mismatch", "item_decode_failed", "root_unreadable", "path_unreadable", "missing_thread", "identifier_conflict", "duplicate_session", "source_failed", "invalid_record", "unrecognized_record", "unmatched_tool_result"]
+        },
+        "message": { "type": "string" },
+        "source": { "type": "string", "minLength": 1, "description": "Listing warnings: the source that produced the warning." },
+        "line": { "type": "integer", "minimum": 1 },
+        "chat_message": { "type": "integer", "minimum": 1 },
+        "execution_action": { "type": "integer", "minimum": 1 }
+      }
+    },
+    "listingWarning": {
+      "$ref": "#/$defs/warning",
+      "required": ["source"]
+    }
+  }
+}

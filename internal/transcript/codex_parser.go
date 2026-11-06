@@ -3,6 +3,7 @@ package transcript
 import (
 	"bufio"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"strings"
@@ -11,7 +12,11 @@ import (
 // codexParser maintains state while parsing Codex JSONL.
 type codexParser struct {
 	sessionID     string
-	model         string // Model from session_meta, set on assistant entries
+	model         string // Model from session_meta, set on assistant entries by default
+	turnModel     string // Latest nonempty turn_context model, set on entries with PreserveModelChanges
+	provider      string // Provider from session_meta, set on assistant entries
+	metadata      ParseResultMetadata
+	options       ParseOptions
 	entries       []Entry
 	warnings      []ParseWarning
 	functionCalls map[string]*pendingCall // call_id -> pending function_call
@@ -27,11 +32,14 @@ type pendingCall struct {
 }
 
 // ParseCodexJSONL parses Codex format JSONL and normalizes to []Entry.
-func ParseCodexJSONL(r io.Reader) (*ParseResult, error) {
+func ParseCodexJSONL(r io.Reader, opts ...ParseOptions) (*ParseResult, error) {
 	p := &codexParser{
 		entries:       []Entry{},
 		warnings:      []ParseWarning{},
 		functionCalls: make(map[string]*pendingCall),
+	}
+	if len(opts) > 0 {
+		p.options = opts[0]
 	}
 
 	scanner := bufio.NewScanner(r)
@@ -46,10 +54,12 @@ func ParseCodexJSONL(r io.Reader) (*ParseResult, error) {
 		}
 
 		if err := p.parseEntry(line); err != nil {
-			p.warnings = append(p.warnings, ParseWarning{
-				Line:    p.lineNum,
-				Message: err.Error(),
-			})
+			warning := ParseWarning{Line: p.lineNum, Message: err.Error()}
+			var recErr *recordError
+			if errors.As(err, &recErr) {
+				warning.Code = recErr.code
+			}
+			p.warnings = append(p.warnings, warning)
 		}
 	}
 
@@ -60,26 +70,40 @@ func ParseCodexJSONL(r io.Reader) (*ParseResult, error) {
 	// Finalize any pending entry
 	p.finalizeCurrentEntry()
 
-	if len(p.entries) == 0 {
+	if len(p.entries) == 0 && !p.options.AllowEmptyCodex {
 		return nil, fmt.Errorf("no valid entries found in file")
 	}
 
 	return &ParseResult{
 		Entries:  p.entries,
 		Warnings: p.warnings,
+		Metadata: &p.metadata,
+		Format:   FormatCodex,
 	}, nil
+}
+
+// recordError is a non-fatal record problem that becomes a coded ParseWarning.
+type recordError struct {
+	code    string
+	message string
+}
+
+func (e *recordError) Error() string { return e.message }
+
+func newRecordError(code, format string, args ...any) error {
+	return &recordError{code: code, message: fmt.Sprintf(format, args...)}
 }
 
 // parseEntry processes a single JSONL line.
 func (p *codexParser) parseEntry(line []byte) error {
 	var entry CodexEntry
 	if err := json.Unmarshal(line, &entry); err != nil {
-		return fmt.Errorf("failed to parse JSON: %v", err)
+		return newRecordError(WarningMalformedLine, "failed to parse JSON: %v", err)
 	}
 
 	// Validate required fields
 	if entry.Type == "" {
-		return fmt.Errorf("missing required field: type")
+		return newRecordError(WarningInvalidRecord, "missing required field: type")
 	}
 
 	switch entry.Type {
@@ -87,19 +111,19 @@ func (p *codexParser) parseEntry(line []byte) error {
 		return p.processSessionMeta(&entry)
 	case "response_item":
 		if len(entry.Payload) == 0 {
-			return fmt.Errorf("missing required field: payload")
+			return newRecordError(WarningInvalidRecord, "missing required field: payload")
 		}
 		return p.processResponseItem(&entry)
 	case "event_msg":
 		if len(entry.Payload) == 0 {
-			return fmt.Errorf("missing required field: payload")
+			return newRecordError(WarningInvalidRecord, "missing required field: payload")
 		}
 		return p.processEventMsg(&entry)
 	case "turn_context":
-		// Skip - internal context tracking
+		p.processTurnContext(&entry)
 		return nil
 	default:
-		return fmt.Errorf("unrecognized event type: %s", entry.Type)
+		return newRecordError(WarningUnrecognizedRecord, "unrecognized event type: %s", entry.Type)
 	}
 }
 
@@ -107,18 +131,51 @@ func (p *codexParser) parseEntry(line []byte) error {
 func (p *codexParser) processSessionMeta(entry *CodexEntry) error {
 	var meta CodexSessionMeta
 	if err := json.Unmarshal(entry.Payload, &meta); err != nil {
-		return fmt.Errorf("failed to parse session_meta payload: %v", err)
+		return newRecordError(WarningInvalidRecord, "failed to parse session_meta payload: %v", err)
 	}
 	p.sessionID = meta.ID
 	p.model = meta.Model
+	p.provider = meta.Provider
+	if p.metadata.StartedAt == "" {
+		// Only the outer timestamp, and only when it parses (Q77, Q81).
+		if _, ok := parseTimestamp(entry.Timestamp); ok {
+			p.metadata.StartedAt = entry.Timestamp
+		}
+	}
+	if p.metadata.Project == "" {
+		p.metadata.Project = meta.Cwd
+	}
+	if p.metadata.FirstModel == "" {
+		p.metadata.FirstModel = meta.Model
+	}
+	if p.metadata.FirstProvider == "" {
+		p.metadata.FirstProvider = meta.Provider
+	}
+	if p.metadata.Origin == "" {
+		p.metadata.Origin = meta.Originator
+	}
 	return nil
+}
+
+// processTurnContext records the turn's model (Decision 29). Codex 0.166.0
+// writes the model only here. An undecodable payload is skipped silently, as
+// every turn_context line was before models were read.
+func (p *codexParser) processTurnContext(entry *CodexEntry) {
+	var turn CodexTurnContext
+	if err := json.Unmarshal(entry.Payload, &turn); err != nil || turn.Model == "" {
+		return
+	}
+	p.turnModel = turn.Model
+	if p.metadata.FirstModel == "" {
+		p.metadata.FirstModel = turn.Model
+	}
 }
 
 // processResponseItem handles response_item events.
 func (p *codexParser) processResponseItem(entry *CodexEntry) error {
 	var item CodexResponseItem
 	if err := json.Unmarshal(entry.Payload, &item); err != nil {
-		return fmt.Errorf("failed to parse response_item payload: %v", err)
+		return newRecordError(WarningInvalidRecord, "failed to parse response_item payload: %v", err)
 	}
 
 	switch item.Type {
@@ -134,7 +191,7 @@ func (p *codexParser) processResponseItem(entry *CodexEntry) error {
 		// Skip - git tracking metadata
 		return nil
 	default:
-		return fmt.Errorf("unrecognized response_item type: %s", item.Type)
+		return newRecordError(WarningUnrecognizedRecord, "unrecognized response_item type: %s", item.Type)
 	}
 }
 
@@ -142,7 +199,7 @@ func (p *codexParser) processResponseItem(entry *CodexEntry) error {
 func (p *codexParser) processEventMsg(entry *CodexEntry) error {
 	var msg CodexEventMsg
 	if err := json.Unmarshal(entry.Payload, &msg); err != nil {
-		return fmt.Errorf("failed to parse event_msg payload: %v", err)
+		return newRecordError(WarningInvalidRecord, "failed to parse event_msg payload: %v", err)
 	}
 
 	switch msg.Type {
@@ -154,7 +211,7 @@ func (p *codexParser) processEventMsg(entry *CodexEntry) error {
 		// Skip - metadata events
 		return nil
 	default:
-		return fmt.Errorf("unrecognized event_msg type: %s", msg.Type)
+		return newRecordError(WarningUnrecognizedRecord, "unrecognized event_msg type: %s", msg.Type)
 	}
 }
 
@@ -162,7 +219,7 @@ func (p *codexParser) processEventMsg(entry *CodexEntry) error {
 func (p *codexParser) convertMessage(item *CodexResponseItem, timestamp string) error {
 	entryType := item.Role
 	if entryType != "user" && entryType != "assistant" {
-		return fmt.Errorf("unrecognized message role: %s", item.Role)
+		return newRecordError(WarningUnrecognizedRecord, "unrecognized message role: %s", item.Role)
 	}
 
 	// User message always starts a new entry
@@ -172,6 +229,7 @@ func (p *codexParser) convertMessage(item *CodexResponseItem, timestamp string) 
 			Type:      "user",
 			Timestamp: timestamp,
 			SessionID: p.sessionID,
+			RecordID:  item.ID, // a user entry is one message item; assistant entries consolidate several
 			Message: &Message{
 				Role:    "user",
 				Content: []ContentItem{},
@@ -250,24 +308,19 @@ func (p *codexParser) convertFunctionCallOutput(item *CodexResponseItem, timesta
 	}
 
 	// Check if we have a matching function_call
-	pending, found := p.functionCalls[item.CallID]
-	if !found {
+	if _, found := p.functionCalls[item.CallID]; !found {
 		// Orphaned output - warn but still add it
 		p.warnings = append(p.warnings, ParseWarning{
 			Line:    p.lineNum,
 			Message: fmt.Sprintf("no matching function_call for call_id: %s", item.CallID),
+			Code:    WarningUnmatchedToolResult,
 		})
-		p.ensureAssistantEntry(timestamp)
-		p.currentEntry.Message.Content = append(p.currentEntry.Message.Content, contentItem)
-		return nil
 	}
 
-	// Add to current entry (function_call should be in current entry)
-	p.ensureAssistantEntry(timestamp)
+	// Add to current entry (function_call should be in current entry). Calls stay
+	// in the map, which supports multiple outputs per call.
+	p.joinAssistantEntry(timestamp)
 	p.currentEntry.Message.Content = append(p.currentEntry.Message.Content, contentItem)
-
-	// Don't delete from map - supports multiple outputs per call
-	_ = pending
 
 	return nil
 }
@@ -325,14 +378,29 @@ func (p *codexParser) convertAgentMessage(msg *CodexEventMsg, timestamp string) 
 	return nil
 }
 
-// ensureAssistantEntry ensures there's a current assistant entry to add content to.
+// ensureAssistantEntry ensures there's a current assistant entry for a
+// model-produced item. A recorded provider transition, or a model transition
+// with PreserveModelChanges, starts a new entry; identical metadata never does.
 func (p *codexParser) ensureAssistantEntry(timestamp string) {
+	if p.currentEntry != nil && p.currentEntry.Type == "assistant" &&
+		(p.currentEntry.Provider != p.provider ||
+			(p.options.PreserveModelChanges && p.currentEntry.Model != p.entryModel())) {
+		p.finalizeCurrentEntry()
+	}
+	p.joinAssistantEntry(timestamp)
+}
+
+// joinAssistantEntry adds to the current assistant entry, starting one only
+// when there is none. Function call outputs use it so they stay with their
+// call across metadata transitions (Q82).
+func (p *codexParser) joinAssistantEntry(timestamp string) {
 	if p.currentEntry == nil || p.currentEntry.Type == "user" {
 		p.finalizeCurrentEntry()
 		p.currentEntry = &Entry{
 			Type:      "assistant",
 			Timestamp: timestamp,
-			Model:     p.model,
+			Model:     p.entryModel(),
+			Provider:  p.provider,
 			SessionID: p.sessionID,
 			Message: &Message{
 				Role:    "assistant",
@@ -340,6 +408,16 @@ func (p *codexParser) ensureAssistantEntry(timestamp string) {
 			},
 		}
 	}
+}
+
+// entryModel returns the model new assistant entries record: the legacy
+// session_meta value by default, or with PreserveModelChanges the latest
+// turn_context model, falling back to session_meta for older files (Decision 29).
+func (p *codexParser) entryModel() string {
+	if p.options.PreserveModelChanges && p.turnModel != "" {
+		return p.turnModel
+	}
+	return p.model
 }
 
 // finalizeCurrentEntry adds the current entry to entries if it has content.

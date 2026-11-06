@@ -1,0 +1,7 @@
+{
+  "schema_version": 1,
+  "kind": "listing",
+  "scope": { "project": "/work/example-repo" },
+  "sessions": [],
+  "warnings": []
+}

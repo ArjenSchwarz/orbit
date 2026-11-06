@@ -7,6 +7,17 @@ import (
 	"time"
 )
 
+// modelLabel adds a recorded provider only where an assistant model already renders.
+func modelLabel(model, provider string) string {
+	if provider == "" {
+		return model
+	}
+	if model == "" {
+		return "(" + provider + ")"
+	}
+	return model + " (" + provider + ")"
+}
+
 // parseTimestamp parses an RFC3339 or RFC3339Nano timestamp string.
 func parseTimestamp(ts string) (time.Time, bool) {
 	if ts == "" {

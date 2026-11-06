@@ -1,6 +1,8 @@
 package sessions
 
 import (
+	"bytes"
+	"cmp"
 	"context"
 	"encoding/json"
 	"errors"
@@ -144,7 +146,7 @@ func (r *Resolver) resolveCopilot(sessionID string) (*ResolvedSession, error) {
 }
 
 func (r *Resolver) resolveKiroCLI(sessionID string) (*ResolvedSession, error) {
-	reader, err := logs.GetSession(context.Background(), sessionID, r.projectPath)
+	record, err := logs.GetSessionRecord(context.Background(), sessionID, r.projectPath)
 	if err != nil {
 		if errors.Is(err, logs.ErrSessionNotFound) || errors.Is(err, logs.ErrDatabaseNotFound) {
 			return nil, fmt.Errorf("session not found: %s", sessionID)
@@ -153,11 +155,13 @@ func (r *Resolver) resolveKiroCLI(sessionID string) (*ResolvedSession, error) {
 	}
 
 	return &ResolvedSession{
-		Reader: io.NopCloser(reader),
+		Reader: io.NopCloser(bytes.NewReader(record.Value)),
 		Metadata: SessionMetadata{
-			Source: SourceKiroCLI,
-			ID:     sessionID,
-			Size:   0, // SQLite-backed, size unknown
+			Source:            SourceKiroCLI,
+			ID:                sessionID,
+			Size:              0, // SQLite-backed, size unknown
+			Project:           record.Key,
+			DatabaseCreatedAt: record.CreatedAt,
 		},
 	}, nil
 }
@@ -184,33 +188,36 @@ func (r *Resolver) resolveKiroIDE(sessionID string) (*ResolvedSession, error) {
 		return nil, err
 	}
 
-	createdAt := kiroIDECreatedAt(f, info.ModTime())
+	createdAt, fromFilesystem := kiroIDECreatedAt(f, info.ModTime())
 	costPath := transcript.KiroIDEExecutionDetailPath(workspaceDir, sessionID)
 
 	return &ResolvedSession{
 		Reader: f,
 		Metadata: SessionMetadata{
-			Source:    SourceKiroIDE,
-			ID:        sessionID,
-			Size:      info.Size(),
-			CreatedAt: createdAt,
-			CostPath:  costPath,
+			Source:             SourceKiroIDE,
+			ID:                 sessionID,
+			Size:               info.Size(),
+			CreatedAt:          createdAt,
+			TimeFromFilesystem: fromFilesystem,
+			CostPath:           costPath,
+			Path:               bestPath,
 		},
 	}, nil
 }
 
 // kiroIDECreatedAt extracts the startTime from a Kiro IDE .chat file's metadata,
 // matching the behaviour of listKiroIDE. Falls back to modTime if metadata is
-// absent or startTime is zero. Seeks the reader back to the start after parsing.
-func kiroIDECreatedAt(rs io.ReadSeeker, modTime time.Time) time.Time {
+// absent or startTime is zero, reporting the fallback. Seeks the reader back to
+// the start after parsing.
+func kiroIDECreatedAt(rs io.ReadSeeker, modTime time.Time) (createdAt time.Time, fromFilesystem bool) {
 	defer func() { _, _ = rs.Seek(0, io.SeekStart) }()
 	var header kiroIDEChatHeader
 	if err := json.NewDecoder(rs).Decode(&header); err == nil {
 		if header.Metadata != nil && header.Metadata.StartTime > 0 {
-			return time.UnixMilli(header.Metadata.StartTime)
+			return time.UnixMilli(header.Metadata.StartTime), false
 		}
 	}
-	return modTime
+	return modTime, true
 }
 
 // ResolvePath returns the file path for a session, without opening it.
@@ -332,45 +339,50 @@ func (r *Resolver) openFileSession(path, source, sessionID string) (*ResolvedSes
 		return nil, err
 	}
 
-	createdAt := r.resolveFileCreatedAt(f, path, source, info.ModTime())
+	metadata := SessionMetadata{
+		Source: source,
+		ID:     sessionID,
+		Size:   info.Size(),
+		Path:   path,
+	}
+	resolveFileMetadata(&metadata, f, info.ModTime())
 
 	return &ResolvedSession{
-		Reader: f,
-		Metadata: SessionMetadata{
-			Source:    source,
-			ID:        sessionID,
-			Size:      info.Size(),
-			CreatedAt: createdAt,
-		},
+		Reader:   f,
+		Metadata: metadata,
 	}, nil
 }
 
-// resolveFileCreatedAt derives the session start timestamp using the same
-// source-specific logic as the lister. Falls back to modTime on failure.
-// For Claude, the file is seeked back to the start after parsing.
-func (r *Resolver) resolveFileCreatedAt(f *os.File, path, source string, modTime time.Time) time.Time {
-	switch source {
+// resolveFileMetadata derives the session start timestamp using the same
+// source-specific logic as the lister, falling back to modTime and marking the
+// fallback. It also records a Copilot workspace's project. For Claude, the
+// file is seeked back to the start after parsing.
+func resolveFileMetadata(metadata *SessionMetadata, f *os.File, modTime time.Time) {
+	switch metadata.Source {
 	case SourceClaude:
-		if ts, err := transcript.ParseFirstTimestamp(f); err == nil {
-			_, _ = f.Seek(0, io.SeekStart)
-			return ts
-		}
+		ts, err := transcript.ParseFirstTimestamp(f)
 		_, _ = f.Seek(0, io.SeekStart)
+		if err == nil {
+			metadata.CreatedAt = ts
+			return
+		}
 	case SourceCodex:
-		if ts, err := getCodexSessionTimestamp(path); err == nil {
-			return ts
+		if ts, err := getCodexSessionTimestamp(metadata.Path); err == nil {
+			metadata.CreatedAt = ts
+			return
 		}
 	case SourceCopilot:
-		wsPath := filepath.Join(filepath.Dir(path), "workspace.yaml")
-		if ws, err := parseCopilotWorkspace(wsPath); err == nil && ws != nil && ws.CreatedAt != nil {
-			return *ws.CreatedAt
+		wsPath := filepath.Join(filepath.Dir(metadata.Path), "workspace.yaml")
+		if ws, err := parseCopilotWorkspace(wsPath); err == nil && ws != nil {
+			metadata.Project = cmp.Or(ws.GitRoot, ws.Cwd)
+			if ws.CreatedAt != nil {
+				metadata.CreatedAt = *ws.CreatedAt
+				return
+			}
 		}
-	case SourceKiroCLI, SourceKiroIDE:
-		// Kiro CLI uses SQLite (handled by resolveKiroSession, not file-based).
-		// Kiro IDE embeds startTime in JSON but requires full parsing; fall
-		// through to modTime for now.
 	}
-	return modTime
+	metadata.CreatedAt = modTime
+	metadata.TimeFromFilesystem = true
 }
 
 // findCodexSession searches ~/.codex/sessions/ for a session by UUID or

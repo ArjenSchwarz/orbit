@@ -248,31 +248,54 @@ func detectFormatFromLine(line []byte) (Format, error) {
 	return FormatUnknown, fmt.Errorf("unrecognized log format: type field value '%s'", obj.Type)
 }
 
-// ParseResultMetadata contains optional format-specific metadata.
+// ParseResultMetadata contains optional source metadata and cost information.
 type ParseResultMetadata struct {
-	TotalCost *float64 // nil = not available, pointer to value = available
-	CostUnit  string   // e.g., "credits"
+	TotalCost     *float64 // nil = not available, pointer to value = available
+	CostUnit      string   // e.g., "credits"
+	StartedAt     string   // Recorded source timestamp; never a filesystem fallback
+	Project       string   // First recorded project directory
+	FirstModel    string   // First known source model, independently of assistant content
+	FirstProvider string   // First known source provider
+	Origin        string   // First recorded client entry point or originator, as recorded
 }
 
 // ParseResult contains the parsed entries and any warnings encountered.
 type ParseResult struct {
 	Entries  []Entry
 	Warnings []ParseWarning
-	Metadata *ParseResultMetadata // nil for formats without metadata
+	Metadata *ParseResultMetadata // May be non-nil without cost information
+	Format   Format               // FormatUnknown when Parse uses the Claude fallback
 }
 
 // ParseWarning represents a non-fatal parsing issue.
 type ParseWarning struct {
 	Line    int
 	Message string
+	Code    string // One of the Warning* codes
+	Unit    string // Empty = physical line; otherwise a WarningUnit* value
 }
+
+// Warning units name what a ParseWarning's one-based Line counts when it is not a physical line.
+const (
+	WarningUnitChatMessage     = "chat-message"     // Kiro IDE chat message index
+	WarningUnitExecutionAction = "execution-action" // Kiro IDE execution-detail action index
+)
+
+// Warning codes classify parse warnings where they are created (Q80).
+const (
+	WarningMalformedLine       = "malformed_line"        // a physical line is not valid JSON
+	WarningOversizedLine       = "oversized_line"        // a physical line exceeds the scanner limit
+	WarningInvalidRecord       = "invalid_record"        // a record lacks a required field or its payload does not decode
+	WarningUnrecognizedRecord  = "unrecognized_record"   // an unknown record, event, item, role, content or action type
+	WarningUnmatchedToolResult = "unmatched_tool_result" // a tool output without its call
+)
 
 // Parse reads a transcript file and automatically detects its format.
 // It handles all supported formats: Claude JSONL, Codex JSONL, Kiro CLI JSON, Kiro IDE JSON, and Copilot JSONL.
 // When format detection fails (e.g., file contains only unknown entry types), falls back to
 // Claude format parsing which gracefully skips unrecognized entries.
 // Use this function when the format is unknown; use ParseJSONLWithFormat when the format is known.
-func Parse(r io.Reader) (*ParseResult, error) {
+func Parse(r io.Reader, opts ...ParseOptions) (*ParseResult, error) {
 	// Use DetectFormat to identify the format (handles both JSON and JSONL)
 	format, chunk, err := DetectFormat(r)
 	if err != nil {
@@ -281,7 +304,11 @@ func Parse(r io.Reader) (*ParseResult, error) {
 		// This produces 0 entries rather than a hard error.
 		if chunk != nil {
 			combined := io.MultiReader(bytes.NewReader(chunk), r)
-			return parseClaudeJSONL(combined)
+			result, parseErr := parseClaudeJSONL(combined)
+			if result != nil {
+				result.Format = FormatUnknown
+			}
+			return result, parseErr
 		}
 		return nil, fmt.Errorf("failed to detect format: %w", err)
 	}
@@ -289,12 +316,14 @@ func Parse(r io.Reader) (*ParseResult, error) {
 	// Combine the chunk we read for detection with the remaining content
 	combined := io.MultiReader(bytes.NewReader(chunk), r)
 
-	return ParseJSONLWithFormat(combined, format)
+	return ParseJSONLWithFormat(combined, format, opts...)
 }
 
 // ParseOptions provides optional configuration for format-specific parsers.
 type ParseOptions struct {
-	KiroIDECostPath string // execution detail file path for cost extraction
+	KiroIDECostPath      string // Execution detail file path for cost extraction
+	AllowEmptyCodex      bool   // Retain metadata-only Codex results for shared JSON
+	PreserveModelChanges bool   // Split adjacent Codex model changes for shared JSON
 }
 
 // ParseJSONLWithFormat reads JSONL from the provided reader using the specified format.
@@ -303,7 +332,7 @@ type ParseOptions struct {
 func ParseJSONLWithFormat(r io.Reader, format Format, opts ...ParseOptions) (*ParseResult, error) {
 	switch format {
 	case FormatCodex:
-		return ParseCodexJSONL(r)
+		return ParseCodexJSONL(r, opts...)
 	case FormatClaude:
 		return parseClaudeJSONL(r)
 	case FormatKiro:
@@ -392,6 +421,8 @@ func parseClaudeJSONL(r io.Reader) (*ParseResult, error) {
 	result := &ParseResult{
 		Entries:  []Entry{},
 		Warnings: []ParseWarning{},
+		Metadata: &ParseResultMetadata{},
+		Format:   FormatClaude,
 	}
 	lineNum := 0
 
@@ -410,9 +441,22 @@ func parseClaudeJSONL(r io.Reader) (*ParseResult, error) {
 			result.Warnings = append(result.Warnings, ParseWarning{
 				Line:    lineNum,
 				Message: fmt.Sprintf("failed to parse JSON: %v", err),
+				Code:    WarningMalformedLine,
 			})
 			continue
 		}
+		if result.Metadata.StartedAt == "" {
+			if _, ok := parseTimestamp(entry.Timestamp); ok {
+				result.Metadata.StartedAt = entry.Timestamp
+			}
+		}
+		if result.Metadata.Project == "" {
+			result.Metadata.Project = entry.Cwd
+		}
+		if result.Metadata.Origin == "" {
+			result.Metadata.Origin = entry.Origin
+		}
+		entry.RecordID = entry.UUID
 
 		// Only process known entry types (user, assistant)
 		// Skip infrastructure types (queue-operation) and unknown types silently
@@ -433,6 +477,7 @@ func parseClaudeJSONL(r io.Reader) (*ParseResult, error) {
 			result.Warnings = append(result.Warnings, ParseWarning{
 				Line:    lineNum + 1,
 				Message: "line exceeds 10MB buffer limit",
+				Code:    WarningOversizedLine,
 			})
 		} else {
 			return nil, fmt.Errorf("scanner error: %w", err)

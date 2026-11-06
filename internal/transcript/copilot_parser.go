@@ -30,6 +30,7 @@ func ParseCopilot(r io.Reader) (*ParseResult, error) {
 			warnings = append(warnings, ParseWarning{
 				Line:    lineNum,
 				Message: fmt.Sprintf("failed to parse JSON: %v", err),
+				Code:    WarningMalformedLine,
 			})
 			continue
 		}
@@ -42,11 +43,38 @@ func ParseCopilot(r io.Reader) (*ParseResult, error) {
 	}
 
 	entries := convertCopilotToEntries(events)
+	metadata := &ParseResultMetadata{StartedAt: copilotStartedAt(events)}
+	for _, event := range events {
+		if event.Type == "session.model_change" && event.Data.Model != "" {
+			metadata.FirstModel = event.Data.Model
+			break
+		}
+	}
 
 	return &ParseResult{
 		Entries:  entries,
 		Warnings: warnings,
+		Metadata: metadata,
+		Format:   FormatCopilot,
 	}, nil
+}
+
+// copilotStartedAt returns the session.start record's startTime, else the first
+// parseable event timestamp, rather than the first prompt's time (Decision 30).
+func copilotStartedAt(events []CopilotEvent) string {
+	for _, event := range events {
+		if event.Type == "session.start" {
+			if _, ok := parseTimestamp(event.Data.StartTime); ok {
+				return event.Data.StartTime
+			}
+		}
+	}
+	for _, event := range events {
+		if _, ok := parseTimestamp(event.Timestamp); ok {
+			return event.Timestamp
+		}
+	}
+	return ""
 }
 
 // convertCopilotToEntries converts Copilot events to the common Entry format.
@@ -87,6 +115,7 @@ func convertCopilotToEntries(events []CopilotEvent) []Entry {
 			entries = append(entries, Entry{
 				Type:      "user",
 				Timestamp: event.Timestamp,
+				RecordID:  event.ID,
 				Message: &Message{
 					Role: "user",
 					Content: []ContentItem{

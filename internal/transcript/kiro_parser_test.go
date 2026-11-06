@@ -329,8 +329,8 @@ func TestParseKiroCostMetadata(t *testing.T) {
 					t.Errorf("CostUnit: got %q, want %q", result.Metadata.CostUnit, tc.wantUnit)
 				}
 			} else {
-				if result.Metadata != nil {
-					t.Errorf("expected nil metadata, got %+v", result.Metadata)
+				if result.Metadata != nil && result.Metadata.TotalCost != nil {
+					t.Errorf("expected no cost metadata, got %+v", result.Metadata)
 				}
 			}
 		})
