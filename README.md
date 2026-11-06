@@ -1080,7 +1080,7 @@ apsis --list --all-projects
 apsis --all-projects -s codex 0199bbbb-0000-7000-8000-000000000002
 
 # View the most recent session across every project
-apsis latest --all-projects
+apsis --all-projects latest
 
 # List sessions as versioned JSON
 apsis --list -f shared-json

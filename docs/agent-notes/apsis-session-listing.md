@@ -4,6 +4,8 @@
 
 Entry point: `cmd/apsis/main.go`, function `listSessions(w, projectPath, format)`, which constructs `sessions.NewLister(opts...)` and calls `Lister.ListAll(projectPath)`. An empty `projectPath` is all-projects scope (`--all-projects`); the text listing then adds a fifth tab-separated project column (`-` when unrecorded). `-f shared-json` writes a `sharedjson.Listing` document instead. Listings always go to stdout and ignore `-o` (Q104).
 
+`parseFlags` uses the standard `flag` package, which stops at the first positional argument: in `apsis latest --all-projects` the flag is silently ignored. Options must come first (`apsis --all-projects latest`); write documentation examples that way. The older `apsis latest -F` and `apsis latest -f html` examples in the help text and README have the same problem.
+
 `internal/sessions/lister.go` calls these collectors sequentially. Each returns `(rows, warnings, error)`; a collector error becomes a `source_failed` warning. Results are merged and sorted:
 
 - `listClaude(projectPath)` - filters via encoded project path in directory name
