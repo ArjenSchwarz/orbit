@@ -1,0 +1,67 @@
+# Session Transcript
+
+**Session ID:** `example-session`
+
+**Thread ID:** `0199aaaa-0000-7000-8000-000000000002`
+
+---
+
+## 🤖 Assistant · turn 1
+
+<details>
+<summary>✅ 🔧 command_execution</summary>
+
+**Command:**
+```bash
+go test ./...
+```
+
+**Result (exit code 0):**
+```
+PASS
+
+```
+
+</details>
+
+<details>
+<summary>✅ 🔧 command_execution</summary>
+
+**Command:**
+```bash
+go vet ./...
+```
+
+**Result (exit code 0):**
+```
+
+```
+
+</details>
+
+First turn done.
+
+**Token usage (thread totals at turn completion):** input_tokens 100 · cached_input_tokens 0 · cache_write_input_tokens 0 · output_tokens 10 · reasoning_output_tokens 0
+
+---
+
+## 🤖 Assistant · turn 2
+
+<details>
+<summary>⏳ 🔧 command_execution (incomplete)</summary>
+
+**Command:**
+```bash
+make build
+```
+
+**Result:**
+```
+compiling
+
+```
+
+</details>
+
+---
+

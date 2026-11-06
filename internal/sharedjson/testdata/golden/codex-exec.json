@@ -1,0 +1,218 @@
+{
+  "schema_version": 1,
+  "kind": "session",
+  "session": {
+    "source": "codex-exec",
+    "thread_id": "0199aaaa-0000-7000-8000-000000000001"
+  },
+  "entries": [
+    {
+      "role": "assistant",
+      "turn": 1,
+      "content": [
+        {
+          "type": "thinking",
+          "item_id": "item_0",
+          "text": "**Planning** the check"
+        },
+        {
+          "type": "tool_use",
+          "item_id": "item_1",
+          "id": "t1:item_1",
+          "name": "command_execution",
+          "input": {
+            "command": "/bin/sh -lc 'make test'"
+          }
+        },
+        {
+          "type": "tool_result",
+          "item_id": "item_1",
+          "status": "completed",
+          "tool_use_id": "t1:item_1",
+          "content": "ok\n",
+          "is_error": false,
+          "exit_code": 0
+        },
+        {
+          "type": "tool_use",
+          "item_id": "item_2",
+          "id": "t1:item_2",
+          "name": "command_execution",
+          "input": {
+            "command": "/bin/sh -lc 'make lint'"
+          }
+        },
+        {
+          "type": "tool_result",
+          "item_id": "item_2",
+          "status": "failed",
+          "tool_use_id": "t1:item_2",
+          "content": "lint: 2 issues\n",
+          "is_error": true,
+          "exit_code": 2
+        },
+        {
+          "type": "tool_use",
+          "item_id": "item_3",
+          "id": "t1:item_3",
+          "name": "command_execution",
+          "input": {
+            "command": "rm -rf build"
+          }
+        },
+        {
+          "type": "tool_result",
+          "item_id": "item_3",
+          "status": "declined",
+          "tool_use_id": "t1:item_3",
+          "content": "",
+          "is_error": true
+        },
+        {
+          "type": "tool_use",
+          "item_id": "item_4",
+          "id": "t1:item_4",
+          "name": "file_change",
+          "input": {
+            "changes": [
+              {
+                "kind": "update",
+                "path": "/work/example-repo/main.go"
+              },
+              {
+                "kind": "add",
+                "path": "/work/example-repo/notes.md"
+              }
+            ]
+          }
+        },
+        {
+          "type": "tool_result",
+          "item_id": "item_4",
+          "status": "completed",
+          "tool_use_id": "t1:item_4",
+          "content": "update /work/example-repo/main.go\nadd /work/example-repo/notes.md",
+          "is_error": false
+        },
+        {
+          "type": "tool_use",
+          "item_id": "item_5",
+          "id": "t1:item_5",
+          "name": "mcp_tool_call",
+          "input": {
+            "arguments": {
+              "limit": 3,
+              "query": "retry policy"
+            },
+            "server": "docs",
+            "tool": "search"
+          }
+        },
+        {
+          "type": "tool_result",
+          "item_id": "item_5",
+          "status": "completed",
+          "tool_use_id": "t1:item_5",
+          "content": "{\"content\":[{\"type\":\"text\",\"text\":\"Retry three times\"}],\"structured_content\":null}",
+          "is_error": false
+        },
+        {
+          "type": "tool_use",
+          "item_id": "item_6",
+          "id": "t1:item_6",
+          "name": "mcp_tool_call",
+          "input": {
+            "arguments": {
+              "url": "https://example.com/a"
+            },
+            "server": "docs",
+            "tool": "fetch"
+          }
+        },
+        {
+          "type": "tool_result",
+          "item_id": "item_6",
+          "status": "failed",
+          "tool_use_id": "t1:item_6",
+          "content": "server unavailable",
+          "is_error": true
+        },
+        {
+          "type": "tool_use",
+          "item_id": "ws_0001",
+          "id": "t1:ws_0001",
+          "name": "web_search",
+          "input": {
+            "action": {
+              "query": "go json number precision",
+              "type": "search"
+            },
+            "query": "go json number precision"
+          }
+        },
+        {
+          "type": "tool_result",
+          "item_id": "ws_0001",
+          "tool_use_id": "t1:ws_0001",
+          "content": "[{\"title\":\"Example result\",\"url\":\"https://example.com/b\"}]",
+          "is_error": false
+        },
+        {
+          "type": "plan",
+          "item_id": "item_8",
+          "incomplete": true,
+          "items": [
+            {
+              "text": "Run tests",
+              "completed": true
+            },
+            {
+              "text": "Report",
+              "completed": false
+            }
+          ]
+        },
+        {
+          "type": "error",
+          "item_id": "item_9",
+          "message": "command output was truncated"
+        },
+        {
+          "type": "event",
+          "item_id": "item_10",
+          "event_type": "collab_tool_call",
+          "payload": {
+            "id": "item_10",
+            "type": "collab_tool_call",
+            "tool": "spawn_agent",
+            "sender_thread_id": "0199aaaa-0000-7000-8000-000000000001",
+            "receiver_thread_ids": [
+              "0199aaaa-0000-7000-8000-000000000002"
+            ],
+            "prompt": "Review <script>alert(1)</script> output",
+            "agents_states": {},
+            "status": "completed"
+          }
+        },
+        {
+          "type": "text",
+          "item_id": "item_11",
+          "text": "Tests pass; lint reports two issues."
+        },
+        {
+          "type": "usage",
+          "basis": "thread_total_at_turn_completion",
+          "counters": {
+            "input_tokens": 1200,
+            "cached_input_tokens": 800,
+            "cache_write_input_tokens": 0,
+            "output_tokens": 90,
+            "reasoning_output_tokens": 40,
+            "future_counter": 123456789012345678901234567890
+          }
+        }
+      ]
+    }
+  ],
+  "warnings": []
+}

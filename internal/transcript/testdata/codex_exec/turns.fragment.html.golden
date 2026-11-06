@@ -1,0 +1,87 @@
+        <section class="message assistant">
+            <div class="message-header">
+                <span class="icon">🤖</span>
+                <span class="message-role">Assistant</span>
+                <span class="message-meta"><span>turn 1</span></span>
+            </div>
+            <div class="message-content">
+        <section class="message assistant">
+            <div class="message-header">
+                <span class="icon">🤖</span>
+                <span class="message-role">Assistant</span>
+            </div>
+            <div class="message-content">
+                <details class="tool-collapsible">
+                    <summary><span class="icon">✅</span> 🔧 command_execution</summary>
+                    <div class="tool-content">
+                        <div class="tool-input-section">
+                            <strong>Command:</strong>
+                            <pre><code>go test ./...</code></pre>
+                        </div>
+                        <div class="tool-result-section">
+                            <strong>Result (exit code 0):</strong>
+                            <pre><code>PASS
+</code></pre>
+                        </div>
+                    </div>
+                </details>
+            </div>
+        </section>
+        <section class="message assistant">
+            <div class="message-header">
+                <span class="icon">🤖</span>
+                <span class="message-role">Assistant</span>
+            </div>
+            <div class="message-content">
+                <details class="tool-collapsible">
+                    <summary><span class="icon">✅</span> 🔧 command_execution</summary>
+                    <div class="tool-content">
+                        <div class="tool-input-section">
+                            <strong>Command:</strong>
+                            <pre><code>go vet ./...</code></pre>
+                        </div>
+                        <div class="tool-result-section">
+                            <strong>Result (exit code 0):</strong>
+                            <pre><code></code></pre>
+                        </div>
+                    </div>
+                </details>
+            </div>
+        </section>
+                <div class="markdown-content">
+<p>First turn done.</p>
+                </div>
+                <div class="usage">Token usage (thread totals at turn completion): input_tokens 100 · cached_input_tokens 0 · cache_write_input_tokens 0 · output_tokens 10 · reasoning_output_tokens 0</div>
+            </div>
+        </section>
+        <section class="message assistant">
+            <div class="message-header">
+                <span class="icon">🤖</span>
+                <span class="message-role">Assistant</span>
+                <span class="message-meta"><span>turn 2</span></span>
+            </div>
+            <div class="message-content">
+        <section class="message assistant">
+            <div class="message-header">
+                <span class="icon">🤖</span>
+                <span class="message-role">Assistant</span>
+            </div>
+            <div class="message-content">
+                <details class="tool-collapsible">
+                    <summary><span class="icon">⏳</span> 🔧 command_execution (incomplete)</summary>
+                    <div class="tool-content">
+                        <div class="tool-input-section">
+                            <strong>Command:</strong>
+                            <pre><code>make build</code></pre>
+                        </div>
+                        <div class="tool-result-section">
+                            <strong>Result:</strong>
+                            <pre><code>compiling
+</code></pre>
+                        </div>
+                    </div>
+                </details>
+            </div>
+        </section>
+            </div>
+        </section>

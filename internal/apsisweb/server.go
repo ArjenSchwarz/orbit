@@ -18,14 +18,15 @@ import (
 var templatesFS embed.FS
 
 // CSSVersion is used for cache busting. Bump when CSS changes.
-const CSSVersion = "2"
+const CSSVersion = "3"
 
 // Config holds web server configuration.
 type Config struct {
-	Port        int    // Default: 8081
-	Bind        string // Default: "localhost"
-	ProjectPath string // Resolved project directory; unused with AllProjects
-	AllProjects bool   // List and open sessions from every project
+	Port           int      // Default: 8081
+	Bind           string   // Default: "localhost"
+	ProjectPath    string   // Resolved project directory; unused with AllProjects
+	AllProjects    bool     // List and open sessions from every project
+	CodexExecRoots []string // Directories searched for Codex exec streams; none by default
 }
 
 // Server is the HTTP server for the apsis web interface.
@@ -44,7 +45,10 @@ func New(config Config) (*Server, error) {
 	if config.AllProjects {
 		config.ProjectPath = ""
 	}
-	opts := []sessions.Option{sessions.WithExtendedOrdering(config.AllProjects)}
+	opts := []sessions.Option{
+		sessions.WithExtendedOrdering(config.AllProjects),
+		sessions.WithCodexExecRoots(config.CodexExecRoots),
+	}
 
 	lister, err := sessions.NewLister(opts...)
 	if err != nil {
@@ -147,6 +151,7 @@ type SessionView struct {
 	Size        string
 	URL         string
 	Project     string // recorded project; set in all-projects scope only
+	FileTime    bool   // CreatedAt is a codex-exec stream's file modification time
 }
 
 // TranscriptViewData is passed to transcript.html.
@@ -157,6 +162,9 @@ type TranscriptViewData struct {
 	Content   template.HTML
 	CreatedAt string
 	Size      string
+	ThreadID  string   // codex-exec only
+	FileTime  bool     // CreatedAt is a codex-exec stream's file modification time
+	Warnings  []string // codex-exec parse warnings (Q47)
 }
 
 // ErrorData is passed to error.html.

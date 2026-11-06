@@ -19,3 +19,9 @@ Evidence: Microsoft's [file identity](https://learn.microsoft.com/en-us/windows/
 
 - `transcript.Follower.Run` returns nil on context cancellation. Tests must assert the error received from their completion channel; discarding an error-valued receive fails `errcheck` even when shutdown is expected to succeed.
 - Managed worktrees may deny writes to the default Go/linter caches. Use writable temporary `GOCACHE` and `GOLANGCI_LINT_CACHE` directories with the repository's Makefile commands. A cache permission failure does not establish a source/build failure.
+
+## Server Shutdown in Tests
+
+- `http.Server.Shutdown` waits for connections in `StateNew` (dialled, no request read) for up to 5 seconds before treating them as idle. `http.DefaultClient` can dial a spare keep-alive connection it never uses, so a test that calls `Shutdown` with a 5-second deadline after `http.Get` calls fails intermittently with `context deadline exceeded`. Call `http.DefaultClient.CloseIdleConnections()` (or the test client's) before `Shutdown`.
+
+Evidence: [`net/http` `closeIdleConns`](https://go.dev/src/net/http/server.go) treats `StateNew` connections as idle only after 5 seconds; `TestIntegrationEndToEnd` failed 4 of 4 package runs before the fix and passed 6 of 6 after (Q119).

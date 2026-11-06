@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"slices"
 	"strings"
 	"time"
 )
@@ -58,9 +59,16 @@ var infrastructureTypes = map[string]bool{
 // Returns the detected format, the initial bytes read (with BOM stripped), and any error.
 //
 // Detection strategy:
-// 1. Read a chunk of content (up to 64KB to handle long JSONL lines)
-// 2. Try parsing as complete JSON with Kiro markers - if successful, it's Kiro format
-// 3. Otherwise, treat as JSONL and detect based on first format-defining line
+//  1. Read a chunk of content (up to 64KB to handle long JSONL lines)
+//  2. Try parsing as complete JSON with Kiro markers - if successful, it's Kiro format
+//  3. Probe for a Codex exec stream by whole lines, reading past the chunk when
+//     its first JSON object is longer (Decision 21); only a valid thread.started
+//     selects FormatCodexExec
+//  4. Otherwise, use a substring-only Kiro match, then detect JSONL based on the
+//     first format-defining line of the chunk
+//
+// The returned bytes are everything read from r, so callers replay them before
+// the rest of r.
 //
 // Note: Cannot use first-byte check alone because both JSON and JSONL start with '{'
 func DetectFormat(r io.Reader) (Format, []byte, error) {
@@ -79,18 +87,39 @@ func DetectFormat(r io.Reader) (Format, []byte, error) {
 	chunk = stripBOM(chunk)
 
 	// First, try to detect Kiro format (plain JSON with specific structure)
-	if format := detectKiroFormat(chunk); format != FormatUnknown {
-		return format, chunk, nil
+	kiroFormat, validated := detectKiroFormat(chunk)
+	if validated {
+		return kiroFormat, chunk, nil
+	}
+
+	// The exec probe may read beyond the chunk; keep every byte it consumes.
+	var more bytes.Buffer
+	probe, err := ProbeExecStream(io.MultiReader(bytes.NewReader(chunk), io.TeeReader(r, &more)))
+	consumed := chunk
+	if more.Len() > 0 {
+		consumed = append(slices.Clip(chunk), more.Bytes()...)
+	}
+	if err != nil {
+		return FormatUnknown, consumed, err
+	}
+	if probe.Outcome == ExecProbeExec {
+		return FormatCodexExec, consumed, nil
+	}
+	if kiroFormat != FormatUnknown {
+		return kiroFormat, consumed, nil
 	}
 
 	// Fall back to JSONL detection based on first line
-	return detectJSONLFormat(chunk)
+	format, _, err := detectJSONLFormat(chunk)
+	return format, consumed, err
 }
 
 // detectKiroFormat checks if content is Kiro plain JSON format (CLI or IDE).
 // Kiro CLI format is a single JSON object with conversation_id and non-empty history fields.
 // Kiro IDE format is a single JSON object with executionId, chat array, and metadata fields.
-func detectKiroFormat(data []byte) Format {
+// validated reports a complete, structurally checked object rather than a
+// substring match on a truncated chunk.
+func detectKiroFormat(data []byte) (format Format, validated bool) {
 	// Kiro sessions can be large; we only need to check the beginning structure.
 	// Look for the characteristic fields: conversation_id and history array start.
 	var kiroCheck struct {
@@ -107,20 +136,20 @@ func detectKiroFormat(data []byte) Format {
 			strings.Contains(dataStr, `"history"`) &&
 			!strings.Contains(dataStr, "\n{") { // JSONL would have newline + brace
 			// Likely Kiro but truncated - still return as Kiro since full file would parse
-			return FormatKiro
+			return FormatKiro, false
 		}
 		// Check for truncated Kiro IDE format
 		if strings.Contains(dataStr, `"executionId"`) &&
 			strings.Contains(dataStr, `"chat"`) &&
 			strings.Contains(dataStr, `"metadata"`) {
-			return FormatKiroIDE
+			return FormatKiroIDE, false
 		}
-		return FormatUnknown
+		return FormatUnknown, false
 	}
 
 	// Must have both fields populated to be valid Kiro CLI format
 	if kiroCheck.ConversationID != "" && len(kiroCheck.History) > 0 {
-		return FormatKiro
+		return FormatKiro, true
 	}
 
 	// Check for Kiro IDE format: executionId + chat + metadata
@@ -131,11 +160,11 @@ func detectKiroFormat(data []byte) Format {
 	}
 	if err := json.Unmarshal(data, &ideCheck); err == nil {
 		if ideCheck.ExecutionID != "" && ideCheck.Chat != nil && ideCheck.Metadata != nil {
-			return FormatKiroIDE
+			return FormatKiroIDE, true
 		}
 	}
 
-	return FormatUnknown
+	return FormatUnknown, false
 }
 
 // detectJSONLFormat detects format from the first format-defining line of JSONL content.
@@ -257,6 +286,7 @@ type ParseResultMetadata struct {
 	FirstModel    string   // First known source model, independently of assistant content
 	FirstProvider string   // First known source provider
 	Origin        string   // First recorded client entry point or originator, as recorded
+	ThreadID      string   // Codex exec thread identifier from the first valid thread.started
 }
 
 // ParseResult contains the parsed entries and any warnings encountered.
@@ -288,6 +318,8 @@ const (
 	WarningInvalidRecord       = "invalid_record"        // a record lacks a required field or its payload does not decode
 	WarningUnrecognizedRecord  = "unrecognized_record"   // an unknown record, event, item, role, content or action type
 	WarningUnmatchedToolResult = "unmatched_tool_result" // a tool output without its call
+	WarningThreadMismatch      = "thread_mismatch"       // a Codex exec thread.started records a different thread ID
+	WarningItemDecodeFailed    = "item_decode_failed"    // a known Codex exec item lacks a valid ID or typed fields
 )
 
 // Parse reads a transcript file and automatically detects its format.
@@ -344,6 +376,8 @@ func ParseJSONLWithFormat(r io.Reader, format Format, opts ...ParseOptions) (*Pa
 			return ParseKiroIDEWithCostPath(r, opts[0].KiroIDECostPath)
 		}
 		return ParseKiroIDE(r)
+	case FormatCodexExec:
+		return ParseCodexExec(r)
 	default:
 		return nil, fmt.Errorf("unsupported format: %d", format)
 	}

@@ -47,6 +47,9 @@ func RenderMarkdown(entries []Entry, opts RenderOptions) string {
 	if opts.SessionID != "" {
 		fmt.Fprintf(&sb, "**Session ID:** `%s`\n\n", opts.SessionID)
 	}
+	if opts.ThreadID != "" {
+		fmt.Fprintf(&sb, "**Thread ID:** `%s`\n\n", opts.ThreadID)
+	}
 
 	if opts.TotalCost != nil && *opts.TotalCost >= 0.005 {
 		unit := opts.CostUnit
@@ -393,7 +396,7 @@ func formatAssistantMessage(entry *Entry, toolMeta map[string]toolMetadata, skil
 		switch item.Type {
 		case "thinking":
 			if item.Thinking != "" {
-				content.WriteString("<details>\n<summary>💭 Thinking</summary>\n\n")
+				fmt.Fprintf(&content, "<details>\n<summary>💭 Thinking%s</summary>\n\n", incompleteSuffix(&item))
 				content.WriteString(item.Thinking)
 				content.WriteString("\n\n</details>\n\n")
 			}
@@ -402,6 +405,9 @@ func formatAssistantMessage(entry *Entry, toolMeta map[string]toolMetadata, skil
 			if strings.TrimSpace(item.Text) != "" {
 				content.WriteString(item.Text)
 				content.WriteString("\n\n")
+				if item.Incomplete {
+					content.WriteString("⏳ *(incomplete)*\n\n")
+				}
 			}
 
 		case "tool_use":
@@ -411,7 +417,11 @@ func formatAssistantMessage(entry *Entry, toolMeta map[string]toolMetadata, skil
 			// tool_result in assistant entries (legacy handling)
 			content.WriteString(formatToolResult(&item, toolMeta))
 
-			// Unknown content types are skipped silently per requirement 4.8
+		default:
+			// Codex exec kinds; other unknown content types are skipped silently per requirement 4.8
+			if out, ok := formatExecContentMarkdown(&item); ok {
+				content.WriteString(out)
+			}
 		}
 	}
 
@@ -422,7 +432,7 @@ func formatAssistantMessage(entry *Entry, toolMeta map[string]toolMetadata, skil
 
 	var sb strings.Builder
 	sb.WriteString("## 🤖 Assistant")
-	sb.WriteString(FormatMessageMetaMarkdown(entry.Timestamp, modelLabel(entry.Model, entry.Provider)))
+	sb.WriteString(FormatMessageMetaMarkdown(entry.Timestamp, modelLabel(entry.Model, entry.Provider), turnLabel(entry)))
 	sb.WriteString("\n\n")
 	sb.WriteString(content.String())
 	sb.WriteString("---\n\n")
@@ -528,6 +538,9 @@ func formatToolResult(item *ContentItem, toolMeta map[string]toolMetadata) strin
 	if item.IsError {
 		icon = "❌"
 	}
+	if item.Incomplete {
+		icon = "⏳"
+	}
 
 	// Look up tool metadata
 	meta, found := toolMeta[item.ToolUseID]
@@ -576,6 +589,7 @@ func formatToolResult(item *ContentItem, toolMeta map[string]toolMetadata) strin
 		if meta.Description != "" {
 			summaryText += ": " + meta.Description
 		}
+		summaryText += incompleteSuffix(item)
 
 		// Determine if this tool should be expanded by default
 		openAttr := ""
@@ -590,7 +604,7 @@ func formatToolResult(item *ContentItem, toolMeta map[string]toolMetadata) strin
 		sb.WriteString(formatToolInput(meta.Name, meta.Input))
 
 		// Render result
-		sb.WriteString("**Result:**\n```\n")
+		fmt.Fprintf(&sb, "**%s**\n```\n", resultLabel(item))
 		sb.WriteString(content)
 		sb.WriteString("\n```\n\n")
 		sb.WriteString("</details>\n\n")
@@ -731,7 +745,7 @@ func formatToolInput(name string, input any) string {
 	var sb strings.Builder
 
 	switch name {
-	case "Bash":
+	case "Bash", "command_execution":
 		if cmd, ok := inputMap["command"].(string); ok {
 			sb.WriteString("**Command:**\n```bash\n")
 			sb.WriteString(cmd)
@@ -741,6 +755,11 @@ func formatToolInput(name string, input any) string {
 		if path, ok := inputMap["file_path"].(string); ok {
 			fmt.Fprintf(&sb, "**File:** `%s`\n\n", path)
 		}
+	case "file_change":
+		for _, c := range fileChanges(inputMap) {
+			fmt.Fprintf(&sb, "- %s `%s`\n", c.kind, c.path)
+		}
+		sb.WriteString("\n")
 	case "Edit":
 		if path, ok := inputMap["file_path"].(string); ok {
 			fmt.Fprintf(&sb, "**File:** `%s`\n\n", path)

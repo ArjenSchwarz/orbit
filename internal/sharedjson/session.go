@@ -13,17 +13,19 @@ import (
 type SessionContext struct {
 	Source   string                    // source name from the resolver; else derived from the parsed format
 	ID       string                    // listing identifier or filename stem; "" for stdin
+	Project  string                    // input's project, such as an exec stream file's containing repository
 	Resolved *sessions.SessionMetadata // resolver metadata; nil for file and stdin input
 }
 
 // formatSources names the source each parsed format belongs to. The Claude
 // fallback for unrecognised input (FormatUnknown) has no source.
 var formatSources = map[transcript.Format]string{
-	transcript.FormatClaude:  sessions.SourceClaude,
-	transcript.FormatCodex:   sessions.SourceCodex,
-	transcript.FormatCopilot: sessions.SourceCopilot,
-	transcript.FormatKiro:    sessions.SourceKiroCLI,
-	transcript.FormatKiroIDE: sessions.SourceKiroIDE,
+	transcript.FormatClaude:    sessions.SourceClaude,
+	transcript.FormatCodex:     sessions.SourceCodex,
+	transcript.FormatCopilot:   sessions.SourceCopilot,
+	transcript.FormatKiro:      sessions.SourceKiroCLI,
+	transcript.FormatKiroIDE:   sessions.SourceKiroIDE,
+	transcript.FormatCodexExec: sessions.SourceCodexExec,
 }
 
 // Session projects a parse result into a session document. It reads parsed
@@ -60,8 +62,9 @@ func sessionMetadata(res *transcript.ParseResult, ctx SessionContext) Metadata {
 	m := Metadata{
 		Source:    cmp.Or(ctx.Source, resolved.Source, formatSources[res.Format]),
 		ID:        cmp.Or(ctx.ID, resolved.ID),
+		ThreadID:  parsed.ThreadID,
 		CreatedAt: createdAt(res.Entries, parsed.StartedAt, resolved),
-		Project:   cmp.Or(parsed.Project, resolved.Project),
+		Project:   cmp.Or(parsed.Project, ctx.Project, resolved.Project),
 		Model:     cmp.Or(parsed.FirstModel, firstEntryValue(res.Entries, func(e transcript.Entry) string { return e.Model })),
 		Provider:  cmp.Or(parsed.FirstProvider, firstEntryValue(res.Entries, func(e transcript.Entry) string { return e.Provider })),
 		Origin:    parsed.Origin,
@@ -115,6 +118,7 @@ func entry(e transcript.Entry) Entry {
 		Role:     e.Type,
 		Model:    e.Model,
 		Provider: e.Provider,
+		Turn:     e.Turn,
 		Content:  []any{},
 	}
 	if validTime(e.Timestamp) {
@@ -130,18 +134,33 @@ func entry(e transcript.Entry) Entry {
 }
 
 func block(item transcript.ContentItem) any {
+	common := BlockCommon{ItemID: item.ItemID, Status: item.Status, Incomplete: item.Incomplete}
 	switch item.Type {
 	case "text":
-		return TextBlock{Type: "text", Text: item.Text}
+		return TextBlock{Type: "text", BlockCommon: common, Text: item.Text}
 	case "thinking":
-		return TextBlock{Type: "thinking", Text: item.Thinking}
+		return TextBlock{Type: "thinking", BlockCommon: common, Text: item.Thinking}
 	case "tool_use":
-		return ToolUseBlock{Type: "tool_use", ID: item.ID, Name: item.Name, Input: item.Input}
+		return ToolUseBlock{Type: "tool_use", BlockCommon: common, ID: item.ID, Name: item.Name, Input: item.Input}
 	case "tool_result":
-		return ToolResultBlock{Type: "tool_result", ToolUseID: item.ToolUseID, Content: item.Content, IsError: item.IsError}
-	default:
-		return OtherBlock{Type: "other", SourceType: item.Type, Text: item.Text}
+		return ToolResultBlock{Type: "tool_result", BlockCommon: common, ToolUseID: item.ToolUseID,
+			Content: item.Content, IsError: item.IsError, ExitCode: item.ExitCode}
+	case "plan":
+		items := make([]PlanItem, 0, len(item.Plan))
+		for _, p := range item.Plan {
+			items = append(items, PlanItem{Text: p.Text, Completed: p.Completed})
+		}
+		return PlanBlock{Type: "plan", BlockCommon: common, Items: items}
+	case "error":
+		return ErrorBlock{Type: "error", BlockCommon: common, Message: item.Text}
+	case "event":
+		return EventBlock{Type: "event", BlockCommon: common, EventType: item.EventType, Payload: item.Payload}
+	case "usage":
+		if item.Usage != nil {
+			return UsageBlock{Type: "usage", BlockCommon: common, Basis: item.Usage.Basis, Counters: item.Usage.Counters}
+		}
 	}
+	return OtherBlock{Type: "other", BlockCommon: common, SourceType: item.Type, Text: item.Text}
 }
 
 // warning projects a parse warning, naming its position by unit (Q75).

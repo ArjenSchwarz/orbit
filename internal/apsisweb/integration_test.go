@@ -158,7 +158,10 @@ func TestIntegrationEndToEnd(t *testing.T) {
 		assert.Contains(t, body, sessionID, "fragment should contain session ID")
 	})
 
-	// Clean shutdown
+	// Clean shutdown. The client may hold a dialled connection it never sent a
+	// request on; Shutdown treats such a connection as active for 5 seconds,
+	// so close the client's idle connections first.
+	http.DefaultClient.CloseIdleConnections()
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 	if err := srv.Shutdown(ctx); err != nil {

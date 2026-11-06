@@ -56,19 +56,29 @@ func (l *Lister) ListAll(projectPath string) ([]SessionInfo, []ListWarning, erro
 
 	// In all-projects scope each collector lists an identifier found in
 	// several places once, choosing the copy the resolver opens, and warns
-	// about the others.
+	// about the others. listCodex runs before listCodexExec and supplies the
+	// thread IDs of verified rollouts, which suppress matching exec streams.
+	var rolloutThreads map[string]bool
 	collectors := []struct {
 		source string
 		fn     func() ([]SessionInfo, []ListWarning, error)
 	}{
 		{SourceClaude, func() ([]SessionInfo, []ListWarning, error) { return l.listClaude(projectPath) }},
 		{SourceCopilot, func() ([]SessionInfo, []ListWarning, error) { return l.listCopilot(projectPath) }},
-		{SourceCodex, func() ([]SessionInfo, []ListWarning, error) { return l.listCodex(projectPath) }},
+		{SourceCodex, func() ([]SessionInfo, []ListWarning, error) {
+			sessions, warnings, threads, err := l.listCodexIndexed(projectPath)
+			rolloutThreads = threads
+			return sessions, warnings, err
+		}},
 		{SourceKiroCLI, func() ([]SessionInfo, []ListWarning, error) {
 			sessions, err := l.listKiro(projectPath)
 			return sessions, nil, err
 		}},
 		{SourceKiroIDE, func() ([]SessionInfo, []ListWarning, error) { return l.listKiroIDE(projectPath) }},
+		{SourceCodexExec, func() ([]SessionInfo, []ListWarning, error) {
+			sessions, warnings := l.listCodexExec(projectPath, rolloutThreads)
+			return sessions, warnings, nil
+		}},
 	}
 
 	var allSessions []SessionInfo
@@ -207,6 +217,15 @@ func (l *Lister) listClaudeDir(projectDir string) ([]SessionInfo, error) {
 	return sessions, nil
 }
 
+// Sources returns the sources this Lister can list: every source, except
+// codex-exec when no exec roots are configured.
+func (l *Lister) Sources() []string {
+	if len(l.opts.CodexExecRoots) > 0 {
+		return AllSources()
+	}
+	return slices.DeleteFunc(AllSources(), func(s string) bool { return s == SourceCodexExec })
+}
+
 // listCodex returns Codex sessions from ~/.codex/sessions/. Project scope
 // keeps every rollout whose recorded cwd is the project. All-projects scope
 // lists each identifier once, from the rollout selectCodexCandidate opens,
@@ -214,18 +233,28 @@ func (l *Lister) listClaudeDir(projectDir string) ([]SessionInfo, error) {
 // its head is readable and records the identifier; otherwise the identifier is
 // omitted with a warning rather than promoting a later copy (Decision 22).
 func (l *Lister) listCodex(projectPath string) ([]SessionInfo, []ListWarning, error) {
+	sessions, warnings, _, err := l.listCodexIndexed(projectPath)
+	return sessions, warnings, err
+}
+
+// listCodexIndexed is listCodex that also returns the lower-case recorded IDs
+// of the rollouts selectCodexCandidate would open whose heads pass
+// codexHeadWarning, in every scope. Exec streams with those thread IDs are
+// suppressed (Decision 22). A failed walk returns no index, so it never
+// suppresses a stream.
+func (l *Lister) listCodexIndexed(projectPath string) ([]SessionInfo, []ListWarning, map[string]bool, error) {
 	var sessions []SessionInfo
 	var warnings []ListWarning
-	selected := make(map[string]bool) // lower-case identifiers, all-projects scope
+	selected := make(map[string]bool) // lower-case identifiers already seen in walk order
+	threads := make(map[string]bool)
 	err := walkCodexRollouts(l.homeDir, func(path string, d fs.DirEntry) error {
 		id := codexSessionID(filepath.Base(path))
-		if projectPath == "" {
-			key := strings.ToLower(id)
-			if selected[key] {
-				warnings = append(warnings, duplicateWarning(SourceCodex, id, path))
-				return nil
-			}
-			selected[key] = true
+		key := strings.ToLower(id)
+		winner := !selected[key]
+		selected[key] = true
+		if projectPath == "" && !winner {
+			warnings = append(warnings, duplicateWarning(SourceCodex, id, path))
+			return nil
 		}
 
 		info, err := d.Info()
@@ -234,12 +263,19 @@ func (l *Lister) listCodex(projectPath string) ([]SessionInfo, []ListWarning, er
 		}
 
 		head, headErr := readCodexHead(path)
+		var headWarning *ListWarning
+		if winner {
+			headWarning = codexHeadWarning(id, path, head, headErr)
+			if headWarning == nil && head.ID != "" {
+				threads[strings.ToLower(head.ID)] = true
+			}
+		}
 		if projectPath != "" {
 			if head.Cwd == "" || normalizePath(head.Cwd) != normalizePath(projectPath) {
 				return nil
 			}
-		} else if warning := codexHeadWarning(id, path, head, headErr); warning != nil {
-			warnings = append(warnings, *warning)
+		} else if headWarning != nil {
+			warnings = append(warnings, *headWarning)
 			return nil
 		}
 
@@ -261,9 +297,9 @@ func (l *Lister) listCodex(projectPath string) ([]SessionInfo, []ListWarning, er
 		return nil
 	})
 	if err != nil {
-		return nil, warnings, err
+		return nil, warnings, nil, err
 	}
-	return sessions, warnings, nil
+	return sessions, warnings, threads, nil
 }
 
 // codexHeadWarning reports why a selected rollout cannot be listed across
@@ -755,11 +791,12 @@ func isWithinDir(path, dir string) bool {
 
 // sourcePriority orders sources whose sessions have equal times.
 var sourcePriority = map[string]int{
-	SourceClaude:  0,
-	SourceCopilot: 1,
-	SourceCodex:   2,
-	SourceKiroCLI: 3,
-	SourceKiroIDE: 4,
+	SourceClaude:    0,
+	SourceCopilot:   1,
+	SourceCodex:     2,
+	SourceKiroCLI:   3,
+	SourceKiroIDE:   4,
+	SourceCodexExec: 5,
 }
 
 // sortSessionsByTimestamp sorts sessions by creation time (oldest first).

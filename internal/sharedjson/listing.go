@@ -65,6 +65,7 @@ func listingRow(s sessions.SessionInfo) ListingRow {
 		Metadata: Metadata{
 			Source:   s.Source,
 			ID:       s.ID,
+			ThreadID: s.ThreadID,
 			Project:  s.Project,
 			Model:    s.Model,
 			Provider: s.Provider,

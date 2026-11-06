@@ -15,15 +15,15 @@ Separate package from `internal/web/` (orbit's web server) to avoid coupling. Im
 
 `Config.AllProjects` (`apsis serve --all-projects`, a usage error with `--project`) clears `ProjectPath`, so the Lister lists and the Resolver opens with `""`, and both get `WithExtendedOrdering(true)`. Only then does `buildSessionListData` set `SessionView.Project` and `SessionListData.AllProjects`; the `sessions_list` template adds a `.session-project` cell (`-` when unrecorded) and the `all-projects` list class that widens the card grid. Project-scope pages render exactly as before. `Server.Handler()` exposes the router for `httptest` (used by the CLI round-trip test in `cmd/apsis/all_projects_test.go`).
 
-`TestIntegrationEndToEnd` intermittently fails on shutdown (`context deadline exceeded`), also on unmodified upstream; rerun before treating it as a regression.
-
 ## Transcript Parsing
 
-The handler dispatches differently based on whether a cost path exists:
-- With CostPath: `ParseJSONLWithFormat(reader, FormatKiroIDE, opts)` — explicitly specifies format to thread cost data
-- Without CostPath: `Parse(reader)` — auto-detects format
+The handler calls `sessions.ParseResolved(resolved)` with default options: it threads the Kiro IDE cost path, forces the Kiro IDE and codex-exec parsers for those sources and auto-detects the rest. The CLI uses the same helper (after its own `-a` dispatch) and adds the shared-JSON-only Codex flags; the web never sets them, so header-only Codex rollouts still fail with a 500 and model changes keep legacy grouping.
 
-This mirrors the pattern in `cmd/apsis/main.go`.
+## Codex Exec Streams
+
+`Config.CodexExecRoots` (`apsis serve --codex-exec-dir`, or `APSIS_CODEX_EXEC_DIRS`) goes to both the Lister and the Resolver. The filter pills come from `lister.Sources()`, so the `codex-exec` pill appears only with roots (Q46). Exec rows set `SessionView.FileTime`; the template then wraps the `<time>` and a `file modified` label in a `.session-date` span. The label must stay outside `<time>` because the layout script replaces `<time>` text (Q117). Exec transcript views add `TranscriptViewData.ThreadID`, `FileTime` and `Warnings` (`line N: message`); other sources never set them (Q47). `.source-codex-exec` has light and dark badge rules; `CSSVersion` is 3.
+
+The listing warning banner lives inside the `sessions_list` fragment, so HTMX polls refresh it and the full page shows it once (Q54).
 
 ## Testing
 
@@ -55,6 +55,6 @@ internal/apsisweb/
     error.html       - Error page with code and message
 ```
 
-## Known Flaky Test
+## Shutdown Flake (Fixed)
 
-- `TestIntegrationEndToEnd` often fails with `shutdown error: context deadline exceeded` after its 5-second `srv.Shutdown`. On 2026-11-05 it failed 4 of 6 runs on an unmodified export of upstream `7259a6c`, so it predates the shared JSON work. Re-run `make test` to get a clean pass, and do not treat this failure as caused by an unrelated change. The cause has not been investigated.
+`TestIntegrationEndToEnd` used to fail with `shutdown error: context deadline exceeded` (4 of 6 runs on unmodified upstream `7259a6c`). Cause: `http.Server.Shutdown` treats a connection in `StateNew` (dialled, no request yet) as active for 5 seconds, and `http.DefaultClient` can dial a spare keep-alive connection it never uses. The test now calls `http.DefaultClient.CloseIdleConnections()` before `Shutdown` (Q119). Any new test that shuts down a real server after `http.Get` calls needs the same step.

@@ -1,0 +1,42 @@
+# Session Transcript
+
+**Session ID:** `example-session`
+
+**Thread ID:** `0199aaaa-0000-7000-8000-000000000003`
+
+---
+
+## 🤖 Assistant · turn 1
+
+Starting.
+
+<details>
+<summary>📦 Event: session.compacted</summary>
+
+```json
+{
+  "type": "session.compacted",
+  "reason": "context window"
+}
+```
+
+</details>
+
+❌ **Error:** stream disconnected; retrying
+
+❌ **Error:** model request failed
+
+<details>
+<summary>📦 Event: thread.started</summary>
+
+```json
+{
+  "type": "thread.started",
+  "thread_id": "0199aaaa-0000-7000-8000-00000000000f"
+}
+```
+
+</details>
+
+---
+

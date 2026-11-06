@@ -984,7 +984,7 @@ The web interface shows all registered runs, their status, and provides links to
 
 # Apsis
 
-Apsis is a CLI tool for converting AI coding agent session transcripts to readable Markdown or HTML. It supports sessions from Claude Code (JSONL), OpenAI Codex (JSONL), GitHub Copilot (JSONL), AWS Kiro CLI (SQLite), and AWS Kiro IDE (JSON .chat files).
+Apsis is a CLI tool for converting AI coding agent session transcripts to readable Markdown or HTML. It supports sessions from Claude Code (JSONL), OpenAI Codex (JSONL rollouts and saved `codex exec --json` event streams), GitHub Copilot (JSONL), AWS Kiro CLI (SQLite), and AWS Kiro IDE (JSON .chat files).
 
 Apsis also includes a web interface (`apsis serve`) for browsing and viewing session transcripts in your browser.
 
@@ -1012,6 +1012,9 @@ apsis serve --project /path/to/project
 
 # Serve sessions from every project, with a project column
 apsis serve --all-projects
+
+# Also list saved codex exec --json streams under a directory
+apsis serve --codex-exec-dir ~/exec-logs
 ```
 
 The web interface provides:
@@ -1025,6 +1028,7 @@ The web interface provides:
 Environment variables:
 - `APSIS_SERVE_PORT` - Default port (default: 8081)
 - `APSIS_SERVE_BIND` - Default bind address (default: localhost)
+- `APSIS_CODEX_EXEC_DIRS` - Directories searched for Codex exec streams, separated like `PATH` (also read by the CLI)
 
 ### Command Line
 
@@ -1080,6 +1084,17 @@ apsis latest --all-projects
 
 # List sessions as versioned JSON
 apsis --list -f shared-json
+
+# Convert a saved codex exec --json stream
+apsis run.jsonl
+codex exec --json "run the tests" | apsis
+
+# Force parsing of a stream that failed before its thread started
+apsis -a codex-exec failed-run.jsonl
+
+# List and open exec streams saved under a directory
+apsis --list --codex-exec-dir ~/exec-logs
+apsis --codex-exec-dir ~/exec-logs -s codex-exec <identifier>
 ```
 
 ## Options
@@ -1090,8 +1105,10 @@ apsis --list -f shared-json
 | `-o, --output <file>` | Write output to file (default: stdout) |
 | `-p, --project <path>` | Project directory (default: current directory) |
 | `--all-projects` | List, open and pick the latest session from every project instead of one; cannot be combined with `--project` |
-| `-s, --source <source>` | Open the argument as a session ID of this source (`claude`, `codex`, `copilot`, `kiro-cli`, `kiro-ide`) rather than trying each source in turn; not valid with stdin, `--list` or `latest` |
+| `-s, --source <source>` | Open the argument as a session ID of this source (`claude`, `codex`, `codex-exec`, `copilot`, `kiro-cli`, `kiro-ide`) rather than trying each source in turn; not valid with stdin, `--list` or `latest` |
+| `--codex-exec-dir <dir>` | Directory searched for Codex exec streams; repeatable, replaces `APSIS_CODEX_EXEC_DIRS`; a single empty value disables discovery |
 | `-f, --format <format>` | Output format: `md`, `markdown`, `html`, `json`, `shared-json` (default: `md`) |
+| `-a, --agent <name>` | Force a parser: `claude-code`, `codex`, `codex-exec`, `kiro`, `kiro-ide`, `copilot` (default: detect from content) |
 | `-F, --follow` | Follow mode: continuously monitor file for new entries (stdout only, markdown only) |
 | `-v, --version` | Show version, commit, and build time |
 | `-h, --help` | Show help |
@@ -1136,7 +1153,15 @@ Every document carries `schema_version`. Consumers should ignore fields and bloc
 
 `apsis --list -f shared-json` outputs a listing document instead: its `scope` (`{"project": ...}`, or `{"all_projects": true}` with `--all-projects`), the listed `sessions` oldest first, and listing `warnings` with their source and code. Each row carries the source, identifier, `size_bytes`, project, model, provider and origin where the listing read records them (the session document is authoritative), and either `created_at` (a recorded time) or `file_modified_at` (the file modification time used to order a session without one). Rows with equal times are ordered by source (claude, copilot, codex, kiro-cli, kiro-ide) and then identifier. `apsis latest` and the text listing keep their existing order in project scope, so on an exact tie `apsis latest` can pick a different session from the last row of the shared JSON listing; with `--all-projects`, both use the source and identifier order.
 
+Exec stream documents have source `codex-exec`, the recorded `thread_id`, and a `turn` on each entry. Their blocks add `item_id`, `status`, `incomplete`, `exit_code`, and the `plan`, `error`, `event` and `usage` block types. Streams record no creation time, model or provider, so those fields are absent; listings order a stream by `file_modified_at`.
+
 Across projects, a session found in several places (the same Claude Code ID in two project directories, a Codex rollout copied into two directories, a Kiro IDE execution in two workspaces) is listed once, as the copy apsis opens, with a `duplicate_session` warning. A Codex rollout is listed across projects only when its first lines hold a `session_meta` that records the ID in its filename.
+
+### Codex exec streams
+
+`codex exec --json` writes one JSON event per line. Apsis reads a saved stream when its first JSON object is a `thread.started` event with a thread ID; use `-a codex-exec` for a stream without one, such as a run that failed before its thread started. Each turn becomes one assistant entry, items keep their final state in the order they first appeared, and an item that never completed is marked incomplete. Malformed lines are reported with their line number on stderr, in shared JSON warnings and in the web transcript view. Follow mode does not support exec streams.
+
+Discovery is opt-in: apsis lists `.jsonl` files at any depth under each `--codex-exec-dir` (or `APSIS_CODEX_EXEC_DIRS`) directory whose first JSON object is a `thread.started` event. It skips `.git`, `node_modules` and `testdata` below a configured directory, does not follow directory symlinks, and accepts a file symlink only when its target is inside a configured directory. A stream belongs to the nearest git repository or worktree containing it, so it appears in that project's listing and in `--all-projects` listings. Its identifier is the thread ID followed by a hash of the stream's path, so it stays the same when the stream grows; moving the file changes it. When a Codex rollout records the same thread, the rollout is listed instead, but the stream still opens by its identifier or file path.
 
 ## License
 

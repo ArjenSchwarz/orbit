@@ -8,6 +8,7 @@ import (
 	"cmp"
 	"context"
 	"encoding/json"
+	"errors"
 	"flag"
 	"fmt"
 	"io"
@@ -46,6 +47,46 @@ type Config struct {
 	Version     bool   // -v, --version
 	Help        bool   // -h, --help
 	Input       string // positional argument (session ID or file path)
+
+	CodexExecDirs []string // --codex-exec-dir values; nil when the flag is not given
+}
+
+// codexExecDirsEnv lists Codex exec stream roots, separated like PATH.
+const codexExecDirsEnv = "APSIS_CODEX_EXEC_DIRS"
+
+// stringList is a repeatable string flag.
+type stringList []string
+
+func (l *stringList) String() string { return strings.Join(*l, string(os.PathListSeparator)) }
+
+func (l *stringList) Set(value string) error {
+	*l = append(*l, value)
+	return nil
+}
+
+// codexExecRoots resolves the Codex exec stream roots (requirement 5.4, Q33).
+// Any --codex-exec-dir replaces APSIS_CODEX_EXEC_DIRS; a single empty value
+// means no roots, and mixing empty and nonempty values is a usage error. The
+// variable splits like PATH; unset or empty means no roots. Relative roots
+// resolve against the working directory.
+func codexExecRoots(flagValues []string) ([]string, error) {
+	values := flagValues
+	if flagValues == nil {
+		values = filepath.SplitList(os.Getenv(codexExecDirsEnv))
+	}
+	nonEmpty := slices.DeleteFunc(slices.Clone(values), func(v string) bool { return v == "" })
+	if flagValues != nil && len(nonEmpty) > 0 && len(nonEmpty) != len(flagValues) {
+		return nil, fmt.Errorf("--codex-exec-dir: cannot mix empty and nonempty values")
+	}
+	var roots []string
+	for _, v := range nonEmpty {
+		abs, err := filepath.Abs(v)
+		if err != nil {
+			return nil, fmt.Errorf("--codex-exec-dir %s: %w", v, err)
+		}
+		roots = append(roots, abs)
+	}
+	return roots, nil
 }
 
 func main() {
@@ -76,6 +117,8 @@ func serveCommand(args []string) error {
 	bind := fs.String("bind", "", "Address to bind to (default localhost, or APSIS_SERVE_BIND)")
 	project := fs.String("project", "", "Project directory (default: current directory)")
 	allProjects := fs.Bool("all-projects", false, "List sessions from every project")
+	var execDirs stringList
+	fs.Var(&execDirs, "codex-exec-dir", "Directory searched for Codex exec streams (repeatable; replaces "+codexExecDirsEnv+")")
 	showVersion := fs.Bool("version", false, "Show version and exit")
 
 	fs.Usage = func() {
@@ -86,6 +129,7 @@ func serveCommand(args []string) error {
 		fmt.Fprintf(os.Stderr, "\nEnvironment:\n")
 		fmt.Fprintf(os.Stderr, "  APSIS_SERVE_PORT    Port to listen on (default 8081)\n")
 		fmt.Fprintf(os.Stderr, "  APSIS_SERVE_BIND    Address to bind to (default localhost)\n")
+		fmt.Fprintf(os.Stderr, "  %s  Codex exec stream directories, separated like PATH\n", codexExecDirsEnv)
 		fmt.Fprintf(os.Stderr, "\nExamples:\n")
 		fmt.Fprintf(os.Stderr, "  apsis serve                    Start with default settings\n")
 		fmt.Fprintf(os.Stderr, "  apsis serve --port 3000        Start on port 3000\n")
@@ -115,9 +159,12 @@ func serveCommand(args []string) error {
 	if *allProjects && *project != "" {
 		return fmt.Errorf("cannot use --all-projects with --project")
 	}
+	execRoots, err := codexExecRoots(execDirs)
+	if err != nil {
+		return err
+	}
 	var projectPath string
 	if !*allProjects {
-		var err error
 		projectPath, err = resolveProjectPath(*project)
 		if err != nil {
 			return fmt.Errorf("resolve project path: %w", err)
@@ -126,10 +173,11 @@ func serveCommand(args []string) error {
 
 	// Create server
 	server, err := apsisweb.New(apsisweb.Config{
-		Port:        resolvedPort,
-		Bind:        resolvedBind,
-		ProjectPath: projectPath,
-		AllProjects: *allProjects,
+		Port:           resolvedPort,
+		Bind:           resolvedBind,
+		ProjectPath:    projectPath,
+		AllProjects:    *allProjects,
+		CodexExecRoots: execRoots,
 	})
 	if err != nil {
 		return fmt.Errorf("create server: %w", err)
@@ -208,8 +256,9 @@ func parseFlags() *Config {
 	flag.StringVar(&cfg.Source, "source", "", "Open the argument as a session ID of this source")
 	flag.StringVar(&cfg.Format, "f", "md", "Output format: md, markdown, html, json, shared-json (default: md)")
 	flag.StringVar(&cfg.Format, "format", "md", "Output format: md, markdown, html, json, shared-json (default: md)")
-	flag.StringVar(&cfg.Agent, "a", "", "Force agent format (claude-code, codex, kiro, kiro-ide, copilot)")
-	flag.StringVar(&cfg.Agent, "agent", "", "Force agent format (claude-code, codex, kiro, kiro-ide, copilot)")
+	flag.StringVar(&cfg.Agent, "a", "", "Force agent format (claude-code, codex, codex-exec, kiro, kiro-ide, copilot)")
+	flag.StringVar(&cfg.Agent, "agent", "", "Force agent format (claude-code, codex, codex-exec, kiro, kiro-ide, copilot)")
+	flag.Var((*stringList)(&cfg.CodexExecDirs), "codex-exec-dir", "Directory searched for Codex exec streams (repeatable)")
 	flag.BoolVar(&cfg.Follow, "F", false, "Follow mode: monitor file for new entries")
 	flag.BoolVar(&cfg.Follow, "follow", false, "Follow mode: monitor file for new entries")
 	flag.BoolVar(&cfg.Version, "v", false, "Show version")
@@ -247,13 +296,17 @@ Options:
       --all-projects      List, open and pick the latest session from every project
                           (with --list, adds a project column)
   -s, --source <source>   Open the argument as a session ID of this source:
-                          claude, codex, copilot, kiro-cli, kiro-ide
+                          claude, codex, codex-exec, copilot, kiro-cli, kiro-ide
+      --codex-exec-dir <dir>
+                          Directory searched for saved codex exec --json streams;
+                          repeatable, replaces APSIS_CODEX_EXEC_DIRS (separated
+                          like PATH); an empty value disables discovery
   -f, --format <format>   Output format: md, markdown, html, json, shared-json (default: md)
                           json outputs the raw session data as pretty-printed JSON
                           shared-json outputs the same structure for every agent,
                           described by docs/schemas/apsis-shared-json.v1.schema.json
-  -a, --agent <name>      Force agent format: claude-code, codex, kiro, kiro-ide, copilot
-                          (default: auto-detect from content)
+  -a, --agent <name>      Force agent format: claude-code, codex, codex-exec, kiro,
+                          kiro-ide, copilot (default: auto-detect from content)
   -F, --follow            Follow mode: continuously monitor file for new entries
                           (like tail -f, markdown output to stdout only)
   -v, --version           Show version
@@ -272,6 +325,7 @@ Examples:
   apsis -f json session-id                       Output raw JSON (pretty-printed)
   apsis -f shared-json session-id                Output versioned JSON shared by all agents
   apsis -a kiro session.json                     Force Kiro format parsing
+  apsis run.jsonl                                Convert a saved codex exec --json stream
   apsis --list                                   List sessions for current project
   apsis --list -p /path/to/project               List sessions for different project
   apsis --list --all-projects                    List sessions from every project
@@ -304,6 +358,11 @@ func run(cfg *Config) (int, error) {
 	if err != nil {
 		return 0, err
 	}
+	execRoots, err := codexExecRoots(cfg.CodexExecDirs)
+	if err != nil {
+		return 0, err
+	}
+	opts := []sessions.Option{sessions.WithCodexExecRoots(execRoots)}
 
 	// Handle --list
 	if cfg.List {
@@ -311,7 +370,7 @@ func run(cfg *Config) (int, error) {
 		if cfg.Input != "" {
 			return 0, fmt.Errorf("cannot specify both --list and a positional argument")
 		}
-		return 0, listSessions(os.Stdout, absProjectPath, cfg.Format)
+		return 0, listSessions(os.Stdout, absProjectPath, cfg.Format, opts...)
 	}
 
 	// Validate follow mode early (requirement 5.2-5.6)
@@ -321,7 +380,7 @@ func run(cfg *Config) (int, error) {
 
 	// Handle "latest" keyword before isFilePath() so a file named "latest" doesn't shadow it
 	if cfg.Input == "latest" {
-		return runLatest(cfg, absProjectPath)
+		return runLatest(cfg, absProjectPath, opts...)
 	}
 
 	// Check for input source (follow mode doesn't support stdin)
@@ -333,7 +392,7 @@ func run(cfg *Config) (int, error) {
 
 	// Handle follow mode
 	if cfg.Follow {
-		filePath, err := resolveFollowInput(cfg.Input, absProjectPath, cfg.Source)
+		filePath, err := resolveFollowInput(cfg.Input, absProjectPath, cfg.Source, opts...)
 		if err != nil {
 			return 0, err
 		}
@@ -345,7 +404,7 @@ func run(cfg *Config) (int, error) {
 	}
 
 	// Non-follow mode: resolve input source
-	input, in, err := resolveInput(cfg.Input, absProjectPath, cfg.Source)
+	input, in, err := resolveInput(cfg.Input, absProjectPath, cfg.Source, opts...)
 	if err != nil {
 		return 0, err
 	}
@@ -440,22 +499,50 @@ func isInputFromPipe() bool {
 type inputContext struct {
 	source   string                    // resolver source; empty for file and stdin input
 	id       string                    // session ID, or the filename stem of a .jsonl file
+	path     string                    // file path for file input; empty for stdin and resolved sessions
 	costPath string                    // Kiro IDE execution detail path for credit cost extraction
 	resolved *sessions.SessionMetadata // resolver metadata; nil for file and stdin input
+	threadID string                    // Codex exec thread ID recorded in the content
+	project  string                    // Codex exec stream file's containing repository
+}
+
+// execInput gives a Codex exec stream the identity a listing would: the
+// identifier derived from its recorded thread ID and canonical path, and its
+// containing repository. Stdin has neither, and the filename stem is never an
+// exec stream's identifier (requirement 2.11).
+func execInput(in inputContext, threadID string) inputContext {
+	in.threadID = threadID
+	if in.resolved != nil {
+		return in
+	}
+	in.id = ""
+	if in.path == "" {
+		return in
+	}
+	canonical, err := sessions.CanonicalPath(in.path)
+	if err != nil {
+		return in
+	}
+	in.project = sessions.RepositoryRoot(filepath.Dir(canonical))
+	if threadID != "" {
+		in.id = sessions.ExecIdentifier(threadID, canonical)
+	}
+	return in
 }
 
 // resolveInput determines the input source and returns a reader and its input context.
 // With a source, the argument is an ID of that source. Otherwise it checks
-// Claude location first, then Codex, then Copilot, then Kiro CLI, then Kiro IDE.
+// Claude location first, then Codex, then Copilot, then Kiro CLI, then Kiro IDE,
+// then Codex exec streams, which resolve only when roots are configured.
 // An empty projectPath searches every project.
-func resolveInput(arg, projectPath, source string) (io.ReadCloser, inputContext, error) {
+func resolveInput(arg, projectPath, source string, opts ...sessions.Option) (io.ReadCloser, inputContext, error) {
 	// If no argument, read from stdin
 	if arg == "" {
 		return os.Stdin, inputContext{}, nil
 	}
 
 	if source != "" {
-		resolver, err := sessions.NewResolver(projectPath)
+		resolver, err := sessions.NewResolver(projectPath, opts...)
 		if err != nil {
 			return nil, inputContext{}, err
 		}
@@ -472,7 +559,7 @@ func resolveInput(arg, projectPath, source string) (io.ReadCloser, inputContext,
 		if err != nil {
 			return nil, inputContext{}, fmt.Errorf("failed to open file: %w", err)
 		}
-		var in inputContext
+		in := inputContext{path: arg}
 		// Extract session ID from filename if it's a .jsonl file
 		if strings.HasSuffix(arg, ".jsonl") {
 			in.id = strings.TrimSuffix(filepath.Base(arg), ".jsonl")
@@ -485,7 +572,7 @@ func resolveInput(arg, projectPath, source string) (io.ReadCloser, inputContext,
 	}
 
 	// Treat as session ID — try each source via Resolver
-	resolver, err := sessions.NewResolver(projectPath)
+	resolver, err := sessions.NewResolver(projectPath, opts...)
 	if err != nil {
 		return nil, inputContext{}, err
 	}
@@ -497,6 +584,7 @@ func resolveInput(arg, projectPath, source string) (io.ReadCloser, inputContext,
 		sessions.SourceCopilot,
 		sessions.SourceKiroCLI,
 		sessions.SourceKiroIDE,
+		sessions.SourceCodexExec,
 	}
 
 	for _, source := range sources {
@@ -523,10 +611,10 @@ func resolvedInput(resolved *sessions.ResolvedSession) inputContext {
 // projectPath is empty, to w: a shared JSON listing document for
 // -f shared-json, else one tab-separated line per session, with a project
 // column across projects.
-func listSessions(w io.Writer, projectPath, format string) error {
+func listSessions(w io.Writer, projectPath, format string, opts ...sessions.Option) error {
 	allProjects := projectPath == ""
 	sharedJSON := strings.ToLower(format) == "shared-json"
-	lister, err := sessions.NewLister(sessions.WithExtendedOrdering(sharedJSON || allProjects))
+	lister, err := sessions.NewLister(append([]sessions.Option{sessions.WithExtendedOrdering(sharedJSON || allProjects)}, opts...)...)
 	if err != nil {
 		return err
 	}
@@ -554,7 +642,7 @@ func listSessions(w io.Writer, projectPath, format string) error {
 		line := fmt.Sprintf("[%s]\t%s\t%s\t%s",
 			sessions.DisplayName(s.Source),
 			s.ID,
-			s.CreatedAt.Local().Format(time.RFC3339),
+			listedTime(s),
 			sessions.FormatSize(s.Size))
 		if allProjects {
 			line += "\t" + cmp.Or(s.Project, "-")
@@ -567,12 +655,22 @@ func listSessions(w io.Writer, projectPath, format string) error {
 	return nil
 }
 
+// listedTime formats a listed session's time; codex-exec rows mark it as the
+// file modification time (Q37). Other sources' text output is unchanged.
+func listedTime(s sessions.SessionInfo) string {
+	t := s.CreatedAt.Local().Format(time.RFC3339)
+	if s.Source == sessions.SourceCodexExec && s.TimeFromFilesystem {
+		t += " (file modified)"
+	}
+	return t
+}
+
 // resolveLatestSession returns the newest session for the project, or across
 // every project when projectPath is empty, where equal times break by source
 // and then ID.
-func resolveLatestSession(projectPath string) (*sessions.SessionInfo, error) {
+func resolveLatestSession(projectPath string, opts ...sessions.Option) (*sessions.SessionInfo, error) {
 	allProjects := projectPath == ""
-	lister, err := sessions.NewLister(sessions.WithExtendedOrdering(allProjects))
+	lister, err := sessions.NewLister(append([]sessions.Option{sessions.WithExtendedOrdering(allProjects)}, opts...)...)
 	if err != nil {
 		return nil, err
 	}
@@ -600,8 +698,8 @@ func resolveLatestSession(projectPath string) (*sessions.SessionInfo, error) {
 
 // runLatest handles the "latest" keyword by resolving the newest session and routing
 // to the appropriate output path (follow mode or normal conversion).
-func runLatest(cfg *Config, projectPath string) (int, error) {
-	latest, err := resolveLatestSession(projectPath)
+func runLatest(cfg *Config, projectPath string, opts ...sessions.Option) (int, error) {
+	latest, err := resolveLatestSession(projectPath, opts...)
 	if err != nil {
 		return 0, err
 	}
@@ -609,15 +707,18 @@ func runLatest(cfg *Config, projectPath string) (int, error) {
 	fmt.Fprintf(os.Stderr, "Using %s session %s from %s\n",
 		sessions.DisplayName(latest.Source),
 		latest.ID,
-		latest.CreatedAt.Local().Format(time.RFC3339))
+		listedTime(*latest))
 
-	resolver, err := sessions.NewResolver(projectPath)
+	resolver, err := sessions.NewResolver(projectPath, opts...)
 	if err != nil {
 		return 0, err
 	}
 
 	// Handle follow mode
 	if cfg.Follow {
+		if latest.Source == sessions.SourceCodexExec {
+			return 0, errFollowExec
+		}
 		// Sources that support follow mode (must be JSONL file-backed).
 		// Kiro IDE is file-backed (.chat) but uses JSON, not JSONL,
 		// so it cannot be followed by transcript.NewFollower.
@@ -681,7 +782,7 @@ func deriveChatFileCostPath(chatPath string) string {
 
 // resolveFollowInput resolves input to a file path (not io.Reader).
 // Returns error for stdin input (requirement 2.3, 2.4).
-func resolveFollowInput(input, projectPath, source string) (string, error) {
+func resolveFollowInput(input, projectPath, source string, opts ...sessions.Option) (string, error) {
 	if input == "" {
 		return "", fmt.Errorf("cannot follow stdin input. Please provide a file path or session ID")
 	}
@@ -694,17 +795,23 @@ func resolveFollowInput(input, projectPath, source string) (string, error) {
 		// Kiro IDE could work but .chat files aren't JSONL
 	}
 
+	if source == sessions.SourceCodexExec {
+		return "", errFollowExec
+	}
 	if source != "" {
 		if !slices.Contains(fileSources, source) {
 			return "", fmt.Errorf("%s sessions cannot be followed (not JSONL file-backed)", sessions.DisplayName(source))
 		}
 		fileSources = []string{source}
 	} else if isFilePath(input) {
+		if isExecStreamFile(input) {
+			return "", errFollowExec
+		}
 		return input, nil
 	}
 
 	// Treat as session ID — try each file-backed source via Resolver.ResolvePath
-	resolver, err := sessions.NewResolver(projectPath)
+	resolver, err := sessions.NewResolver(projectPath, opts...)
 	if err != nil {
 		return "", err
 	}
@@ -715,8 +822,28 @@ func resolveFollowInput(input, projectPath, source string) (string, error) {
 			return path, nil
 		}
 	}
+	if source == "" {
+		if _, err := resolver.ResolvePath(sessions.SourceCodexExec, input); err == nil {
+			return "", errFollowExec
+		}
+	}
 
 	return "", fmt.Errorf("session not found: %s", input)
+}
+
+// errFollowExec rejects following a Codex exec stream (requirement 5.3).
+var errFollowExec = errors.New("follow mode does not support Codex exec streams")
+
+// isExecStreamFile reports whether path holds a Codex exec stream, by the
+// same first-object probe that detection uses.
+func isExecStreamFile(path string) bool {
+	f, err := os.Open(path)
+	if err != nil {
+		return false
+	}
+	defer func() { _ = f.Close() }()
+	probe, err := transcript.ProbeExecStream(f)
+	return err == nil && probe.Outcome == transcript.ExecProbeExec
 }
 
 // runFollow executes follow mode with signal handling.
@@ -766,6 +893,10 @@ func validateFollowMode(cfg *Config) error {
 		return fmt.Errorf("follow mode does not support -f shared-json")
 	}
 
+	if cfg.Agent == "codex-exec" {
+		return errFollowExec
+	}
+
 	return nil
 }
 
@@ -782,6 +913,8 @@ func agentToFormat(agent string) transcript.Format {
 		return transcript.FormatCopilot
 	case "kiro-ide":
 		return transcript.FormatKiroIDE
+	case "codex-exec":
+		return transcript.FormatCodexExec
 	default:
 		return transcript.FormatUnknown
 	}
@@ -803,17 +936,24 @@ func convert(input io.Reader, output io.Writer, in inputContext, format string, 
 		parseOpts.PreserveModelChanges = true
 	}
 
+	// An explicit -a chooses the parser before the resolved source does.
 	var result *transcript.ParseResult
 	var err error
-	if agent != "" {
+	switch {
+	case agent != "":
 		result, err = transcript.ParseJSONLWithFormat(input, agentToFormat(agent), parseOpts)
-	} else if in.costPath != "" {
+	case in.resolved != nil:
+		result, err = sessions.ParseResolved(&sessions.ResolvedSession{Reader: io.NopCloser(input), Metadata: *in.resolved}, parseOpts)
+	case in.costPath != "":
 		result, err = transcript.ParseJSONLWithFormat(input, transcript.FormatKiroIDE, parseOpts)
-	} else {
+	default:
 		result, err = transcript.Parse(input, parseOpts)
 	}
 	if err != nil {
 		return fmt.Errorf("failed to parse transcript: %w", err)
+	}
+	if result.Format == transcript.FormatCodexExec {
+		in = execInput(in, result.Metadata.ThreadID)
 	}
 
 	for _, w := range result.Warnings {
@@ -826,7 +966,7 @@ func convert(input io.Reader, output io.Writer, in inputContext, format string, 
 
 	// Shared JSON emits a document even for a session without entries.
 	if format == "shared-json" {
-		doc := sharedjson.Session(result, sharedjson.SessionContext{Source: in.source, ID: in.id, Resolved: in.resolved})
+		doc := sharedjson.Session(result, sharedjson.SessionContext{Source: in.source, ID: in.id, Project: in.project, Resolved: in.resolved})
 		if err := sharedjson.Write(output, doc); err != nil {
 			return fmt.Errorf("failed to write output: %w", err)
 		}
@@ -841,6 +981,7 @@ func convert(input io.Reader, output io.Writer, in inputContext, format string, 
 	opts := transcript.RenderOptions{
 		Title:     "Session Transcript",
 		SessionID: in.id,
+		ThreadID:  in.threadID,
 	}
 
 	if result.Metadata != nil {
@@ -886,6 +1027,10 @@ func convertToJSON(input io.Reader, output io.Writer, agent string) error {
 		if err != nil {
 			return fmt.Errorf("failed to detect format: %w", err)
 		}
+	}
+	if detectedFormat == transcript.FormatCodexExec {
+		// Q48: a leading BOM would otherwise drop the stream's thread.started.
+		data = bytes.TrimPrefix(data, []byte("\xef\xbb\xbf"))
 	}
 
 	var result any

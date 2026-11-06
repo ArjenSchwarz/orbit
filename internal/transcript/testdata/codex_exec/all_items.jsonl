@@ -1,0 +1,19 @@
+{"type":"thread.started","thread_id":"0199aaaa-0000-7000-8000-000000000001"}
+{"type":"turn.started"}
+{"type":"item.completed","item":{"id":"item_0","type":"reasoning","text":"**Planning** the check"}}
+{"type":"item.started","item":{"id":"item_1","type":"command_execution","command":"/bin/sh -lc 'make test'","aggregated_output":"","exit_code":null,"status":"in_progress"}}
+{"type":"item.completed","item":{"id":"item_1","type":"command_execution","command":"/bin/sh -lc 'make test'","aggregated_output":"ok\n","exit_code":0,"status":"completed"}}
+{"type":"item.completed","item":{"id":"item_2","type":"command_execution","command":"/bin/sh -lc 'make lint'","aggregated_output":"lint: 2 issues\n","exit_code":2,"status":"failed"}}
+{"type":"item.completed","item":{"id":"item_3","type":"command_execution","command":"rm -rf build","aggregated_output":"","exit_code":null,"status":"declined"}}
+{"type":"item.completed","item":{"id":"item_4","type":"file_change","changes":[{"path":"/work/example-repo/main.go","kind":"update"},{"path":"/work/example-repo/notes.md","kind":"add"}],"status":"completed"}}
+{"type":"item.started","item":{"id":"item_5","type":"mcp_tool_call","server":"docs","tool":"search","arguments":{"query":"retry policy","limit":3},"result":null,"error":null,"status":"in_progress"}}
+{"type":"item.completed","item":{"id":"item_5","type":"mcp_tool_call","server":"docs","tool":"search","arguments":{"query":"retry policy","limit":3},"result":{"content":[{"type":"text","text":"Retry three times"}],"structured_content":null},"error":null,"status":"completed"}}
+{"type":"item.completed","item":{"id":"item_6","type":"mcp_tool_call","server":"docs","tool":"fetch","arguments":{"url":"https://example.com/a"},"result":null,"error":{"message":"server unavailable"},"status":"failed"}}
+{"type":"item.started","item":{"id":"item_7","type":"web_search","id":"ws_0001","query":"","action":{"type":"other"}}}
+{"type":"item.completed","item":{"id":"item_7","type":"web_search","id":"ws_0001","query":"go json number precision","action":{"type":"search","query":"go json number precision"},"results":[{"title":"Example result","url":"https://example.com/b"}]}}
+{"type":"item.started","item":{"id":"item_8","type":"todo_list","items":[{"text":"Run tests","completed":false},{"text":"Report","completed":false}]}}
+{"type":"item.updated","item":{"id":"item_8","type":"todo_list","items":[{"text":"Run tests","completed":true},{"text":"Report","completed":false}]}}
+{"type":"item.completed","item":{"id":"item_9","type":"error","message":"command output was truncated"}}
+{"type":"item.completed","item":{"id":"item_10","type":"collab_tool_call","tool":"spawn_agent","sender_thread_id":"0199aaaa-0000-7000-8000-000000000001","receiver_thread_ids":["0199aaaa-0000-7000-8000-000000000002"],"prompt":"Review <script>alert(1)</script> output","agents_states":{},"status":"completed"}}
+{"type":"item.completed","item":{"id":"item_11","type":"agent_message","text":"Tests pass; lint reports two issues."}}
+{"type":"turn.completed","usage":{"input_tokens":1200,"cached_input_tokens":800,"cache_write_input_tokens":0,"output_tokens":90,"reasoning_output_tokens":40,"future_counter":123456789012345678901234567890}}

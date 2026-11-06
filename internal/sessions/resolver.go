@@ -55,6 +55,8 @@ func (r *Resolver) Resolve(source, sessionID string) (*ResolvedSession, error) {
 		return r.resolveKiroCLI(sessionID)
 	case SourceKiroIDE:
 		return r.resolveKiroIDE(sessionID)
+	case SourceCodexExec:
+		return r.resolveCodexExec(sessionID)
 	default:
 		return nil, fmt.Errorf("unknown source: %s", source)
 	}
@@ -266,6 +268,9 @@ func (r *Resolver) ResolvePath(source, sessionID string) (string, error) {
 		return "", fmt.Errorf("kiro-cli sessions are SQLite-backed and have no file path")
 	case SourceKiroIDE:
 		return r.locateKiroIDE(sessionID)
+	case SourceCodexExec:
+		path, _, err := r.locateCodexExec(sessionID)
+		return path, err
 	default:
 		return "", fmt.Errorf("unknown source: %s", source)
 	}

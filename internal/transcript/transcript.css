@@ -371,6 +371,13 @@ details.read-item:last-child {
     font-style: italic;
 }
 
+/* Token usage */
+.usage {
+    margin: 0.5rem 0;
+    font-size: 0.85rem;
+    color: var(--text-secondary);
+}
+
 /* Todo list */
 .todo-list {
     list-style: none;

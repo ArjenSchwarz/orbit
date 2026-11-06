@@ -56,14 +56,8 @@ func (s *Server) handleTranscript(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Parse transcript — thread cost path for Kiro IDE sessions
-	var result *transcript.ParseResult
-	if resolved.Metadata.CostPath != "" {
-		opts := transcript.ParseOptions{KiroIDECostPath: resolved.Metadata.CostPath}
-		result, err = transcript.ParseJSONLWithFormat(resolved.Reader, transcript.FormatKiroIDE, opts)
-	} else {
-		result, err = transcript.Parse(resolved.Reader)
-	}
+	// Parse with default options; the helper threads the Kiro IDE cost path.
+	result, err := sessions.ParseResolved(resolved)
 	if err != nil {
 		s.renderError(w, http.StatusInternalServerError, "Failed to parse transcript")
 		return
@@ -90,6 +84,17 @@ func (s *Server) handleTranscript(w http.ResponseWriter, r *http.Request) {
 		Content:      template.HTML(content),
 		CreatedAt:    createdAt,
 		Size:         sessions.FormatSize(resolved.Metadata.Size),
+	}
+	// Exec streams show their parse warnings, thread ID and file time; other
+	// sources' views are unchanged (Q47).
+	if source == sessions.SourceCodexExec {
+		data.FileTime = resolved.Metadata.TimeFromFilesystem
+		if result.Metadata != nil {
+			data.ThreadID = result.Metadata.ThreadID
+		}
+		for _, w := range result.Warnings {
+			data.Warnings = append(data.Warnings, fmt.Sprintf("line %d: %s", w.Line, w.Message))
+		}
 	}
 	s.renderTemplate(w, "transcript.html", data)
 }
@@ -131,6 +136,7 @@ func (s *Server) buildSessionListData() (SessionListData, error) {
 			CreatedAt:   si.CreatedAt.UTC().Format(time.RFC3339),
 			Size:        sessions.FormatSize(si.Size),
 			URL:         fmt.Sprintf("/sessions/%s/%s", si.Source, si.ID),
+			FileTime:    si.Source == sessions.SourceCodexExec && si.TimeFromFilesystem,
 		}
 		if s.config.AllProjects {
 			view.Project = si.Project
@@ -142,7 +148,7 @@ func (s *Server) buildSessionListData() (SessionListData, error) {
 		TemplateData: TemplateData{Title: "Sessions", CSSVersion: CSSVersion},
 		Sessions:     views,
 		Warnings:     warningMessages,
-		Sources:      sessions.AllSources(),
+		Sources:      s.lister.Sources(),
 		Empty:        len(views) == 0,
 		AllProjects:  s.config.AllProjects,
 	}, nil

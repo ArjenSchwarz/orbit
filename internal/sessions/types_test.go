@@ -10,12 +10,12 @@ import (
 func TestAllSources(t *testing.T) {
 	sources := AllSources()
 
-	if len(sources) != 5 {
-		t.Fatalf("expected 5 sources, got %d", len(sources))
+	if len(sources) != 6 {
+		t.Fatalf("expected 6 sources, got %d", len(sources))
 	}
 
 	// Verify all expected sources are present
-	expected := []string{SourceClaude, SourceCodex, SourceCopilot, SourceKiroCLI, SourceKiroIDE}
+	expected := []string{SourceClaude, SourceCodex, SourceCopilot, SourceKiroCLI, SourceKiroIDE, SourceCodexExec}
 	for i, want := range expected {
 		if sources[i] != want {
 			t.Errorf("sources[%d] = %q, want %q", i, sources[i], want)

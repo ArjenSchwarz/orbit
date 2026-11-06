@@ -275,7 +275,8 @@ func TestAllProjects_EveryListedRowOpens(t *testing.T) {
 	require.NoError(t, err)
 	kiroIDEChat(t, filepath.Join(kiroIDEBaseUnder(t), "aaa", "session.chat"), "kiro-ide-execution", 1, time.Now())
 
-	list, warnings, err := newTestLister(home).ListAll("")
+	lister := newTestLister(home)
+	list, warnings, err := lister.ListAll("")
 	require.NoError(t, err)
 	assert.Empty(t, warnings)
 	sources := map[string]bool{}
@@ -289,5 +290,5 @@ func TestAllProjects_EveryListedRowOpens(t *testing.T) {
 			_ = resolved.Reader.Close()
 		}
 	}
-	assert.Len(t, sources, len(AllSources()), "every source is listed: %v", sources)
+	assert.Len(t, sources, len(lister.Sources()), "every source is listed: %v", sources)
 }

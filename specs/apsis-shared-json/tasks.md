@@ -298,12 +298,12 @@ references:
 
 ## PR 3: Codex exec streams
 
-- [ ] 9. Parse Codex exec event streams into the shared representation <!-- id:9kwhroc -->
+- [x] 9. Parse Codex exec event streams into the shared representation <!-- id:9kwhroc -->
   - internal/transcript exec types/parser and synthetic provenance; retain final turn-qualified lifecycle state and every reported total usage field without summing.
   - Blocked-by: 9kwhro5 (Record session metadata and the Codex provider in parse results)
   - Stream: 1
   - Requirements: [2.2](requirements.md#2.2), [2.3](requirements.md#2.3), [2.4](requirements.md#2.4), [2.9](requirements.md#2.9), [2.10](requirements.md#2.10), [2.11](requirements.md#2.11), [5.2](requirements.md#5.2), [5.6](requirements.md#5.6), [5.7](requirements.md#5.7)
-  - [ ] 9.1. Write failing exec parser tests and synthetic fixtures <!-- id:9kwhroy -->
+  - [x] 9.1. Write failing exec parser tests and synthetic fixtures <!-- id:9kwhroy -->
     - Fixtures in internal/transcript/testdata/codex_exec/ hold synthetic content; PROVENANCE.md cites the pinned Codex 0.166.0 exec_events.rs for each specialised shape and labels sanitised structural observations as such (5.6, Q22)
     - One fixture per item type: `agent_message`, `reasoning`, `command_execution` (exit 0, nonzero, `failed`, `declined`), `file_change`, `mcp_tool_call` (result and error), `web_search` serialised with two `id` keys (design assumption 5), `todo_list`, `error`, and `collab_tool_call` as a generic event
     - Multiple turns, interleaved tool items, `item.updated`, and EOF without completion marking the item and its `tool_result` incomplete; two turns reusing `item_0` yield tool IDs `t1:item_0` and `t2:item_0` (Q42)
@@ -318,7 +318,7 @@ references:
     - Stream: 1
     - Requirements: [2.2](requirements.md#2.2), [2.3](requirements.md#2.3), [2.4](requirements.md#2.4), [2.9](requirements.md#2.9), [2.10](requirements.md#2.10), [2.11](requirements.md#2.11), [5.2](requirements.md#5.2), [5.6](requirements.md#5.6), [5.7](requirements.md#5.7)
     - References: internal/transcript/codex_exec_parser_test.go, internal/transcript/testdata/codex_exec/
-  - [ ] 9.2. Implement ParseCodexExec, the new content fields and FormatCodexExec <!-- id:9kwhroz -->
+  - [x] 9.2. Implement ParseCodexExec, the new content fields and FormatCodexExec <!-- id:9kwhroz -->
     - types.go: `Entry.Turn`; `ContentItem` gains `ItemID`, `Status`, `Incomplete`, `ExitCode`, `Plan`, `EventType`, `Payload`, `Usage`, all `json:"-"` so Claude unmarshalling is unchanged; `PlanItem`, `Usage`, `UsageCounter`; `ParseResultMetadata.ThreadID`
     - New codex_exec_types.go and codex_exec_parser.go; decode with `UseNumber` or keep `json.RawMessage` so numbers keep their precision
     - `ParseJSONLWithFormat` dispatches `FormatCodexExec`; automatic detection is task 11
@@ -327,12 +327,12 @@ references:
     - Requirements: [2.2](requirements.md#2.2), [2.3](requirements.md#2.3), [2.4](requirements.md#2.4), [2.9](requirements.md#2.9), [2.10](requirements.md#2.10), [2.11](requirements.md#2.11), [5.2](requirements.md#5.2), [5.6](requirements.md#5.6), [5.7](requirements.md#5.7)
     - References: internal/transcript/types.go, internal/transcript/parser.go, internal/transcript/codex_exec_types.go, internal/transcript/codex_exec_parser.go
 
-- [ ] 10. Show exec content in Markdown, HTML and shared JSON <!-- id:9kwhrod -->
+- [x] 10. Show exec content in Markdown, HTML and shared JSON <!-- id:9kwhrod -->
   - Both HTML passes and Markdown expose new blocks; internal/sharedjson projects them against the initial v1 schema without a staged discriminator widening.
   - Blocked-by: 9kwhro6 (Publish the version 1 session schema and the shared JSON session projection), 9kwhro9 (Emit shared JSON listing documents), 9kwhroc (Parse Codex exec event streams into the shared representation)
   - Stream: 1
   - Requirements: [1.1](requirements.md#1.1), [1.4](requirements.md#1.4), [1.7](requirements.md#1.7), [1.8](requirements.md#1.8), [2.2](requirements.md#2.2), [2.3](requirements.md#2.3), [2.4](requirements.md#2.4), [2.9](requirements.md#2.9), [5.7](requirements.md#5.7)
-  - [ ] 10.1. Write failing rendering and projection tests for the new content kinds <!-- id:9kwhrp0 -->
+  - [x] 10.1. Write failing rendering and projection tests for the new content kinds <!-- id:9kwhrp0 -->
     - Markdown, standalone HTML and fragment goldens for the exec fixtures: `command_execution` rendered like `Bash`; `file_change` as a `kind path` list; MCP and web-search inputs; `**Result (exit code N):**` including 0; the incomplete marker and `(incomplete)`; plans like `TodoWrite`; `**Error:**` blocks; a collapsed `Event: type` block with escaped JSON (a payload containing `<script>` stays escaped); the usage line labelled thread totals at turn completion; `turn N` in the assistant meta
     - An entry holding only new kinds renders in HTML (the `hasContent` check and the render pass)
     - Two turns reusing `item_0` show each result beside its own command in all three outputs
@@ -344,7 +344,7 @@ references:
     - Stream: 1
     - Requirements: [1.1](requirements.md#1.1), [1.4](requirements.md#1.4), [1.7](requirements.md#1.7), [1.8](requirements.md#1.8), [2.2](requirements.md#2.2), [2.3](requirements.md#2.3), [2.4](requirements.md#2.4), [2.9](requirements.md#2.9), [5.7](requirements.md#5.7)
     - References: internal/transcript/markdown_test.go, internal/transcript/html_test.go, internal/sharedjson/
-  - [ ] 10.2. Implement rendering and projection for the new kinds <!-- id:9kwhrp1 -->
+  - [x] 10.2. Implement rendering and projection for the new kinds <!-- id:9kwhrp1 -->
     - markdown.go: `formatAssistantMessage`, `formatToolInput`, `formatToolResult`; html.go: the HTML counterparts including the `hasContent` pass; `RenderOptions.ThreadID`; one `usage` rule in transcript.css
     - Add sharedjson projection branches for the new content against the v1 definitions already published by task 3.2; parser-produced exec documents must also pass the retained initial schema.
     - Blocked-by: 9kwhrp0 (Write failing rendering and projection tests for the new content kinds)
@@ -352,12 +352,12 @@ references:
     - Requirements: [1.1](requirements.md#1.1), [1.4](requirements.md#1.4), [1.7](requirements.md#1.7), [1.8](requirements.md#1.8), [2.2](requirements.md#2.2), [2.3](requirements.md#2.3), [2.4](requirements.md#2.4), [2.9](requirements.md#2.9), [5.7](requirements.md#5.7)
     - References: internal/transcript/markdown.go, internal/transcript/html.go, internal/transcript/metadata.go, internal/transcript/types.go, internal/transcript/transcript.css, internal/sharedjson/, docs/schemas/apsis-shared-json.v1.schema.json
 
-- [ ] 11. Detect exec streams with a complete-line probe <!-- id:9kwhroe -->
+- [x] 11. Detect exec streams with a complete-line probe <!-- id:9kwhroe -->
   - internal/transcript complete-line probing precedes substring-only Kiro fallback while replaying consumed bytes and preserving other legacy outcomes.
   - Blocked-by: 9kwhroc (Parse Codex exec event streams into the shared representation)
   - Stream: 1
   - Requirements: [2.1](requirements.md#2.1), [5.1](requirements.md#5.1)
-  - [ ] 11.1. Write failing exec detection tests <!-- id:9kwhrp2 -->
+  - [x] 11.1. Write failing exec detection tests <!-- id:9kwhrp2 -->
     - `ProbeExecStream` outcomes `exec`, `exec-without-thread` and `other` for a leading BOM, blank lines, malformed lines, missing/empty/non-string `thread_id`, other first events, and skipped lines over 10 MiB
     - `DetectFormat` returns `FormatCodexExec` only for `exec`; a malformed prefix longer than 64 KiB containing every Kiro heuristic key followed by `thread.started`, and a first exec object split beyond 64 KiB containing those keys, both detect as exec (Decision 21)
     - Every existing testdata file and a large structurally valid Kiro CLI and Kiro IDE file keep their current result; `exec-without-thread` and `other` keep the legacy result (Q56)
@@ -366,7 +366,7 @@ references:
     - Stream: 1
     - Requirements: [2.1](requirements.md#2.1), [5.1](requirements.md#5.1)
     - References: internal/transcript/parser_test.go, internal/transcript/codex_exec_parser_test.go
-  - [ ] 11.2. Implement ProbeExecStream and wire it into DetectFormat <!-- id:9kwhrp3 -->
+  - [x] 11.2. Implement ProbeExecStream and wire it into DetectFormat <!-- id:9kwhrp3 -->
     - The probe reads whole lines until the first JSON object, skipping blank, malformed and over-10-MiB lines
     - `DetectFormat` strips the BOM, keeps structurally validated Kiro recognition, continues the probe past a substring-only Kiro match, recombines split lines and returns every consumed byte for replay; it never promotes a format the legacy detector rejected
     - Blocked-by: 9kwhrp2 (Write failing exec detection tests)
@@ -374,12 +374,12 @@ references:
     - Requirements: [2.1](requirements.md#2.1), [5.1](requirements.md#5.1)
     - References: internal/transcript/parser.go, internal/transcript/codex_exec_parser.go
 
-- [ ] 12. Convert exec stream files and stdin from the CLI <!-- id:9kwhrof -->
+- [x] 12. Convert exec stream files and stdin from the CLI <!-- id:9kwhrof -->
   - Direct CLI file/stdin conversion stays independent of configured roots; file identity/project comes from canonical path/content and stdin receives no filesystem facts.
   - Blocked-by: 9kwhrob (Expose all-projects scope and source selection in apsis and apsis serve), 9kwhrod (Show exec content in Markdown, HTML and shared JSON), 9kwhroe (Detect exec streams with a complete-line probe)
   - Stream: 2
   - Requirements: [2.1](requirements.md#2.1), [2.6](requirements.md#2.6), [2.8](requirements.md#2.8), [2.10](requirements.md#2.10), [2.11](requirements.md#2.11), [5.2](requirements.md#5.2), [5.3](requirements.md#5.3)
-  - [ ] 12.1. Write failing exec identity and direct-conversion tests <!-- id:9kwhrp4 -->
+  - [x] 12.1. Write failing exec identity and direct-conversion tests <!-- id:9kwhrp4 -->
     - Identifier = sanitised thread ID truncated to 191 bytes, `-`, then the full SHA-256 hex of the canonical path (Decision 14); property test (`rapid`): matches `^[A-Za-z0-9_-]{1,256}$`, is deterministic and is unchanged by appends
     - Canonical paths resolve symlinks and take on-disk spelling component by component (an exact entry wins, else a unique case-insensitive match); the case-alias case runs only where the temp volume is case-insensitive
     - Repository root: nearest ancestor holding a `.git` directory or a `.git` file starting with `gitdir:`; a worktree inside a parent repository maps to the worktree; no `git` executable (Q52)
@@ -392,7 +392,7 @@ references:
     - Stream: 2
     - Requirements: [2.1](requirements.md#2.1), [2.6](requirements.md#2.6), [2.8](requirements.md#2.8), [2.10](requirements.md#2.10), [2.11](requirements.md#2.11), [5.2](requirements.md#5.2), [5.3](requirements.md#5.3)
     - References: internal/sessions/codexexec_test.go, cmd/apsis/main_test.go
-  - [ ] 12.2. Implement exec identity helpers and direct conversion <!-- id:9kwhrp5 -->
+  - [x] 12.2. Implement exec identity helpers and direct conversion <!-- id:9kwhrp5 -->
     - internal/sessions/codexexec.go: canonical path, identifier and repository-root helpers that discovery reuses in task 13
     - `agentToFormat` and the `-a` help gain `codex-exec`; the input context carries the derived identifier, thread ID and project
     - `convertToJSON` strips a leading BOM for exec input only; `resolveFollowInput` rejects exec files
@@ -401,12 +401,12 @@ references:
     - Requirements: [2.1](requirements.md#2.1), [2.6](requirements.md#2.6), [2.8](requirements.md#2.8), [2.10](requirements.md#2.10), [2.11](requirements.md#2.11), [5.2](requirements.md#5.2), [5.3](requirements.md#5.3)
     - References: internal/sessions/codexexec.go, cmd/apsis/main.go
 
-- [ ] 13. Discover exec streams under configured roots <!-- id:9kwhrog -->
+- [x] 13. Discover exec streams under configured roots <!-- id:9kwhrog -->
   - internal/sessions root walk/settings/suppression; use digest injection to test conflicts, and retain Q62 legacy project rows.
   - Blocked-by: 9kwhroa (Resolve every source across projects with the listing's candidate rules), 9kwhrof (Convert exec stream files and stdin from the CLI)
   - Stream: 2
   - Requirements: [2.5](requirements.md#2.5), [2.6](requirements.md#2.6), [2.7](requirements.md#2.7), [2.8](requirements.md#2.8), [2.10](requirements.md#2.10), [2.11](requirements.md#2.11), [4.1](requirements.md#4.1), [4.3](requirements.md#4.3), [5.1](requirements.md#5.1), [5.4](requirements.md#5.4), [5.5](requirements.md#5.5), [5.9](requirements.md#5.9)
-  - [ ] 13.1. Write failing discovery, settings and suppression tests <!-- id:9kwhrp6 -->
+  - [x] 13.1. Write failing discovery, settings and suppression tests <!-- id:9kwhrp6 -->
     - Settings for `apsis` and `apsis serve`: repeatable `--codex-exec-dir` replaces `APSIS_CODEX_EXEC_DIRS`; the variable splits with `filepath.SplitList`; unset or empty means no roots; one empty flag value means no roots; mixed empty and nonempty values are a usage error; relative roots resolve against the working directory (Q33)
     - Temp trees: overlapping roots and root permutations list each canonical file once with unchanged identifiers; `.git`, `node_modules` and `testdata` are skipped below a root but scanned as a root, including a root nested inside another root's skipped directory (Q27); a `.jsonl` symlink is kept only when its target is a regular file inside a canonical root; directory symlinks and a symlink cycle are never descended; a root symlink is canonicalised
     - Qualification: `exec` lists; `exec-without-thread` is omitted with `missing_thread`; `other` is ignored silently (Q43); unreadable roots, subdirectories and files give `root_unreadable`/`path_unreadable` while other results remain; two paths with one identifier are both omitted with `identifier_conflict`
@@ -421,7 +421,7 @@ references:
     - Stream: 2
     - Requirements: [2.5](requirements.md#2.5), [2.6](requirements.md#2.6), [2.7](requirements.md#2.7), [2.8](requirements.md#2.8), [2.10](requirements.md#2.10), [2.11](requirements.md#2.11), [4.1](requirements.md#4.1), [4.3](requirements.md#4.3), [5.1](requirements.md#5.1), [5.4](requirements.md#5.4), [5.5](requirements.md#5.5), [5.9](requirements.md#5.9)
     - References: internal/sessions/codexexec_test.go, internal/sessions/lister_test.go, cmd/apsis/main_test.go
-  - [ ] 13.2. Implement roots, the walk, qualification, project assignment and suppression <!-- id:9kwhrp7 -->
+  - [x] 13.2. Implement roots, the walk, qualification, project assignment and suppression <!-- id:9kwhrp7 -->
     - codexexec.go: roots made absolute, passed through `filepath.EvalSymlinks`, rewritten to on-disk spelling and de-duplicated; `filepath.WalkDir` with skip names; candidate canonicalisation and de-duplication; probe-based qualification; identifier conflicts; repository roots memoised per directory within one pass
     - `listCodexExec` runs after `listCodex`, which supplies the suppression index from `selectCodexCandidate` winners only
     - SourceCodexExec joins source names/display names; Lister.Sources omits it without roots; SessionInfo.ThreadID feeds the schema listing thread_id field already defined in task 3.2.
@@ -431,12 +431,12 @@ references:
     - Requirements: [2.5](requirements.md#2.5), [2.6](requirements.md#2.6), [2.7](requirements.md#2.7), [2.8](requirements.md#2.8), [2.10](requirements.md#2.10), [2.11](requirements.md#2.11), [4.1](requirements.md#4.1), [4.3](requirements.md#4.3), [5.1](requirements.md#5.1), [5.4](requirements.md#5.4), [5.5](requirements.md#5.5), [5.9](requirements.md#5.9)
     - References: internal/sessions/codexexec.go, internal/sessions/lister.go, internal/sessions/types.go, cmd/apsis/main.go, docs/schemas/apsis-shared-json.v1.schema.json
 
-- [ ] 14. Open listed exec streams from the CLI and apsis serve <!-- id:9kwhroh -->
+- [x] 14. Open listed exec streams from the CLI and apsis serve <!-- id:9kwhroh -->
   - Resolver and apsisweb source routes complete PR 3; exec-only parse warnings and the polled listing warning fragment preserve other web outputs.
   - Blocked-by: 9kwhrog (Discover exec streams under configured roots)
   - Stream: 2
   - Requirements: [2.7](requirements.md#2.7), [2.10](requirements.md#2.10), [4.2](requirements.md#4.2), [5.2](requirements.md#5.2), [5.3](requirements.md#5.3), [5.5](requirements.md#5.5), [5.8](requirements.md#5.8), [5.9](requirements.md#5.9)
-  - [ ] 14.1. Write failing exec opening and web tests <!-- id:9kwhrp8 -->
+  - [x] 14.1. Write failing exec opening and web tests <!-- id:9kwhrp8 -->
     - Resolver `codex-exec` in both scopes: match the 64-hex suffix against canonical-path digests from a metadata-only walk, probe only the matching file, require its sanitised thread prefix and recheck root containment; a stale identifier gives `session not found`; suppressed streams still open by file and by `codex-exec` identifier (2.7)
     - Bare identifiers try `codex-exec` last and only when roots are configured
     - `-F` with `--source codex-exec <id>` or a `latest` that resolves to codex-exec fails with the named error; `apsis latest` adds ` (file modified)` to its `Using ... from ...` line
@@ -450,7 +450,7 @@ references:
     - Stream: 2
     - Requirements: [2.7](requirements.md#2.7), [2.10](requirements.md#2.10), [4.2](requirements.md#4.2), [5.2](requirements.md#5.2), [5.3](requirements.md#5.3), [5.5](requirements.md#5.5), [5.8](requirements.md#5.8), [5.9](requirements.md#5.9)
     - References: internal/sessions/resolver_test.go, cmd/apsis/main_test.go, internal/apsisweb/handlers_test.go, internal/apsisweb/integration_test.go
-  - [ ] 14.2. Implement exec resolution, the shared parse helper and the web changes <!-- id:9kwhrp9 -->
+  - [x] 14.2. Implement exec resolution, the shared parse helper and the web changes <!-- id:9kwhrp9 -->
     - Resolver branch; `ResolvePath` returns the stream path and follow callers reject it
     - New internal/sessions/parse.go: ParseResolved(rs *ResolvedSession, opts ...transcript.ParseOptions) copies caller options and overlays the resolved Kiro IDE cost path, preserving both Codex flags. CLI keeps explicit -a dispatch outside the helper with the same options; otherwise CLI uses the helper with shared-json-only AllowEmptyCodex/PreserveModelChanges, while apsisweb uses defaults. Source-specific forced Kiro IDE/exec selection and cost-file association stay intact.
     - apsisweb: `Config.CodexExecRoots`, `SessionView.FileTime`, `TranscriptViewData.Warnings`, templates and style.css

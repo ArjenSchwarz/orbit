@@ -1,0 +1,62 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Session Transcript</title>
+    <style></style>
+</head>
+<body>
+    <header>
+        <h1>Session Transcript</h1>
+        <p class="session-id">Session ID: <code>example-session</code></p>
+        <p class="session-id">Thread ID: <code>0199aaaa-0000-7000-8000-000000000003</code></p>
+    </header>
+    <main>
+        <section class="message assistant">
+            <div class="message-header">
+                <span class="icon">🤖</span>
+                <span class="message-role">Assistant</span>
+                <span class="message-meta"><span>turn 1</span></span>
+            </div>
+            <div class="message-content">
+                <div class="markdown-content">
+<p>Starting.</p>
+                </div>
+                <details class="tool-collapsible">
+                    <summary><span class="icon">📦</span> Event: session.compacted</summary>
+                    <div class="tool-content">
+                        <pre><code>{
+  &#34;type&#34;: &#34;session.compacted&#34;,
+  &#34;reason&#34;: &#34;context window&#34;
+}</code></pre>
+                    </div>
+                </details>
+                <div class="tool-use error"><span class="icon">❌</span> <strong>Error:</strong> stream disconnected; retrying</div>
+                <div class="tool-use error"><span class="icon">❌</span> <strong>Error:</strong> model request failed</div>
+                <details class="tool-collapsible">
+                    <summary><span class="icon">📦</span> Event: thread.started</summary>
+                    <div class="tool-content">
+                        <pre><code>{
+  &#34;type&#34;: &#34;thread.started&#34;,
+  &#34;thread_id&#34;: &#34;0199aaaa-0000-7000-8000-00000000000f&#34;
+}</code></pre>
+                    </div>
+                </details>
+            </div>
+        </section>
+    </main>
+<script>
+(function() {
+    var fmt = new Intl.DateTimeFormat(undefined, {
+        day: 'numeric', month: 'short', year: 'numeric',
+        hour: 'numeric', minute: '2-digit'
+    });
+    document.querySelectorAll('time[datetime]').forEach(function(el) {
+        var d = new Date(el.getAttribute('datetime'));
+        if (!isNaN(d)) el.textContent = fmt.format(d);
+    });
+})();
+</script>
+</body>
+</html>

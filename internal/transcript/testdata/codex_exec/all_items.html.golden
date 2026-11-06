@@ -1,0 +1,249 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Session Transcript</title>
+    <style></style>
+</head>
+<body>
+    <header>
+        <h1>Session Transcript</h1>
+        <p class="session-id">Session ID: <code>example-session</code></p>
+        <p class="session-id">Thread ID: <code>0199aaaa-0000-7000-8000-000000000001</code></p>
+    </header>
+    <main>
+        <section class="message assistant">
+            <div class="message-header">
+                <span class="icon">🤖</span>
+                <span class="message-role">Assistant</span>
+                <span class="message-meta"><span>turn 1</span></span>
+            </div>
+            <div class="message-content">
+                <div class="thinking-block">
+                    <div class="thinking-header">💭 Thinking</div>
+                    <div class="thinking-content markdown-content">
+<p><strong>Planning</strong> the check</p>
+                    </div>
+                </div>
+        <section class="message assistant">
+            <div class="message-header">
+                <span class="icon">🤖</span>
+                <span class="message-role">Assistant</span>
+            </div>
+            <div class="message-content">
+                <details class="tool-collapsible">
+                    <summary><span class="icon">✅</span> 🔧 command_execution</summary>
+                    <div class="tool-content">
+                        <div class="tool-input-section">
+                            <strong>Command:</strong>
+                            <pre><code>/bin/sh -lc &#39;make test&#39;</code></pre>
+                        </div>
+                        <div class="tool-result-section">
+                            <strong>Result (exit code 0):</strong>
+                            <pre><code>ok
+</code></pre>
+                        </div>
+                    </div>
+                </details>
+            </div>
+        </section>
+        <section class="message assistant">
+            <div class="message-header">
+                <span class="icon">🤖</span>
+                <span class="message-role">Assistant</span>
+            </div>
+            <div class="message-content">
+                <details class="tool-collapsible error">
+                    <summary><span class="icon">❌</span> 🔧 command_execution</summary>
+                    <div class="tool-content">
+                        <div class="tool-input-section">
+                            <strong>Command:</strong>
+                            <pre><code>/bin/sh -lc &#39;make lint&#39;</code></pre>
+                        </div>
+                        <div class="tool-result-section">
+                            <strong>Result (exit code 2):</strong>
+                            <pre><code>lint: 2 issues
+</code></pre>
+                        </div>
+                    </div>
+                </details>
+            </div>
+        </section>
+        <section class="message assistant">
+            <div class="message-header">
+                <span class="icon">🤖</span>
+                <span class="message-role">Assistant</span>
+            </div>
+            <div class="message-content">
+                <details class="tool-collapsible error">
+                    <summary><span class="icon">❌</span> 🔧 command_execution</summary>
+                    <div class="tool-content">
+                        <div class="tool-input-section">
+                            <strong>Command:</strong>
+                            <pre><code>rm -rf build</code></pre>
+                        </div>
+                        <div class="tool-result-section">
+                            <strong>Result:</strong>
+                            <pre><code></code></pre>
+                        </div>
+                    </div>
+                </details>
+            </div>
+        </section>
+        <section class="message assistant">
+            <div class="message-header">
+                <span class="icon">🤖</span>
+                <span class="message-role">Assistant</span>
+            </div>
+            <div class="message-content">
+                <details class="tool-collapsible">
+                    <summary><span class="icon">✅</span> 🔧 file_change</summary>
+                    <div class="tool-content">
+                        <div class="tool-input-section">
+                            <ul>
+                                <li>update <code>/work/example-repo/main.go</code></li>
+                                <li>add <code>/work/example-repo/notes.md</code></li>
+                            </ul>
+                        </div>
+                        <div class="tool-result-section">
+                            <strong>Result:</strong>
+                            <pre><code>update /work/example-repo/main.go
+add /work/example-repo/notes.md</code></pre>
+                        </div>
+                    </div>
+                </details>
+            </div>
+        </section>
+        <section class="message assistant">
+            <div class="message-header">
+                <span class="icon">🤖</span>
+                <span class="message-role">Assistant</span>
+            </div>
+            <div class="message-content">
+                <details class="tool-collapsible">
+                    <summary><span class="icon">✅</span> 🔧 mcp_tool_call</summary>
+                    <div class="tool-content">
+                        <div class="tool-input-section">
+                            <strong>Input:</strong>
+                            <pre><code>{
+  &#34;arguments&#34;: {
+    &#34;limit&#34;: 3,
+    &#34;query&#34;: &#34;retry policy&#34;
+  },
+  &#34;server&#34;: &#34;docs&#34;,
+  &#34;tool&#34;: &#34;search&#34;
+}</code></pre>
+                        </div>
+                        <div class="tool-result-section">
+                            <strong>Result:</strong>
+                            <pre><code>{&#34;content&#34;:[{&#34;type&#34;:&#34;text&#34;,&#34;text&#34;:&#34;Retry three times&#34;}],&#34;structured_content&#34;:null}</code></pre>
+                        </div>
+                    </div>
+                </details>
+            </div>
+        </section>
+        <section class="message assistant">
+            <div class="message-header">
+                <span class="icon">🤖</span>
+                <span class="message-role">Assistant</span>
+            </div>
+            <div class="message-content">
+                <details class="tool-collapsible error">
+                    <summary><span class="icon">❌</span> 🔧 mcp_tool_call</summary>
+                    <div class="tool-content">
+                        <div class="tool-input-section">
+                            <strong>Input:</strong>
+                            <pre><code>{
+  &#34;arguments&#34;: {
+    &#34;url&#34;: &#34;https://example.com/a&#34;
+  },
+  &#34;server&#34;: &#34;docs&#34;,
+  &#34;tool&#34;: &#34;fetch&#34;
+}</code></pre>
+                        </div>
+                        <div class="tool-result-section">
+                            <strong>Result:</strong>
+                            <pre><code>server unavailable</code></pre>
+                        </div>
+                    </div>
+                </details>
+            </div>
+        </section>
+        <section class="message assistant">
+            <div class="message-header">
+                <span class="icon">🤖</span>
+                <span class="message-role">Assistant</span>
+            </div>
+            <div class="message-content">
+                <details class="tool-collapsible">
+                    <summary><span class="icon">✅</span> 🔧 web_search</summary>
+                    <div class="tool-content">
+                        <div class="tool-input-section">
+                            <strong>Input:</strong>
+                            <pre><code>{
+  &#34;action&#34;: {
+    &#34;query&#34;: &#34;go json number precision&#34;,
+    &#34;type&#34;: &#34;search&#34;
+  },
+  &#34;query&#34;: &#34;go json number precision&#34;
+}</code></pre>
+                        </div>
+                        <div class="tool-result-section">
+                            <strong>Result:</strong>
+                            <pre><code>[{&#34;title&#34;:&#34;Example result&#34;,&#34;url&#34;:&#34;https://example.com/b&#34;}]</code></pre>
+                        </div>
+                    </div>
+                </details>
+            </div>
+        </section>
+                <details class="tool-collapsible" open>
+                    <summary><span class="icon">⏳</span> 📋 Plan (incomplete)</summary>
+                    <div class="tool-content">
+                        <div class="tool-input-section">
+                            <ul class="todo-list">
+                                <li>[x] Run tests</li>
+                                <li>[ ] Report</li>
+                            </ul>
+                        </div>
+                    </div>
+                </details>
+                <div class="tool-use error"><span class="icon">❌</span> <strong>Error:</strong> command output was truncated</div>
+                <details class="tool-collapsible">
+                    <summary><span class="icon">📦</span> Event: collab_tool_call</summary>
+                    <div class="tool-content">
+                        <pre><code>{
+  &#34;id&#34;: &#34;item_10&#34;,
+  &#34;type&#34;: &#34;collab_tool_call&#34;,
+  &#34;tool&#34;: &#34;spawn_agent&#34;,
+  &#34;sender_thread_id&#34;: &#34;0199aaaa-0000-7000-8000-000000000001&#34;,
+  &#34;receiver_thread_ids&#34;: [
+    &#34;0199aaaa-0000-7000-8000-000000000002&#34;
+  ],
+  &#34;prompt&#34;: &#34;Review &lt;script&gt;alert(1)&lt;/script&gt; output&#34;,
+  &#34;agents_states&#34;: {},
+  &#34;status&#34;: &#34;completed&#34;
+}</code></pre>
+                    </div>
+                </details>
+                <div class="markdown-content">
+<p>Tests pass; lint reports two issues.</p>
+                </div>
+                <div class="usage">Token usage (thread totals at turn completion): input_tokens 1200 · cached_input_tokens 800 · cache_write_input_tokens 0 · output_tokens 90 · reasoning_output_tokens 40 · future_counter 123456789012345678901234567890</div>
+            </div>
+        </section>
+    </main>
+<script>
+(function() {
+    var fmt = new Intl.DateTimeFormat(undefined, {
+        day: 'numeric', month: 'short', year: 'numeric',
+        hour: 'numeric', minute: '2-digit'
+    });
+    document.querySelectorAll('time[datetime]').forEach(function(el) {
+        var d = new Date(el.getAttribute('datetime'));
+        if (!isNaN(d)) el.textContent = fmt.format(d);
+    });
+})();
+</script>
+</body>
+</html>

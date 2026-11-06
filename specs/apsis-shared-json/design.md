@@ -202,8 +202,8 @@ const SchemaVersion = 1
 type SessionContext struct {
     Source   string                    // from the resolver; else from ParseResult.Format
     ID       string                    // listing identifier when known
+    Project  string                    // input's project: an exec stream file's containing repository (Q110)
     Resolved *sessions.SessionMetadata // nil for file and stdin input
-    // The canonical input path joins with exec-stream project assignment, its first consumer (Q99).
 }
 func Session(res *transcript.ParseResult, ctx SessionContext) SessionDocument
 func Listing(list []sessions.SessionInfo, warnings []sessions.ListWarning, scope Scope) ListingDocument

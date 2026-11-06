@@ -1,0 +1,8 @@
+{"type":"thread.started","thread_id":"0199aaaa-0000-7000-8000-000000000003"}
+{"type":"turn.started"}
+{"type":"item.completed","item":{"id":"item_0","type":"agent_message","text":"Starting."}}
+{"type":"item.completed","item":{"id":"item_1","type":"agent_message","text":"broken
+{"type":"session.compacted","reason":"context window"}
+{"type":"error","message":"stream disconnected; retrying"}
+{"type":"turn.failed","error":{"message":"model request failed"}}
+{"type":"thread.started","thread_id":"0199aaaa-0000-7000-8000-00000000000f"}

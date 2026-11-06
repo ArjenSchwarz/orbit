@@ -1,0 +1,178 @@
+# Session Transcript
+
+**Session ID:** `example-session`
+
+**Thread ID:** `0199aaaa-0000-7000-8000-000000000001`
+
+---
+
+## 🤖 Assistant · turn 1
+
+<details>
+<summary>💭 Thinking</summary>
+
+**Planning** the check
+
+</details>
+
+<details>
+<summary>✅ 🔧 command_execution</summary>
+
+**Command:**
+```bash
+/bin/sh -lc 'make test'
+```
+
+**Result (exit code 0):**
+```
+ok
+
+```
+
+</details>
+
+<details>
+<summary>❌ 🔧 command_execution</summary>
+
+**Command:**
+```bash
+/bin/sh -lc 'make lint'
+```
+
+**Result (exit code 2):**
+```
+lint: 2 issues
+
+```
+
+</details>
+
+<details>
+<summary>❌ 🔧 command_execution</summary>
+
+**Command:**
+```bash
+rm -rf build
+```
+
+**Result:**
+```
+
+```
+
+</details>
+
+<details>
+<summary>✅ 🔧 file_change</summary>
+
+- update `/work/example-repo/main.go`
+- add `/work/example-repo/notes.md`
+
+**Result:**
+```
+update /work/example-repo/main.go
+add /work/example-repo/notes.md
+```
+
+</details>
+
+<details>
+<summary>✅ 🔧 mcp_tool_call</summary>
+
+**Input:**
+```json
+{
+  "arguments": {
+    "limit": 3,
+    "query": "retry policy"
+  },
+  "server": "docs",
+  "tool": "search"
+}
+```
+
+**Result:**
+```
+{"content":[{"type":"text","text":"Retry three times"}],"structured_content":null}
+```
+
+</details>
+
+<details>
+<summary>❌ 🔧 mcp_tool_call</summary>
+
+**Input:**
+```json
+{
+  "arguments": {
+    "url": "https://example.com/a"
+  },
+  "server": "docs",
+  "tool": "fetch"
+}
+```
+
+**Result:**
+```
+server unavailable
+```
+
+</details>
+
+<details>
+<summary>✅ 🔧 web_search</summary>
+
+**Input:**
+```json
+{
+  "action": {
+    "query": "go json number precision",
+    "type": "search"
+  },
+  "query": "go json number precision"
+}
+```
+
+**Result:**
+```
+[{"title":"Example result","url":"https://example.com/b"}]
+```
+
+</details>
+
+<details open>
+<summary>⏳ 📋 Plan (incomplete)</summary>
+
+- [x] Run tests
+- [ ] Report
+
+</details>
+
+❌ **Error:** command output was truncated
+
+<details>
+<summary>📦 Event: collab_tool_call</summary>
+
+```json
+{
+  "id": "item_10",
+  "type": "collab_tool_call",
+  "tool": "spawn_agent",
+  "sender_thread_id": "0199aaaa-0000-7000-8000-000000000001",
+  "receiver_thread_ids": [
+    "0199aaaa-0000-7000-8000-000000000002"
+  ],
+  "prompt": "Review <script>alert(1)</script> output",
+  "agents_states": {},
+  "status": "completed"
+}
+```
+
+</details>
+
+Tests pass; lint reports two issues.
+
+**Token usage (thread totals at turn completion):** input_tokens 1200 · cached_input_tokens 800 · cache_write_input_tokens 0 · output_tokens 90 · reasoning_output_tokens 40 · future_counter 123456789012345678901234567890
+
+---
+

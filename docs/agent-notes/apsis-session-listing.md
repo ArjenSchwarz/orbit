@@ -11,6 +11,9 @@ Entry point: `cmd/apsis/main.go`, function `listSessions(w, projectPath, format)
 - `listCodex(projectPath)` - filters via `cwd` in `session_meta`
 - `listKiro(projectPath)` - filters via SQLite directory discovery
 - `listKiroIDE(projectPath)` - filters via workspace directory lookup
+- `listCodexExec(projectPath, rolloutThreads)` - only with exec roots; see [codex-exec-streams.md](codex-exec-streams.md)
+
+`listCodex` (through `listCodexIndexed`) also returns the lower-case recorded IDs of the rollouts `selectCodexCandidate` would open whose heads pass `codexHeadWarning`, in both scopes; `ListAll` hands them to `listCodexExec` to suppress streams with those thread IDs. A failed walk returns no index. `Lister.Sources()` omits `codex-exec` without roots, and `WithCodexExecRoots` with roots also turns on extended ordering (Q114).
 
 ## Options and ordering
 

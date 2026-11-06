@@ -10,14 +10,6 @@
     {{end}}
 </div>
 
-{{if .Warnings}}
-<div id="warnings" class="warning-banner">
-    {{range .Warnings}}
-    <p>{{.}}</p>
-    {{end}}
-</div>
-{{end}}
-
 <div id="session-list" hx-get="/api/sessions" hx-trigger="every 15s" hx-swap="innerHTML">
     {{template "sessions_list" .}}
 </div>
@@ -67,6 +59,13 @@
 {{end}}
 
 {{define "sessions_list"}}
+{{if .Warnings}}
+<div id="warnings" class="warning-banner">
+    {{range .Warnings}}
+    <p>{{.}}</p>
+    {{end}}
+</div>
+{{end}}
 {{if .Empty}}
 <div class="empty-state">
     <h2>No sessions found</h2>
@@ -83,7 +82,7 @@
         <span class="source-badge source-{{.Source}}">{{.Source}}</span>
         <span class="session-id" title="{{.ID}}">{{.DisplayID}}</span>
         {{if $.AllProjects}}{{if .Project}}<span class="session-project" title="{{.Project}}">{{.Project}}</span>{{else}}<span class="session-project">-</span>{{end}}{{end}}
-        <time class="session-date" datetime="{{.CreatedAt}}">{{.CreatedAt}}</time>
+        {{if .FileTime}}<span class="session-date"><time datetime="{{.CreatedAt}}">{{.CreatedAt}}</time> <span class="session-file-time">file modified</span></span>{{else}}<time class="session-date" datetime="{{.CreatedAt}}">{{.CreatedAt}}</time>{{end}}
         <span class="session-size">{{.Size}}</span>
     </a>
     {{end}}
