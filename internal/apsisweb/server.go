@@ -18,13 +18,14 @@ import (
 var templatesFS embed.FS
 
 // CSSVersion is used for cache busting. Bump when CSS changes.
-const CSSVersion = "1"
+const CSSVersion = "2"
 
 // Config holds web server configuration.
 type Config struct {
 	Port        int    // Default: 8081
 	Bind        string // Default: "localhost"
-	ProjectPath string // Resolved project directory
+	ProjectPath string // Resolved project directory; unused with AllProjects
+	AllProjects bool   // List and open sessions from every project
 }
 
 // Server is the HTTP server for the apsis web interface.
@@ -38,12 +39,19 @@ type Server struct {
 
 // New creates a new web server.
 func New(config Config) (*Server, error) {
-	lister, err := sessions.NewLister()
+	// All-projects scope lists and opens with the empty project path and
+	// breaks equal times by source and ID.
+	if config.AllProjects {
+		config.ProjectPath = ""
+	}
+	opts := []sessions.Option{sessions.WithExtendedOrdering(config.AllProjects)}
+
+	lister, err := sessions.NewLister(opts...)
 	if err != nil {
 		return nil, fmt.Errorf("create lister: %w", err)
 	}
 
-	resolver, err := sessions.NewResolver(config.ProjectPath)
+	resolver, err := sessions.NewResolver(config.ProjectPath, opts...)
 	if err != nil {
 		return nil, fmt.Errorf("create resolver: %w", err)
 	}
@@ -91,6 +99,11 @@ func (s *Server) setupRoutes() {
 					http.HandlerFunc(s.handleTranscript))))))
 }
 
+// Handler returns the server's request handler.
+func (s *Server) Handler() http.Handler {
+	return s.server.Handler
+}
+
 // Start begins listening and serving requests.
 // Does not handle signals — the caller is responsible for calling Shutdown.
 func (s *Server) Start() error {
@@ -117,10 +130,11 @@ type TemplateData struct {
 // SessionListData is passed to sessions.html.
 type SessionListData struct {
 	TemplateData
-	Sessions []SessionView
-	Warnings []string
-	Sources  []string
-	Empty    bool
+	Sessions    []SessionView
+	Warnings    []string
+	Sources     []string
+	Empty       bool
+	AllProjects bool // show each session's project
 }
 
 // SessionView is a single session formatted for display.
@@ -132,6 +146,7 @@ type SessionView struct {
 	CreatedAt   string
 	Size        string
 	URL         string
+	Project     string // recorded project; set in all-projects scope only
 }
 
 // TranscriptViewData is passed to transcript.html.

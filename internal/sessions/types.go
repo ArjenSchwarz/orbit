@@ -67,10 +67,15 @@ func FormatSize(bytes int64) string {
 
 // SessionInfo holds metadata about a discovered session.
 type SessionInfo struct {
-	ID        string
-	CreatedAt time.Time
-	Size      int64
-	Source    string // One of the Source* constants
+	ID                 string
+	CreatedAt          time.Time // Sort time: the recorded creation time, else the file modification time
+	Size               int64
+	Source             string // One of the Source* constants
+	TimeFromFilesystem bool   // CreatedAt is the file modification time, not a recorded time
+	Project            string // Recorded project directory, when the listing read yields it
+	Model              string // First recorded model, when the listing read yields it
+	Provider           string // First recorded model provider, when the listing read yields it
+	Origin             string // Claude entrypoint or Codex originator from the bounded head scan
 }
 
 // SessionMetadata is returned by the Resolver alongside the reader.
@@ -92,8 +97,39 @@ type ResolvedSession struct {
 	Metadata SessionMetadata
 }
 
+// Listing warning codes, shared with shared JSON listing documents.
+const (
+	WarningSourceFailed     = "source_failed"     // a source could not be listed
+	WarningPathUnreadable   = "path_unreadable"   // a session file, or a file beside it, could not be read or parsed
+	WarningDuplicateSession = "duplicate_session" // all-projects scope listed one copy of a session found in several places
+)
+
 // ListWarning represents a non-fatal error during session listing.
 type ListWarning struct {
 	Source string // Which agent source failed
+	Code   string // One of the Warning* codes
 	Err    error  // The underlying error
+}
+
+// Options are the settings shared by a Lister and a Resolver.
+type Options struct {
+	ExtendedOrdering bool // sort by time, then source, then identifier (requirement 4.4)
+}
+
+// Option changes Options. NewLister and NewResolver apply the same functions.
+type Option func(*Options)
+
+// WithExtendedOrdering enables the deterministic source-then-identifier tie
+// order. Without it, listings keep the legacy order.
+func WithExtendedOrdering(enabled bool) Option {
+	return func(o *Options) { o.ExtendedOrdering = enabled }
+}
+
+// applyOptions returns the Options that opts produce.
+func applyOptions(opts []Option) Options {
+	var o Options
+	for _, opt := range opts {
+		opt(&o)
+	}
+	return o
 }

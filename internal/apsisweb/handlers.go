@@ -123,7 +123,7 @@ func (s *Server) buildSessionListData() (SessionListData, error) {
 		if len(displayID) > 40 {
 			displayID = displayID[:37] + "..."
 		}
-		views = append(views, SessionView{
+		view := SessionView{
 			ID:          si.ID,
 			DisplayID:   displayID,
 			Source:      si.Source,
@@ -131,7 +131,11 @@ func (s *Server) buildSessionListData() (SessionListData, error) {
 			CreatedAt:   si.CreatedAt.UTC().Format(time.RFC3339),
 			Size:        sessions.FormatSize(si.Size),
 			URL:         fmt.Sprintf("/sessions/%s/%s", si.Source, si.ID),
-		})
+		}
+		if s.config.AllProjects {
+			view.Project = si.Project
+		}
+		views = append(views, view)
 	}
 
 	return SessionListData{
@@ -140,6 +144,7 @@ func (s *Server) buildSessionListData() (SessionListData, error) {
 		Warnings:     warningMessages,
 		Sources:      sessions.AllSources(),
 		Empty:        len(views) == 0,
+		AllProjects:  s.config.AllProjects,
 	}, nil
 }
 

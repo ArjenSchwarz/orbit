@@ -11,6 +11,12 @@ Separate package from `internal/web/` (orbit's web server) to avoid coupling. Im
 - **Template rendering uses per-page pre-parsed templates** — same pattern as orbit: `pageTemplates` map populated in `init()`, each page template includes layout.html.
 - **`renderFragment()`** uses the sessions.html template to execute the `sessions_list` named block for HTMX polling.
 
+## All-Projects Scope
+
+`Config.AllProjects` (`apsis serve --all-projects`, a usage error with `--project`) clears `ProjectPath`, so the Lister lists and the Resolver opens with `""`, and both get `WithExtendedOrdering(true)`. Only then does `buildSessionListData` set `SessionView.Project` and `SessionListData.AllProjects`; the `sessions_list` template adds a `.session-project` cell (`-` when unrecorded) and the `all-projects` list class that widens the card grid. Project-scope pages render exactly as before. `Server.Handler()` exposes the router for `httptest` (used by the CLI round-trip test in `cmd/apsis/all_projects_test.go`).
+
+`TestIntegrationEndToEnd` intermittently fails on shutdown (`context deadline exceeded`), also on unmodified upstream; rerun before treating it as a regression.
+
 ## Transcript Parsing
 
 The handler dispatches differently based on whether a cost path exists:

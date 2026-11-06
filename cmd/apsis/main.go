@@ -5,6 +5,7 @@ package main
 import (
 	"bufio"
 	"bytes"
+	"cmp"
 	"context"
 	"encoding/json"
 	"flag"
@@ -13,6 +14,7 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	"slices"
 	"strconv"
 	"strings"
 	"syscall"
@@ -33,15 +35,17 @@ var (
 
 // Config holds CLI configuration.
 type Config struct {
-	List    bool   // -l, --list
-	Output  string // -o, --output
-	Project string // -p, --project
-	Format  string // -f, --format
-	Agent   string // -a, --agent (force agent format)
-	Follow  bool   // -F, --follow
-	Version bool   // -v, --version
-	Help    bool   // -h, --help
-	Input   string // positional argument (session ID or file path)
+	List        bool   // -l, --list
+	Output      string // -o, --output
+	Project     string // -p, --project
+	AllProjects bool   // --all-projects
+	Source      string // -s, --source (the positional argument is an ID of this source)
+	Format      string // -f, --format
+	Agent       string // -a, --agent (force agent format)
+	Follow      bool   // -F, --follow
+	Version     bool   // -v, --version
+	Help        bool   // -h, --help
+	Input       string // positional argument (session ID or file path)
 }
 
 func main() {
@@ -71,6 +75,7 @@ func serveCommand(args []string) error {
 	port := fs.Int("port", 0, "Port to listen on (default 8081, or APSIS_SERVE_PORT)")
 	bind := fs.String("bind", "", "Address to bind to (default localhost, or APSIS_SERVE_BIND)")
 	project := fs.String("project", "", "Project directory (default: current directory)")
+	allProjects := fs.Bool("all-projects", false, "List sessions from every project")
 	showVersion := fs.Bool("version", false, "Show version and exit")
 
 	fs.Usage = func() {
@@ -85,6 +90,7 @@ func serveCommand(args []string) error {
 		fmt.Fprintf(os.Stderr, "  apsis serve                    Start with default settings\n")
 		fmt.Fprintf(os.Stderr, "  apsis serve --port 3000        Start on port 3000\n")
 		fmt.Fprintf(os.Stderr, "  apsis serve --bind 0.0.0.0     Listen on all interfaces\n")
+		fmt.Fprintf(os.Stderr, "  apsis serve --all-projects     Browse sessions from every project\n")
 	}
 
 	if err := fs.Parse(args); err != nil {
@@ -105,10 +111,17 @@ func serveCommand(args []string) error {
 		fmt.Fprintln(os.Stderr, "Warning: Server is accessible from the network. Session data may contain sensitive information.")
 	}
 
-	// Resolve project path
-	projectPath, err := resolveProjectPath(*project)
-	if err != nil {
-		return fmt.Errorf("resolve project path: %w", err)
+	// Resolve project path; all-projects scope has none
+	if *allProjects && *project != "" {
+		return fmt.Errorf("cannot use --all-projects with --project")
+	}
+	var projectPath string
+	if !*allProjects {
+		var err error
+		projectPath, err = resolveProjectPath(*project)
+		if err != nil {
+			return fmt.Errorf("resolve project path: %w", err)
+		}
 	}
 
 	// Create server
@@ -116,6 +129,7 @@ func serveCommand(args []string) error {
 		Port:        resolvedPort,
 		Bind:        resolvedBind,
 		ProjectPath: projectPath,
+		AllProjects: *allProjects,
 	})
 	if err != nil {
 		return fmt.Errorf("create server: %w", err)
@@ -189,6 +203,9 @@ func parseFlags() *Config {
 	flag.StringVar(&cfg.Output, "output", "", "Output file (default: stdout)")
 	flag.StringVar(&cfg.Project, "p", "", "Project directory (default: current directory)")
 	flag.StringVar(&cfg.Project, "project", "", "Project directory (default: current directory)")
+	flag.BoolVar(&cfg.AllProjects, "all-projects", false, "List and open sessions from every project")
+	flag.StringVar(&cfg.Source, "s", "", "Open the argument as a session ID of this source")
+	flag.StringVar(&cfg.Source, "source", "", "Open the argument as a session ID of this source")
 	flag.StringVar(&cfg.Format, "f", "md", "Output format: md, markdown, html, json, shared-json (default: md)")
 	flag.StringVar(&cfg.Format, "format", "md", "Output format: md, markdown, html, json, shared-json (default: md)")
 	flag.StringVar(&cfg.Agent, "a", "", "Force agent format (claude-code, codex, kiro, kiro-ide, copilot)")
@@ -227,6 +244,10 @@ Options:
   -l, --list              List available sessions for the project
   -o, --output <file>     Write output to file (default: stdout)
   -p, --project <path>    Project directory (default: current directory)
+      --all-projects      List, open and pick the latest session from every project
+                          (with --list, adds a project column)
+  -s, --source <source>   Open the argument as a session ID of this source:
+                          claude, codex, copilot, kiro-cli, kiro-ide
   -f, --format <format>   Output format: md, markdown, html, json, shared-json (default: md)
                           json outputs the raw session data as pretty-printed JSON
                           shared-json outputs the same structure for every agent,
@@ -253,6 +274,8 @@ Examples:
   apsis -a kiro session.json                     Force Kiro format parsing
   apsis --list                                   List sessions for current project
   apsis --list -p /path/to/project               List sessions for different project
+  apsis --list --all-projects                    List sessions from every project
+  apsis --all-projects -s codex session-id       Open a Codex session from any directory
   apsis -F session-id                            Follow session in real-time
   apsis --follow /path/to/session.jsonl          Follow file for new entries
   apsis serve                                    Start web server on localhost:8081
@@ -273,20 +296,13 @@ func run(cfg *Config) (int, error) {
 		return 0, nil
 	}
 
-	// Resolve project path
-	projectPath := cfg.Project
-	if projectPath == "" {
-		var err error
-		projectPath, err = os.Getwd()
-		if err != nil {
-			return 0, fmt.Errorf("failed to get current directory: %w", err)
-		}
+	if err := validateSelection(cfg); err != nil {
+		return 0, err
 	}
 
-	// Make project path absolute
-	absProjectPath, err := filepath.Abs(projectPath)
+	absProjectPath, err := commandProject(cfg)
 	if err != nil {
-		return 0, fmt.Errorf("failed to resolve project path: %w", err)
+		return 0, err
 	}
 
 	// Handle --list
@@ -295,7 +311,7 @@ func run(cfg *Config) (int, error) {
 		if cfg.Input != "" {
 			return 0, fmt.Errorf("cannot specify both --list and a positional argument")
 		}
-		return 0, listSessions(absProjectPath)
+		return 0, listSessions(os.Stdout, absProjectPath, cfg.Format)
 	}
 
 	// Validate follow mode early (requirement 5.2-5.6)
@@ -317,7 +333,7 @@ func run(cfg *Config) (int, error) {
 
 	// Handle follow mode
 	if cfg.Follow {
-		filePath, err := resolveFollowInput(cfg.Input, absProjectPath)
+		filePath, err := resolveFollowInput(cfg.Input, absProjectPath, cfg.Source)
 		if err != nil {
 			return 0, err
 		}
@@ -329,7 +345,7 @@ func run(cfg *Config) (int, error) {
 	}
 
 	// Non-follow mode: resolve input source
-	input, in, err := resolveInput(cfg.Input, absProjectPath)
+	input, in, err := resolveInput(cfg.Input, absProjectPath, cfg.Source)
 	if err != nil {
 		return 0, err
 	}
@@ -347,6 +363,48 @@ func run(cfg *Config) (int, error) {
 	}
 
 	return 0, convert(input, output, in, cfg.Format, cfg.Agent)
+}
+
+// validateSelection rejects option combinations that choose sessions ambiguously.
+func validateSelection(cfg *Config) error {
+	if cfg.AllProjects && cfg.Project != "" {
+		return fmt.Errorf("cannot use --all-projects with --project")
+	}
+	if cfg.Source == "" {
+		return nil
+	}
+	switch {
+	case !sessions.IsValidSource(cfg.Source):
+		return fmt.Errorf("unknown source for --source: %s (use %s)", cfg.Source, strings.Join(sessions.AllSources(), ", "))
+	case cfg.List:
+		return fmt.Errorf("cannot use --source with --list")
+	case cfg.Input == "latest":
+		return fmt.Errorf("cannot use --source with latest")
+	case cfg.Input == "":
+		return fmt.Errorf("--source needs a session ID argument")
+	}
+	return nil
+}
+
+// commandProject returns the absolute project directory a command reads, or
+// "" for every project under --all-projects.
+func commandProject(cfg *Config) (string, error) {
+	if cfg.AllProjects {
+		return "", nil
+	}
+	projectPath := cfg.Project
+	if projectPath == "" {
+		var err error
+		projectPath, err = os.Getwd()
+		if err != nil {
+			return "", fmt.Errorf("failed to get current directory: %w", err)
+		}
+	}
+	absProjectPath, err := filepath.Abs(projectPath)
+	if err != nil {
+		return "", fmt.Errorf("failed to resolve project path: %w", err)
+	}
+	return absProjectPath, nil
 }
 
 // isFilePath returns true if the argument appears to be a file path rather than a session ID.
@@ -387,11 +445,25 @@ type inputContext struct {
 }
 
 // resolveInput determines the input source and returns a reader and its input context.
-// It checks Claude location first, then Codex, then Copilot, then Kiro CLI, then Kiro IDE.
-func resolveInput(arg string, projectPath string) (io.ReadCloser, inputContext, error) {
+// With a source, the argument is an ID of that source. Otherwise it checks
+// Claude location first, then Codex, then Copilot, then Kiro CLI, then Kiro IDE.
+// An empty projectPath searches every project.
+func resolveInput(arg, projectPath, source string) (io.ReadCloser, inputContext, error) {
 	// If no argument, read from stdin
 	if arg == "" {
 		return os.Stdin, inputContext{}, nil
+	}
+
+	if source != "" {
+		resolver, err := sessions.NewResolver(projectPath)
+		if err != nil {
+			return nil, inputContext{}, err
+		}
+		resolved, err := resolver.Resolve(source, arg)
+		if err != nil {
+			return nil, inputContext{}, err
+		}
+		return resolved.Reader, resolvedInput(resolved), nil
 	}
 
 	// Check if it's a file path
@@ -447,9 +519,14 @@ func resolvedInput(resolved *sessions.ResolvedSession) inputContext {
 	}
 }
 
-// listSessions lists all sessions for a project.
-func listSessions(projectPath string) error {
-	lister, err := sessions.NewLister()
+// listSessions writes the sessions of a project, or of every project when
+// projectPath is empty, to w: a shared JSON listing document for
+// -f shared-json, else one tab-separated line per session, with a project
+// column across projects.
+func listSessions(w io.Writer, projectPath, format string) error {
+	allProjects := projectPath == ""
+	sharedJSON := strings.ToLower(format) == "shared-json"
+	lister, err := sessions.NewLister(sessions.WithExtendedOrdering(sharedJSON || allProjects))
 	if err != nil {
 		return err
 	}
@@ -459,29 +536,43 @@ func listSessions(projectPath string) error {
 		return err
 	}
 
-	for _, w := range warnings {
-		fmt.Fprintf(os.Stderr, "Warning: could not list %s sessions: %v\n", sessions.DisplayName(w.Source), w.Err)
+	for _, warning := range warnings {
+		fmt.Fprintf(os.Stderr, "Warning: could not list %s sessions: %v\n", sessions.DisplayName(warning.Source), warning.Err)
+	}
+
+	if sharedJSON {
+		scope := sharedjson.Scope{Project: projectPath, AllProjects: allProjects}
+		return sharedjson.Write(w, sharedjson.Listing(sessionList, warnings, scope))
 	}
 
 	if len(sessionList) == 0 {
-		fmt.Println("no sessions found")
-		return nil
+		_, err := fmt.Fprintln(w, "no sessions found")
+		return err
 	}
 
 	for _, s := range sessionList {
-		fmt.Printf("[%s]\t%s\t%s\t%s\n",
+		line := fmt.Sprintf("[%s]\t%s\t%s\t%s",
 			sessions.DisplayName(s.Source),
 			s.ID,
 			s.CreatedAt.Local().Format(time.RFC3339),
 			sessions.FormatSize(s.Size))
+		if allProjects {
+			line += "\t" + cmp.Or(s.Project, "-")
+		}
+		if _, err := fmt.Fprintln(w, line); err != nil {
+			return err
+		}
 	}
 
 	return nil
 }
 
-// resolveLatestSession returns the newest session for the project.
+// resolveLatestSession returns the newest session for the project, or across
+// every project when projectPath is empty, where equal times break by source
+// and then ID.
 func resolveLatestSession(projectPath string) (*sessions.SessionInfo, error) {
-	lister, err := sessions.NewLister()
+	allProjects := projectPath == ""
+	lister, err := sessions.NewLister(sessions.WithExtendedOrdering(allProjects))
 	if err != nil {
 		return nil, err
 	}
@@ -496,6 +587,9 @@ func resolveLatestSession(projectPath string) (*sessions.SessionInfo, error) {
 	}
 
 	if len(sessionList) == 0 {
+		if allProjects {
+			return nil, fmt.Errorf("no sessions found")
+		}
 		return nil, fmt.Errorf("no sessions found for project")
 	}
 
@@ -587,19 +681,9 @@ func deriveChatFileCostPath(chatPath string) string {
 
 // resolveFollowInput resolves input to a file path (not io.Reader).
 // Returns error for stdin input (requirement 2.3, 2.4).
-func resolveFollowInput(input string, projectPath string) (string, error) {
+func resolveFollowInput(input, projectPath, source string) (string, error) {
 	if input == "" {
 		return "", fmt.Errorf("cannot follow stdin input. Please provide a file path or session ID")
-	}
-
-	if isFilePath(input) {
-		return input, nil
-	}
-
-	// Treat as session ID — try each file-backed source via Resolver.ResolvePath
-	resolver, err := sessions.NewResolver(projectPath)
-	if err != nil {
-		return "", err
 	}
 
 	fileSources := []string{
@@ -608,6 +692,21 @@ func resolveFollowInput(input string, projectPath string) (string, error) {
 		sessions.SourceCopilot,
 		// Kiro CLI is SQLite-backed, no file path
 		// Kiro IDE could work but .chat files aren't JSONL
+	}
+
+	if source != "" {
+		if !slices.Contains(fileSources, source) {
+			return "", fmt.Errorf("%s sessions cannot be followed (not JSONL file-backed)", sessions.DisplayName(source))
+		}
+		fileSources = []string{source}
+	} else if isFilePath(input) {
+		return input, nil
+	}
+
+	// Treat as session ID — try each file-backed source via Resolver.ResolvePath
+	resolver, err := sessions.NewResolver(projectPath)
+	if err != nil {
+		return "", err
 	}
 
 	for _, source := range fileSources {

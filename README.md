@@ -1009,6 +1009,9 @@ apsis serve --port 8080 --bind 0.0.0.0
 
 # Serve sessions from a specific project
 apsis serve --project /path/to/project
+
+# Serve sessions from every project, with a project column
+apsis serve --all-projects
 ```
 
 The web interface provides:
@@ -1065,6 +1068,18 @@ apsis --list
 
 # List sessions for a different project
 apsis --list -p /path/to/project
+
+# List sessions from every project; a fifth column shows each project
+apsis --list --all-projects
+
+# Open a listed session from any directory
+apsis --all-projects -s codex 0199bbbb-0000-7000-8000-000000000002
+
+# View the most recent session across every project
+apsis latest --all-projects
+
+# List sessions as versioned JSON
+apsis --list -f shared-json
 ```
 
 ## Options
@@ -1074,6 +1089,8 @@ apsis --list -p /path/to/project
 | `-l, --list` | List available sessions for the project |
 | `-o, --output <file>` | Write output to file (default: stdout) |
 | `-p, --project <path>` | Project directory (default: current directory) |
+| `--all-projects` | List, open and pick the latest session from every project instead of one; cannot be combined with `--project` |
+| `-s, --source <source>` | Open the argument as a session ID of this source (`claude`, `codex`, `copilot`, `kiro-cli`, `kiro-ide`) rather than trying each source in turn; not valid with stdin, `--list` or `latest` |
 | `-f, --format <format>` | Output format: `md`, `markdown`, `html`, `json`, `shared-json` (default: `md`) |
 | `-F, --follow` | Follow mode: continuously monitor file for new entries (stdout only, markdown only) |
 | `-v, --version` | Show version, commit, and build time |
@@ -1116,6 +1133,10 @@ Outputs one document with the same layout for every agent, described by the JSON
 - `warnings`: parse warnings with a code and a one-based position
 
 Every document carries `schema_version`. Consumers should ignore fields and block types they do not recognise: new fields and block types do not change the version, while removing a field or changing its meaning does. A session without entries still produces a document with `"entries": []`, and parse warnings are also printed on stderr. Follow mode (`-F`) does not support `shared-json`.
+
+`apsis --list -f shared-json` outputs a listing document instead: its `scope` (`{"project": ...}`, or `{"all_projects": true}` with `--all-projects`), the listed `sessions` oldest first, and listing `warnings` with their source and code. Each row carries the source, identifier, `size_bytes`, project, model, provider and origin where the listing read records them (the session document is authoritative), and either `created_at` (a recorded time) or `file_modified_at` (the file modification time used to order a session without one). Rows with equal times are ordered by source (claude, copilot, codex, kiro-cli, kiro-ide) and then identifier. `apsis latest` and the text listing keep their existing order in project scope, so on an exact tie `apsis latest` can pick a different session from the last row of the shared JSON listing; with `--all-projects`, both use the source and identifier order.
+
+Across projects, a session found in several places (the same Claude Code ID in two project directories, a Codex rollout copied into two directories, a Kiro IDE execution in two workspaces) is listed once, as the copy apsis opens, with a `duplicate_session` warning. A Codex rollout is listed across projects only when its first lines hold a `session_meta` that records the ID in its filename.
 
 ## License
 

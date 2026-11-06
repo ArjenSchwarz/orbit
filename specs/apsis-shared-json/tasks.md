@@ -193,12 +193,12 @@ references:
 
 ## PR 2: Listing across projects
 
-- [ ] 5. Add project, model, provider, origin, time-source and extended ordering to listing rows <!-- id:9kwhro8 -->
+- [x] 5. Add project, model, provider, origin, time-source and extended ordering to listing rows <!-- id:9kwhro8 -->
   - internal/sessions listing reads preserve existing timestamp/cwd scan bounds and no-flag ordering; runtime options arrive with their first consumer.
   - Blocked-by: 9kwhro7 (Emit shared JSON session documents from the apsis CLI)
   - Stream: 2
   - Requirements: [1.7](requirements.md#1.7), [4.1](requirements.md#4.1), [4.3](requirements.md#4.3), [4.4](requirements.md#4.4), [5.1](requirements.md#5.1)
-  - [ ] 5.1. Write failing listing metadata and ordering tests <!-- id:9kwhroq -->
+  - [x] 5.1. Write failing listing metadata and ordering tests <!-- id:9kwhroq -->
     - `SessionInfo.Project`: Claude first `cwd` within 50 lines/1 MiB (new and bounded), Codex `session_meta.cwd`, Copilot `git_root` else `cwd`, Kiro CLI database key, Kiro IDE omitted
     - Codex rows carry `Provider` from `session_meta` and `Model` from the first `turn_context` (else `session_meta`) in the same head scan, which keeps `codexMetaScanLimit` and the 10 MiB line limit (Q57, Decision 29)
     - `TimeFromFilesystem` is set exactly where an existing timestamp-to-mtime fallback is taken
@@ -211,7 +211,7 @@ references:
     - Stream: 2
     - Requirements: [1.7](requirements.md#1.7), [4.1](requirements.md#4.1), [4.3](requirements.md#4.3), [4.4](requirements.md#4.4), [5.1](requirements.md#5.1)
     - References: internal/sessions/lister_test.go, internal/sessions/types_test.go
-  - [ ] 5.2. Implement listing metadata, shared options and extended ordering <!-- id:9kwhror -->
+  - [x] 5.2. Implement listing metadata, shared options and extended ordering <!-- id:9kwhror -->
     - types.go: `SessionInfo` gains `TimeFromFilesystem`, `Project`, `Model`, `Provider`, `Origin`; `ListWarning` gains `Code`
     - `Options`, `Option`, `WithExtendedOrdering`; update every `NewLister`/`NewResolver` caller in cmd/apsis, internal/apsisweb and tests
     - The legacy `sortSessionsByTimestamp` remains the default; the extended comparator runs only when enabled
@@ -221,12 +221,12 @@ references:
     - Requirements: [1.7](requirements.md#1.7), [4.1](requirements.md#4.1), [4.3](requirements.md#4.3), [4.4](requirements.md#4.4), [5.1](requirements.md#5.1)
     - References: internal/sessions/types.go, internal/sessions/lister.go, internal/sessions/resolver.go, cmd/apsis/main.go, internal/apsisweb/server.go
 
-- [ ] 6. Emit shared JSON listing documents <!-- id:9kwhro9 -->
+- [x] 6. Emit shared JSON listing documents <!-- id:9kwhro9 -->
   - internal/sharedjson listing projection and cmd/apsis output use the schema already published in PR 1; no JSON HTTP endpoint.
   - Blocked-by: 9kwhro8 (Add project, model, provider, origin, time-source and extended ordering to listing rows)
   - Stream: 2
   - Requirements: [1.2](requirements.md#1.2), [1.3](requirements.md#1.3), [1.4](requirements.md#1.4), [1.7](requirements.md#1.7), [4.3](requirements.md#4.3)
-  - [ ] 6.1. Write failing listing-document tests <!-- id:9kwhros -->
+  - [x] 6.1. Write failing listing-document tests <!-- id:9kwhros -->
     - `sharedjson.Listing` for an empty list; rows with and without project, model, provider and origin; a recorded `created_at`, a `file_modified_at` fallback and neither; warnings with `source`, `code` and `message`
     - `scope` is `{"project": ...}` or `{"all_projects": true}`; rows keep CLI listing order (oldest first)
     - Every listing document validates against the published schema and the structurally closed test copy; rows reuse the session-metadata `$defs` plus `size_bytes` and `file_modified_at` (Q36, Q37)
@@ -236,7 +236,7 @@ references:
     - Stream: 2
     - Requirements: [1.2](requirements.md#1.2), [1.3](requirements.md#1.3), [1.4](requirements.md#1.4), [1.7](requirements.md#1.7), [4.3](requirements.md#4.3)
     - References: internal/sharedjson/, cmd/apsis/main_test.go
-  - [ ] 6.2. Implement the listing projection against the published v1 schema <!-- id:9kwhrot -->
+  - [x] 6.2. Implement the listing projection against the published v1 schema <!-- id:9kwhrot -->
     - sharedjson.Listing and Scope use the listing branch and shared metadata definitions already published in PR 1; no schema branch is first introduced here.
     - `listSessions` dispatches on the format and enables `WithExtendedOrdering` for shared JSON
     - Rows copy `SessionInfo.Origin` into `origin` and omit it when empty
@@ -245,12 +245,12 @@ references:
     - Requirements: [1.2](requirements.md#1.2), [1.3](requirements.md#1.3), [1.4](requirements.md#1.4), [1.7](requirements.md#1.7), [4.3](requirements.md#4.3)
     - References: internal/sharedjson/, docs/schemas/apsis-shared-json.v1.schema.json, cmd/apsis/main.go
 
-- [ ] 7. Resolve every source across projects with the listing's candidate rules <!-- id:9kwhroa -->
+- [x] 7. Resolve every source across projects with the listing's candidate rules <!-- id:9kwhroa -->
   - internal/sessions and Kiro DB candidate helpers share selected winners; global suppression/all-project row dedup never replace legacy project-row enumeration.
   - Blocked-by: 9kwhro8 (Add project, model, provider, origin, time-source and extended ordering to listing rows)
   - Stream: 2
   - Requirements: [4.1](requirements.md#4.1), [4.2](requirements.md#4.2), [5.1](requirements.md#5.1), [5.8](requirements.md#5.8)
-  - [ ] 7.1. Write failing all-projects resolution and de-duplication tests <!-- id:9kwhrou -->
+  - [x] 7.1. Write failing all-projects resolution and de-duplication tests <!-- id:9kwhrou -->
     - `NewResolver("")` opens every source without turning `""` into the working directory: Claude keeps its all-projects search; Codex uses `selectCodexCandidate`, preserving the first filename match in walk order; Copilot is unchanged; Kiro CLI uses `GetSessionByID` ordered `updated_at DESC, key ASC` and returns the key as project; Kiro IDE scans every workspace with the shared candidate rule (most chat entries, newest mtime, lexically smallest path) and takes `CostPath` from the winning workspace
     - A Kiro CLI test database holding one conversation under two keys, including equal `updated_at`: `DiscoverAll` and `GetSessionByID` pick the same row (Q51)
     - All-projects `ListAll("")` lists each `(source, id)` once, keeping the candidate the resolver opens, with a `duplicate_session` warning: a Claude identifier in two project directories, a Codex filename UUID in two directories, a Kiro IDE execution ID in two workspaces (Q49)
@@ -260,7 +260,7 @@ references:
     - Stream: 2
     - Requirements: [4.1](requirements.md#4.1), [4.2](requirements.md#4.2), [5.1](requirements.md#5.1), [5.8](requirements.md#5.8)
     - References: internal/sessions/resolver_test.go, internal/sessions/lister_test.go, internal/agents/kiro/logs/session_test.go, internal/agents/kiro/logs/discover_test.go
-  - [ ] 7.2. Implement all-projects resolver branches and shared candidate selection <!-- id:9kwhrov -->
+  - [x] 7.2. Implement all-projects resolver branches and shared candidate selection <!-- id:9kwhrov -->
     - `selectCodexCandidate` extracted from `findCodexSession` and shared by resolution and all-projects de-duplication; task 13 reuses it for suppression
     - `bestKiroIDECandidate` shared by `listKiroIDEWorkspace` and `findKiroIDEPath`; the resolver's current loop lacks the lexical-path tiebreak the lister applies
     - `logs.(*DB).GetSessionByID(ctx, id)` and a `key ASC` secondary order in `DiscoverAll`, whose de-duplication today keeps whichever equal-`updated_at` row arrives first
@@ -270,12 +270,12 @@ references:
     - Requirements: [4.1](requirements.md#4.1), [4.2](requirements.md#4.2), [5.1](requirements.md#5.1), [5.8](requirements.md#5.8)
     - References: internal/sessions/resolver.go, internal/sessions/lister.go, internal/agents/kiro/logs/session.go, internal/agents/kiro/logs/discover.go
 
-- [ ] 8. Expose all-projects scope and source selection in apsis and apsis serve <!-- id:9kwhrob -->
+- [x] 8. Expose all-projects scope and source selection in apsis and apsis serve <!-- id:9kwhrob -->
   - CLI/web scope wiring completes PR 2; source selection applies only to identifier opening, never latest/list/stdin filtering.
   - Blocked-by: 9kwhro9 (Emit shared JSON listing documents), 9kwhroa (Resolve every source across projects with the listing's candidate rules)
   - Stream: 2
   - Requirements: [4.1](requirements.md#4.1), [4.2](requirements.md#4.2), [4.4](requirements.md#4.4), [5.1](requirements.md#5.1), [5.8](requirements.md#5.8)
-  - [ ] 8.1. Write failing CLI and web tests for --all-projects and --source <!-- id:9kwhrow -->
+  - [x] 8.1. Write failing CLI and web tests for --all-projects and --source <!-- id:9kwhrow -->
     - `--all-projects` with `--list` adds a fifth tab-separated project column (or `-`) and scopes `latest` and identifier lookups; with `-p`/`--project` it is a usage error, for `apsis` and `apsis serve` (Q31)
     - `-s`/`--source <source>` treats the argument as an identifier of that source with no file-path detection; usage errors without an argument, with an unknown source, with stdin, `--list` or `latest` (Q32)
     - Identical identifiers in two sources open the requested one; bare identifiers keep the existing source order
@@ -286,7 +286,7 @@ references:
     - Stream: 2
     - Requirements: [4.1](requirements.md#4.1), [4.2](requirements.md#4.2), [4.4](requirements.md#4.4), [5.1](requirements.md#5.1), [5.8](requirements.md#5.8)
     - References: cmd/apsis/main_test.go, internal/apsisweb/handlers_test.go, internal/apsisweb/integration_test.go
-  - [ ] 8.2. Implement the flags, scope wiring and web project display <!-- id:9kwhrox -->
+  - [x] 8.2. Implement the flags, scope wiring and web project display <!-- id:9kwhrox -->
     - cmd/apsis: long-only `--all-projects` with no environment variable, and `-s`/`--source`; all-projects scope passes `""` to the Lister and Resolver and enables `WithExtendedOrdering`
     - apsisweb: `Config.AllProjects`, `SessionView.Project` (all-projects scope only) and the template column
     - CHANGELOG `[Unreleased]` and README: `--all-projects`, `--source` and shared JSON listings

@@ -70,14 +70,19 @@
 {{if .Empty}}
 <div class="empty-state">
     <h2>No sessions found</h2>
+    {{if .AllProjects}}
+    <p>No AI coding agent sessions were found.</p>
+    {{else}}
     <p>No AI coding agent sessions were found for this project.</p>
+    {{end}}
 </div>
 {{else}}
-<div class="session-list">
+<div class="session-list{{if .AllProjects}} all-projects{{end}}">
     {{range .Sessions}}
     <a href="{{.URL}}" class="session-card" data-source="{{.Source}}" data-id="{{.ID}}">
         <span class="source-badge source-{{.Source}}">{{.Source}}</span>
         <span class="session-id" title="{{.ID}}">{{.DisplayID}}</span>
+        {{if $.AllProjects}}{{if .Project}}<span class="session-project" title="{{.Project}}">{{.Project}}</span>{{else}}<span class="session-project">-</span>{{end}}{{end}}
         <time class="session-date" datetime="{{.CreatedAt}}">{{.CreatedAt}}</time>
         <span class="session-size">{{.Size}}</span>
     </a>

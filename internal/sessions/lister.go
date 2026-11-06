@@ -2,14 +2,18 @@ package sessions
 
 import (
 	"bufio"
+	"cmp"
 	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"io/fs"
+	"maps"
 	"os"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"sort"
 	"strings"
 	"time"
@@ -29,59 +33,67 @@ type kiroIDEBasePathFunc func() (string, error)
 // Lister discovers sessions from all agent types for a project.
 type Lister struct {
 	homeDir         string
+	opts            Options
 	kiroDiscover    kiroDiscoverFunc    // nil → logs.DiscoverForDirectory
 	kiroIDEBasePath kiroIDEBasePathFunc // nil → transcript.KiroIDEBasePath
 }
 
 // NewLister creates a Lister.
 // Resolves os.UserHomeDir() once. Returns an error if unavailable.
-func NewLister() (*Lister, error) {
+func NewLister(opts ...Option) (*Lister, error) {
 	homeDir, err := os.UserHomeDir()
 	if err != nil {
 		return nil, fmt.Errorf("failed to get home directory: %w", err)
 	}
-	return &Lister{homeDir: homeDir}, nil
+	return &Lister{homeDir: homeDir, opts: applyOptions(opts)}, nil
 }
 
-// ListAll returns all sessions for the given project path,
-// sorted by creation time (oldest first).
+// ListAll returns all sessions for the given project path, or for every
+// project when it is empty, sorted by creation time (oldest first).
 // Warnings are returned for agent sources that failed to list.
 func (l *Lister) ListAll(projectPath string) ([]SessionInfo, []ListWarning, error) {
 	var warnings []ListWarning
 
+	// In all-projects scope each collector lists an identifier found in
+	// several places once, choosing the copy the resolver opens, and warns
+	// about the others.
 	collectors := []struct {
 		source string
-		fn     func() ([]SessionInfo, error)
+		fn     func() ([]SessionInfo, []ListWarning, error)
 	}{
-		{SourceClaude, func() ([]SessionInfo, error) { return l.listClaude(projectPath) }},
-		{SourceCopilot, func() ([]SessionInfo, error) {
-			sessions, parseWarnings, err := l.listCopilot(projectPath)
-			warnings = append(warnings, parseWarnings...)
-			return sessions, err
+		{SourceClaude, func() ([]SessionInfo, []ListWarning, error) { return l.listClaude(projectPath) }},
+		{SourceCopilot, func() ([]SessionInfo, []ListWarning, error) { return l.listCopilot(projectPath) }},
+		{SourceCodex, func() ([]SessionInfo, []ListWarning, error) { return l.listCodex(projectPath) }},
+		{SourceKiroCLI, func() ([]SessionInfo, []ListWarning, error) {
+			sessions, err := l.listKiro(projectPath)
+			return sessions, nil, err
 		}},
-		{SourceCodex, func() ([]SessionInfo, error) { return l.listCodex(projectPath) }},
-		{SourceKiroCLI, func() ([]SessionInfo, error) { return l.listKiro(projectPath) }},
-		{SourceKiroIDE, func() ([]SessionInfo, error) { return l.listKiroIDE(projectPath) }},
+		{SourceKiroIDE, func() ([]SessionInfo, []ListWarning, error) { return l.listKiroIDE(projectPath) }},
 	}
 
 	var allSessions []SessionInfo
 
 	for _, c := range collectors {
-		sessions, err := c.fn()
+		sessions, sourceWarnings, err := c.fn()
+		warnings = append(warnings, sourceWarnings...)
 		if err != nil {
-			warnings = append(warnings, ListWarning{Source: c.source, Err: err})
+			warnings = append(warnings, ListWarning{Source: c.source, Code: WarningSourceFailed, Err: err})
 			continue
 		}
 		allSessions = append(allSessions, sessions...)
 	}
 
-	sortSessionsByTimestamp(allSessions)
+	if l.opts.ExtendedOrdering {
+		sortSessionsExtended(allSessions)
+	} else {
+		sortSessionsByTimestamp(allSessions)
+	}
 	return allSessions, warnings, nil
 }
 
 // listClaude returns all Claude sessions for a project.
 // When projectPath is empty, returns sessions from all projects.
-func (l *Lister) listClaude(projectPath string) ([]SessionInfo, error) {
+func (l *Lister) listClaude(projectPath string) ([]SessionInfo, []ListWarning, error) {
 	projectsRoot := filepath.Join(l.homeDir, ".claude", "projects")
 
 	if projectPath == "" {
@@ -91,21 +103,26 @@ func (l *Lister) listClaude(projectPath string) ([]SessionInfo, error) {
 	claudeProjectPath := claudecode.BuildProjectPath(projectPath)
 	projectDir := filepath.Join(projectsRoot, claudeProjectPath)
 
-	return l.listClaudeDir(projectDir)
+	sessions, err := l.listClaudeDir(projectDir)
+	return sessions, nil, err
 }
 
-// listClaudeAllProjects iterates over all project subdirectories and collects sessions.
-func (l *Lister) listClaudeAllProjects(projectsRoot string) ([]SessionInfo, error) {
+// listClaudeAllProjects iterates over all project subdirectories in sorted
+// order and collects sessions. An identifier found in several directories is
+// listed from the first one, the directory the resolver opens.
+func (l *Lister) listClaudeAllProjects(projectsRoot string) ([]SessionInfo, []ListWarning, error) {
 	if _, err := os.Stat(projectsRoot); os.IsNotExist(err) {
-		return nil, nil
+		return nil, nil, nil
 	}
 
 	entries, err := os.ReadDir(projectsRoot)
 	if err != nil {
-		return nil, fmt.Errorf("failed to read projects directory: %w", err)
+		return nil, nil, fmt.Errorf("failed to read projects directory: %w", err)
 	}
 
 	var allSessions []SessionInfo
+	var warnings []ListWarning
+	listed := make(map[string]bool)
 	for _, entry := range entries {
 		if !entry.IsDir() {
 			continue
@@ -119,10 +136,17 @@ func (l *Lister) listClaudeAllProjects(projectsRoot string) ([]SessionInfo, erro
 			// rather than stopping on the first source failure.
 			continue
 		}
-		allSessions = append(allSessions, sessions...)
+		for _, s := range sessions {
+			if listed[s.ID] {
+				warnings = append(warnings, duplicateWarning(SourceClaude, s.ID, filepath.Join(projectDir, s.ID+".jsonl")))
+				continue
+			}
+			listed[s.ID] = true
+			allSessions = append(allSessions, s)
+		}
 	}
 
-	return allSessions, nil
+	return allSessions, warnings, nil
 }
 
 // listClaudeDir returns all Claude sessions from a single project directory.
@@ -159,92 +183,134 @@ func (l *Lister) listClaudeDir(projectDir string) ([]SessionInfo, error) {
 			continue
 		}
 
-		var createdAt time.Time
+		session := SessionInfo{
+			ID:     sessionID,
+			Size:   info.Size(),
+			Source: SourceClaude,
+		}
 		f, err := os.Open(filePath)
 		if err == nil {
-			createdAt, err = transcript.ParseFirstTimestamp(f)
-			_ = f.Close()
-			if err != nil {
-				createdAt = info.ModTime()
+			session.CreatedAt, err = transcript.ParseFirstTimestamp(f)
+			if _, seekErr := f.Seek(0, io.SeekStart); seekErr == nil {
+				session.Project, session.Origin = readClaudeHead(f)
 			}
-		} else {
-			createdAt = info.ModTime()
+			_ = f.Close()
+		}
+		if err != nil {
+			session.CreatedAt = info.ModTime()
+			session.TimeFromFilesystem = true
 		}
 
-		sessions = append(sessions, SessionInfo{
-			ID:        sessionID,
-			CreatedAt: createdAt,
-			Size:      info.Size(),
-			Source:    SourceClaude,
-		})
+		sessions = append(sessions, session)
 	}
 
 	return sessions, nil
 }
 
-// listCodex returns Codex sessions from ~/.codex/sessions/ filtered by project path.
-func (l *Lister) listCodex(projectPath string) ([]SessionInfo, error) {
-	codexDir := filepath.Join(l.homeDir, ".codex", "sessions")
-
-	realDir, err := filepath.EvalSymlinks(codexDir)
-	if err != nil {
-		if os.IsNotExist(err) {
-			return nil, nil
-		}
-		return nil, err
-	}
-
+// listCodex returns Codex sessions from ~/.codex/sessions/. Project scope
+// keeps every rollout whose recorded cwd is the project. All-projects scope
+// lists each identifier once, from the rollout selectCodexCandidate opens,
+// which is the first match in the same walk. That rollout is listed only when
+// its head is readable and records the identifier; otherwise the identifier is
+// omitted with a warning rather than promoting a later copy (Decision 22).
+func (l *Lister) listCodex(projectPath string) ([]SessionInfo, []ListWarning, error) {
 	var sessions []SessionInfo
-	err = walkDirFollowSymlinks(realDir, func(path string, d fs.DirEntry, err error) error {
-		if err != nil || d.IsDir() || !strings.HasSuffix(path, ".jsonl") {
-			return nil
+	var warnings []ListWarning
+	selected := make(map[string]bool) // lower-case identifiers, all-projects scope
+	err := walkCodexRollouts(l.homeDir, func(path string, d fs.DirEntry) error {
+		id := codexSessionID(filepath.Base(path))
+		if projectPath == "" {
+			key := strings.ToLower(id)
+			if selected[key] {
+				warnings = append(warnings, duplicateWarning(SourceCodex, id, path))
+				return nil
+			}
+			selected[key] = true
 		}
 
 		info, err := d.Info()
-		if err != nil {
+		if err != nil || info.Size() == 0 {
 			return nil
 		}
 
-		if info.Size() == 0 {
-			return nil
-		}
-
+		head, headErr := readCodexHead(path)
 		if projectPath != "" {
-			cwd := getCodexSessionCwd(path)
-			if cwd == "" {
+			if head.Cwd == "" || normalizePath(head.Cwd) != normalizePath(projectPath) {
 				return nil
 			}
-			if normalizePath(cwd) != normalizePath(projectPath) {
-				return nil
-			}
+		} else if warning := codexHeadWarning(id, path, head, headErr); warning != nil {
+			warnings = append(warnings, *warning)
+			return nil
 		}
 
-		filename := filepath.Base(path)
-		sessionID := strings.TrimSuffix(filename, ".jsonl")
-		if match := uuidPattern.FindString(filename); match != "" {
-			sessionID = match
-		}
-
-		createdAt, err := getCodexSessionTimestamp(path)
-		if err != nil {
-			createdAt = info.ModTime()
-		}
-
-		sessions = append(sessions, SessionInfo{
-			ID:        sessionID,
-			CreatedAt: createdAt,
+		session := SessionInfo{
+			ID:        id,
+			CreatedAt: head.Timestamp,
 			Size:      info.Size(),
 			Source:    SourceCodex,
-		})
-
+			Project:   head.Cwd,
+			Model:     head.Model,
+			Provider:  head.Provider,
+			Origin:    head.Origin,
+		}
+		if session.CreatedAt.IsZero() {
+			session.CreatedAt = info.ModTime()
+			session.TimeFromFilesystem = true
+		}
+		sessions = append(sessions, session)
 		return nil
 	})
-
 	if err != nil {
-		return nil, err
+		return nil, warnings, err
 	}
+	return sessions, warnings, nil
+}
 
-	return sessions, nil
+// codexHeadWarning reports why a selected rollout cannot be listed across
+// projects, or returns nil when its head is readable and records a
+// session_meta whose id matches the filename UUID (ignoring case).
+func codexHeadWarning(id, path string, head codexHead, err error) *ListWarning {
+	invalid := func(format string, args ...any) *ListWarning {
+		return &ListWarning{Source: SourceCodex, Code: transcript.WarningInvalidRecord,
+			Err: fmt.Errorf("session %s at %s: "+format, append([]any{id, path}, args...)...)}
+	}
+	var pathErr *fs.PathError
+	switch {
+	case !head.HasMeta && errors.As(err, &pathErr):
+		return &ListWarning{Source: SourceCodex, Code: WarningPathUnreadable, Err: fmt.Errorf("session %s: %w", id, err)}
+	case !head.HasMeta && err != nil:
+		return invalid("%v", err)
+	case !head.HasMeta:
+		return invalid("no session_meta within the first %d lines", codexMetaScanLimit)
+	case isCodexUUID(id) && !strings.EqualFold(head.ID, id):
+		return invalid("session_meta records id %q", head.ID)
+	}
+	return nil
+}
+
+// walkCodexRollouts calls fn for each .jsonl file under ~/.codex/sessions in
+// walk order. Listing and selectCodexCandidate share it, so the first rollout
+// the listing sees for an identifier is the one the resolver opens.
+func walkCodexRollouts(homeDir string, fn func(path string, d fs.DirEntry) error) error {
+	realDir, err := filepath.EvalSymlinks(filepath.Join(homeDir, ".codex", "sessions"))
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil
+		}
+		return err
+	}
+	return walkDirFollowSymlinks(realDir, func(path string, d fs.DirEntry, err error) error {
+		if err != nil || d.IsDir() || !strings.HasSuffix(path, ".jsonl") {
+			return nil
+		}
+		return fn(path, d)
+	})
+}
+
+// duplicateWarning reports a copy of a session that all-projects scope does not list.
+func duplicateWarning(source, id, path string) ListWarning {
+	return ListWarning{Source: source, Code: WarningDuplicateSession,
+		Err: fmt.Errorf("another copy of session %s at %s is not listed", id, path)}
 }
 
 // listCopilot returns all Copilot sessions for a project directory. When
@@ -288,6 +354,7 @@ func (l *Lister) listCopilot(projectPath string) ([]SessionInfo, []ListWarning, 
 		if err != nil {
 			warnings = append(warnings, ListWarning{
 				Source: SourceCopilot,
+				Code:   WarningPathUnreadable,
 				Err:    fmt.Errorf("session %s: %w", entry.Name(), err),
 			})
 			ws = nil
@@ -309,19 +376,22 @@ func (l *Lister) listCopilot(projectPath string) ([]SessionInfo, []ListWarning, 
 			}
 		}
 
-		var createdAt time.Time
+		session := SessionInfo{
+			ID:     entry.Name(),
+			Size:   eventsInfo.Size(),
+			Source: SourceCopilot,
+		}
+		if ws != nil {
+			session.Project = cmp.Or(ws.GitRoot, ws.Cwd)
+		}
 		if ws != nil && ws.CreatedAt != nil {
-			createdAt = *ws.CreatedAt
+			session.CreatedAt = *ws.CreatedAt
 		} else {
-			createdAt = eventsInfo.ModTime()
+			session.CreatedAt = eventsInfo.ModTime()
+			session.TimeFromFilesystem = true
 		}
 
-		sessions = append(sessions, SessionInfo{
-			ID:        entry.Name(),
-			CreatedAt: createdAt,
-			Size:      eventsInfo.Size(),
-			Source:    SourceCopilot,
-		})
+		sessions = append(sessions, session)
 	}
 
 	return sessions, warnings, nil
@@ -358,6 +428,7 @@ func (l *Lister) listKiro(cwd string) ([]SessionInfo, error) {
 			CreatedAt: s.CreatedAt,
 			Size:      s.Size,
 			Source:    SourceKiroCLI,
+			Project:   s.Directory,
 		}
 	}
 
@@ -366,7 +437,7 @@ func (l *Lister) listKiro(cwd string) ([]SessionInfo, error) {
 
 // listKiroIDE returns all Kiro IDE sessions for a project directory.
 // When projectPath is empty, scans all workspace directories.
-func (l *Lister) listKiroIDE(projectPath string) ([]SessionInfo, error) {
+func (l *Lister) listKiroIDE(projectPath string) ([]SessionInfo, []ListWarning, error) {
 	if projectPath == "" {
 		return l.listKiroIDEAll()
 	}
@@ -374,115 +445,33 @@ func (l *Lister) listKiroIDE(projectPath string) ([]SessionInfo, error) {
 	workspaceDir, err := transcript.KiroIDEWorkspaceDir(projectPath)
 	if err != nil {
 		if errors.Is(err, transcript.ErrKiroIDENotFound) {
-			return nil, nil
+			return nil, nil, nil
 		}
-		return nil, fmt.Errorf("kiro ide workspace: %w", err)
+		return nil, nil, fmt.Errorf("kiro ide workspace: %w", err)
 	}
 
-	return l.listKiroIDEWorkspace(workspaceDir)
+	sessions, err := l.listKiroIDEWorkspace(workspaceDir)
+	return sessions, nil, err
 }
 
 // listKiroIDEWorkspace scans a single workspace directory for Kiro IDE sessions.
 func (l *Lister) listKiroIDEWorkspace(workspaceDir string) ([]SessionInfo, error) {
-	entries, err := os.ReadDir(workspaceDir)
+	best, err := kiroIDEWorkspaceCandidates(workspaceDir)
 	if err != nil {
-		return nil, fmt.Errorf("read kiro ide workspace: %w", err)
-	}
-
-	type chatCandidate struct {
-		path       string
-		entryCount int
-		mtime      time.Time
-		startTime  int64
-		size       int64
-	}
-	best := make(map[string]*chatCandidate)
-
-	for _, entry := range entries {
-		if entry.IsDir() || !strings.HasSuffix(entry.Name(), ".chat") {
-			continue
-		}
-
-		path := filepath.Join(workspaceDir, entry.Name())
-
-		// Skip symlinks that escape the workspace directory.
-		if entry.Type()&fs.ModeSymlink != 0 {
-			resolved, err := filepath.EvalSymlinks(path)
-			if err != nil || !isWithinDir(resolved, workspaceDir) {
-				continue
-			}
-		}
-
-		data, err := os.ReadFile(path)
-		if err != nil {
-			continue
-		}
-
-		var header kiroIDEChatHeader
-		if err := json.Unmarshal(data, &header); err != nil {
-			continue
-		}
-
-		if header.ExecutionID == "" {
-			continue
-		}
-
-		info, err := entry.Info()
-		if err != nil {
-			continue
-		}
-
-		var startTime int64
-		if header.Metadata != nil {
-			startTime = header.Metadata.StartTime
-		}
-
-		candidate := &chatCandidate{
-			path:       path,
-			entryCount: len(header.Chat),
-			mtime:      info.ModTime(),
-			startTime:  startTime,
-			size:       info.Size(),
-		}
-
-		existing, ok := best[header.ExecutionID]
-		if !ok {
-			best[header.ExecutionID] = candidate
-			continue
-		}
-
-		if candidate.entryCount > existing.entryCount {
-			best[header.ExecutionID] = candidate
-		} else if candidate.entryCount == existing.entryCount {
-			if candidate.mtime.After(existing.mtime) {
-				best[header.ExecutionID] = candidate
-			} else if candidate.mtime.Equal(existing.mtime) && candidate.path < existing.path {
-				best[header.ExecutionID] = candidate
-			}
-		}
+		return nil, err
 	}
 
 	var sessions []SessionInfo
-	for execID, c := range best {
-		var createdAt time.Time
-		if c.startTime > 0 {
-			createdAt = time.UnixMilli(c.startTime)
-		} else {
-			createdAt = c.mtime
-		}
-		sessions = append(sessions, SessionInfo{
-			ID:        execID,
-			CreatedAt: createdAt,
-			Size:      c.size,
-			Source:    SourceKiroIDE,
-		})
+	for _, id := range slices.Sorted(maps.Keys(best)) {
+		sessions = append(sessions, kiroIDESessionInfo(id, best[id]))
 	}
-
 	return sessions, nil
 }
 
-// listKiroIDEAll scans all workspace hash directories under the Kiro IDE base path.
-func (l *Lister) listKiroIDEAll() ([]SessionInfo, error) {
+// listKiroIDEAll scans all workspace hash directories under the Kiro IDE base
+// path. An execution saved in several workspaces is listed once, from the
+// candidate the resolver opens.
+func (l *Lister) listKiroIDEAll() ([]SessionInfo, []ListWarning, error) {
 	baseFn := l.kiroIDEBasePath
 	if baseFn == nil {
 		baseFn = transcript.KiroIDEBasePath
@@ -490,46 +479,34 @@ func (l *Lister) listKiroIDEAll() ([]SessionInfo, error) {
 	base, err := baseFn()
 	if err != nil {
 		if errors.Is(err, transcript.ErrKiroIDENotFound) {
-			return nil, nil
+			return nil, nil, nil
 		}
-		return nil, fmt.Errorf("kiro ide base path: %w", err)
+		return nil, nil, fmt.Errorf("kiro ide base path: %w", err)
 	}
 
-	entries, err := os.ReadDir(base)
+	all, err := kiroIDEAllCandidates(base)
 	if err != nil {
-		return nil, fmt.Errorf("read kiro ide base: %w", err)
+		return nil, nil, err
 	}
 
-	var all []SessionInfo
-	for _, entry := range entries {
-		if !entry.IsDir() {
-			continue
+	var sessions []SessionInfo
+	var warnings []ListWarning
+	for _, id := range slices.Sorted(maps.Keys(all)) {
+		best := bestKiroIDECandidate(all[id])
+		sessions = append(sessions, kiroIDESessionInfo(id, best))
+		for _, c := range all[id] {
+			if c.path != best.path {
+				warnings = append(warnings, duplicateWarning(SourceKiroIDE, id, c.path))
+			}
 		}
-		workspaceDir := filepath.Join(base, entry.Name())
-		sessions, err := l.listKiroIDEWorkspace(workspaceDir)
-		if err != nil {
-			continue // skip unreadable workspaces
-		}
-		all = append(all, sessions...)
 	}
-	return all, nil
+	return sessions, warnings, nil
 }
 
 // --- Supporting functions and types ---
 
 // uuidPattern matches standard UUID format: 8-4-4-4-12 hex digits (case-insensitive)
 var uuidPattern = regexp.MustCompile(`(?i)[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}`)
-
-// kiroIDEChatHeader is a lightweight struct for parsing .chat files during discovery.
-type kiroIDEChatHeader struct {
-	ExecutionID string            `json:"executionId"`
-	Chat        []json.RawMessage `json:"chat"`
-	Metadata    *kiroIDEMetadata  `json:"metadata"`
-}
-
-type kiroIDEMetadata struct {
-	StartTime int64 `json:"startTime"`
-}
 
 // copilotWorkspace represents the metadata from a Copilot workspace.yaml file.
 type copilotWorkspace struct {
@@ -567,73 +544,118 @@ func parseCopilotWorkspace(path string) (*copilotWorkspace, error) {
 // is not guaranteed to be.
 const codexMetaScanLimit = 50
 
-// getCodexSessionTimestamp extracts the timestamp from a Codex session file.
-// It scans up to codexMetaScanLimit lines for the session_meta entry.
-func getCodexSessionTimestamp(path string) (time.Time, error) {
-	f, err := os.Open(path)
-	if err != nil {
-		return time.Time{}, err
-	}
-	defer func() { _ = f.Close() }()
-
-	scanner := bufio.NewScanner(f)
-	scanner.Buffer(make([]byte, 0, 64*1024), 10*1024*1024)
-	for i := 0; i < codexMetaScanLimit && scanner.Scan(); i++ {
-		var entry struct {
-			Timestamp string `json:"timestamp"`
-			Type      string `json:"type"`
-		}
-		if err := json.Unmarshal(scanner.Bytes(), &entry); err == nil {
-			if entry.Type == "session_meta" && entry.Timestamp != "" {
-				if ts, err := time.Parse(time.RFC3339, entry.Timestamp); err == nil {
-					return ts, nil
-				}
-			}
-		}
-	}
-	if err := scanner.Err(); err != nil {
-		return time.Time{}, fmt.Errorf("scanning %s: %w", filepath.Base(path), err)
-	}
-
-	info, err := os.Stat(path)
-	if err != nil {
-		return time.Time{}, err
-	}
-	return info.ModTime(), nil
+// codexHead is what the bounded scan of a Codex rollout's first lines records.
+type codexHead struct {
+	ID        string    // session_meta payload id
+	Cwd       string    // session_meta payload cwd
+	Provider  string    // session_meta payload model_provider
+	Origin    string    // session_meta payload originator
+	Model     string    // first turn_context model, else the session_meta model
+	HasMeta   bool      // a session_meta record with a decodable payload was found
+	Timestamp time.Time // first session_meta timestamp that parses as RFC3339; zero when none
 }
 
-// getCodexSessionCwd extracts the working directory from a Codex session file.
-// It scans up to codexMetaScanLimit lines for the session_meta entry.
-func getCodexSessionCwd(path string) string {
+// readCodexHead scans up to codexMetaScanLimit lines of 10 MiB at most. The
+// first session_meta whose payload decodes supplies id, cwd, provider,
+// originator and the fallback model; the first session_meta whose timestamp
+// parses supplies the timestamp; the first turn_context supplies the model
+// (Decision 29). It stops once all of them are found. The error reports a file
+// that cannot be opened or a failed scan; values found before a failure are kept.
+func readCodexHead(path string) (codexHead, error) {
 	f, err := os.Open(path)
 	if err != nil {
-		return ""
+		return codexHead{}, err
 	}
 	defer func() { _ = f.Close() }()
 
+	var head codexHead
+	var metaModel, turnModel string
 	scanner := bufio.NewScanner(f)
 	scanner.Buffer(make([]byte, 0, 64*1024), 10*1024*1024)
 	for i := 0; i < codexMetaScanLimit && scanner.Scan(); i++ {
-		var entry struct {
-			Type    string          `json:"type"`
-			Payload json.RawMessage `json:"payload"`
+		var line struct {
+			Type      string          `json:"type"`
+			Timestamp json.RawMessage `json:"timestamp"`
+			Payload   json.RawMessage `json:"payload"`
 		}
-		if err := json.Unmarshal(scanner.Bytes(), &entry); err == nil {
-			if entry.Type == "session_meta" && len(entry.Payload) > 0 {
-				var meta struct {
-					Cwd string `json:"cwd"`
-				}
-				if err := json.Unmarshal(entry.Payload, &meta); err == nil {
-					return meta.Cwd
+		if err := json.Unmarshal(scanner.Bytes(), &line); err != nil {
+			continue
+		}
+		switch line.Type {
+		case "session_meta":
+			var ts string
+			if head.Timestamp.IsZero() && json.Unmarshal(line.Timestamp, &ts) == nil && ts != "" {
+				if parsed, err := time.Parse(time.RFC3339, ts); err == nil {
+					head.Timestamp = parsed
 				}
 			}
+			var meta struct {
+				ID            string `json:"id"`
+				Cwd           string `json:"cwd"`
+				ModelProvider string `json:"model_provider"`
+				Originator    string `json:"originator"`
+				Model         string `json:"model"`
+			}
+			if !head.HasMeta && len(line.Payload) > 0 && json.Unmarshal(line.Payload, &meta) == nil {
+				head.HasMeta = true
+				head.ID, head.Cwd, head.Provider, head.Origin = meta.ID, meta.Cwd, meta.ModelProvider, meta.Originator
+				metaModel = meta.Model
+			}
+		case "turn_context":
+			var turn struct {
+				Model string `json:"model"`
+			}
+			if turnModel == "" && len(line.Payload) > 0 && json.Unmarshal(line.Payload, &turn) == nil {
+				turnModel = turn.Model
+			}
+		}
+		if head.HasMeta && !head.Timestamp.IsZero() && turnModel != "" {
+			break
 		}
 	}
-	// scanner.Err() intentionally not checked: a scan error (e.g. line
-	// exceeding buffer) is indistinguishable from no session_meta found,
-	// and both result in the same empty-string fallback.
+	head.Model = cmp.Or(turnModel, metaModel)
+	if err := scanner.Err(); err != nil {
+		return head, fmt.Errorf("scanning %s: %w", filepath.Base(path), err)
+	}
+	return head, nil
+}
 
-	return ""
+// codexSessionID returns the listing identifier of a rollout file: the UUID in
+// its name, else its name without the .jsonl extension.
+func codexSessionID(filename string) string {
+	if match := uuidPattern.FindString(filename); match != "" {
+		return match
+	}
+	return strings.TrimSuffix(filename, ".jsonl")
+}
+
+// Bounds of the optional Claude cwd and entrypoint scan (Q57, Q90). The
+// timestamp keeps transcript.ParseFirstTimestamp's unbounded scan.
+const (
+	claudeHeadLines = 50
+	claudeHeadBytes = 1 << 20
+)
+
+// readClaudeHead returns the first nonempty cwd and entrypoint within the
+// first claudeHeadLines lines and claudeHeadBytes bytes of a Claude transcript.
+func readClaudeHead(r io.Reader) (cwd, entrypoint string) {
+	scanner := bufio.NewScanner(io.LimitReader(r, claudeHeadBytes))
+	scanner.Buffer(make([]byte, 0, 64*1024), claudeHeadBytes+1)
+	for i := 0; i < claudeHeadLines && scanner.Scan(); i++ {
+		var line struct {
+			Cwd        string `json:"cwd"`
+			Entrypoint string `json:"entrypoint"`
+		}
+		if err := json.Unmarshal(scanner.Bytes(), &line); err != nil {
+			continue
+		}
+		cwd = cmp.Or(cwd, line.Cwd)
+		entrypoint = cmp.Or(entrypoint, line.Entrypoint)
+		if cwd != "" && entrypoint != "" {
+			break
+		}
+	}
+	return cwd, entrypoint
 }
 
 // normalizePath resolves symlinks and cleans a file path for reliable comparison.
@@ -731,21 +753,45 @@ func isWithinDir(path, dir string) bool {
 	return rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator))
 }
 
-// sortSessionsByTimestamp sorts sessions by creation time (oldest first).
-// When timestamps are equal, sources are ordered by priority.
-func sortSessionsByTimestamp(sessions []SessionInfo) {
-	sourcePriority := map[string]int{
-		SourceClaude:  0,
-		SourceCopilot: 1,
-		SourceCodex:   2,
-		SourceKiroCLI: 3,
-		SourceKiroIDE: 4,
-	}
+// sourcePriority orders sources whose sessions have equal times.
+var sourcePriority = map[string]int{
+	SourceClaude:  0,
+	SourceCopilot: 1,
+	SourceCodex:   2,
+	SourceKiroCLI: 3,
+	SourceKiroIDE: 4,
+}
 
+// sortSessionsByTimestamp sorts sessions by creation time (oldest first).
+// When timestamps are equal, sources are ordered by priority. This is the
+// legacy order of listings without extended ordering.
+func sortSessionsByTimestamp(sessions []SessionInfo) {
 	sort.Slice(sessions, func(i, j int) bool {
 		if sessions[i].CreatedAt.Equal(sessions[j].CreatedAt) {
 			return sourcePriority[sessions[i].Source] < sourcePriority[sessions[j].Source]
 		}
 		return sessions[i].CreatedAt.Before(sessions[j].CreatedAt)
 	})
+}
+
+// sortSessionsExtended sorts sessions by compareSessionsExtended (requirement 4.4).
+func sortSessionsExtended(sessions []SessionInfo) {
+	slices.SortStableFunc(sessions, compareSessionsExtended)
+}
+
+// compareSessionsExtended orders unknown times first, then times ascending,
+// then source priority, then identifier, so the last session is the latest.
+func compareSessionsExtended(a, b SessionInfo) int {
+	if a.CreatedAt.IsZero() != b.CreatedAt.IsZero() {
+		if a.CreatedAt.IsZero() {
+			return -1
+		}
+		return 1
+	}
+	return cmp.Or(
+		a.CreatedAt.Compare(b.CreatedAt),
+		cmp.Compare(sourcePriority[a.Source], sourcePriority[b.Source]),
+		strings.Compare(a.Source, b.Source),
+		strings.Compare(a.ID, b.ID),
+	)
 }

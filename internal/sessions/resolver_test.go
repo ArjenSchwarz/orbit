@@ -910,6 +910,21 @@ func TestResolveFileMetadata_ProjectPathAndFilesystemFallback(t *testing.T) {
 		assert.Empty(t, resolved.Metadata.Project)
 	})
 
+	t.Run("codex without session_meta falls back to modification time", func(t *testing.T) {
+		homeDir := t.TempDir()
+		sessionID := "12345678-aaaa-bbbb-cccc-123456789abc"
+		filePath := filepath.Join(homeDir, ".codex", "sessions", "2025", "02", "20", "rollout-"+sessionID+".jsonl")
+		require.NoError(t, os.MkdirAll(filepath.Dir(filePath), 0o755))
+		require.NoError(t, os.WriteFile(filePath, []byte(`{"type":"response_item","payload":{"type":"message","role":"user","content":[]}}`+"\n"), 0o644))
+		require.NoError(t, os.Chtimes(filePath, modTime, modTime))
+
+		resolved, err := newTestResolver(t.TempDir(), homeDir).Resolve(SourceCodex, sessionID)
+		require.NoError(t, err)
+		t.Cleanup(func() { _ = resolved.Reader.Close() })
+		assert.True(t, modTime.Equal(resolved.Metadata.CreatedAt))
+		assert.True(t, resolved.Metadata.TimeFromFilesystem, "the modification time is a filesystem fallback, never a recorded time")
+	})
+
 	for name, tc := range map[string]struct {
 		workspace          string
 		wantProject        string

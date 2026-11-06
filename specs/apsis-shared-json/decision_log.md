@@ -107,6 +107,12 @@
 | Q101 | 2026-11-05 | Agent decision (task 3): the schema lists warning codes as `examples` on `warning.code` rather than an `enum`; tests require every projected code to be in that list | An enum would make codes added later invalid under the version 1 schema, against 1.3 |
 | Q102 | 2026-11-05 | Agent decision (task 3): shared JSON emits `created_at` and entry timestamps only when they parse as RFC3339, and writes resolver times in UTC | A malformed recorded time would otherwise fail the schema's `date-time` format; UTC keeps resolver-derived output independent of the host zone |
 | Q103 | 2026-11-06 | Agent decision (task 4): the resolver returns the Kiro CLI database `created_at` in a new `SessionMetadata.DatabaseCreatedAt` field, used by shared JSON between the parsed start record and a recorded resolver `CreatedAt`; Kiro CLI `CreatedAt` stays unset | The web transcript view prints `CreatedAt` whenever it is set, so filling it would add a time to every Kiro CLI web transcript, a change 5.1 forbids; whether the web view should show it is open question U6 |
+| Q104 | 2026-11-06 | Agent decision (task 6): `apsis --list` writes every format, shared JSON included, to stdout and still ignores `-o` | Writing the text listing to `-o` would change no-flag behaviour, which 5.1 protects; one destination for both listing formats avoids a format-dependent surprise |
+| Q105 | 2026-11-06 | Agent decision (task 5): a Codex rollout whose head has no parseable `session_meta` timestamp is a filesystem fallback in the resolver too (`TimeFromFilesystem`), not only in the listing | The removed `getCodexSessionTimestamp` returned the modification time without an error, so PR 1's resolver reported it as a recorded time and shared JSON could emit it as `created_at`, against Q37 |
+| Q106 | 2026-11-06 | Agent decision (task 7): each collector de-duplicates beside its own selection rule (Claude: first project directory; Codex: first walk match, `walkCodexRollouts`; Kiro IDE: `bestKiroIDECandidate` across workspaces; Kiro CLI: `DiscoverAll`), still before sorting, rather than in one generic pass after collection | Kiro IDE rows come from map iteration and an invalid Codex winner must block later copies, so a generic keep-first pass would choose the wrong candidate; collectors therefore return their own warnings |
+| Q107 | 2026-11-06 | Agent decision (task 7): `selectCodexCandidate` keeps the first walk match even when it lies inside a followed directory symlink | `filepath.SkipAll` stops only the inner walk of a followed symlink, so the old `findCodexSession` could overwrite the first match with a later one; keeping the first matches its documented choice and the listing's walk |
+| Q108 | 2026-11-06 | Agent decision (task 8): listing warnings keep the existing `could not list`/`Could not load` wording on stderr and in the web banner for every code, and `-F` with `-s` follows only the selected source, rejecting Kiro CLI and Kiro IDE | New codes appear only across projects; one wording keeps existing output unchanged (5.1). Follow mode already supports only JSONL file-backed sources |
+| Q109 | 2026-11-06 | Agent decision (task 8): all-projects web rows and text rows show `-` for an unrecorded project, and `apsisweb.Server.Handler()` exposes the router for `httptest` round trips | One placeholder across surfaces; the accessor lets one fixture set exercise CLI and web listings against the same rows (5.8) |
 
 ---
 
@@ -1222,5 +1228,39 @@ An identifier from one of several merged records would mislabel the rest of the 
 **Negative:**
 - Codex assistant entries, Copilot assistant and tool-result entries, Kiro chat-file entries and exec turns carry no `id`.
 - Entry `id` values are not unique within a document: a Kiro IDE tool action's two entries share one.
+
+---
+
+## Decision 33: Validate Every Selected Codex Rollout in All-Projects Listings
+
+**Date**: 2026-11-06
+**Status**: proposed (agent decision during task 7; not human-approved)
+
+### Context
+
+Decision 22 lists a Codex identifier across projects only from the rollout the resolver opens, and omits it with a warning when that winner fails the containment, readability, parseable-head and recorded-ID checks. Its context is duplicated filename UUIDs, so it leaves open whether the checks apply to identifiers held by one file only. Task 7 needed a rule.
+
+### Decision
+
+Apply the checks to every selected rollout in all-projects scope. An unreadable rollout is omitted with `path_unreadable`; one without a decodable `session_meta` within `codexMetaScanLimit` lines, or whose `session_meta.payload.id` differs from its filename UUID (ignoring case), is omitted with `invalid_record`. Rollouts named without a UUID need only the `session_meta`. Later copies of an omitted identifier are not listed and get `duplicate_session`. Project scope keeps its legacy per-file rows (Q62).
+
+### Rationale
+
+One rule for every identifier keeps listing, opening and the later suppression index (task 13) on the same verified candidate, without a special case for groups of one. No existing output changes: project rows already require a `session_meta` `cwd`, and all-projects listings are new in this feature.
+
+### Alternatives Considered
+
+- **Check only duplicated identifiers**: a single rollout lists whatever its head says - Rejected because rows would then carry unverified metadata that task 13 must not use for suppression, so the two would disagree about which rollouts are valid.
+- **List invalid winners without metadata**: keep the row and drop its fields - Rejected because Decision 22 omits invalid winners, and a row whose recorded ID differs from its filename opens a session other than the one its metadata describes.
+
+### Consequences
+
+**Positive:**
+- Every all-projects Codex row has a readable head that records its identifier.
+- Listing, opening and suppression share one validity rule.
+
+**Negative:**
+- Rollouts written by Codex versions without a `session_meta` header are omitted across projects, each with a warning, which can be noisy for long-time users; they still convert by path.
+- A rollout whose recorded ID differs from its filename appears in its project's listing but not across projects.
 
 ---

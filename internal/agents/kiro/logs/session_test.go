@@ -231,3 +231,58 @@ func TestGetSessionRecord_ReportsMatchedKeyAndCreatedAt(t *testing.T) {
 	_, err = db.GetSessionRecord(context.Background(), "missing", linkDir)
 	assert.ErrorIs(t, err, ErrSessionNotFound)
 }
+
+// TestGetSessionByID_MatchesDiscoverAll covers Q51: opening by identifier alone
+// picks the most recently updated row, then the lowest key, the same row
+// DiscoverAll lists, including when two keys share an updated_at.
+func TestGetSessionByID_MatchesDiscoverAll(t *testing.T) {
+	created := time.Date(2026, 10, 1, 6, 0, 0, 0, time.UTC)
+	updated := created.Add(time.Hour)
+
+	tests := map[string]struct {
+		rows    [][2]string // key, value, in insertion order
+		updates map[string]time.Time
+		wantKey string
+	}{
+		"equal updated_at keeps the lowest key": {
+			rows:    [][2]string{{"/z-key", `{"k":"z"}`}, {"/a-key", `{"k":"a"}`}},
+			updates: map[string]time.Time{"/z-key": updated, "/a-key": updated},
+			wantKey: "/a-key",
+		},
+		"the most recent update wins over a lower key": {
+			rows:    [][2]string{{"/a-key", `{"k":"a"}`}, {"/m-key", `{"k":"m"}`}},
+			updates: map[string]time.Time{"/a-key": updated, "/m-key": updated.Add(time.Minute)},
+			wantKey: "/m-key",
+		},
+	}
+	for name, tc := range tests {
+		t.Run(name, func(t *testing.T) {
+			db := createTestDB(t)
+			values := map[string]string{}
+			for _, row := range tc.rows {
+				insertSessionWithTimes(t, db, row[0], "conversation", row[1], created, tc.updates[row[0]])
+				values[row[0]] = row[1]
+			}
+
+			record, err := db.GetSessionByID(t.Context(), "conversation")
+			require.NoError(t, err)
+			assert.Equal(t, tc.wantKey, record.Key)
+			assert.JSONEq(t, values[tc.wantKey], string(record.Value))
+			assert.Equal(t, created.UnixMilli(), record.CreatedAt.UnixMilli())
+
+			listed, err := db.DiscoverAll(t.Context())
+			require.NoError(t, err)
+			require.Len(t, listed, 1)
+			assert.Equal(t, tc.wantKey, listed[0].Directory, "DiscoverAll and GetSessionByID pick the same row")
+		})
+	}
+}
+
+func TestGetSessionByID_NotFound(t *testing.T) {
+	db := createTestDB(t)
+	insertSession(t, db, "/project", "other", `{}`, time.Now())
+
+	_, err := db.GetSessionByID(t.Context(), "missing")
+	require.ErrorIs(t, err, ErrSessionNotFound)
+	assert.Contains(t, err.Error(), "missing")
+}

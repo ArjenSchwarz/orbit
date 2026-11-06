@@ -13,6 +13,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `orbit finalize` now reads the spec's `consolidation-log.json` and prints a warning before the confirmation prompt when the requested `--variant` differs from the most recent consolidation entry. The warning fires under `--force` as well so it remains visible in CI output.
 - `apsis -f shared-json` outputs a session as versioned JSON with the same layout for every agent: source, identifier, recorded creation time, project, model, provider, origin and cost, followed by entries with their recorded identifiers and structured warnings. The layout is published as a JSON Schema in `docs/schemas/apsis-shared-json.v1.schema.json`.
 - Apsis Markdown and HTML assistant headers show the model provider recorded by Codex rollouts and Kiro IDE chats beside the model.
+- `apsis --list -f shared-json` outputs a versioned listing document: each session's source, identifier, size, recorded creation time or file modification time, project, model, provider and origin where recorded, plus listing warnings with a code.
+- `apsis --all-projects` lists, opens and picks the latest session from every project; text listings gain a project column. `apsis serve --all-projects` shows sessions from every project with their project.
+- `apsis -s`/`--source <source>` opens the argument as a session ID of that source, so identical IDs in different agents can be told apart.
 
 ### Fixed
 

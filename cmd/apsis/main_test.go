@@ -288,7 +288,7 @@ func TestRunFollow_BasicExecution(t *testing.T) {
 
 func TestResolveFollowInput_StdinRejected(t *testing.T) {
 	// Test that empty input (stdin) returns error (requirement 2.3, 2.4)
-	_, err := resolveFollowInput("", "/some/project")
+	_, err := resolveFollowInput("", "/some/project", "")
 	if err == nil {
 		t.Fatal("expected error for stdin input")
 	}
@@ -304,7 +304,7 @@ func TestResolveFollowInput_FilePath(t *testing.T) {
 	}
 
 	// Test resolving a file path
-	result, err := resolveFollowInput(tmpFile, "/some/project")
+	result, err := resolveFollowInput(tmpFile, "/some/project", "")
 	if err != nil {
 		t.Fatalf("resolveFollowInput failed: %v", err)
 	}
@@ -335,7 +335,7 @@ func TestResolveFollowInput_SessionID(t *testing.T) {
 	defer func() { _ = os.Setenv("HOME", origHomeDir) }()
 
 	// Test resolving by session ID
-	result, err := resolveFollowInput("my-session", "/test/project")
+	result, err := resolveFollowInput("my-session", "/test/project", "")
 	if err != nil {
 		t.Fatalf("resolveFollowInput failed: %v", err)
 	}
@@ -361,7 +361,7 @@ func TestResolveFollowInput_NotFound(t *testing.T) {
 	defer func() { _ = os.Setenv("HOME", origHomeDir) }()
 
 	// Test resolving non-existent session
-	_, err := resolveFollowInput("nonexistent-session", "/test/project")
+	_, err := resolveFollowInput("nonexistent-session", "/test/project", "")
 	if err == nil {
 		t.Fatal("expected error for non-existent session")
 	}
@@ -557,7 +557,7 @@ func TestListSessions(t *testing.T) {
 	defer func() { _ = os.Setenv("HOME", origHomeDir) }()
 
 	// Test listSessions - we can't easily capture output, so just verify no error
-	err := listSessions("/test/project")
+	err := listSessions(os.Stdout, "/test/project", "")
 	if err != nil {
 		t.Errorf("listSessions failed: %v", err)
 	}
@@ -626,7 +626,7 @@ func TestFormatSize(t *testing.T) {
 
 func TestResolveInput_Stdin(t *testing.T) {
 	// When arg is empty, should return stdin
-	reader, in, err := resolveInput("", "/some/project")
+	reader, in, err := resolveInput("", "/some/project", "")
 	if err != nil {
 		t.Fatalf("resolveInput failed: %v", err)
 	}
@@ -649,7 +649,7 @@ func TestResolveInput_FilePath(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	reader, in, err := resolveInput(tmpFile, "/some/project")
+	reader, in, err := resolveInput(tmpFile, "/some/project", "")
 	if err != nil {
 		t.Fatalf("resolveInput failed: %v", err)
 	}
@@ -988,7 +988,7 @@ func TestIntegration_ApsisWithCodexFile(t *testing.T) {
 	}
 
 	// Test resolving input from file path
-	reader, in, err := resolveInput(sessionFile, "/some/project")
+	reader, in, err := resolveInput(sessionFile, "/some/project", "")
 	if err != nil {
 		t.Fatalf("resolveInput failed: %v", err)
 	}
@@ -1041,7 +1041,7 @@ func TestResolveInput_ClaudeSessionByID(t *testing.T) {
 	}
 	defer func() { _ = os.Setenv("HOME", origHomeDir) }()
 
-	reader, in, err := resolveInput(sessionID, "/test/project")
+	reader, in, err := resolveInput(sessionID, "/test/project", "")
 	if err != nil {
 		t.Fatalf("resolveInput failed: %v", err)
 	}
@@ -1077,7 +1077,7 @@ func TestResolveInput_CodexSessionByUUID(t *testing.T) {
 	}
 	defer func() { _ = os.Setenv("HOME", origHomeDir) }()
 
-	reader, in, err := resolveInput(sessionUUID, "/test/project")
+	reader, in, err := resolveInput(sessionUUID, "/test/project", "")
 	if err != nil {
 		t.Fatalf("resolveInput failed: %v", err)
 	}
@@ -1124,7 +1124,7 @@ func TestResolveInput_ClaudeFirst_WhenBothExist(t *testing.T) {
 	}
 	defer func() { _ = os.Setenv("HOME", origHomeDir) }()
 
-	reader, _, err := resolveInput(sessionID, "/test/project")
+	reader, _, err := resolveInput(sessionID, "/test/project", "")
 	if err != nil {
 		t.Fatalf("resolveInput failed: %v", err)
 	}
@@ -1154,7 +1154,7 @@ func TestResolveInput_NotFound(t *testing.T) {
 	}
 	defer func() { _ = os.Setenv("HOME", origHomeDir) }()
 
-	_, _, err := resolveInput("nonexistent-session", "/test/project")
+	_, _, err := resolveInput("nonexistent-session", "/test/project", "")
 	if err == nil {
 		t.Fatal("expected error for non-existent session")
 	}
@@ -1184,7 +1184,7 @@ func TestResolveInput_FallsThroughKiroWhenDatabaseNotFound(t *testing.T) {
 	defer func() { _ = os.Setenv("HOME", origHomeDir) }()
 
 	// Try to resolve a non-existent session ID
-	_, _, err := resolveInput("nonexistent-session-id", "/test/project")
+	_, _, err := resolveInput("nonexistent-session-id", "/test/project", "")
 	if err == nil {
 		t.Fatal("expected error for non-existent session")
 	}
@@ -1280,7 +1280,7 @@ func TestFollowMode_BasicFollowWithEntry(t *testing.T) {
 	}
 
 	// Verify resolveFollowInput works with file path
-	resolvedPath, err := resolveFollowInput(tmpFile, "/some/project")
+	resolvedPath, err := resolveFollowInput(tmpFile, "/some/project", "")
 	if err != nil {
 		t.Fatalf("resolveFollowInput failed: %v", err)
 	}
@@ -1316,7 +1316,7 @@ func TestResolveFollowInput_KiroSessionNotSupported(t *testing.T) {
 
 	// Try to resolve a session ID that would be in Kiro
 	// (but Kiro doesn't support follow mode since sessions are in SQLite)
-	_, err := resolveFollowInput("kiro-session-id", "/test/project")
+	_, err := resolveFollowInput("kiro-session-id", "/test/project", "")
 	if err == nil {
 		t.Fatal("expected error for Kiro session in follow mode")
 	}
@@ -1482,7 +1482,7 @@ func TestIntegration_SessionOutputFormat(t *testing.T) {
 	os.Stdout = w
 
 	// Run listSessions
-	err := listSessions("/test/project")
+	err := listSessions(os.Stdout, "/test/project", "")
 
 	// Restore stdout
 	_ = w.Close()

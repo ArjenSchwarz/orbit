@@ -11,7 +11,7 @@ import (
 // SessionMetadata contains information about a discovered session.
 type SessionMetadata struct {
 	ConversationID string
-	Directory      string    // The working directory (key column)
+	Directory      string // The working directory (key column)
 	CreatedAt      time.Time
 	UpdatedAt      time.Time
 	Size           int64 // Size of JSON blob in bytes
@@ -85,8 +85,9 @@ func (d *DB) DiscoverForDirectory(ctx context.Context, dir string) ([]SessionMet
 }
 
 // DiscoverAll returns all sessions across all directories.
-// Deduplicates by ConversationID (keeps most recent UpdatedAt) to handle
-// sessions recorded under both normalized and symlink-resolved paths.
+// Deduplicates by ConversationID, keeping the most recent UpdatedAt and then
+// the lowest key, the row GetSessionByID opens, to handle sessions recorded
+// under both normalized and symlink-resolved paths.
 // Results are sorted by updated_at DESC (most recent first).
 func (d *DB) DiscoverAll(ctx context.Context) ([]SessionMetadata, error) {
 	conn, err := d.openConn(ctx)
@@ -98,7 +99,7 @@ func (d *DB) DiscoverAll(ctx context.Context) ([]SessionMetadata, error) {
 	rows, err := conn.QueryContext(ctx, `
 		SELECT conversation_id, key, created_at, updated_at, length(value)
 		FROM conversations_v2
-		ORDER BY updated_at DESC
+		ORDER BY updated_at DESC, key ASC
 	`)
 	if err != nil {
 		return nil, classifyError(err)
@@ -106,7 +107,8 @@ func (d *DB) DiscoverAll(ctx context.Context) ([]SessionMetadata, error) {
 	defer func() { _ = rows.Close() }()
 
 	// Deduplicate by ConversationID — same session may appear under both
-	// a normalized path and its symlink-resolved path.
+	// a normalized path and its symlink-resolved path. Rows arrive in
+	// GetSessionByID's order, so the first row seen is the one it opens.
 	seen := make(map[string]SessionMetadata)
 	for rows.Next() {
 		var s SessionMetadata

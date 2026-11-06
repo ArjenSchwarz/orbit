@@ -704,7 +704,6 @@ func TestListCopilotSessionsEmptyPathsWithFilter(t *testing.T) {
 	}
 }
 
-
 // setupCodexSessionWithLeadingLines creates a Codex session file where
 // session_meta is NOT the first line. Non-meta entries appear before it.
 func setupCodexSessionWithLeadingLines(t *testing.T, homeDir, projectPath, sessionID string, createdAt time.Time, leadingLines int) {
@@ -796,9 +795,9 @@ func TestCodexSessionMetaNotFirstLine(t *testing.T) {
 	}
 }
 
-// TestGetCodexSessionCwdScansMultipleLines verifies getCodexSessionCwd scans
-// past non-session_meta lines.
-func TestGetCodexSessionCwdScansMultipleLines(t *testing.T) {
+// TestReadCodexHeadCwdScansMultipleLines verifies readCodexHead scans
+// past non-session_meta lines for the cwd.
+func TestReadCodexHeadCwdScansMultipleLines(t *testing.T) {
 	t.Parallel()
 	homeDir := t.TempDir()
 
@@ -812,15 +811,15 @@ func TestGetCodexSessionCwdScansMultipleLines(t *testing.T) {
 		ts.Format("2006"), ts.Format("01"), ts.Format("02"))
 	filePath := filepath.Join(dir, fmt.Sprintf("session-%s.jsonl", sessionID))
 
-	cwd := getCodexSessionCwd(filePath)
-	if cwd != projectPath {
-		t.Errorf("getCodexSessionCwd() = %q, want %q", cwd, projectPath)
+	head, _ := readCodexHead(filePath)
+	if head.Cwd != projectPath {
+		t.Errorf("readCodexHead().Cwd = %q, want %q", head.Cwd, projectPath)
 	}
 }
 
-// TestGetCodexSessionTimestampScansMultipleLines verifies getCodexSessionTimestamp
-// scans past non-session_meta lines.
-func TestGetCodexSessionTimestampScansMultipleLines(t *testing.T) {
+// TestReadCodexHeadTimestampScansMultipleLines verifies readCodexHead
+// scans past non-session_meta lines for the timestamp.
+func TestReadCodexHeadTimestampScansMultipleLines(t *testing.T) {
 	t.Parallel()
 	homeDir := t.TempDir()
 
@@ -833,18 +832,18 @@ func TestGetCodexSessionTimestampScansMultipleLines(t *testing.T) {
 		ts.Format("2006"), ts.Format("01"), ts.Format("02"))
 	filePath := filepath.Join(dir, fmt.Sprintf("session-%s.jsonl", sessionID))
 
-	got, err := getCodexSessionTimestamp(filePath)
+	head, err := readCodexHead(filePath)
 	if err != nil {
-		t.Fatalf("getCodexSessionTimestamp() error: %v", err)
+		t.Fatalf("readCodexHead() error: %v", err)
 	}
-	if !got.Equal(ts) {
-		t.Errorf("getCodexSessionTimestamp() = %v, want %v", got, ts)
+	if !head.Timestamp.Equal(ts) {
+		t.Errorf("readCodexHead().Timestamp = %v, want %v", head.Timestamp, ts)
 	}
 }
 
 // TestCodexSessionMetaBeyondScanLimit verifies that when session_meta appears
-// after the scan limit, the functions fall back gracefully (mod-time for
-// timestamp, empty string for cwd) rather than scanning the entire file.
+// after the scan limit, readCodexHead records neither a timestamp nor a cwd
+// (callers fall back to the flagged mod-time) rather than scanning the entire file.
 func TestCodexSessionMetaBeyondScanLimit(t *testing.T) {
 	t.Parallel()
 
@@ -860,19 +859,17 @@ func TestCodexSessionMetaBeyondScanLimit(t *testing.T) {
 		ts.Format("2006"), ts.Format("01"), ts.Format("02"))
 	filePath := filepath.Join(dir, fmt.Sprintf("session-%s.jsonl", sessionID))
 
-	// cwd should be empty — session_meta is beyond the scan limit
-	cwd := getCodexSessionCwd(filePath)
-	if cwd != "" {
-		t.Errorf("getCodexSessionCwd() = %q, want empty string (beyond scan limit)", cwd)
-	}
-
-	// timestamp should fall back to file mod-time
-	got, err := getCodexSessionTimestamp(filePath)
+	head, err := readCodexHead(filePath)
 	if err != nil {
-		t.Fatalf("getCodexSessionTimestamp() error: %v", err)
+		t.Fatalf("readCodexHead() error: %v", err)
 	}
-	if got.Equal(ts) {
-		t.Errorf("getCodexSessionTimestamp() returned session_meta timestamp %v, expected file mod-time (beyond scan limit)", got)
+	// cwd should be empty — session_meta is beyond the scan limit
+	if head.Cwd != "" {
+		t.Errorf("readCodexHead().Cwd = %q, want empty string (beyond scan limit)", head.Cwd)
+	}
+	// no timestamp is recorded, so listing falls back to the file mod-time
+	if !head.Timestamp.IsZero() {
+		t.Errorf("readCodexHead().Timestamp = %v, want zero (beyond scan limit)", head.Timestamp)
 	}
 }
 
@@ -984,7 +981,7 @@ func TestListCodexSkipsSymlinkEscape(t *testing.T) {
 	}
 
 	lister := newTestLister(homeDir)
-	sessions, err := lister.listCodex(projectPath)
+	sessions, _, err := lister.listCodex(projectPath)
 	if err != nil {
 		t.Fatalf("listCodex error: %v", err)
 	}
@@ -1198,8 +1195,7 @@ func TestIsWithinDirResolvesSymlinkedPrefix(t *testing.T) {
 	}
 }
 
-
-// TestCodexSessionCwdLargeLineBeforeMeta verifies that getCodexSessionCwd
+// TestCodexSessionCwdLargeLineBeforeMeta verifies that readCodexHead
 // handles JSONL lines exceeding the default 64 KiB scanner buffer.
 // Regression test for T-868.
 func TestCodexSessionCwdLargeLineBeforeMeta(t *testing.T) {
@@ -1239,17 +1235,15 @@ func TestCodexSessionCwdLargeLineBeforeMeta(t *testing.T) {
 		t.Fatalf("WriteFile: %v", err)
 	}
 
-	cwd := getCodexSessionCwd(filePath)
-	if cwd != projectPath {
-		t.Errorf("getCodexSessionCwd() = %q, want %q", cwd, projectPath)
-	}
-
-	got, err := getCodexSessionTimestamp(filePath)
+	head, err := readCodexHead(filePath)
 	if err != nil {
-		t.Fatalf("getCodexSessionTimestamp() error: %v", err)
+		t.Fatalf("readCodexHead() error: %v", err)
 	}
-	if !got.Equal(ts) {
-		t.Errorf("getCodexSessionTimestamp() = %v, want %v", got, ts)
+	if head.Cwd != projectPath {
+		t.Errorf("readCodexHead().Cwd = %q, want %q", head.Cwd, projectPath)
+	}
+	if !head.Timestamp.Equal(ts) {
+		t.Errorf("readCodexHead().Timestamp = %v, want %v", head.Timestamp, ts)
 	}
 }
 
@@ -1295,7 +1289,7 @@ func TestListKiroIDEEmptyPathScansAllWorkspaces(t *testing.T) {
 		kiroIDEBasePath: func() (string, error) { return baseDir, nil },
 	}
 
-	sessions, err := lister.listKiroIDE("")
+	sessions, _, err := lister.listKiroIDE("")
 	if err != nil {
 		t.Fatalf("listKiroIDE(\"\") error: %v", err)
 	}

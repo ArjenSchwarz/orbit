@@ -90,6 +90,47 @@ func (d *DB) GetSessionRecord(ctx context.Context, conversationID, dir string) (
 	return nil, fmt.Errorf("%w: %s in directory %s", ErrSessionNotFound, conversationID, dir)
 }
 
+// GetSessionByID retrieves a conversation by ID from any directory.
+//
+// This is a convenience function that uses DefaultDB().
+func GetSessionByID(ctx context.Context, conversationID string) (*SessionRecord, error) {
+	db, err := DefaultDB()
+	if err != nil {
+		return nil, err
+	}
+	return db.GetSessionByID(ctx, conversationID)
+}
+
+// GetSessionByID retrieves a conversation by ID from any directory. When the
+// conversation is stored under several keys, it returns the most recently
+// updated row and then the lowest key, the row DiscoverAll lists.
+func (d *DB) GetSessionByID(ctx context.Context, conversationID string) (*SessionRecord, error) {
+	conn, err := d.openConn(ctx)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = conn.Close() }()
+
+	var createdMS int64
+	record := &SessionRecord{}
+	err = conn.QueryRowContext(ctx, `
+		SELECT key, value, created_at FROM conversations_v2
+		WHERE conversation_id = ?
+		ORDER BY updated_at DESC, key ASC
+		LIMIT 1
+	`, conversationID).Scan(&record.Key, &record.Value, &createdMS)
+
+	if err == sql.ErrNoRows {
+		return nil, fmt.Errorf("%w: %s", ErrSessionNotFound, conversationID)
+	}
+	if err != nil {
+		return nil, classifyError(err)
+	}
+
+	record.CreatedAt = time.UnixMilli(createdMS)
+	return record, nil
+}
+
 // querySessionRecord retrieves the stored record for a specific session and key.
 func querySessionRecord(ctx context.Context, conn *sql.DB, conversationID, dir string) (*SessionRecord, error) {
 	var createdMS int64

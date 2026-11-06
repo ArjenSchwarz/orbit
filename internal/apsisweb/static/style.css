@@ -293,6 +293,19 @@ a:hover {
     white-space: nowrap;
 }
 
+/* All-projects scope adds a project column */
+.session-list.all-projects .session-card {
+    grid-template-columns: auto 1fr minmax(0, 30ch) auto auto;
+}
+
+.session-project {
+    color: var(--text-secondary);
+    font-size: 0.85rem;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
 /* Session metadata card */
 .session-meta {
     background-color: var(--bg-secondary);
@@ -417,7 +430,8 @@ a:hover {
 
 /* Mobile responsive - single column under 768px */
 @media (max-width: 768px) {
-    .session-card {
+    .session-card,
+    .session-list.all-projects .session-card {
         grid-template-columns: 1fr;
     }
 

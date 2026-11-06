@@ -24,16 +24,17 @@ import (
 type Resolver struct {
 	projectPath string
 	homeDir     string
+	opts        Options
 }
 
 // NewResolver creates a Resolver for the given project.
 // Resolves os.UserHomeDir() once during construction.
-func NewResolver(projectPath string) (*Resolver, error) {
+func NewResolver(projectPath string, opts ...Option) (*Resolver, error) {
 	homeDir, err := os.UserHomeDir()
 	if err != nil {
 		return nil, fmt.Errorf("failed to get home directory: %w", err)
 	}
-	return &Resolver{projectPath: projectPath, homeDir: homeDir}, nil
+	return &Resolver{projectPath: projectPath, homeDir: homeDir, opts: applyOptions(opts)}, nil
 }
 
 // Resolve locates a session and returns a reader and metadata.
@@ -112,7 +113,7 @@ func (r *Resolver) findClaudeSessionPath(sessionID string) (string, error) {
 }
 
 func (r *Resolver) resolveCodex(sessionID string) (*ResolvedSession, error) {
-	codexPath, err := findCodexSession(r.homeDir, sessionID)
+	codexPath, err := selectCodexCandidate(r.homeDir, sessionID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to search Codex sessions: %w", err)
 	}
@@ -145,8 +146,16 @@ func (r *Resolver) resolveCopilot(sessionID string) (*ResolvedSession, error) {
 	return r.openFileSession(copilotPath, SourceCopilot, sessionID)
 }
 
+// resolveKiroCLI opens a Kiro CLI conversation stored under the project's key,
+// or under any key in all-projects scope, choosing the row the listing shows.
 func (r *Resolver) resolveKiroCLI(sessionID string) (*ResolvedSession, error) {
-	record, err := logs.GetSessionRecord(context.Background(), sessionID, r.projectPath)
+	var record *logs.SessionRecord
+	var err error
+	if r.projectPath == "" {
+		record, err = logs.GetSessionByID(context.Background(), sessionID)
+	} else {
+		record, err = logs.GetSessionRecord(context.Background(), sessionID, r.projectPath)
+	}
 	if err != nil {
 		if errors.Is(err, logs.ErrSessionNotFound) || errors.Is(err, logs.ErrDatabaseNotFound) {
 			return nil, fmt.Errorf("session not found: %s", sessionID)
@@ -167,15 +176,11 @@ func (r *Resolver) resolveKiroCLI(sessionID string) (*ResolvedSession, error) {
 }
 
 func (r *Resolver) resolveKiroIDE(sessionID string) (*ResolvedSession, error) {
-	workspaceDir, err := transcript.KiroIDEWorkspaceDir(r.projectPath)
-	if err != nil {
-		return nil, fmt.Errorf("session not found: %s", sessionID)
-	}
-
-	bestPath, err := r.findKiroIDEPath(workspaceDir, sessionID)
+	bestPath, err := r.locateKiroIDE(sessionID)
 	if err != nil {
 		return nil, err
 	}
+	workspaceDir := filepath.Dir(bestPath)
 
 	f, err := os.Open(bestPath)
 	if err != nil {
@@ -232,7 +237,7 @@ func (r *Resolver) ResolvePath(source, sessionID string) (string, error) {
 	case SourceClaude:
 		return r.findClaudeSessionPath(sessionID)
 	case SourceCodex:
-		path, err := findCodexSession(r.homeDir, sessionID)
+		path, err := selectCodexCandidate(r.homeDir, sessionID)
 		if err != nil {
 			return "", err
 		}
@@ -260,67 +265,49 @@ func (r *Resolver) ResolvePath(source, sessionID string) (string, error) {
 	case SourceKiroCLI:
 		return "", fmt.Errorf("kiro-cli sessions are SQLite-backed and have no file path")
 	case SourceKiroIDE:
-		workspaceDir, err := transcript.KiroIDEWorkspaceDir(r.projectPath)
-		if err != nil {
-			return "", fmt.Errorf("session not found: %s", sessionID)
-		}
-		return r.findKiroIDEPath(workspaceDir, sessionID)
+		return r.locateKiroIDE(sessionID)
 	default:
 		return "", fmt.Errorf("unknown source: %s", source)
 	}
 }
 
-// findKiroIDEPath finds the best .chat file path for a Kiro IDE session.
-// Each candidate is validated with IsPathWithinDir inside the scan loop,
-// so symlinks pointing outside the workspace are skipped without shadowing
-// legitimate files.
-func (r *Resolver) findKiroIDEPath(workspaceDir, sessionID string) (string, error) {
-	entries, err := os.ReadDir(workspaceDir)
+// locateKiroIDE returns the .chat file to open for an execution: the best
+// candidate in the project's workspace, or across every workspace in
+// all-projects scope, under the rule the listing applies.
+func (r *Resolver) locateKiroIDE(sessionID string) (string, error) {
+	notFound := fmt.Errorf("session not found: %s", sessionID)
+	if r.projectPath != "" {
+		workspaceDir, err := transcript.KiroIDEWorkspaceDir(r.projectPath)
+		if err != nil {
+			return "", notFound
+		}
+		return r.findKiroIDEPath(workspaceDir, sessionID)
+	}
+
+	base, err := transcript.KiroIDEBasePath()
 	if err != nil {
-		return "", fmt.Errorf("read kiro ide workspace: %w", err)
+		return "", notFound
 	}
-
-	var bestPath string
-	var bestCount int
-	var bestMtime time.Time
-
-	for _, entry := range entries {
-		if entry.IsDir() || !strings.HasSuffix(entry.Name(), ".chat") {
-			continue
-		}
-		path := filepath.Join(workspaceDir, entry.Name())
-		if !web.IsPathWithinDir(path, workspaceDir) {
-			continue
-		}
-		data, err := os.ReadFile(path)
-		if err != nil {
-			continue
-		}
-		var header kiroIDEChatHeader
-		if err := json.Unmarshal(data, &header); err != nil || header.ExecutionID != sessionID {
-			continue
-		}
-		info, err := entry.Info()
-		if err != nil {
-			continue
-		}
-		count := len(header.Chat)
-		mtime := info.ModTime()
-		if bestPath == "" || count > bestCount || (count == bestCount && mtime.After(bestMtime)) {
-			bestPath = path
-			bestCount = count
-			bestMtime = mtime
-		}
+	all, err := kiroIDEAllCandidates(base)
+	if err != nil || len(all[sessionID]) == 0 {
+		return "", notFound
 	}
+	return bestKiroIDECandidate(all[sessionID]).path, nil
+}
 
-	if bestPath == "" {
+// findKiroIDEPath finds the best .chat file path for a Kiro IDE session in
+// one workspace. Symlinks resolving outside the workspace are skipped inside
+// the scan, so they cannot shadow legitimate files.
+func (r *Resolver) findKiroIDEPath(workspaceDir, sessionID string) (string, error) {
+	best, err := kiroIDEWorkspaceCandidates(workspaceDir)
+	if err != nil {
+		return "", err
+	}
+	candidate, ok := best[sessionID]
+	if !ok {
 		return "", fmt.Errorf("session not found: %s", sessionID)
 	}
-
-	if !web.IsPathWithinDir(bestPath, workspaceDir) {
-		return "", fmt.Errorf("session not found: %s", sessionID)
-	}
-	return bestPath, nil
+	return candidate.path, nil
 }
 
 // openFileSession opens a file and returns a ResolvedSession with metadata.
@@ -367,8 +354,8 @@ func resolveFileMetadata(metadata *SessionMetadata, f *os.File, modTime time.Tim
 			return
 		}
 	case SourceCodex:
-		if ts, err := getCodexSessionTimestamp(metadata.Path); err == nil {
-			metadata.CreatedAt = ts
+		if head, _ := readCodexHead(metadata.Path); !head.Timestamp.IsZero() {
+			metadata.CreatedAt = head.Timestamp
 			return
 		}
 	case SourceCopilot:
@@ -385,53 +372,47 @@ func resolveFileMetadata(metadata *SessionMetadata, f *os.File, modTime time.Tim
 	metadata.TimeFromFilesystem = true
 }
 
-// findCodexSession searches ~/.codex/sessions/ for a session by UUID or
-// filename-based ID. UUID IDs are matched against UUID substrings in filenames.
-// Non-UUID IDs are matched against the full basename without the .jsonl extension,
-// which is the same format that listCodex returns for files without a UUID.
-func findCodexSession(homeDir, sessionID string) (string, error) {
+// selectCodexCandidate returns the first rollout in walk order under
+// ~/.codex/sessions/ whose name matches sessionID. UUID IDs are matched
+// against UUID substrings in filenames. Non-UUID IDs are matched against the
+// full basename without the .jsonl extension, which is the same format that
+// listCodex returns for files without a UUID. Matching ignores case. Resolution
+// and all-projects listing share this choice (Decision 22).
+func selectCodexCandidate(homeDir, sessionID string) (string, error) {
 	// Reject IDs containing path separators or traversal sequences.
 	if strings.ContainsAny(sessionID, "/\\") || strings.Contains(sessionID, "..") {
 		return "", nil
 	}
 
-	isUUID := len(sessionID) == 36 && uuidPattern.MatchString(sessionID)
+	isUUID := isCodexUUID(sessionID)
 	normalizedID := strings.ToLower(sessionID)
-	codexDir := filepath.Join(homeDir, ".codex", "sessions")
-
-	realDir, err := filepath.EvalSymlinks(codexDir)
-	if err != nil {
-		if os.IsNotExist(err) {
-			return "", nil
-		}
-		return "", err
-	}
 
 	var foundPath string
-	err = walkDirFollowSymlinks(realDir, func(path string, d fs.DirEntry, err error) error {
-		if err != nil || d.IsDir() || !strings.HasSuffix(path, ".jsonl") {
-			return nil
-		}
-
+	err := walkCodexRollouts(homeDir, func(path string, _ fs.DirEntry) error {
 		filename := filepath.Base(path)
-
+		var name string
 		if isUUID {
-			// Match UUID substring within the filename.
-			if match := uuidPattern.FindString(filename); strings.ToLower(match) == normalizedID {
-				foundPath = path
-				return filepath.SkipAll
-			}
+			name = uuidPattern.FindString(filename)
 		} else {
-			// Match the full basename (without .jsonl) for non-UUID IDs.
-			if strings.ToLower(strings.TrimSuffix(filename, ".jsonl")) == normalizedID {
-				foundPath = path
-				return filepath.SkipAll
-			}
+			name = strings.TrimSuffix(filename, ".jsonl")
+		}
+		// A match inside a followed directory symlink stops only that inner
+		// walk, so keep the first match rather than a later one.
+		if foundPath == "" && strings.ToLower(name) == normalizedID {
+			foundPath = path
+		}
+		if foundPath != "" {
+			return filepath.SkipAll
 		}
 		return nil
 	})
 
 	return foundPath, err
+}
+
+// isCodexUUID reports whether a Codex identifier is a UUID rather than a basename.
+func isCodexUUID(id string) bool {
+	return len(id) == 36 && uuidPattern.MatchString(id)
 }
 
 // findCopilotSession searches ~/.copilot/session-state/ for a session by UUID.
